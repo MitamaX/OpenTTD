@@ -124,7 +124,11 @@ void DebugPrint(std::string_view category, int level, std::string &&message)
 		fflush(*f);
 #endif
 	} else {
-		fmt::print(stderr, "{}dbg: [{}:{}] {}\n", GetLogPrefix(true), category, level, message);
+		try {
+			fmt::print(stderr, "{}dbg: [{}:{}] {}\n", GetLogPrefix(true), category, level, message);
+		} catch (const std::system_error &) {
+			/* stderr is not writable when running as a GUI application without an attached console. */
+		}
 
 		if (_debug_remote_console.load()) {
 			/* Only add to the queue when there is at least one consumer of the data. */
