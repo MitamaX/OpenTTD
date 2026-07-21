@@ -762,6 +762,10 @@ static void MidiThreadProc()
 								channel_volumes[status & 0x0F] = data[1];
 								int vol = ScaleVolume(data[1], current_volume);
 								TransmitChannelMsg(_buffer, block_time, status, data[0], vol);
+							} else if (data[0] == MIDICT_BANKSELECT || data[0] == MIDICT_BANKSELECT_LO) {
+								/* The Microsoft Synthesizer only plays instruments downloaded from
+								 * the DLS collection, which covers bank 0 only. Selecting any other
+								 * bank silences the channel, so keep everything on bank 0. */
 							} else {
 								/* handle other controllers normally */
 								TransmitChannelMsg(_buffer, block_time, status, data[0], data[1]);
