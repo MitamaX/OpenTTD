@@ -232,6 +232,11 @@ static void LoadMiniSettings()
 	ini.SaveToDisk(path);
 }
 
+/* Ink draws outlines, paper draws highlights; everything else is a fill. */
+static const uint32_t COL_INK = 0xFF14181CU;
+static const uint32_t COL_PAPER = 0xFFEDF2F7U;
+static const uint32_t COL_SHADOW = 0xFF000000U;
+
 static const uint32_t COL_VOID = 0xFF0A0A0AU;
 static const uint32_t COL_WATER = 0xFF2F6EA5U;
 static const uint32_t COL_SNOW = 0xFFF0F4F7U;
@@ -239,21 +244,36 @@ static const uint32_t COL_DESERT = 0xFFE0CA8CU;
 static const uint32_t COL_ROCKS = 0xFF8E979EU;
 static const uint32_t COL_FIELDS = 0xFFD4B23AU;
 static const uint32_t COL_TREE = 0xFF2F4A2AU;
+
 static const uint32_t COL_RAIL = 0xFF33383DU;
 static const uint32_t COL_ROAD = 0xFF61686EU;
+static const uint32_t COL_BRIDGE = 0xFF9AA0A6U;
+static const uint32_t COL_TUNNEL = 0xFF1E2124U;
+static const uint32_t COL_CATENARY = 0xFFE8C94AU;
+static const uint32_t COL_DEPOT = 0xFF3A3F45U;
+
 static const uint32_t COL_HOUSE = 0xFF9C8A76U;
 static const uint32_t COL_HOUSE_B = 0xFF6E5F4EU;
 static const uint32_t COL_IND = 0xFFD07A4AU;
 static const uint32_t COL_IND_B = 0xFF8F4E2BU;
 static const uint32_t COL_OBJ = 0xFFB0B4B8U;
 static const uint32_t COL_OBJ_B = 0xFF80858AU;
-static const uint32_t COL_TUNNEL = 0xFF1E2124U;
-static const uint32_t COL_BRIDGE = 0xFF9AA0A6U;
-static const uint32_t COL_DEPOT = 0xFF3A3F45U;
-static const uint32_t COL_DEPOT_B = 0xFF14181CU;
+
+static const uint32_t COL_ST_RAIL = 0xFF4A6FA5U;
+static const uint32_t COL_ST_RAIL_B = 0xFF2F4A73U;
+static const uint32_t COL_ST_AIR = 0xFF8E6FB8U;
+static const uint32_t COL_ST_AIR_B = 0xFF64488AU;
+static const uint32_t COL_ST_ROAD = 0xFF7FA8C9U;
+static const uint32_t COL_ST_ROAD_B = 0xFF54789AU;
+static const uint32_t COL_ST_DOCK = 0xFF9A7FA8U;
+static const uint32_t COL_ST_DOCK_B = 0xFF6E5479U;
+static const uint32_t COL_ST_BUOY = 0xFFD8C86AU;
+static const uint32_t COL_ST_BUOY_B = 0xFFA6963FU;
+
+static const uint32_t COL_GO = 0xFF3FCB6AU;
+static const uint32_t COL_STOP = 0xFFE04B4BU;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
-static const uint32_t COL_CATENARY = 0xFFE8C94AU;
 
 /* All-green ramp like the old top-down renderer settled on: one step
  * darker per height level, hue constant so slopes match their neighbours. */
@@ -428,7 +448,7 @@ static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 	if (ppt < 8) {
 		double avg = (hn + hw + he + hs) / 4.0;
 		if (special) {
-			FillRect(x0, y0, x1, y1, Mix(flat, 0xFF000000U, std::min(255, (int)(_ms.relief_strength * avg))));
+			FillRect(x0, y0, x1, y1, Mix(flat, COL_SHADOW, std::min(255, (int)(_ms.relief_strength * avg))));
 		} else {
 			FillRect(x0, y0, x1, y1, RampLerp(hbase + avg));
 		}
@@ -449,7 +469,7 @@ static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 			int sx1 = x0 + wpx * (i + 1) / sub - 1;
 			int sy1 = y0 + hpx * (j + 1) / sub - 1;
 			if (sx1 < sx0 || sy1 < sy0) continue;
-			uint32_t c = special ? Mix(flat, 0xFF000000U, std::min(255, (int)(_ms.relief_strength * z))) : RampLerp(hbase + z);
+			uint32_t c = special ? Mix(flat, COL_SHADOW, std::min(255, (int)(_ms.relief_strength * z))) : RampLerp(hbase + z);
 			FillRect(sx0, sy0, sx1, sy1, c);
 		}
 	}
@@ -530,8 +550,8 @@ static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 			DiagDirection d = TrackdirToExitdir(td);
 			int px = cx + _diag_dx[d] * off;
 			int py = cy + _diag_dy[d] * off;
-			uint32_t c = GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_GREEN ? 0xFF3FCB6AU : 0xFFE04B4BU;
-			FillRect(px - r - 1, py - r - 1, px + r + 1, py + r + 1, 0xFF14181CU);
+			uint32_t c = GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_GREEN ? COL_GO : COL_STOP;
+			FillRect(px - r - 1, py - r - 1, px + r + 1, py + r + 1, COL_INK);
 			FillRect(px - r, py - r, px + r, py + r, c);
 		}
 	}
@@ -548,7 +568,7 @@ static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 	int s = std::max(2, ppt / 4);
 
 	if (drd == DRD_BOTH) {
-		FillRect(cx - s, cy - s / 3, cx + s, cy + s / 3, 0xFFE04B4BU);
+		FillRect(cx - s, cy - s / 3, cx + s, cy + s / 3, COL_STOP);
 		return;
 	}
 
@@ -563,10 +583,10 @@ static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 		int w = (s - i) / 2;
 		if (axis_x) {
 			int px = cx + dir * (i - s / 2);
-			FillRect(px, cy - w, px, cy + w, 0xFFEDF2F7U);
+			FillRect(px, cy - w, px, cy + w, COL_PAPER);
 		} else {
 			int py = cy + dir * (i - s / 2);
-			FillRect(cx - w, py, cx + w, py, 0xFFEDF2F7U);
+			FillRect(cx - w, py, cx + w, py, COL_PAPER);
 		}
 	}
 }
@@ -586,12 +606,12 @@ static void DrawBlock(int x0, int y0, int x1, int y1, int ppt, uint32_t fill, ui
 /* Dark block with a bright tick pointing out of the exit side. */
 static void DrawDepot(int x0, int y0, int x1, int y1, int ppt, DiagDirection exit)
 {
-	DrawBlock(x0, y0, x1, y1, ppt, COL_DEPOT, COL_DEPOT_B);
+	DrawBlock(x0, y0, x1, y1, ppt, COL_DEPOT, COL_INK);
 	if (!_zd.block_borders) return;
 	int cx = (x0 + x1) / 2;
 	int cy = (y0 + y1) / 2;
 	int w = std::max(2, ppt / 5);
-	ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, 0xFFEDF2F7U);
+	ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, COL_PAPER);
 }
 
 static void DrawAxisBand(Axis axis, int x0, int y0, int x1, int y1, int width, uint32_t c)
@@ -689,13 +709,13 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			bool on_water = false;
 			switch (GetStationType(tile)) {
 				case StationType::Rail:
-				case StationType::RailWaypoint: fill = 0xFF4A6FA5U; border = 0xFF2F4A73U; break;
-				case StationType::Airport: fill = 0xFF8E6FB8U; border = 0xFF64488AU; break;
+				case StationType::RailWaypoint: fill = COL_ST_RAIL; border = COL_ST_RAIL_B; break;
+				case StationType::Airport: fill = COL_ST_AIR; border = COL_ST_AIR_B; break;
 				case StationType::Truck:
 				case StationType::Bus:
-				case StationType::RoadWaypoint: fill = 0xFF7FA8C9U; border = 0xFF54789AU; break;
-				case StationType::Dock: fill = 0xFF9A7FA8U; border = 0xFF6E5479U; on_water = true; break;
-				case StationType::Buoy: fill = 0xFFD8C86AU; border = 0xFFA6963FU; on_water = true; break;
+				case StationType::RoadWaypoint: fill = COL_ST_ROAD; border = COL_ST_ROAD_B; break;
+				case StationType::Dock: fill = COL_ST_DOCK; border = COL_ST_DOCK_B; on_water = true; break;
+				case StationType::Buoy: fill = COL_ST_BUOY; border = COL_ST_BUOY_B; on_water = true; break;
 				default: fill = COL_OBJ; border = COL_OBJ_B; on_water = true; break;
 			}
 			if (on_water) {
@@ -748,8 +768,8 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 	if (!water_tile) {
 		int cw = std::max(1, ppt / 8);
 		uint h = TileHeight(tile);
-		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) BlendRect(x1 - cw + 1, y0, x1, y1, 0xFF000000U, _ms.contour_alpha);
-		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) BlendRect(x0, y1 - cw + 1, x1, y1, 0xFF000000U, _ms.contour_alpha);
+		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) BlendRect(x1 - cw + 1, y0, x1, y1, COL_SHADOW, _ms.contour_alpha);
+		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) BlendRect(x0, y1 - cw + 1, x1, y1, COL_SHADOW, _ms.contour_alpha);
 	}
 }
 
@@ -783,15 +803,15 @@ static void DrawVehicles(int ppt)
 		}
 		switch (v->type) {
 			case VEH_ROAD:
-				FillCircle(cx, cy, r + 1, 0xFF14181CU);
+				FillCircle(cx, cy, r + 1, COL_INK);
 				FillCircle(cx, cy, r, c);
 				break;
 			case VEH_SHIP:
-				FillDiamond(cx, cy, r + 1, 0xFF14181CU);
+				FillDiamond(cx, cy, r + 1, COL_INK);
 				FillDiamond(cx, cy, r, c);
 				break;
 			case VEH_AIRCRAFT:
-				FillTriangle(cx, cy, r + 1, 0xFF14181CU);
+				FillTriangle(cx, cy, r + 1, COL_INK);
 				FillTriangle(cx, cy, r, c);
 				break;
 			case VEH_TRAIN: {
@@ -802,22 +822,22 @@ static void DrawVehicles(int ppt)
 				int hx = (int)std::lround(_dir_dx[v->direction] * norm * len);
 				int hy = (int)std::lround(_dir_dy[v->direction] * norm * len);
 				int w = std::max(2, ppt / 4);
-				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w + 2, 0xFF14181CU);
+				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w + 2, COL_INK);
 				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w, c);
 				if (v->IsPrimaryVehicle()) {
 					int tr = std::max(1, w / 2 - 1);
-					FillCircle(cx + hx, cy + hy, tr, 0xFFEDF2F7U);
+					FillCircle(cx + hx, cy + hy, tr, COL_PAPER);
 				}
 				break;
 			}
 			default:
-				FillRect(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, 0xFF14181CU);
+				FillRect(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, COL_INK);
 				FillRect(cx - r, cy - r, cx + r, cy + r, c);
 				break;
 		}
 		if (_zd.cargo_dots && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
 			int dr = std::max(1, half - 2);
-			FillCircle(cx, cy, dr + 1, 0xFF14181CU);
+			FillCircle(cx, cy, dr + 1, COL_INK);
 			FillCircle(cx, cy, dr, CargoRgb(v->cargo_type));
 		}
 	}
@@ -992,7 +1012,7 @@ static void DrawOrderRoute()
 	if (cur_stop >= 0) {
 		int vx = PxX(v->x_pos / (double)TILE_SIZE);
 		int vy = PxY(v->y_pos / (double)TILE_SIZE);
-		ThickLine(vx, vy, stops[cur_stop].first, stops[cur_stop].second, 2, 0xFFEDF2F7U);
+		ThickLine(vx, vy, stops[cur_stop].first, stops[cur_stop].second, 2, COL_PAPER);
 	}
 }
 
@@ -1003,10 +1023,10 @@ static void DrawSelectionRing(int ppt)
 	int cx = PxX(v->x_pos / (double)TILE_SIZE);
 	int cy = PxY(v->y_pos / (double)TILE_SIZE);
 	int r = std::max(6, ppt / 2 + 3);
-	FillRect(cx - r, cy - r, cx + r, cy - r + 1, 0xFFEDF2F7U);
-	FillRect(cx - r, cy + r - 1, cx + r, cy + r, 0xFFEDF2F7U);
-	FillRect(cx - r, cy - r, cx - r + 1, cy + r, 0xFFEDF2F7U);
-	FillRect(cx + r - 1, cy - r, cx + r, cy + r, 0xFFEDF2F7U);
+	FillRect(cx - r, cy - r, cx + r, cy - r + 1, COL_PAPER);
+	FillRect(cx - r, cy + r - 1, cx + r, cy + r, COL_PAPER);
+	FillRect(cx - r, cy - r, cx - r + 1, cy + r, COL_PAPER);
+	FillRect(cx + r - 1, cy - r, cx + r, cy + r, COL_PAPER);
 }
 
 /* Town names always show for navigation; station names join at the
@@ -1485,10 +1505,10 @@ static void DrawCursor()
 {
 	int x = _cursor.pos.x;
 	int y = _cursor.pos.y;
-	FillRect(x - 9, y - 1, x + 9, y + 1, 0xFF14181CU);
-	FillRect(x - 1, y - 9, x + 1, y + 9, 0xFF14181CU);
-	FillRect(x - 8, y, x + 8, y, 0xFFEDF2F7U);
-	FillRect(x, y - 8, x, y + 8, 0xFFEDF2F7U);
+	FillRect(x - 9, y - 1, x + 9, y + 1, COL_INK);
+	FillRect(x - 1, y - 9, x + 1, y + 9, COL_INK);
+	FillRect(x - 8, y, x + 8, y, COL_PAPER);
+	FillRect(x, y - 8, x, y + 8, COL_PAPER);
 }
 
 static std::string FormatMoney(int64_t m)
