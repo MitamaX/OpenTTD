@@ -30,6 +30,8 @@
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "openttd.h"
+#include "order_base.h"
+#include "order_cmd.h"
 #include "palette_func.h"
 #include "rail_cmd.h"
 #include "rail_map.h"
@@ -851,6 +853,48 @@ static void DrawVehicles(int ppt)
 	}
 }
 
+/* Clicking a compatible station with a vehicle selected appends a go-to
+ * order, mirroring the defaults of the order window's goto click. */
+static bool TryAppendOrder(int sx, int sy)
+{
+	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
+	if (v == nullptr || !v->IsPrimaryVehicle() || v->owner != _local_company) return false;
+
+	int tx = (int)std::floor(WorldX(sx));
+	int ty = (int)std::floor(WorldY(sy));
+	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return false;
+	TileIndex tile = TileXY(tx, ty);
+	if (!IsTileType(tile, MP_STATION)) return false;
+	switch (GetStationType(tile)) {
+		case StationType::RailWaypoint:
+		case StationType::RoadWaypoint:
+		case StationType::Buoy:
+			return false;
+		default:
+			break;
+	}
+	const Station *st = Station::GetByTile(tile);
+	if (st == nullptr || (st->owner != _local_company && st->owner != OWNER_NONE)) return false;
+
+	StationFacilities facil;
+	switch (v->type) {
+		case VEH_SHIP: facil = StationFacility::Dock; break;
+		case VEH_TRAIN: facil = StationFacility::Train; break;
+		case VEH_AIRCRAFT: facil = StationFacility::Airport; break;
+		case VEH_ROAD: facil = {StationFacility::BusStop, StationFacility::TruckStop}; break;
+		default: return false;
+	}
+	if (!st->facilities.Any(facil)) return false;
+
+	Order order;
+	order.MakeGoToStation(st->index);
+	if (_ctrl_pressed) order.SetLoadType(OrderLoadType::FullLoadAny);
+	if (_settings_client.gui.new_nonstop && v->IsGroundVehicle()) order.SetNonStopType(OrderNonStopFlag::NoIntermediate);
+	order.SetStopLocation(v->type == VEH_TRAIN ? (OrderStopLocation)(_settings_client.gui.stop_location) : OrderStopLocation::FarEnd);
+	Command<CMD_INSERT_ORDER>::Post(v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
+	return true;
+}
+
 /* Any unit of a consist selects its head, so the info line always
  * describes the whole vehicle. */
 static void SelectVehicleAt(int sx, int sy)
@@ -1374,7 +1418,7 @@ static void DrawHud()
 			char lab[4] = {(char)(l >> 24), (char)(l >> 16), (char)(l >> 8), (char)l};
 			info += fmt::format("  {} {}/{}", std::string_view(lab, 4), stored, cap);
 		}
-		info += fmt::format("  PROFIT {}", FormatMoney(v->GetDisplayProfitThisYear()));
+		info += fmt::format("  ORDERS {}  PROFIT {}", v->GetNumOrders(), FormatMoney(v->GetDisplayProfitThisYear()));
 		DrawText(6 * s, 6 * s + 10 * s, s, info);
 	}
 
@@ -1394,7 +1438,9 @@ static void DrawHud()
 		case MiniTool::Terraform: hint = "TERRAIN: DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
 		default:
 			if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
-				hint = _follow ? "FOLLOWING  P START STOP  H UNFOLLOW  ESC DESELECT" : "P START STOP  H FOLLOW  ESC DESELECT";
+				hint = _follow
+					? "FOLLOWING  CLICK STATION ORDER  O DROP ORDER  P START STOP  H UNFOLLOW  ESC DESELECT"
+					: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
 			} else {
 				hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE  Z TERRAIN  X CLEAR  SPACE PAUSE  F9 EXIT";
 			}
@@ -1499,7 +1545,7 @@ bool MiniUiHandleMouseEvents()
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
 		if (_tool == MiniTool::None) {
-			SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
+			if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y)) SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
 		} else {
 			_dragging = true;
 			_drag_remove = _ctrl_pressed;
@@ -1626,6 +1672,12 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'H':
 			_follow = !_follow && Vehicle::GetIfValid(_sel_vehicle) != nullptr;
+			break;
+
+		case 'O':
+			if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr && v->GetNumOrders() > 0) {
+				Command<CMD_DELETE_ORDER>::Post(v->tile, v->index, (VehicleOrderID)(v->GetNumOrders() - 1));
+			}
 			break;
 
 		case WKC_SPACE:
