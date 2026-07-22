@@ -457,12 +457,35 @@ static void DrawRoadBitsPx(RoadBits bits, int x0, int y0, int x1, int y1, int wi
 	if (bits & ROAD_SW) FillRect(cx, cy - lo, x1, cy - lo + width - 1, c);
 }
 
+struct ZoomDetail {
+	bool tree_dots;
+	bool block_borders;
+	bool signals;
+	bool oneway;
+	bool cargo_dots;
+	bool vehicle_shapes;
+};
+
+static ZoomDetail _zd;
+
+/* Zoom tiers: below 8 ppt the map is a terrain overview, mid zoom shows
+ * infrastructure, close zoom adds per-unit detail. */
+static void ComputeZoomDetail(int ppt)
+{
+	_zd.tree_dots = ppt >= 8;
+	_zd.block_borders = ppt >= 8;
+	_zd.signals = ppt >= 8;
+	_zd.oneway = ppt >= 8;
+	_zd.cargo_dots = ppt >= 16;
+	_zd.vehicle_shapes = ppt >= 8;
+}
+
 static const int _diag_dx[4] = {-1, 0, 1, 0};
 static const int _diag_dy[4] = {0, 1, 0, -1};
 
 static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 {
-	if (ppt < 8) return;
+	if (!_zd.signals) return;
 	int r = std::max(1, ppt / 10);
 	int cx = (x0 + x1) / 2;
 	int cy = (y0 + y1) / 2;
@@ -483,7 +506,7 @@ static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 
 static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 {
-	if (ppt < 8) return;
+	if (!_zd.oneway) return;
 	DisallowedRoadDirections drd = GetDisallowedRoadDirections(tile);
 	if (drd == DRD_NONE) return;
 
@@ -517,6 +540,10 @@ static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 
 static void DrawBlock(int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
 {
+	if (!_zd.block_borders) {
+		FillRect(x0, y0, x1, y1, fill);
+		return;
+	}
 	int inset = std::max(1, ppt / 10);
 	int b = std::max(1, ppt / 10);
 	FillRect(x0 + inset, y0 + inset, x1 - inset, y1 - inset, border);
@@ -566,10 +593,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 
 		case MP_TREES: {
 			DrawGround(tile, x0, y0, x1, y1, ppt);
-			int cx = (x0 + x1) / 2;
-			int cy = (y0 + y1) / 2;
-			int r = std::max(1, ppt / 8);
-			FillRect(cx - r, cy - r, cx + r, cy + r, COL_TREE);
+			if (_zd.tree_dots) {
+				int cx = (x0 + x1) / 2;
+				int cy = (y0 + y1) / 2;
+				int r = std::max(1, ppt / 8);
+				FillRect(cx - r, cy - r, cx + r, cy + r, COL_TREE);
+			}
 			break;
 		}
 
@@ -701,6 +730,10 @@ static void DrawVehicles(int ppt)
 		int cy = PxY(v->y_pos / (double)TILE_SIZE);
 		if (cx < -r - 1 || cy < -r - 1 || cx >= _fbw + r + 1 || cy >= _fbh + r + 1) continue;
 		uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_OBJ;
+		if (!_zd.vehicle_shapes) {
+			FillRect(cx - 1, cy - 1, cx + 1, cy + 1, c);
+			continue;
+		}
 		switch (v->type) {
 			case VEH_ROAD:
 				FillCircle(cx, cy, r + 1, 0xFF14181CU);
@@ -735,7 +768,7 @@ static void DrawVehicles(int ppt)
 				FillRect(cx - r, cy - r, cx + r, cy + r, c);
 				break;
 		}
-		if (half >= 3 && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
+		if (_zd.cargo_dots && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
 			int dr = std::max(1, half - 2);
 			FillCircle(cx, cy, dr + 1, 0xFF14181CU);
 			FillCircle(cx, cy, dr, CargoRgb(v->cargo_type));
@@ -1114,6 +1147,7 @@ bool MiniUiFrame(uint delta_ms)
 	}
 
 	int ppt = std::max(1, (int)std::lround(_cam_ppt));
+	ComputeZoomDetail(ppt);
 
 	int tx0 = std::max(0, (int)std::floor(WorldX(0)));
 	int ty0 = std::max(0, (int)std::floor(WorldY(0)));
