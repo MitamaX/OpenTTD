@@ -42,6 +42,7 @@
 #include "station_map.h"
 #include "tile_map.h"
 #include "timer/timer_game_calendar.h"
+#include "tunnelbridge_cmd.h"
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
 #include "video/video_driver.hpp"
@@ -75,7 +76,14 @@ enum class MiniTool : uint8_t {
 	RoadDepot,
 	Demolish,
 	Signal,
+	RailBridge,
+	RoadBridge,
 };
+
+static bool IsBridgeTool(MiniTool t)
+{
+	return t == MiniTool::RailBridge || t == MiniTool::RoadBridge;
+}
 
 static bool IsPointTool(MiniTool t)
 {
@@ -1189,6 +1197,39 @@ static void CommitRoadPlan()
 	ClearPlans();
 }
 
+static BridgeType PickBridgeType(uint len)
+{
+	BridgeType best = 0;
+	uint best_speed = 0;
+	for (BridgeType bt = 0; bt < MAX_BRIDGES; bt++) {
+		if (!CheckBridgeAvailability(bt, len).Succeeded()) continue;
+		if (_bridge[bt].speed > best_speed) {
+			best = bt;
+			best_speed = _bridge[bt].speed;
+		}
+	}
+	return best;
+}
+
+/* Drag spans a bridge; a plain click on a sloped tile digs a tunnel instead.
+ * Removal clears the head tile, which takes the whole crossing with it. */
+static void CommitBridgePlan()
+{
+	if (_road_plan.start == INVALID_TILE) return;
+	bool rail = _tool == MiniTool::RailBridge;
+	TransportType tt = rail ? TRANSPORT_RAIL : TRANSPORT_ROAD;
+	uint8_t rrt = rail ? (uint8_t)PickRailType() : (uint8_t)PickRoadType();
+	if (_drag_remove) {
+		Command<CMD_LANDSCAPE_CLEAR>::Post(_road_plan.start);
+	} else if (_road_plan.start == _road_plan.end) {
+		Command<CMD_BUILD_TUNNEL>::Post(_road_plan.start, tt, rrt);
+	} else {
+		uint len = std::max(Delta(TileX(_road_plan.start), TileX(_road_plan.end)), Delta(TileY(_road_plan.start), TileY(_road_plan.end))) - 1;
+		Command<CMD_BUILD_BRIDGE>::Post(_road_plan.end, _road_plan.start, tt, PickBridgeType(len), rrt);
+	}
+	ClearPlans();
+}
+
 static void DrawCursor()
 {
 	int x = _cursor.pos.x;
@@ -1240,7 +1281,9 @@ static void DrawHud()
 		case MiniTool::RoadDepot: hint = "ROAD DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::Demolish: hint = "CLEAR: DRAG AREA / RMB CANCEL"; break;
 		case MiniTool::Signal: hint = "SIGNAL: CLICK BUILD OR CYCLE / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
+		case MiniTool::RailBridge: hint = "RAIL BRIDGE: DRAG SPAN / CLICK SLOPE TUNNEL / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::RoadBridge: hint = "ROAD BRIDGE: DRAG SPAN / CLICK SLOPE TUNNEL / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
 	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
@@ -1342,7 +1385,7 @@ bool MiniUiHandleMouseEvents()
 			_drag_ax = WorldX(_cursor.pos.x);
 			_drag_ay = WorldY(_cursor.pos.y);
 			if (_tool == MiniTool::Rail) UpdateRailPlan(_drag_ax, _drag_ay);
-			if (_tool == MiniTool::Road) UpdateRoadPlan(_drag_ax, _drag_ay);
+			if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(_drag_ax, _drag_ay);
 			if (_tool == MiniTool::Station || _tool == MiniTool::Demolish) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
 		}
 	}
@@ -1351,6 +1394,7 @@ bool MiniUiHandleMouseEvents()
 		_dragging = false;
 		if (_tool == MiniTool::Rail) CommitRailPlan();
 		if (_tool == MiniTool::Road) CommitRoadPlan();
+		if (IsBridgeTool(_tool)) CommitBridgePlan();
 		if (_tool == MiniTool::Station) CommitStationPlan();
 		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
 		if (IsPointTool(_tool)) CommitPointTool(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
@@ -1437,6 +1481,14 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			_tool = _tool == MiniTool::Signal ? MiniTool::None : MiniTool::Signal;
 			break;
 
+		case 'U':
+			_tool = _tool == MiniTool::RailBridge ? MiniTool::None : MiniTool::RailBridge;
+			break;
+
+		case 'I':
+			_tool = _tool == MiniTool::RoadBridge ? MiniTool::None : MiniTool::RoadBridge;
+			break;
+
 		case WKC_SPACE:
 			Command<CMD_PAUSE>::Post(PauseMode::Normal, !_pause_mode.Test(PauseMode::Normal));
 			break;
@@ -1519,7 +1571,7 @@ bool MiniUiFrame(uint delta_ms)
 		if (_tool == MiniTool::Rail) {
 			UpdateRailPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 			DrawRailPlan(ppt);
-		} else if (_tool == MiniTool::Road) {
+		} else if (_tool == MiniTool::Road || IsBridgeTool(_tool)) {
 			UpdateRoadPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 			DrawRoadPlan(ppt);
 		} else if (_tool == MiniTool::Station || _tool == MiniTool::Demolish) {
