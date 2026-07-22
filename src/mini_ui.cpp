@@ -431,6 +431,30 @@ static void DrawRoadBitsPx(RoadBits bits, int x0, int y0, int x1, int y1, int wi
 	if (bits & ROAD_SW) FillRect(cx, cy - lo, x1, cy - lo + width - 1, c);
 }
 
+static const int _diag_dx[4] = {-1, 0, 1, 0};
+static const int _diag_dy[4] = {0, 1, 0, -1};
+
+static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
+{
+	if (ppt < 8) return;
+	int r = std::max(1, ppt / 10);
+	int cx = (x0 + x1) / 2;
+	int cy = (y0 + y1) / 2;
+	int off = (int)((x1 - x0 + 1) * 0.36);
+	for (Track t : {TRACK_X, TRACK_Y, TRACK_UPPER, TRACK_LOWER, TRACK_LEFT, TRACK_RIGHT}) {
+		if (!HasSignalOnTrack(tile, t)) continue;
+		for (Trackdir td : {TrackToTrackdir(t), ReverseTrackdir(TrackToTrackdir(t))}) {
+			if (!HasSignalOnTrackdir(tile, td)) continue;
+			DiagDirection d = TrackdirToExitdir(td);
+			int px = cx + _diag_dx[d] * off;
+			int py = cy + _diag_dy[d] * off;
+			uint32_t c = GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_GREEN ? 0xFF3FCB6AU : 0xFFE04B4BU;
+			FillRect(px - r - 1, py - r - 1, px + r + 1, py + r + 1, 0xFF14181CU);
+			FillRect(px - r, py - r, px + r, py + r, c);
+		}
+	}
+}
+
 static void DrawBlock(int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
 {
 	int inset = std::max(1, ppt / 10);
@@ -499,6 +523,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
 					DrawTrackBitsPx(bits, x0, y0, x1, y1, cat_w, COL_CATENARY);
 				}
+				if (HasSignals(tile)) DrawSignals(tile, x0, y0, x1, y1, ppt);
 			}
 			break;
 
