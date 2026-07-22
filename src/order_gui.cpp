@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "command_func.h"
+#include "mini_ui.h"
 #include "viewport_func.h"
 #include "depot_map.h"
 #include "roadveh.h"
@@ -220,6 +221,14 @@ static StringID GetOrderGoToString(const Order &order)
  * @param middle X position between order index and order text
  * @param right Right border for text drawing
  */
+static void DrawOrderArrow(SpriteID sprite, int x, int y)
+{
+	Dimension size = GetSpriteSize(sprite);
+	Rect r = {x, y, x + (int)size.width - 1, y + (int)size.height - 1};
+	if (MiniUiDrawControlGlyph(r, COLOUR_GREY, sprite)) return;
+	DrawSprite(sprite, PAL_NONE, x, y);
+}
+
 void DrawOrderString(const Vehicle *v, const Order *order, VehicleOrderID order_index, int y, bool selected, bool timetable, int left, int middle, int right)
 {
 	bool rtl = _current_text_dir == TD_RTL;
@@ -228,11 +237,11 @@ void DrawOrderString(const Vehicle *v, const Order *order, VehicleOrderID order_
 	Dimension sprite_size = GetSpriteSize(sprite);
 	if (v->cur_real_order_index == order_index) {
 		/* Draw two arrows before the next real order. */
-		DrawSprite(sprite, PAL_NONE, rtl ? right -     sprite_size.width : left,                     y + ((int)GetCharacterHeight(FS_NORMAL) - (int)sprite_size.height) / 2);
-		DrawSprite(sprite, PAL_NONE, rtl ? right - 2 * sprite_size.width : left + sprite_size.width, y + ((int)GetCharacterHeight(FS_NORMAL) - (int)sprite_size.height) / 2);
+		DrawOrderArrow(sprite, rtl ? right -     sprite_size.width : left,                     y + ((int)GetCharacterHeight(FS_NORMAL) - (int)sprite_size.height) / 2);
+		DrawOrderArrow(sprite, rtl ? right - 2 * sprite_size.width : left + sprite_size.width, y + ((int)GetCharacterHeight(FS_NORMAL) - (int)sprite_size.height) / 2);
 	} else if (v->cur_implicit_order_index == order_index) {
 		/* Draw one arrow before the next implicit order; the next real order will still get two arrows. */
-		DrawSprite(sprite, PAL_NONE, rtl ? right -     sprite_size.width : left,                     y + ((int)GetCharacterHeight(FS_NORMAL) - (int)sprite_size.height) / 2);
+		DrawOrderArrow(sprite, rtl ? right -     sprite_size.width : left,                     y + ((int)GetCharacterHeight(FS_NORMAL) - (int)sprite_size.height) / 2);
 	}
 
 	TextColour colour = TC_BLACK;
