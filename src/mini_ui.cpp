@@ -104,6 +104,8 @@ static bool _dragging = false;
 static bool _drag_remove = false;
 static double _drag_ax, _drag_ay;
 
+static VehicleID _sel_vehicle = VehicleID::Invalid();
+
 static bool _prev_left = false;
 
 struct MiniRailPlan {
@@ -847,6 +849,39 @@ static void DrawVehicles(int ppt)
 	}
 }
 
+/* Any unit of a consist selects its head, so the info line always
+ * describes the whole vehicle. */
+static void SelectVehicleAt(int sx, int sy)
+{
+	const Vehicle *best = nullptr;
+	int best_d2 = 15 * 15;
+	for (const Vehicle *v : Vehicle::Iterate()) {
+		if (v->type > VEH_AIRCRAFT) continue;
+		if (v->vehstatus.Test(VehState::Hidden)) continue;
+		int dx = PxX(v->x_pos / (double)TILE_SIZE) - sx;
+		int dy = PxY(v->y_pos / (double)TILE_SIZE) - sy;
+		int d2 = dx * dx + dy * dy;
+		if (d2 < best_d2) {
+			best_d2 = d2;
+			best = v;
+		}
+	}
+	_sel_vehicle = best != nullptr ? best->First()->index : VehicleID::Invalid();
+}
+
+static void DrawSelectionRing(int ppt)
+{
+	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
+	if (v == nullptr) return;
+	int cx = PxX(v->x_pos / (double)TILE_SIZE);
+	int cy = PxY(v->y_pos / (double)TILE_SIZE);
+	int r = std::max(6, ppt / 2 + 3);
+	FillRect(cx - r, cy - r, cx + r, cy - r + 1, 0xFFEDF2F7U);
+	FillRect(cx - r, cy + r - 1, cx + r, cy + r, 0xFFEDF2F7U);
+	FillRect(cx - r, cy - r, cx - r + 1, cy + r, 0xFFEDF2F7U);
+	FillRect(cx + r - 1, cy - r, cx + r, cy + r, 0xFFEDF2F7U);
+}
+
 /* Town names always show for navigation; station names join at the
  * infrastructure zoom tier. Labels sit centred above their sign tile. */
 static void DrawLabels()
@@ -1320,6 +1355,27 @@ static void DrawHud()
 
 	if (_pause_mode.Any()) DrawText(_fbw / 2 - 3 * 6 * s, 6 * s, s, "PAUSED");
 
+	if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
+		static const std::string_view kinds[4] = {"TRAIN", "ROAD", "SHIP", "PLANE"};
+		std::string info = fmt::format("{} {}  SPD {}", kinds[v->type], v->unitnumber, v->GetDisplaySpeed());
+		if (v->vehstatus.Test(VehState::Stopped)) info += "  STOPPED";
+		uint cap = 0, stored = 0;
+		CargoType ct = INVALID_CARGO;
+		for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+			if (u->cargo_cap == 0) continue;
+			cap += u->cargo_cap;
+			stored += u->cargo.StoredCount();
+			if (!IsValidCargoType(ct)) ct = u->cargo_type;
+		}
+		if (cap > 0 && IsValidCargoType(ct)) {
+			uint32_t l = CargoSpec::Get(ct)->label.base();
+			char lab[4] = {(char)(l >> 24), (char)(l >> 16), (char)(l >> 8), (char)l};
+			info += fmt::format("  {} {}/{}", std::string_view(lab, 4), stored, cap);
+		}
+		info += fmt::format("  PROFIT {}", FormatMoney(v->GetDisplayProfitThisYear()));
+		DrawText(6 * s, 6 * s + 10 * s, s, info);
+	}
+
 	std::string_view hint;
 	switch (_tool) {
 		case MiniTool::Rail: hint = "RAIL: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
@@ -1380,6 +1436,7 @@ static void Deactivate()
 	_tool = MiniTool::None;
 	_dragging = false;
 	_zoom_anchored = false;
+	_sel_vehicle = VehicleID::Invalid();
 	ClearPlans();
 	MarkWholeScreenDirty();
 }
@@ -1430,7 +1487,9 @@ bool MiniUiHandleMouseEvents()
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (_tool != MiniTool::None) {
+		if (_tool == MiniTool::None) {
+			SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
+		} else {
 			_dragging = true;
 			_drag_remove = _ctrl_pressed;
 			_drag_ax = WorldX(_cursor.pos.x);
@@ -1492,6 +1551,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				ClearPlans();
 			} else if (_tool != MiniTool::None) {
 				_tool = MiniTool::None;
+			} else if (_sel_vehicle != VehicleID::Invalid()) {
+				_sel_vehicle = VehicleID::Invalid();
 			} else {
 				Deactivate();
 			}
@@ -1646,6 +1707,7 @@ bool MiniUiFrame(uint delta_ms)
 	}
 
 	DrawVehicles(ppt);
+	DrawSelectionRing(ppt);
 	DrawLabels();
 	DrawHud();
 	DrawCursor();
