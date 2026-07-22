@@ -157,6 +157,8 @@ struct MiniSettings {
 	int edge_margin = 24;
 	double edge_scroll_speed = 1600.0;
 	double drag_pan_multiplier = 2.0;
+	double jump_ppt = 16.0;
+	double glide_ms = 250.0;
 };
 
 static MiniSettings _ms;
@@ -164,6 +166,9 @@ static MiniSettings _ms;
 static bool _zoom_anchored = false;
 static int _zoom_sx, _zoom_sy;
 static double _zoom_wx, _zoom_wy;
+
+static bool _glide = false;
+static double _glide_x, _glide_y;
 
 static void ReadIniNumber(IniGroup &group, std::string_view name, double &v)
 {
@@ -208,6 +213,8 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "edge_margin", _ms.edge_margin);
 	ReadIniNumber(group, "edge_scroll_speed", _ms.edge_scroll_speed);
 	ReadIniNumber(group, "drag_pan_multiplier", _ms.drag_pan_multiplier);
+	ReadIniNumber(group, "jump_ppt", _ms.jump_ppt);
+	ReadIniNumber(group, "glide_ms", _ms.glide_ms);
 
 	_ms.pan_speed = Clamp(_ms.pan_speed, 100.0, 10000.0);
 	_ms.pan_speed_fast = Clamp(_ms.pan_speed_fast, 100.0, 20000.0);
@@ -219,6 +226,8 @@ static void LoadMiniSettings()
 	_ms.edge_margin = Clamp(_ms.edge_margin, 2, 200);
 	_ms.edge_scroll_speed = Clamp(_ms.edge_scroll_speed, 100.0, 10000.0);
 	_ms.drag_pan_multiplier = Clamp(_ms.drag_pan_multiplier, 0.5, 8.0);
+	_ms.jump_ppt = Clamp(_ms.jump_ppt, MIN_PPT, MAX_PPT);
+	_ms.glide_ms = Clamp(_ms.glide_ms, 1.0, 2000.0);
 
 	ini.SaveToDisk(path);
 }
@@ -1593,6 +1602,7 @@ static void ZoomAt(int sx, int sy, bool in)
 {
 	_dest_ppt = Clamp(_dest_ppt * (in ? _ms.zoom_step : 1.0 / _ms.zoom_step), MIN_PPT, MAX_PPT);
 	if (_follow) return;
+	_glide = false;
 	/* Anchor the world point under the cursor; the camera follows it every
 	 * frame while the scale animates, so the point never drifts. */
 	_zoom_sx = sx;
@@ -1608,6 +1618,7 @@ static void Deactivate()
 	_tool = MiniTool::None;
 	_dragging = false;
 	_zoom_anchored = false;
+	_glide = false;
 	_sel_vehicle = VehicleID::Invalid();
 	_follow = false;
 	ClearPlans();
@@ -1659,9 +1670,10 @@ void MiniUiScrollTo(int x, int y)
 	if (!_mini_active) return;
 	_follow = false;
 	_zoom_anchored = false;
-	_cam_x = x / (double)TILE_SIZE;
-	_cam_y = y / (double)TILE_SIZE;
-	ClampCamera();
+	_glide = true;
+	_glide_x = x / (double)TILE_SIZE;
+	_glide_y = y / (double)TILE_SIZE;
+	_dest_ppt = _ms.jump_ppt;
 }
 
 bool MiniUiHandleMouseEvents(bool native_capture)
@@ -1677,6 +1689,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
 		_zoom_anchored = false;
 		_follow = false;
+		_glide = false;
 		_cam_x -= _cursor.delta.x * _ms.drag_pan_multiplier / _cam_ppt;
 		_cam_y -= _cursor.delta.y * _ms.drag_pan_multiplier / _cam_ppt;
 		ClampCamera();
@@ -1819,6 +1832,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'H':
 			_follow = !_follow && Vehicle::GetIfValid(_sel_vehicle) != nullptr;
+			if (_follow) _glide = false;
 			break;
 
 		case 'O':
@@ -1857,6 +1871,7 @@ void MiniUiFrame(uint delta_ms)
 		if (native_follow != VehicleID::Invalid()) {
 			_sel_vehicle = native_follow;
 			_follow = true;
+			_glide = false;
 		}
 	}
 
@@ -1871,6 +1886,7 @@ void MiniUiFrame(uint delta_ms)
 	if (_dirkeys != 0) {
 		_zoom_anchored = false;
 		_follow = false;
+		_glide = false;
 		double px = (_shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed) * delta_ms / 1000.0 / _cam_ppt;
 		if (_dirkeys & 1) _cam_x -= px;
 		if (_dirkeys & 2) _cam_y -= px;
@@ -1889,6 +1905,7 @@ void MiniUiFrame(uint delta_ms)
 		if (ex != 0.0 || ey != 0.0) {
 			_zoom_anchored = false;
 			_follow = false;
+			_glide = false;
 			_cam_x += ex;
 			_cam_y += ey;
 			ClampCamera();
@@ -1903,6 +1920,19 @@ void MiniUiFrame(uint delta_ms)
 			_cam_x = fv->x_pos / (double)TILE_SIZE;
 			_cam_y = fv->y_pos / (double)TILE_SIZE;
 			ClampCamera();
+		}
+	}
+
+	if (_glide) {
+		double f = 1.0 - std::exp(delta_ms / -_ms.glide_ms);
+		_cam_x += (_glide_x - _cam_x) * f;
+		_cam_y += (_glide_y - _cam_y) * f;
+		ClampCamera();
+		if (std::abs(_glide_x - _cam_x) * _cam_ppt < 0.5 && std::abs(_glide_y - _cam_y) * _cam_ppt < 0.5) {
+			_cam_x = _glide_x;
+			_cam_y = _glide_y;
+			ClampCamera();
+			_glide = false;
 		}
 	}
 
