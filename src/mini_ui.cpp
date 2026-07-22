@@ -232,10 +232,24 @@ static void LoadMiniSettings()
 	ini.SaveToDisk(path);
 }
 
+static constexpr uint32_t Mix(uint32_t dst, uint32_t src, uint alpha)
+{
+	uint inv = 255 - alpha;
+	uint32_t rb = ((dst & 0xFF00FFU) * inv + (src & 0xFF00FFU) * alpha) >> 8;
+	uint32_t g = ((dst & 0x00FF00U) * inv + (src & 0x00FF00U) * alpha) >> 8;
+	return 0xFF000000U | (rb & 0xFF00FFU) | (g & 0x00FF00U);
+}
+
 /* Ink draws outlines, paper draws highlights; everything else is a fill. */
 static const uint32_t COL_INK = 0xFF14181CU;
 static const uint32_t COL_PAPER = 0xFFEDF2F7U;
 static const uint32_t COL_SHADOW = 0xFF000000U;
+
+/* Every bordered block darkens its fill by the same cut. */
+static constexpr uint32_t Darken(uint32_t c)
+{
+	return Mix(c, COL_SHADOW, 82);
+}
 
 static const uint32_t COL_VOID = 0xFF0A0A0AU;
 static const uint32_t COL_WATER = 0xFF2F6EA5U;
@@ -253,22 +267,22 @@ static const uint32_t COL_CATENARY = 0xFFE8C94AU;
 static const uint32_t COL_DEPOT = 0xFF3A3F45U;
 
 static const uint32_t COL_HOUSE = 0xFF9C8A76U;
-static const uint32_t COL_HOUSE_B = 0xFF6E5F4EU;
+static const uint32_t COL_HOUSE_B = Darken(COL_HOUSE);
 static const uint32_t COL_IND = 0xFFD07A4AU;
-static const uint32_t COL_IND_B = 0xFF8F4E2BU;
+static const uint32_t COL_IND_B = Darken(COL_IND);
 static const uint32_t COL_OBJ = 0xFFB0B4B8U;
-static const uint32_t COL_OBJ_B = 0xFF80858AU;
+static const uint32_t COL_OBJ_B = Darken(COL_OBJ);
 
 static const uint32_t COL_ST_RAIL = 0xFF4A6FA5U;
-static const uint32_t COL_ST_RAIL_B = 0xFF2F4A73U;
+static const uint32_t COL_ST_RAIL_B = Darken(COL_ST_RAIL);
 static const uint32_t COL_ST_AIR = 0xFF8E6FB8U;
-static const uint32_t COL_ST_AIR_B = 0xFF64488AU;
+static const uint32_t COL_ST_AIR_B = Darken(COL_ST_AIR);
 static const uint32_t COL_ST_ROAD = 0xFF7FA8C9U;
-static const uint32_t COL_ST_ROAD_B = 0xFF54789AU;
+static const uint32_t COL_ST_ROAD_B = Darken(COL_ST_ROAD);
 static const uint32_t COL_ST_DOCK = 0xFF9A7FA8U;
-static const uint32_t COL_ST_DOCK_B = 0xFF6E5479U;
+static const uint32_t COL_ST_DOCK_B = Darken(COL_ST_DOCK);
 static const uint32_t COL_ST_BUOY = 0xFFD8C86AU;
-static const uint32_t COL_ST_BUOY_B = 0xFFA6963FU;
+static const uint32_t COL_ST_BUOY_B = Darken(COL_ST_BUOY);
 
 static const uint32_t COL_GO = 0xFF3FCB6AU;
 static const uint32_t COL_STOP = 0xFFE04B4BU;
@@ -315,14 +329,6 @@ static void FillRect(int x0, int y0, int x1, int y1, uint32_t c)
 	for (int y = y0; y <= y1; y++) {
 		std::fill_n(_fb.data() + (size_t)y * _fbw + x0, x1 - x0 + 1, c);
 	}
-}
-
-static uint32_t Mix(uint32_t dst, uint32_t src, uint alpha)
-{
-	uint inv = 255 - alpha;
-	uint32_t rb = ((dst & 0xFF00FFU) * inv + (src & 0xFF00FFU) * alpha) >> 8;
-	uint32_t g = ((dst & 0x00FF00U) * inv + (src & 0x00FF00U) * alpha) >> 8;
-	return 0xFF000000U | (rb & 0xFF00FFU) | (g & 0x00FF00U);
 }
 
 static void BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
