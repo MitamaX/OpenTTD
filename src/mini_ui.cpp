@@ -30,6 +30,8 @@
 #include "palette_func.h"
 #include "rail_cmd.h"
 #include "rail_map.h"
+#include "road.h"
+#include "road_cmd.h"
 #include "road_map.h"
 #include "slope_func.h"
 #include "station_map.h"
@@ -60,6 +62,7 @@ static double _dest_ppt = 16.0;
 enum class MiniTool : uint8_t {
 	None,
 	Rail,
+	Road,
 };
 
 static MiniTool _tool = MiniTool::None;
@@ -77,6 +80,15 @@ struct MiniRailPlan {
 };
 
 static MiniRailPlan _plan;
+
+struct MiniRoadPlan {
+	TileIndex start = INVALID_TILE;
+	TileIndex end = INVALID_TILE;
+	Axis axis = AXIS_X;
+	std::vector<TileIndex> tiles;
+};
+
+static MiniRoadPlan _road_plan;
 
 struct MiniSettings {
 	double pan_speed = 1600.0;
@@ -868,6 +880,14 @@ static RailType PickRailType()
 	return RAILTYPE_RAIL;
 }
 
+static void ClearPlans()
+{
+	_plan.pieces.clear();
+	_plan.start = INVALID_TILE;
+	_road_plan.tiles.clear();
+	_road_plan.start = INVALID_TILE;
+}
+
 static void CommitRailPlan()
 {
 	if (_plan.start == INVALID_TILE) return;
@@ -876,8 +896,72 @@ static void CommitRailPlan()
 	} else {
 		Command<CMD_BUILD_RAILROAD_TRACK>::Post(_plan.end, _plan.start, PickRailType(), _plan.track, true, false);
 	}
-	_plan.pieces.clear();
-	_plan.start = INVALID_TILE;
+	ClearPlans();
+}
+
+static void UpdateRoadPlan(double wx, double wy)
+{
+	_road_plan.tiles.clear();
+	_road_plan.start = INVALID_TILE;
+
+	int atx = Clamp<int>((int)std::floor(_drag_ax), 0, Map::SizeX() - 2);
+	int aty = Clamp<int>((int)std::floor(_drag_ay), 0, Map::SizeY() - 2);
+	double dx = wx - _drag_ax;
+	double dy = wy - _drag_ay;
+
+	int steps;
+	if (std::abs(dx) >= std::abs(dy)) {
+		_road_plan.axis = AXIS_X;
+		steps = Clamp((int)std::lround(dx), -127, 127);
+	} else {
+		_road_plan.axis = AXIS_Y;
+		steps = Clamp((int)std::lround(dy), -127, 127);
+	}
+	int dir = steps >= 0 ? 1 : -1;
+	for (int i = 0; ; i += dir) {
+		int tx = _road_plan.axis == AXIS_X ? atx + i : atx;
+		int ty = _road_plan.axis == AXIS_Y ? aty + i : aty;
+		if (tx < 0 || ty < 0 || tx > (int)Map::SizeX() - 2 || ty > (int)Map::SizeY() - 2) break;
+		_road_plan.tiles.push_back(TileXY(tx, ty));
+		if (i == steps) break;
+	}
+	if (_road_plan.tiles.empty()) return;
+
+	_road_plan.start = _road_plan.tiles.front();
+	_road_plan.end = _road_plan.tiles.back();
+}
+
+static void DrawRoadPlan(int ppt)
+{
+	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
+	int w = std::max(2, ppt / 3);
+	for (TileIndex tile : _road_plan.tiles) {
+		int tx = TileX(tile);
+		int ty = TileY(tile);
+		DrawAxisBand(_road_plan.axis, PxX(tx), PxY(ty), PxX(tx + 1) - 1, PxY(ty + 1) - 1, w, c);
+	}
+}
+
+static RoadType PickRoadType()
+{
+	const Company *c = Company::GetIfValid(_local_company);
+	if (c != nullptr) {
+		for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
+			if (GetRoadTramType(rt) == RTT_ROAD && c->avail_roadtypes.Test(rt)) return rt;
+		}
+	}
+	return ROADTYPE_ROAD;
+}
+
+static void CommitRoadPlan()
+{
+	if (_road_plan.start == INVALID_TILE) return;
+	if (_drag_remove) {
+		Command<CMD_REMOVE_LONG_ROAD>::Post(_road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, false, false);
+	} else {
+		Command<CMD_BUILD_LONG_ROAD>::Post(_road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, DRD_NONE, false, false, false);
+	}
+	ClearPlans();
 }
 
 static void DrawCursor()
@@ -920,9 +1004,12 @@ static void DrawHud()
 
 	if (_pause_mode.Any()) DrawText(_fbw / 2 - 3 * 6 * s, 6 * s, s, "PAUSED");
 
-	std::string_view hint = _tool == MiniTool::Rail
-			? "RAIL: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"
-			: "R RAIL   SPACE PAUSE   F9 EXIT";
+	std::string_view hint;
+	switch (_tool) {
+		case MiniTool::Rail: hint = "RAIL: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
+		case MiniTool::Road: hint = "ROAD: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
+		default: hint = "R RAIL   E ROAD   SPACE PAUSE   F9 EXIT"; break;
+	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
 
@@ -967,8 +1054,7 @@ static void Deactivate()
 	_tool = MiniTool::None;
 	_dragging = false;
 	_zoom_anchored = false;
-	_plan.pieces.clear();
-	_plan.start = INVALID_TILE;
+	ClearPlans();
 	MarkWholeScreenDirty();
 }
 
@@ -1018,18 +1104,20 @@ bool MiniUiHandleMouseEvents()
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (_tool == MiniTool::Rail) {
+		if (_tool != MiniTool::None) {
 			_dragging = true;
 			_drag_remove = _ctrl_pressed;
 			_drag_ax = WorldX(_cursor.pos.x);
 			_drag_ay = WorldY(_cursor.pos.y);
-			UpdateRailPlan(_drag_ax, _drag_ay);
+			if (_tool == MiniTool::Rail) UpdateRailPlan(_drag_ax, _drag_ay);
+			if (_tool == MiniTool::Road) UpdateRoadPlan(_drag_ax, _drag_ay);
 		}
 	}
 
 	if (!_left_button_down && _prev_left && _dragging) {
 		_dragging = false;
-		CommitRailPlan();
+		if (_tool == MiniTool::Rail) CommitRailPlan();
+		if (_tool == MiniTool::Road) CommitRoadPlan();
 	}
 	_prev_left = _left_button_down;
 
@@ -1037,8 +1125,7 @@ bool MiniUiHandleMouseEvents()
 		_right_button_clicked = false;
 		if (_dragging) {
 			_dragging = false;
-			_plan.pieces.clear();
-			_plan.start = INVALID_TILE;
+			ClearPlans();
 		} else {
 			_tool = MiniTool::None;
 		}
@@ -1070,8 +1157,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 		case WKC_ESC:
 			if (_dragging) {
 				_dragging = false;
-				_plan.pieces.clear();
-				_plan.start = INVALID_TILE;
+				ClearPlans();
 			} else if (_tool != MiniTool::None) {
 				_tool = MiniTool::None;
 			} else {
@@ -1081,6 +1167,10 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'R':
 			_tool = _tool == MiniTool::Rail ? MiniTool::None : MiniTool::Rail;
+			break;
+
+		case 'E':
+			_tool = _tool == MiniTool::Road ? MiniTool::None : MiniTool::Road;
 			break;
 
 		case WKC_SPACE:
@@ -1162,9 +1252,14 @@ bool MiniUiFrame(uint delta_ms)
 	}
 
 	if (_dragging) {
-		UpdateRailPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
-		DrawRailPlan(ppt);
-	} else if (_tool == MiniTool::Rail) {
+		if (_tool == MiniTool::Rail) {
+			UpdateRailPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
+			DrawRailPlan(ppt);
+		} else if (_tool == MiniTool::Road) {
+			UpdateRoadPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
+			DrawRoadPlan(ppt);
+		}
+	} else if (_tool != MiniTool::None) {
 		int htx = (int)std::floor(WorldX(_cursor.pos.x));
 		int hty = (int)std::floor(WorldY(_cursor.pos.y));
 		if (htx >= 0 && hty >= 0 && htx < (int)Map::SizeX() && hty < (int)Map::SizeY()) {
