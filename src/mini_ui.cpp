@@ -74,11 +74,12 @@ enum class MiniTool : uint8_t {
 	TrainDepot,
 	RoadDepot,
 	Demolish,
+	Signal,
 };
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal;
 }
 
 static MiniTool _tool = MiniTool::None;
@@ -1085,6 +1086,19 @@ static DiagDirection DragDir(double wx, double wy)
 	return dy >= 0 ? DIAGDIR_SE : DIAGDIR_NW;
 }
 
+/* Same sub-track pick as GenericPlaceSignals: on paired straight pieces the
+ * fractional click position decides which half gets the signal. */
+static Track PickSignalTrack(TileIndex tile)
+{
+	if (!IsPlainRailTile(tile)) return INVALID_TRACK;
+	TrackBits trackbits = GetTrackBits(tile);
+	double fx = _drag_ax - std::floor(_drag_ax);
+	double fy = _drag_ay - std::floor(_drag_ay);
+	if (trackbits & TRACK_BIT_VERT) trackbits = (fx <= fy) ? TRACK_BIT_RIGHT : TRACK_BIT_LEFT;
+	if (trackbits & TRACK_BIT_HORZ) trackbits = (fx + fy <= 1.0) ? TRACK_BIT_UPPER : TRACK_BIT_LOWER;
+	return FindFirstTrack(trackbits);
+}
+
 static void CommitPointTool(double wx, double wy)
 {
 	int tx = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
@@ -1120,6 +1134,18 @@ static void CommitPointTool(double wx, double wy)
 			}
 			break;
 
+		case MiniTool::Signal: {
+			Track track = PickSignalTrack(tile);
+			if (track == INVALID_TRACK) break;
+			if (_drag_remove) {
+				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(tile, track);
+			} else {
+				SignalVariant sigvar = TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
+				Command<CMD_BUILD_SINGLE_SIGNAL>::Post(tile, track, _settings_client.gui.default_signal_type, sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
+			}
+			break;
+		}
+
 		default:
 			break;
 	}
@@ -1139,7 +1165,10 @@ static void DrawPointToolPlan(int ppt)
 
 	double wx = WorldX(_cursor.pos.x);
 	double wy = WorldY(_cursor.pos.y);
-	if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+	if (_tool == MiniTool::Signal) {
+		Track track = PickSignalTrack(TileXY(tx, ty));
+		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
+	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
 		DrawAxisBand(DragAxis(wx, wy, TileXY(tx, ty)), x0, y0, x1, y1, std::max(2, ppt / 3), c);
 	} else {
 		DiagDirection d = DragDir(wx, wy);
@@ -1210,7 +1239,8 @@ static void DrawHud()
 		case MiniTool::TrainDepot: hint = "TRAIN DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::RoadDepot: hint = "ROAD DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::Demolish: hint = "CLEAR: DRAG AREA / RMB CANCEL"; break;
-		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
+		case MiniTool::Signal: hint = "SIGNAL: CLICK BUILD OR CYCLE / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
 	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
@@ -1401,6 +1431,10 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'X':
 			_tool = _tool == MiniTool::Demolish ? MiniTool::None : MiniTool::Demolish;
+			break;
+
+		case 'L':
+			_tool = _tool == MiniTool::Signal ? MiniTool::None : MiniTool::Signal;
 			break;
 
 		case WKC_SPACE:
