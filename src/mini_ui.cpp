@@ -207,6 +207,8 @@ static const uint32_t COL_OBJ = 0xFFB0B4B8U;
 static const uint32_t COL_OBJ_B = 0xFF80858AU;
 static const uint32_t COL_TUNNEL = 0xFF1E2124U;
 static const uint32_t COL_BRIDGE = 0xFF9AA0A6U;
+static const uint32_t COL_DEPOT = 0xFF3A3F45U;
+static const uint32_t COL_DEPOT_B = 0xFF14181CU;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
 static const uint32_t COL_CATENARY = 0xFFE8C94AU;
@@ -584,6 +586,17 @@ static void DrawBlock(int x0, int y0, int x1, int y1, int ppt, uint32_t fill, ui
 	FillRect(x0 + inset + b, y0 + inset + b, x1 - inset - b, y1 - inset - b, fill);
 }
 
+/* Dark block with a bright tick pointing out of the exit side. */
+static void DrawDepot(int x0, int y0, int x1, int y1, int ppt, DiagDirection exit)
+{
+	DrawBlock(x0, y0, x1, y1, ppt, COL_DEPOT, COL_DEPOT_B);
+	if (!_zd.block_borders) return;
+	int cx = (x0 + x1) / 2;
+	int cy = (y0 + y1) / 2;
+	int w = std::max(2, ppt / 5);
+	ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, 0xFFEDF2F7U);
+}
+
 static void DrawAxisBand(Axis axis, int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
 	int cx = (x0 + x1) / 2;
@@ -618,7 +631,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 		case MP_WATER:
 			FillRect(x0, y0, x1, y1, COL_WATER);
 			water_tile = true;
-			if (IsShipDepot(tile)) DrawBlock(x0, y0, x1, y1, ppt, COL_ROAD, COL_RAIL);
+			if (IsShipDepot(tile)) DrawDepot(x0, y0, x1, y1, ppt, GetShipDepotDirection(tile));
 			break;
 
 		case MP_CLEAR:
@@ -639,7 +652,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 		case MP_RAILWAY:
 			DrawGround(tile, x0, y0, x1, y1, ppt);
 			if (IsRailDepot(tile)) {
-				DrawBlock(x0, y0, x1, y1, ppt, COL_ROAD, COL_RAIL);
+				DrawDepot(x0, y0, x1, y1, ppt, GetRailDepotDirection(tile));
 			} else {
 				TrackBits bits = GetTrackBits(tile);
 				DrawTrackBitsPx(bits, x0, y0, x1, y1, rail_w, COL_RAIL);
@@ -656,7 +669,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
 				DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
 			} else if (IsRoadDepot(tile)) {
-				DrawBlock(x0, y0, x1, y1, ppt, COL_ROAD, COL_RAIL);
+				DrawDepot(x0, y0, x1, y1, ppt, GetRoadDepotDirection(tile));
 			} else {
 				RoadBits bits = GetAnyRoadBits(tile, RTT_ROAD, true) | GetAnyRoadBits(tile, RTT_TRAM, true);
 				DrawRoadBitsPx(bits, x0, y0, x1, y1, road_w, COL_ROAD);
