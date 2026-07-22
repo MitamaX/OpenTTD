@@ -73,6 +73,7 @@ enum class MiniTool : uint8_t {
 	TruckStop,
 	TrainDepot,
 	RoadDepot,
+	Demolish,
 };
 
 static bool IsPointTool(MiniTool t)
@@ -105,12 +106,12 @@ struct MiniRoadPlan {
 
 static MiniRoadPlan _road_plan;
 
-struct MiniStationPlan {
+struct MiniRectPlan {
 	bool valid = false;
 	int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 };
 
-static MiniStationPlan _station_plan;
+static MiniRectPlan _rect_plan;
 
 struct MiniSettings {
 	double pan_speed = 1600.0;
@@ -924,7 +925,7 @@ static void ClearPlans()
 	_plan.start = INVALID_TILE;
 	_road_plan.tiles.clear();
 	_road_plan.start = INVALID_TILE;
-	_station_plan.valid = false;
+	_rect_plan.valid = false;
 }
 
 static void CommitRailPlan()
@@ -992,41 +993,46 @@ static RoadType PickRoadType()
 	return ROADTYPE_ROAD;
 }
 
-/* Rectangle drag; the far corner truncates at station spread so the
- * anchor corner always stays inside the buildable area. */
-static void UpdateStationPlan(double wx, double wy)
+/* Rectangle drag; the far corner truncates at the size limit so the
+ * anchor corner always stays inside the allowed area. */
+static void UpdateRectPlan(double wx, double wy, int limit)
 {
 	int ax = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
 	int ay = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
 	int bx = Clamp<int>((int)std::floor(wx), 1, Map::SizeX() - 2);
 	int by = Clamp<int>((int)std::floor(wy), 1, Map::SizeY() - 2);
-	int spread = _settings_game.station.station_spread;
 
 	if (bx >= ax) {
-		_station_plan.x0 = ax;
-		_station_plan.x1 = std::min(bx, ax + spread - 1);
+		_rect_plan.x0 = ax;
+		_rect_plan.x1 = std::min(bx, ax + limit - 1);
 	} else {
-		_station_plan.x0 = std::max(bx, ax - spread + 1);
-		_station_plan.x1 = ax;
+		_rect_plan.x0 = std::max(bx, ax - limit + 1);
+		_rect_plan.x1 = ax;
 	}
 	if (by >= ay) {
-		_station_plan.y0 = ay;
-		_station_plan.y1 = std::min(by, ay + spread - 1);
+		_rect_plan.y0 = ay;
+		_rect_plan.y1 = std::min(by, ay + limit - 1);
 	} else {
-		_station_plan.y0 = std::max(by, ay - spread + 1);
-		_station_plan.y1 = ay;
+		_rect_plan.y0 = std::max(by, ay - limit + 1);
+		_rect_plan.y1 = ay;
 	}
-	_station_plan.valid = true;
+	_rect_plan.valid = true;
 }
 
-static void DrawStationPlan(int ppt)
+static int RectPlanLimit()
 {
-	if (!_station_plan.valid) return;
-	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
-	int px0 = PxX(_station_plan.x0);
-	int py0 = PxY(_station_plan.y0);
-	int px1 = PxX(_station_plan.x1 + 1) - 1;
-	int py1 = PxY(_station_plan.y1 + 1) - 1;
+	if (_tool == MiniTool::Station) return _settings_game.station.station_spread;
+	return std::max<int>(Map::SizeX(), Map::SizeY());
+}
+
+static void DrawRectPlan(int ppt)
+{
+	if (!_rect_plan.valid) return;
+	uint32_t c = (_drag_remove || _tool == MiniTool::Demolish) ? COL_BP_RM : COL_BP;
+	int px0 = PxX(_rect_plan.x0);
+	int py0 = PxY(_rect_plan.y0);
+	int px1 = PxX(_rect_plan.x1 + 1) - 1;
+	int py1 = PxY(_rect_plan.y1 + 1) - 1;
 	BlendRect(px0, py0, px1, py1, c, 90);
 	int b = std::max(1, ppt / 8);
 	FillRect(px0, py0, px1, py0 + b - 1, c);
@@ -1037,18 +1043,25 @@ static void DrawStationPlan(int ppt)
 
 static void CommitStationPlan()
 {
-	if (!_station_plan.valid) return;
-	int w = _station_plan.x1 - _station_plan.x0 + 1;
-	int h = _station_plan.y1 - _station_plan.y0 + 1;
-	TileIndex org = TileXY(_station_plan.x0, _station_plan.y0);
+	if (!_rect_plan.valid) return;
+	int w = _rect_plan.x1 - _rect_plan.x0 + 1;
+	int h = _rect_plan.y1 - _rect_plan.y0 + 1;
+	TileIndex org = TileXY(_rect_plan.x0, _rect_plan.y0);
 	if (_drag_remove) {
-		Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(org, TileXY(_station_plan.x1, _station_plan.y1), true);
+		Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(org, TileXY(_rect_plan.x1, _rect_plan.y1), true);
 	} else {
 		Axis axis = w >= h ? AXIS_X : AXIS_Y;
 		uint8_t plat_len = (uint8_t)(axis == AXIS_X ? w : h);
 		uint8_t numtracks = (uint8_t)(axis == AXIS_X ? h : w);
 		Command<CMD_BUILD_RAIL_STATION>::Post(org, PickRailType(), axis, numtracks, plat_len, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
 	}
+	ClearPlans();
+}
+
+static void CommitDemolishPlan()
+{
+	if (!_rect_plan.valid) return;
+	Command<CMD_CLEAR_AREA>::Post(TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
 	ClearPlans();
 }
 
@@ -1196,7 +1209,8 @@ static void DrawHud()
 		case MiniTool::TruckStop: hint = "TRUCK STOP: DRAG SETS AXIS / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::TrainDepot: hint = "TRAIN DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::RoadDepot: hint = "ROAD DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  SPACE PAUSE  F9 EXIT"; break;
+		case MiniTool::Demolish: hint = "CLEAR: DRAG AREA / RMB CANCEL"; break;
+		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
 	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
@@ -1299,7 +1313,7 @@ bool MiniUiHandleMouseEvents()
 			_drag_ay = WorldY(_cursor.pos.y);
 			if (_tool == MiniTool::Rail) UpdateRailPlan(_drag_ax, _drag_ay);
 			if (_tool == MiniTool::Road) UpdateRoadPlan(_drag_ax, _drag_ay);
-			if (_tool == MiniTool::Station) UpdateStationPlan(_drag_ax, _drag_ay);
+			if (_tool == MiniTool::Station || _tool == MiniTool::Demolish) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
 		}
 	}
 
@@ -1308,6 +1322,7 @@ bool MiniUiHandleMouseEvents()
 		if (_tool == MiniTool::Rail) CommitRailPlan();
 		if (_tool == MiniTool::Road) CommitRoadPlan();
 		if (_tool == MiniTool::Station) CommitStationPlan();
+		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
 		if (IsPointTool(_tool)) CommitPointTool(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 	}
 	_prev_left = _left_button_down;
@@ -1382,6 +1397,10 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'V':
 			_tool = _tool == MiniTool::RoadDepot ? MiniTool::None : MiniTool::RoadDepot;
+			break;
+
+		case 'X':
+			_tool = _tool == MiniTool::Demolish ? MiniTool::None : MiniTool::Demolish;
 			break;
 
 		case WKC_SPACE:
@@ -1469,9 +1488,9 @@ bool MiniUiFrame(uint delta_ms)
 		} else if (_tool == MiniTool::Road) {
 			UpdateRoadPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 			DrawRoadPlan(ppt);
-		} else if (_tool == MiniTool::Station) {
-			UpdateStationPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
-			DrawStationPlan(ppt);
+		} else if (_tool == MiniTool::Station || _tool == MiniTool::Demolish) {
+			UpdateRectPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y), RectPlanLimit());
+			DrawRectPlan(ppt);
 		} else if (IsPointTool(_tool)) {
 			DrawPointToolPlan(ppt);
 		}
@@ -1479,7 +1498,8 @@ bool MiniUiFrame(uint delta_ms)
 		int htx = (int)std::floor(WorldX(_cursor.pos.x));
 		int hty = (int)std::floor(WorldY(_cursor.pos.y));
 		if (htx >= 0 && hty >= 0 && htx < (int)Map::SizeX() && hty < (int)Map::SizeY()) {
-			BlendRect(PxX(htx), PxY(hty), PxX(htx + 1) - 1, PxY(hty + 1) - 1, COL_BP, 70);
+			uint32_t c = _tool == MiniTool::Demolish ? COL_BP_RM : COL_BP;
+			BlendRect(PxX(htx), PxY(hty), PxX(htx + 1) - 1, PxY(hty + 1) - 1, c, 70);
 		}
 	}
 
