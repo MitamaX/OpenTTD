@@ -19,6 +19,7 @@
 #include "company_base.h"
 #include "company_func.h"
 #include "elrail_func.h"
+#include "engine_base.h"
 #include "core/math_func.hpp"
 #include "fileio_func.h"
 #include "gfx_func.h"
@@ -27,11 +28,13 @@
 #include "landscape.h"
 #include "landscape_cmd.h"
 #include "misc_cmd.h"
+#include "network/network_type.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "openttd.h"
 #include "order_base.h"
 #include "order_cmd.h"
+#include "rail.h"
 #include "palette_func.h"
 #include "rail_cmd.h"
 #include "rail_map.h"
@@ -853,6 +856,80 @@ static void DrawVehicles(int ppt)
 	}
 }
 
+/* No engine list in the mini UI: the buy key auto-picks per depot type.
+ * Locomotives go by power, everything else by capacity then speed; the
+ * alternate mode buys wagons at rail depots and freight elsewhere. */
+static EngineID PickEngine(TileIndex depot, VehicleType vt, bool alt)
+{
+	EngineID best = EngineID::Invalid();
+	int64_t best_score = -1;
+	for (const Engine *e : Engine::IterateType(vt)) {
+		if (!e->IsEnabled() || !e->company_avail.Test(_local_company)) continue;
+		CargoType ct = e->GetDefaultCargoType();
+		bool pax = IsValidCargoType(ct) && IsCargoInClass(ct, CargoClass::Passengers);
+		int64_t score;
+		switch (vt) {
+			case VEH_TRAIN: {
+				const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+				bool wagon = rvi.railveh_type == RAILVEH_WAGON;
+				if (wagon != alt) continue;
+				if (wagon) {
+					if (!IsCompatibleRail(rvi.railtypes, GetRailType(depot))) continue;
+					if (!pax) continue;
+					score = e->GetDisplayDefaultCapacity();
+				} else {
+					if (!HasPowerOnRail(rvi.railtypes, GetRailType(depot))) continue;
+					score = e->GetPower();
+				}
+				break;
+			}
+			case VEH_ROAD: {
+				const RoadVehicleInfo &rvi = e->VehInfo<RoadVehicleInfo>();
+				RoadType depot_rt = GetRoadTypeRoad(depot) != INVALID_ROADTYPE ? GetRoadTypeRoad(depot) : GetRoadTypeTram(depot);
+				if (!HasPowerOnRoad(rvi.roadtype, depot_rt)) continue;
+				if (pax == alt) continue;
+				score = (int64_t)e->GetDisplayDefaultCapacity() * 1000 + e->GetDisplayMaxSpeed();
+				break;
+			}
+			case VEH_SHIP:
+				if (pax == alt) continue;
+				score = (int64_t)e->GetDisplayDefaultCapacity() * 1000 + e->GetDisplayMaxSpeed();
+				break;
+			default:
+				continue;
+		}
+		if (score > best_score) {
+			best_score = score;
+			best = e->index;
+		}
+	}
+	return best;
+}
+
+static void BuyAtDepot(bool alt)
+{
+	int tx = (int)std::floor(WorldX(_cursor.pos.x));
+	int ty = (int)std::floor(WorldY(_cursor.pos.y));
+	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return;
+	TileIndex tile = TileXY(tx, ty);
+
+	VehicleType vt;
+	if (IsRailDepotTile(tile)) {
+		vt = VEH_TRAIN;
+	} else if (IsRoadDepotTile(tile)) {
+		vt = VEH_ROAD;
+	} else if (IsTileType(tile, MP_WATER) && IsShipDepot(tile)) {
+		vt = VEH_SHIP;
+	} else {
+		return;
+	}
+	if (GetTileOwner(tile) != _local_company) return;
+
+	EngineID eid = PickEngine(tile, vt, alt);
+	if (eid == EngineID::Invalid()) return;
+	Command<CMD_BUILD_VEHICLE>::Post(tile, eid, true, INVALID_CARGO, INVALID_CLIENT_ID);
+}
+
 /* Clicking a compatible station with a vehicle selected appends a go-to
  * order, mirroring the defaults of the order window's goto click. */
 static bool TryAppendOrder(int sx, int sy)
@@ -1423,6 +1500,7 @@ static void DrawHud()
 	}
 
 	std::string_view hint;
+	std::string_view hint2;
 	switch (_tool) {
 		case MiniTool::Rail: hint = "RAIL: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::Road: hint = "ROAD: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
@@ -1442,11 +1520,13 @@ static void DrawHud()
 					? "FOLLOWING  CLICK STATION ORDER  O DROP ORDER  P START STOP  H UNFOLLOW  ESC DESELECT"
 					: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
 			} else {
-				hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE  Z TERRAIN  X CLEAR  SPACE PAUSE  F9 EXIT";
+				hint = "Z TERRAIN  X CLEAR  N BUY AT DEPOT / CTRL WAGON OR FREIGHT  SPACE PAUSE  F9 EXIT";
+				hint2 = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE";
 			}
 			break;
 	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
+	if (!hint2.empty()) DrawText(6 * s, _fbh - 23 * s, s, hint2);
 }
 
 static void Present()
@@ -1678,6 +1758,10 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr && v->GetNumOrders() > 0) {
 				Command<CMD_DELETE_ORDER>::Post(v->tile, v->index, (VehicleOrderID)(v->GetNumOrders() - 1));
 			}
+			break;
+
+		case 'N':
+			BuyAtDepot(_ctrl_pressed);
 			break;
 
 		case WKC_SPACE:
