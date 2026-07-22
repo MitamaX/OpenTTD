@@ -403,6 +403,19 @@ static void ScreenBlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alp
 	}
 }
 
+static void ScreenFillRect(int x0, int y0, int x1, int y1, uint32_t c)
+{
+	x0 = std::max(x0, 0);
+	y0 = std::max(y0, 0);
+	x1 = std::min(x1, _fbw - 1);
+	y1 = std::min(y1, _fbh - 1);
+	if (x1 < x0 || y1 < y0) return;
+	uint32_t *dst = (uint32_t *)_screen.dst_ptr;
+	for (int y = y0; y <= y1; y++) {
+		std::fill_n(dst + (size_t)y * _screen.pitch + x0, x1 - x0 + 1, c);
+	}
+}
+
 static void DrawHudText(int x, int y, std::string_view text)
 {
 	int pad = 3;
@@ -1063,17 +1076,28 @@ static void DrawSelectionRing(int ppt)
 static std::vector<std::pair<Rect, TownID>> _town_label_hits;
 static std::vector<std::pair<Rect, StationID>> _station_label_hits;
 
-/* Same plate-and-string construction as the native viewport signs, drawn in
- * mini UI screen space because the sign kdtree lives in viewport coordinates. */
-static Rect DrawLabelPlate(int cx, int cy, std::string_view str, Colours plate, bool transparent, TextColour tc)
+static TextColour PlateTextColour(uint32_t c)
+{
+	uint lum = (77 * ((c >> 16) & 0xFFU) + 151 * ((c >> 8) & 0xFFU) + 28 * (c & 0xFFU)) >> 8;
+	return lum >= 140 ? TC_BLACK : TC_WHITE;
+}
+
+/* Flat mini-style plate; drawn in mini UI screen space because the native
+ * sign kdtree lives in viewport coordinates. */
+static Rect DrawLabelPlate(int cx, int cy, std::string_view str, uint32_t fill, bool transparent, TextColour tc)
 {
 	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
-	const RectPadding &bevel = WidgetDimensions::scaled.fullbevel;
-	int w = GetStringBoundingBox(str).width + bevel.left + bevel.right + 4;
-	int h = bevel.top + GetCharacterHeight(FS_NORMAL) + bevel.bottom;
+	int pad = 3;
+	int w = GetStringBoundingBox(str).width + 2 * pad;
+	int h = GetCharacterHeight(FS_NORMAL) + 2 * pad;
 	Rect r = {cx - w / 2, cy - h - 3, cx - w / 2 + w - 1, cy - 4};
-	DrawFrameRect(r.left, r.top, r.right, r.bottom, plate, transparent ? FrameFlags{FrameFlag::Transparent} : FrameFlags{});
-	DrawString(r.left + bevel.left, r.right - bevel.right, r.top + bevel.top, str, tc, SA_HOR_CENTER);
+	if (transparent) {
+		ScreenBlendRect(r.left, r.top, r.right, r.bottom, fill, 170);
+	} else {
+		ScreenFillRect(r.left, r.top, r.right, r.bottom, COL_INK);
+		ScreenFillRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, fill);
+	}
+	DrawString(r.left + pad, r.right - pad, r.top + pad, str, tc, SA_HOR_CENTER);
 	return r;
 }
 
@@ -1088,7 +1112,7 @@ static void DrawLabels()
 		int cy = PxY(TileY(t->xy) + 0.5);
 		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
 		std::string str = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
-		Rect r = DrawLabelPlate(cx, cy, str, COLOUR_GREY, true, TC_WHITE);
+		Rect r = DrawLabelPlate(cx, cy, str, COL_INK, true, TC_WHITE);
 		_town_label_hits.emplace_back(r, t->index);
 	}
 	if (!_zd.station_names) return;
@@ -1097,8 +1121,8 @@ static void DrawLabels()
 		int cy = PxY(TileY(st->xy) + 0.5);
 		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
 		std::string str = GetString(STR_VIEWPORT_STATION, st->index, st->facilities);
-		Colours plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COLOUR_GREY : _company_colours[st->owner];
-		Rect r = DrawLabelPlate(cx, cy, str, plate, false, TC_BLACK);
+		uint32_t plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COL_OBJ : _company_rgb[_company_colours[st->owner]];
+		Rect r = DrawLabelPlate(cx, cy, str, plate, false, PlateTextColour(plate));
 		_station_label_hits.emplace_back(r, st->index);
 	}
 }
