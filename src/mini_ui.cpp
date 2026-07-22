@@ -708,6 +708,9 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				DrawGround(tile, x0, y0, x1, y1, ppt);
 			}
 			DrawBlock(x0, y0, x1, y1, ppt, fill, border);
+			if (IsDriveThroughStopTile(tile)) {
+				DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
+			}
 			if (HasStationRail(tile)) {
 				DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
 				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
