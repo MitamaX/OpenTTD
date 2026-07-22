@@ -455,6 +455,40 @@ static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 	}
 }
 
+static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
+{
+	if (ppt < 8) return;
+	DisallowedRoadDirections drd = GetDisallowedRoadDirections(tile);
+	if (drd == DRD_NONE) return;
+
+	int cx = (x0 + x1) / 2;
+	int cy = (y0 + y1) / 2;
+	int s = std::max(2, ppt / 4);
+
+	if (drd == DRD_BOTH) {
+		FillRect(cx - s, cy - s / 3, cx + s, cy + s / 3, 0xFFE04B4BU);
+		return;
+	}
+
+	RoadBits rb = GetRoadBits(tile, RTT_ROAD);
+	bool axis_x = (rb & ROAD_X) == ROAD_X;
+	bool axis_y = (rb & ROAD_Y) == ROAD_Y;
+	if (axis_x == axis_y) return;
+
+	/* Northbound traffic heads toward smaller map coordinates. */
+	int dir = drd == DRD_SOUTHBOUND ? -1 : 1;
+	for (int i = 0; i <= s; i++) {
+		int w = (s - i) / 2;
+		if (axis_x) {
+			int px = cx + dir * (i - s / 2);
+			FillRect(px, cy - w, px, cy + w, 0xFFEDF2F7U);
+		} else {
+			int py = cy + dir * (i - s / 2);
+			FillRect(cx - w, py, cx + w, py, 0xFFEDF2F7U);
+		}
+	}
+}
+
 static void DrawBlock(int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
 {
 	int inset = std::max(1, ppt / 10);
@@ -537,6 +571,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			} else {
 				RoadBits bits = GetAnyRoadBits(tile, RTT_ROAD, true) | GetAnyRoadBits(tile, RTT_TRAM, true);
 				DrawRoadBitsPx(bits, x0, y0, x1, y1, road_w, COL_ROAD);
+				if (IsNormalRoad(tile)) DrawOneWay(tile, x0, y0, x1, y1, ppt);
 			}
 			break;
 
