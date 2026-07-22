@@ -992,6 +992,43 @@ static void SelectVehicleAt(int sx, int sy)
 	_sel_vehicle = best != nullptr ? best->First()->index : VehicleID::Invalid();
 }
 
+/* Route preview for the selected vehicle: stop-to-stop legs in blueprint
+ * blue, the leg from the vehicle to its current destination highlighted. */
+static void DrawOrderRoute()
+{
+	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
+	if (v == nullptr || v->GetNumOrders() < 1) return;
+
+	std::vector<std::pair<int, int>> stops;
+	int cur_stop = -1;
+	int i = 0;
+	for (const Order &o : v->Orders()) {
+		if (o.IsType(OT_GOTO_STATION)) {
+			const Station *st = Station::GetIfValid(o.GetDestination().ToStationID());
+			if (st != nullptr) {
+				if (i == v->cur_real_order_index) cur_stop = (int)stops.size();
+				stops.emplace_back(PxX(TileX(st->xy) + 0.5), PxY(TileY(st->xy) + 0.5));
+			}
+		}
+		i++;
+	}
+	if (stops.empty()) return;
+
+	size_t legs = stops.size() > 2 ? stops.size() : stops.size() - 1;
+	for (size_t n = 0; n < legs; n++) {
+		auto [x0, y0] = stops[n];
+		auto [x1, y1] = stops[(n + 1) % stops.size()];
+		ThickLine(x0, y0, x1, y1, 2, COL_BP);
+	}
+	for (auto [x, y] : stops) FillCircle(x, y, 4, COL_BP);
+
+	if (cur_stop >= 0) {
+		int vx = PxX(v->x_pos / (double)TILE_SIZE);
+		int vy = PxY(v->y_pos / (double)TILE_SIZE);
+		ThickLine(vx, vy, stops[cur_stop].first, stops[cur_stop].second, 2, 0xFFEDF2F7U);
+	}
+}
+
 static void DrawSelectionRing(int ppt)
 {
 	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
@@ -1877,6 +1914,7 @@ bool MiniUiFrame(uint delta_ms)
 		}
 	}
 
+	DrawOrderRoute();
 	DrawVehicles(ppt);
 	DrawSelectionRing(ppt);
 	DrawLabels();
