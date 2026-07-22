@@ -593,8 +593,8 @@ static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 			int px = cx + _diag_dx[d] * off;
 			int py = cy + _diag_dy[d] * off;
 			uint32_t c = GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_GREEN ? COL_GO : COL_STOP;
-			FillRect(px - r - 1, py - r - 1, px + r + 1, py + r + 1, COL_INK);
-			FillRect(px - r, py - r, px + r, py + r, c);
+			FillCircle(px, py, r + 1, COL_INK);
+			FillCircle(px, py, r, c);
 		}
 	}
 }
@@ -703,7 +703,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				int cx = (x0 + x1) / 2;
 				int cy = (y0 + y1) / 2;
 				int r = std::max(1, ppt / 8);
-				FillRect(cx - r, cy - r, cx + r, cy + r, COL_TREE);
+				FillCircle(cx, cy, r, COL_TREE);
 			}
 			break;
 		}
