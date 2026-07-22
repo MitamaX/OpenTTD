@@ -1597,9 +1597,27 @@ void MiniUiToggle()
 	_mini_active = true;
 }
 
-bool MiniUiHandleMouseEvents()
+bool MiniUiHidesWindow(WindowClass wc)
+{
+	return wc == WC_MAIN_WINDOW || wc == WC_MAIN_TOOLBAR || wc == WC_STATUS_BAR;
+}
+
+bool MiniUiHidesMouseCursor()
 {
 	if (!_mini_active) return false;
+	Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
+	return w == nullptr || MiniUiHidesWindow(w->window_class);
+}
+
+bool MiniUiHandleMouseEvents(bool native_capture)
+{
+	if (!_mini_active) return false;
+
+	if (!_dragging && !_middle_button_down) {
+		if (native_capture) return false;
+		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
+		if (w != nullptr && !MiniUiHidesWindow(w->window_class)) return false;
+	}
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
 		_zoom_anchored = false;
@@ -1766,12 +1784,12 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 	return true;
 }
 
-bool MiniUiFrame(uint delta_ms)
+void MiniUiFrame(uint delta_ms)
 {
-	if (!_mini_active) return false;
+	if (!_mini_active) return;
 	if (_game_mode != GM_NORMAL && _game_mode != GM_EDITOR) {
 		Deactivate();
-		return false;
+		return;
 	}
 
 	if (_fbw != _screen.width || _fbh != _screen.height) {
@@ -1779,7 +1797,7 @@ bool MiniUiFrame(uint delta_ms)
 		_fbh = _screen.height;
 		_fb.assign((size_t)_fbw * _fbh, COL_VOID);
 	}
-	if (_fbw <= 0 || _fbh <= 0) return true;
+	if (_fbw <= 0 || _fbh <= 0) return;
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
 	if (_dirkeys != 0) {
@@ -1874,5 +1892,5 @@ bool MiniUiFrame(uint delta_ms)
 	DrawSelectionRing(ppt);
 	DrawCursor();
 	Present();
-	return true;
+	MarkWholeScreenDirty();
 }

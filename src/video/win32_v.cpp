@@ -1004,7 +1004,7 @@ void VideoDriver_Win32Base::InputLoop()
 			(GetAsyncKeyState(VK_UP) < 0 ? 2 : 0) +
 			(GetAsyncKeyState(VK_RIGHT) < 0 ? 4 : 0) +
 			(GetAsyncKeyState(VK_DOWN) < 0 ? 8 : 0);
-		if (MiniUiActive()) {
+		if (MiniUiActive() && !EditBoxInGlobalFocus()) {
 			_dirkeys |=
 				(GetAsyncKeyState('A') < 0 ? 1 : 0) |
 				(GetAsyncKeyState('W') < 0 ? 2 : 0) |

@@ -10,10 +10,14 @@
 #ifndef MINI_UI_H
 #define MINI_UI_H
 
+#include "window_type.h"
+
 bool MiniUiActive();
 void MiniUiToggle();
-bool MiniUiFrame(uint delta_ms);
-bool MiniUiHandleMouseEvents();
+void MiniUiFrame(uint delta_ms);
+bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
+bool MiniUiHidesWindow(WindowClass wc);
+bool MiniUiHidesMouseCursor();
 
 #endif /* MINI_UI_H */

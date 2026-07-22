@@ -951,6 +951,7 @@ void DrawOverlappedWindowForAll(int left, int top, int right, int bottom)
 	AutoRestoreBackup dpi_backup(_cur_dpi, &bk);
 
 	for (Window *w : Window::IterateFromBack()) {
+		if (MiniUiActive() && MiniUiHidesWindow(w->window_class)) continue;
 		if (MayBeShown(w) &&
 				right > w->left &&
 				bottom > w->top &&
@@ -2671,8 +2672,6 @@ void HandleKeypress(uint keycode, char32_t key)
 	 */
 	if (key == 0 && keycode == 0) return;
 
-	if (MiniUiHandleKeypress(keycode, key)) return;
-
 	/* Check if the focused window has a focused editbox */
 	if (EditBoxInGlobalFocus()) {
 		/* All input will in this case go to the focused editbox */
@@ -2682,6 +2681,8 @@ void HandleKeypress(uint keycode, char32_t key)
 			if (_focused_window->HandleEditBoxKey(_focused_window->nested_focus->GetIndex(), key, keycode) == ES_HANDLED) return;
 		}
 	}
+
+	if (MiniUiHandleKeypress(keycode, key)) return;
 
 	/* Call the event, start with the uppermost window, but ignore the toolbar. */
 	for (Window *w : Window::IterateFromFront()) {
@@ -2972,7 +2973,7 @@ void HandleMouseEvents()
 	 * But there is no company related window open anyway, so _current_company is not used. */
 	assert(HasModalProgress() || IsLocalCompany());
 
-	if (MiniUiHandleMouseEvents()) return;
+	if (MiniUiHandleMouseEvents(_dragging_window || _special_mouse_mode != WSM_NONE)) return;
 
 	static std::chrono::steady_clock::time_point double_click_time = {};
 	static Point double_click_pos = {0, 0};
@@ -3144,7 +3145,7 @@ void UpdateWindows()
 
 	ProcessPendingPerformanceMeasurements();
 
-	if (MiniUiFrame(delta_ms.count())) return;
+	MiniUiFrame(delta_ms.count());
 
 	TimerManager<TimerWindow>::Elapsed(delta_ms);
 	CallWindowRealtimeTickEvent(delta_ms.count());
@@ -3168,7 +3169,7 @@ void UpdateWindows()
 	}
 	NetworkDrawChatMessage();
 	/* Redraw mouse cursor in case it was hidden */
-	DrawMouseCursor();
+	if (!MiniUiHidesMouseCursor()) DrawMouseCursor();
 
 	if (_newgrf_debug_sprite_picker.mode == SPM_REDRAW) {
 		/* We are done with the last draw-frame, so we know what sprites we
