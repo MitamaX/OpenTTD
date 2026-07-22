@@ -10,6 +10,7 @@
 #include "stdafx.h"
 #include "core/backup_type.hpp"
 #include "company_func.h"
+#include "mini_ui.h"
 #include "settings_gui.h"
 #include "strings_type.h"
 #include "window_gui.h"
@@ -308,6 +309,24 @@ void DrawFrameRect(int left, int top, int right, int bottom, Colours colour, Fra
 {
 	if (flags.Test(FrameFlag::Transparent)) {
 		GfxFillRect(left, top, right, bottom, PALETTE_TO_TRANSPARENT, FILLRECT_RECOLOUR);
+	} else if (MiniUiActive()) {
+		/* Flat skin: one dark outline, no bevel; pressed widgets darken instead of sinking. */
+		assert(colour < COLOUR_END);
+
+		const PixelColour border = GetColourGradient(colour, SHADE_DARKEST);
+		ColourShade shade = flags.Test(FrameFlag::Lowered) ? (flags.Test(FrameFlag::Darkened) ? SHADE_DARK : SHADE_NORMAL) : SHADE_LIGHT;
+		const PixelColour interior = GetColourGradient(colour, shade);
+
+		Rect outer = {left, top, right, bottom};
+		Rect inner = outer.Shrink(WidgetDimensions::scaled.bevel);
+
+		GfxFillRect(outer.left, outer.top, inner.left - 1, outer.bottom, border);
+		GfxFillRect(inner.left, outer.top, outer.right, inner.top - 1, border);
+		GfxFillRect(inner.right + 1, inner.top, outer.right, outer.bottom, border);
+		GfxFillRect(inner.left, inner.bottom + 1, inner.right, outer.bottom, border);
+		if (!flags.Test(FrameFlag::BorderOnly)) {
+			GfxFillRect(inner.left, inner.top, inner.right, inner.bottom, interior);
+		}
 	} else {
 		assert(colour < COLOUR_END);
 
