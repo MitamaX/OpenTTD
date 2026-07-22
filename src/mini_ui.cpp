@@ -22,6 +22,7 @@
 #include "core/math_func.hpp"
 #include "fileio_func.h"
 #include "gfx_func.h"
+#include "ground_vehicle.hpp"
 #include "ini_type.h"
 #include "landscape.h"
 #include "misc_cmd.h"
@@ -676,6 +677,9 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 	}
 }
 
+static const int8_t _dir_dx[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
+static const int8_t _dir_dy[8] = {-1, 0, 1, 1, 1, 0, -1, -1};
+
 static uint32_t CargoRgb(CargoType ct)
 {
 	Colour c = _cur_palette.palette[CargoSpec::Get(ct)->legend_colour.p];
@@ -710,6 +714,22 @@ static void DrawVehicles(int ppt)
 				FillTriangle(cx, cy, r + 1, 0xFF14181CU);
 				FillTriangle(cx, cy, r, c);
 				break;
+			case VEH_TRAIN: {
+				/* Each unit is a segment of its cached length along its heading,
+				 * so a consist reads as one continuous line on the track. */
+				double len = v->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
+				double norm = (v->direction & 1) ? 0.5 : 0.35355339;
+				int hx = (int)std::lround(_dir_dx[v->direction] * norm * len);
+				int hy = (int)std::lround(_dir_dy[v->direction] * norm * len);
+				int w = std::max(2, ppt / 4);
+				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w + 2, 0xFF14181CU);
+				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w, c);
+				if (v->IsPrimaryVehicle()) {
+					int tr = std::max(1, w / 2 - 1);
+					FillCircle(cx + hx, cy + hy, tr, 0xFFEDF2F7U);
+				}
+				break;
+			}
 			default:
 				FillRect(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, 0xFF14181CU);
 				FillRect(cx - r, cy - r, cx + r, cy + r, c);
