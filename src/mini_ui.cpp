@@ -1,4 +1,4 @@
-/*
+﻿/*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
  * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -18,7 +18,9 @@
 #include "company_base.h"
 #include "company_func.h"
 #include "core/math_func.hpp"
+#include "fileio_func.h"
 #include "gfx_func.h"
+#include "ini_type.h"
 #include "landscape.h"
 #include "misc_cmd.h"
 #include "openttd.h"
@@ -72,12 +74,80 @@ struct MiniRailPlan {
 
 static MiniRailPlan _plan;
 
+struct MiniSettings {
+	double pan_speed = 800.0;
+	double pan_speed_fast = 2000.0;
+	double zoom_step = 1.25;
+	double zoom_smooth_ms = 80.0;
+	int hud_scale = 2;
+	int contour_alpha = 120;
+	int relief_strength = 22;
+};
+
+static MiniSettings _ms;
+static bool _ms_loaded = false;
+
+static bool _zoom_anchored = false;
+static int _zoom_sx, _zoom_sy;
+static double _zoom_wx, _zoom_wy;
+
+static void ReadIniNumber(IniGroup &group, std::string_view name, double &v)
+{
+	if (const IniItem *item = group.GetItem(name); item != nullptr && item->value.has_value()) {
+		const std::string &s = *item->value;
+		double parsed;
+		if (std::from_chars(s.data(), s.data() + s.size(), parsed).ec == std::errc{}) v = parsed;
+	} else {
+		group.GetOrCreateItem(name).SetValue(fmt::format("{}", v));
+	}
+}
+
+static void ReadIniNumber(IniGroup &group, std::string_view name, int &v)
+{
+	if (const IniItem *item = group.GetItem(name); item != nullptr && item->value.has_value()) {
+		const std::string &s = *item->value;
+		int parsed;
+		if (std::from_chars(s.data(), s.data() + s.size(), parsed).ec == std::errc{}) v = parsed;
+	} else {
+		group.GetOrCreateItem(name).SetValue(fmt::format("{}", v));
+	}
+}
+
+static void LoadMiniSettings()
+{
+	if (_ms_loaded) return;
+	_ms_loaded = true;
+
+	std::string path = _personal_dir + "mini_ui.cfg";
+	IniFile ini;
+	ini.LoadFromDisk(path, NO_DIRECTORY);
+	IniGroup &group = ini.GetOrCreateGroup("mini");
+
+	ReadIniNumber(group, "pan_speed", _ms.pan_speed);
+	ReadIniNumber(group, "pan_speed_fast", _ms.pan_speed_fast);
+	ReadIniNumber(group, "zoom_step", _ms.zoom_step);
+	ReadIniNumber(group, "zoom_smooth_ms", _ms.zoom_smooth_ms);
+	ReadIniNumber(group, "hud_scale", _ms.hud_scale);
+	ReadIniNumber(group, "contour_alpha", _ms.contour_alpha);
+	ReadIniNumber(group, "relief_strength", _ms.relief_strength);
+
+	_ms.pan_speed = Clamp(_ms.pan_speed, 100.0, 10000.0);
+	_ms.pan_speed_fast = Clamp(_ms.pan_speed_fast, 100.0, 20000.0);
+	_ms.zoom_step = Clamp(_ms.zoom_step, 1.05, 2.0);
+	_ms.zoom_smooth_ms = Clamp(_ms.zoom_smooth_ms, 1.0, 500.0);
+	_ms.hud_scale = Clamp(_ms.hud_scale, 1, 4);
+	_ms.contour_alpha = Clamp(_ms.contour_alpha, 0, 255);
+	_ms.relief_strength = Clamp(_ms.relief_strength, 0, 60);
+
+	ini.SaveToDisk(path);
+}
+
 static const uint32_t COL_VOID = 0xFF0A0A0AU;
-static const uint32_t COL_WATER = 0xFF35688FU;
-static const uint32_t COL_SNOW = 0xFFE6EBEFU;
-static const uint32_t COL_DESERT = 0xFFD8C48AU;
-static const uint32_t COL_ROCKS = 0xFF97A0A8U;
-static const uint32_t COL_FIELDS = 0xFFC9B04AU;
+static const uint32_t COL_WATER = 0xFF2F6EA5U;
+static const uint32_t COL_SNOW = 0xFFF0F4F7U;
+static const uint32_t COL_DESERT = 0xFFE0CA8CU;
+static const uint32_t COL_ROCKS = 0xFF8E979EU;
+static const uint32_t COL_FIELDS = 0xFFD4B23AU;
 static const uint32_t COL_TREE = 0xFF2F4A2AU;
 static const uint32_t COL_RAIL = 0xFF33383DU;
 static const uint32_t COL_ROAD = 0xFF61686EU;
@@ -92,11 +162,13 @@ static const uint32_t COL_BRIDGE = 0xFF9AA0A6U;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
 
-static const uint32_t _grass_ramp[16] = {
-	0xFF8AB060U, 0xFF84AA5CU, 0xFF7FA458U, 0xFF799E54U,
-	0xFF749850U, 0xFF6E924CU, 0xFF698C48U, 0xFF638644U,
-	0xFF5E8041U, 0xFF587A3DU, 0xFF537439U, 0xFF4D6E35U,
-	0xFF486831U, 0xFF42622EU, 0xFF3D5C2AU, 0xFF375626U,
+/* Hypsometric ramp, one flat colour per height level: green lowlands over
+ * yellow-green midlands into brown highlands and grey peaks. */
+static const uint32_t _height_ramp[16] = {
+	0xFF4F9646U, 0xFF5CA14BU, 0xFF6AAC51U, 0xFF7AB658U,
+	0xFF8CBE61U, 0xFF9FC46CU, 0xFFB1C777U, 0xFFBFC47DU,
+	0xFFC4B673U, 0xFFBEA267U, 0xFFB28D5BU, 0xFFA37850U,
+	0xFF936648U, 0xFF876049U, 0xFF97815FU, 0xFFB3ACA4U,
 };
 
 static const uint32_t _company_rgb[16] = {
@@ -236,10 +308,33 @@ static uint32_t GroundColour(TileIndex tile)
 				case CLEAR_ROCKS: return COL_ROCKS;
 				case CLEAR_SNOW: return COL_SNOW;
 				case CLEAR_DESERT: return COL_DESERT;
-				default: return _grass_ramp[h];
+				default: return _height_ramp[h];
 			}
 		default:
-			return _grass_ramp[h];
+			return _height_ramp[h];
+	}
+}
+
+/* Slopes catch light from the north-west: raised N/W corners lighten, raised S/E corners darken. */
+static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1)
+{
+	FillRect(x0, y0, x1, y1, GroundColour(tile));
+	if (_ms.relief_strength == 0) return;
+
+	Slope s = GetTileSlope(tile);
+	if (s == SLOPE_FLAT) return;
+
+	int d = 0;
+	if (s & SLOPE_N) d++;
+	if (s & SLOPE_W) d++;
+	if (s & SLOPE_S) d--;
+	if (s & SLOPE_E) d--;
+	if (d > 0) {
+		BlendRect(x0, y0, x1, y1, 0xFFFFFFFFU, _ms.relief_strength * d);
+	} else if (d < 0) {
+		BlendRect(x0, y0, x1, y1, 0xFF000000U, _ms.relief_strength * -d);
+	} else {
+		BlendRect(x0, y0, x1, y1, 0xFF000000U, _ms.relief_strength / 2);
 	}
 }
 
@@ -321,11 +416,11 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			break;
 
 		case MP_CLEAR:
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			break;
 
 		case MP_TREES: {
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			int cx = (x0 + x1) / 2;
 			int cy = (y0 + y1) / 2;
 			int r = std::max(1, ppt / 8);
@@ -334,7 +429,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 		}
 
 		case MP_RAILWAY:
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			if (IsRailDepot(tile)) {
 				DrawBlock(x0, y0, x1, y1, ppt, COL_ROAD, COL_RAIL);
 			} else {
@@ -343,7 +438,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			break;
 
 		case MP_ROAD:
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			if (IsLevelCrossing(tile)) {
 				DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
 				DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
@@ -356,12 +451,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			break;
 
 		case MP_HOUSE:
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			DrawBlock(x0, y0, x1, y1, ppt, COL_HOUSE, COL_HOUSE_B);
 			break;
 
 		case MP_INDUSTRY:
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			DrawBlock(x0, y0, x1, y1, ppt, COL_IND, COL_IND_B);
 			break;
 
@@ -383,7 +478,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				FillRect(x0, y0, x1, y1, COL_WATER);
 				water_tile = true;
 			} else {
-				FillRect(x0, y0, x1, y1, GroundColour(tile));
+				DrawGround(tile, x0, y0, x1, y1);
 			}
 			DrawBlock(x0, y0, x1, y1, ppt, fill, border);
 			if (HasStationRail(tile)) DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
@@ -391,12 +486,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 		}
 
 		case MP_OBJECT:
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			DrawBlock(x0, y0, x1, y1, ppt, COL_OBJ, COL_OBJ_B);
 			break;
 
 		case MP_TUNNELBRIDGE: {
-			FillRect(x0, y0, x1, y1, GroundColour(tile));
+			DrawGround(tile, x0, y0, x1, y1);
 			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
 			if (IsTunnel(tile)) {
 				DrawBlock(x0, y0, x1, y1, ppt, COL_TUNNEL, COL_RAIL);
@@ -416,10 +511,10 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 	}
 
 	if (!water_tile) {
-		int cw = std::max(1, ppt / 10);
+		int cw = std::max(1, ppt / 8);
 		uint h = TileHeight(tile);
-		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) BlendRect(x1 - cw + 1, y0, x1, y1, 0xFF000000U, 90);
-		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) BlendRect(x0, y1 - cw + 1, x1, y1, 0xFF000000U, 90);
+		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) BlendRect(x1 - cw + 1, y0, x1, y1, 0xFF000000U, _ms.contour_alpha);
+		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) BlendRect(x0, y1 - cw + 1, x1, y1, 0xFF000000U, _ms.contour_alpha);
 	}
 }
 
@@ -573,18 +668,19 @@ static std::string FormatMoney(int64_t m)
 static void DrawHud()
 {
 	static const std::string_view months[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+	int s = _ms.hud_scale;
 	TimerGameCalendar::YearMonthDay ymd = TimerGameCalendar::ConvertDateToYMD(TimerGameCalendar::date);
 	std::string line = fmt::format("{} {} {}", ymd.day, months[ymd.month], ymd.year.base());
 	const Company *c = Company::GetIfValid(_local_company);
 	if (c != nullptr) line += fmt::format("   {}", FormatMoney((int64_t)c->money));
-	DrawText(12, 12, 2, line);
+	DrawText(6 * s, 6 * s, s, line);
 
-	if (_pause_mode.Any()) DrawText(_fbw / 2 - 3 * 6 * 2, 12, 2, "PAUSED");
+	if (_pause_mode.Any()) DrawText(_fbw / 2 - 3 * 6 * s, 6 * s, s, "PAUSED");
 
 	std::string_view hint = _tool == MiniTool::Rail
 			? "RAIL: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"
 			: "R RAIL   SPACE PAUSE   F9 EXIT";
-	DrawText(12, _fbh - 26, 2, hint);
+	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
 
 static void Present()
@@ -604,14 +700,14 @@ static void ClampCamera()
 
 static void ZoomAt(int sx, int sy, bool in)
 {
-	double np = Clamp(_dest_ppt * (in ? 1.25 : 0.8), MIN_PPT, MAX_PPT);
-	double wx = WorldX(sx);
-	double wy = WorldY(sy);
-	_dest_ppt = np;
-	/* Keep the world point under the cursor fixed while the scale changes. */
-	_cam_x = wx - (sx - _fbw * 0.5) / np;
-	_cam_y = wy - (sy - _fbh * 0.5) / np;
-	ClampCamera();
+	_dest_ppt = Clamp(_dest_ppt * (in ? _ms.zoom_step : 1.0 / _ms.zoom_step), MIN_PPT, MAX_PPT);
+	/* Anchor the world point under the cursor; the camera follows it every
+	 * frame while the scale animates, so the point never drifts. */
+	_zoom_sx = sx;
+	_zoom_sy = sy;
+	_zoom_wx = WorldX(sx);
+	_zoom_wy = WorldY(sy);
+	_zoom_anchored = true;
 }
 
 static void Deactivate()
@@ -619,6 +715,7 @@ static void Deactivate()
 	_mini_active = false;
 	_tool = MiniTool::None;
 	_dragging = false;
+	_zoom_anchored = false;
 	_plan.pieces.clear();
 	_plan.start = INVALID_TILE;
 	MarkWholeScreenDirty();
@@ -633,6 +730,7 @@ void MiniUiToggle()
 	if (_game_mode != GM_NORMAL && _game_mode != GM_EDITOR) return;
 	if (BlitterFactory::GetCurrentBlitter()->GetScreenDepth() != 32) return;
 
+	LoadMiniSettings();
 	UndrawMouseCursor();
 	/* One palette-driven fill resets the 32bpp-anim mapping buffer, so later
 	 * direct framebuffer writes are not overwritten by palette animation. */
@@ -656,6 +754,7 @@ bool MiniUiHandleMouseEvents()
 	if (!_mini_active) return false;
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
+		_zoom_anchored = false;
 		_cam_x -= _cursor.delta.x / _cam_ppt;
 		_cam_y -= _cursor.delta.y / _cam_ppt;
 		ClampCamera();
@@ -760,7 +859,8 @@ bool MiniUiFrame(uint delta_ms)
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
 	if (_dirkeys != 0) {
-		double px = (_shift_pressed ? 2000.0 : 800.0) * delta_ms / 1000.0 / _cam_ppt;
+		_zoom_anchored = false;
+		double px = (_shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed) * delta_ms / 1000.0 / _cam_ppt;
 		if (_dirkeys & 1) _cam_x -= px;
 		if (_dirkeys & 2) _cam_y -= px;
 		if (_dirkeys & 4) _cam_x += px;
@@ -769,9 +869,15 @@ bool MiniUiFrame(uint delta_ms)
 	}
 
 	if (_cam_ppt != _dest_ppt) {
-		double f = 1.0 - std::exp(delta_ms / -80.0);
+		double f = 1.0 - std::exp(delta_ms / -_ms.zoom_smooth_ms);
 		_cam_ppt = std::exp(std::log(_cam_ppt) + (std::log(_dest_ppt) - std::log(_cam_ppt)) * f);
 		if (std::abs(_dest_ppt - _cam_ppt) < _dest_ppt * 0.002) _cam_ppt = _dest_ppt;
+	}
+	if (_zoom_anchored) {
+		_cam_x = _zoom_wx - (_zoom_sx - _fbw * 0.5) / _cam_ppt;
+		_cam_y = _zoom_wy - (_zoom_sy - _fbh * 0.5) / _cam_ppt;
+		ClampCamera();
+		if (_cam_ppt == _dest_ppt) _zoom_anchored = false;
 	}
 
 	int ppt = std::max(1, (int)std::lround(_cam_ppt));
