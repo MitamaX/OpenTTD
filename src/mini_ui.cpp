@@ -959,7 +959,7 @@ static void BuyAtDepot(bool alt)
 
 	EngineID eid = PickEngine(tile, vt, alt);
 	if (eid == EngineID::Invalid()) return;
-	Command<CMD_BUILD_VEHICLE>::Post(tile, eid, true, INVALID_CARGO, INVALID_CLIENT_ID);
+	Command<CMD_BUILD_VEHICLE>::Post(STR_ERROR_CAN_T_BUY_TRAIN + vt, tile, eid, true, INVALID_CARGO, INVALID_CLIENT_ID);
 }
 
 /* Clicking a compatible station with a vehicle selected appends a go-to
@@ -1000,7 +1000,7 @@ static bool TryAppendOrder(int sx, int sy)
 	if (_ctrl_pressed) order.SetLoadType(OrderLoadType::FullLoadAny);
 	if (_settings_client.gui.new_nonstop && v->IsGroundVehicle()) order.SetNonStopType(OrderNonStopFlag::NoIntermediate);
 	order.SetStopLocation(v->type == VEH_TRAIN ? (OrderStopLocation)(_settings_client.gui.stop_location) : OrderStopLocation::FarEnd);
-	Command<CMD_INSERT_ORDER>::Post(v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
+	Command<CMD_INSERT_ORDER>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
 	return true;
 }
 
@@ -1252,9 +1252,9 @@ static void CommitRailPlan()
 {
 	if (_plan.start == INVALID_TILE) return;
 	if (_drag_remove) {
-		Command<CMD_REMOVE_RAILROAD_TRACK>::Post(_plan.end, _plan.start, _plan.track);
+		Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, _plan.end, _plan.start, _plan.track);
 	} else {
-		Command<CMD_BUILD_RAILROAD_TRACK>::Post(_plan.end, _plan.start, PickRailType(), _plan.track, true, false);
+		Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, _plan.end, _plan.start, PickRailType(), _plan.track, true, false);
 	}
 	ClearPlans();
 }
@@ -1368,12 +1368,12 @@ static void CommitStationPlan()
 	int h = _rect_plan.y1 - _rect_plan.y0 + 1;
 	TileIndex org = TileXY(_rect_plan.x0, _rect_plan.y0);
 	if (_drag_remove) {
-		Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(org, TileXY(_rect_plan.x1, _rect_plan.y1), true);
+		Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, org, TileXY(_rect_plan.x1, _rect_plan.y1), true);
 	} else {
 		Axis axis = w >= h ? AXIS_X : AXIS_Y;
 		uint8_t plat_len = (uint8_t)(axis == AXIS_X ? w : h);
 		uint8_t numtracks = (uint8_t)(axis == AXIS_X ? h : w);
-		Command<CMD_BUILD_RAIL_STATION>::Post(org, PickRailType(), axis, numtracks, plat_len, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
+		Command<CMD_BUILD_RAIL_STATION>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, org, PickRailType(), axis, numtracks, plat_len, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
 	}
 	ClearPlans();
 }
@@ -1381,7 +1381,7 @@ static void CommitStationPlan()
 static void CommitDemolishPlan()
 {
 	if (!_rect_plan.valid) return;
-	Command<CMD_CLEAR_AREA>::Post(TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
+	Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
 	ClearPlans();
 }
 
@@ -1397,7 +1397,7 @@ static void CommitTerraformPlan()
 	TileIndex anchor = TileXY(ax, ay);
 	TileIndex end = TileXY(ex, ey);
 	LevelMode lm = _drag_remove ? LM_LOWER : (anchor == end ? LM_RAISE : LM_LEVEL);
-	Command<CMD_LEVEL_LAND>::Post(end, anchor, false, lm);
+	Command<CMD_LEVEL_LAND>::Post(STR_ERROR_CAN_T_LEVEL_LAND_HERE, end, anchor, false, lm);
 	ClearPlans();
 }
 
@@ -1443,29 +1443,30 @@ static void CommitPointTool(double wx, double wy)
 	switch (_tool) {
 		case MiniTool::BusStop:
 		case MiniTool::TruckStop: {
-			RoadStopType st = _tool == MiniTool::BusStop ? RoadStopType::Bus : RoadStopType::Truck;
+			bool bus = _tool == MiniTool::BusStop;
+			RoadStopType st = bus ? RoadStopType::Bus : RoadStopType::Truck;
 			if (_drag_remove) {
-				Command<CMD_REMOVE_ROAD_STOP>::Post(tile, 1, 1, st, false);
+				Command<CMD_REMOVE_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_REMOVE_BUS_STATION : STR_ERROR_CAN_T_REMOVE_TRUCK_STATION, tile, 1, 1, st, false);
 			} else {
 				DiagDirection ddir = AxisToDiagDir(DragAxis(wx, wy, tile));
-				Command<CMD_BUILD_ROAD_STOP>::Post(tile, 1, 1, st, true, ddir, PickRoadType(), ROADSTOP_CLASS_DFLT, 0, StationID::Invalid(), false);
+				Command<CMD_BUILD_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_BUILD_BUS_STATION : STR_ERROR_CAN_T_BUILD_TRUCK_STATION, tile, 1, 1, st, true, ddir, PickRoadType(), ROADSTOP_CLASS_DFLT, 0, StationID::Invalid(), false);
 			}
 			break;
 		}
 
 		case MiniTool::TrainDepot:
 			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(tile);
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
 			} else {
-				Command<CMD_BUILD_TRAIN_DEPOT>::Post(tile, PickRailType(), DragDir(wx, wy));
+				Command<CMD_BUILD_TRAIN_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_TRAIN_DEPOT, tile, PickRailType(), DragDir(wx, wy));
 			}
 			break;
 
 		case MiniTool::RoadDepot:
 			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(tile);
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
 			} else {
-				Command<CMD_BUILD_ROAD_DEPOT>::Post(tile, PickRoadType(), DragDir(wx, wy));
+				Command<CMD_BUILD_ROAD_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_ROAD_DEPOT, tile, PickRoadType(), DragDir(wx, wy));
 			}
 			break;
 
@@ -1473,10 +1474,10 @@ static void CommitPointTool(double wx, double wy)
 			Track track = PickSignalTrack(tile);
 			if (track == INVALID_TRACK) break;
 			if (_drag_remove) {
-				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(tile, track);
+				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, tile, track);
 			} else {
 				SignalVariant sigvar = TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
-				Command<CMD_BUILD_SINGLE_SIGNAL>::Post(tile, track, _settings_client.gui.default_signal_type, sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
+				Command<CMD_BUILD_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, tile, track, _settings_client.gui.default_signal_type, sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
 			}
 			break;
 		}
@@ -1517,9 +1518,9 @@ static void CommitRoadPlan()
 {
 	if (_road_plan.start == INVALID_TILE) return;
 	if (_drag_remove) {
-		Command<CMD_REMOVE_LONG_ROAD>::Post(_road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, false, false);
+		Command<CMD_REMOVE_LONG_ROAD>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_FROM, _road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, false, false);
 	} else {
-		Command<CMD_BUILD_LONG_ROAD>::Post(_road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, DRD_NONE, false, false, false);
+		Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, _road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, DRD_NONE, false, false, false);
 	}
 	ClearPlans();
 }
@@ -1547,12 +1548,12 @@ static void CommitBridgePlan()
 	TransportType tt = rail ? TRANSPORT_RAIL : TRANSPORT_ROAD;
 	uint8_t rrt = rail ? (uint8_t)PickRailType() : (uint8_t)PickRoadType();
 	if (_drag_remove) {
-		Command<CMD_LANDSCAPE_CLEAR>::Post(_road_plan.start);
+		Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, _road_plan.start);
 	} else if (_road_plan.start == _road_plan.end) {
-		Command<CMD_BUILD_TUNNEL>::Post(_road_plan.start, tt, rrt);
+		Command<CMD_BUILD_TUNNEL>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, _road_plan.start, tt, rrt);
 	} else {
 		uint len = std::max(Delta(TileX(_road_plan.start), TileX(_road_plan.end)), Delta(TileY(_road_plan.start), TileY(_road_plan.end))) - 1;
-		Command<CMD_BUILD_BRIDGE>::Post(_road_plan.end, _road_plan.start, tt, PickBridgeType(len), rrt);
+		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, _road_plan.end, _road_plan.start, tt, PickBridgeType(len), rrt);
 	}
 	ClearPlans();
 }
@@ -1902,7 +1903,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'P':
 			if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
-				Command<CMD_START_STOP_VEHICLE>::Post(v->tile, _sel_vehicle, false);
+				Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, _sel_vehicle, false);
 			}
 			break;
 
@@ -1913,7 +1914,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'O':
 			if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr && v->GetNumOrders() > 0) {
-				Command<CMD_DELETE_ORDER>::Post(v->tile, v->index, (VehicleOrderID)(v->GetNumOrders() - 1));
+				Command<CMD_DELETE_ORDER>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)(v->GetNumOrders() - 1));
 			}
 			break;
 
