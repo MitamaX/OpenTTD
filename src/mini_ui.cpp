@@ -20,6 +20,7 @@
 #include "company_func.h"
 #include "elrail_func.h"
 #include "engine_base.h"
+#include "core/backup_type.hpp"
 #include "core/math_func.hpp"
 #include "fileio_func.h"
 #include "gfx_func.h"
@@ -257,42 +258,6 @@ static const uint32_t _company_rgb[16] = {
 	0xFFF29C4AU, 0xFF8D6E63U, 0xFF9E9E9EU, 0xFFF5F5F5U,
 };
 
-/* Classic 5x7 column-major bitmap font, ASCII 0x20..0x5F. */
-static const uint8_t _font5x7[96 * 5] = {
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5F, 0x00, 0x00,
-	0x00, 0x07, 0x00, 0x07, 0x00, 0x14, 0x7F, 0x14, 0x7F, 0x14,
-	0x24, 0x2A, 0x7F, 0x2A, 0x12, 0x23, 0x13, 0x08, 0x64, 0x62,
-	0x36, 0x49, 0x55, 0x22, 0x50, 0x00, 0x05, 0x03, 0x00, 0x00,
-	0x00, 0x1C, 0x22, 0x41, 0x00, 0x00, 0x41, 0x22, 0x1C, 0x00,
-	0x08, 0x2A, 0x1C, 0x2A, 0x08, 0x08, 0x08, 0x3E, 0x08, 0x08,
-	0x00, 0x50, 0x30, 0x00, 0x00, 0x08, 0x08, 0x08, 0x08, 0x08,
-	0x00, 0x60, 0x60, 0x00, 0x00, 0x20, 0x10, 0x08, 0x04, 0x02,
-	0x3E, 0x51, 0x49, 0x45, 0x3E, 0x00, 0x42, 0x7F, 0x40, 0x00,
-	0x42, 0x61, 0x51, 0x49, 0x46, 0x21, 0x41, 0x45, 0x4B, 0x31,
-	0x18, 0x14, 0x12, 0x7F, 0x10, 0x27, 0x45, 0x45, 0x45, 0x39,
-	0x3C, 0x4A, 0x49, 0x49, 0x30, 0x01, 0x71, 0x09, 0x05, 0x03,
-	0x36, 0x49, 0x49, 0x49, 0x36, 0x06, 0x49, 0x49, 0x29, 0x1E,
-	0x00, 0x36, 0x36, 0x00, 0x00, 0x00, 0x56, 0x36, 0x00, 0x00,
-	0x00, 0x08, 0x14, 0x22, 0x41, 0x14, 0x14, 0x14, 0x14, 0x14,
-	0x41, 0x22, 0x14, 0x08, 0x00, 0x02, 0x01, 0x51, 0x09, 0x06,
-	0x32, 0x49, 0x79, 0x41, 0x3E, 0x7E, 0x11, 0x11, 0x11, 0x7E,
-	0x7F, 0x49, 0x49, 0x49, 0x36, 0x3E, 0x41, 0x41, 0x41, 0x22,
-	0x7F, 0x41, 0x41, 0x22, 0x1C, 0x7F, 0x49, 0x49, 0x49, 0x41,
-	0x7F, 0x09, 0x09, 0x09, 0x01, 0x3E, 0x41, 0x41, 0x51, 0x32,
-	0x7F, 0x08, 0x08, 0x08, 0x7F, 0x00, 0x41, 0x7F, 0x41, 0x00,
-	0x20, 0x40, 0x41, 0x3F, 0x01, 0x7F, 0x08, 0x14, 0x22, 0x41,
-	0x7F, 0x40, 0x40, 0x40, 0x40, 0x7F, 0x02, 0x0C, 0x02, 0x7F,
-	0x7F, 0x04, 0x08, 0x10, 0x7F, 0x3E, 0x41, 0x41, 0x41, 0x3E,
-	0x7F, 0x09, 0x09, 0x09, 0x06, 0x3E, 0x41, 0x51, 0x21, 0x5E,
-	0x7F, 0x09, 0x19, 0x29, 0x46, 0x46, 0x49, 0x49, 0x49, 0x31,
-	0x01, 0x01, 0x7F, 0x01, 0x01, 0x3F, 0x40, 0x40, 0x40, 0x3F,
-	0x1F, 0x20, 0x40, 0x20, 0x1F, 0x3F, 0x40, 0x38, 0x40, 0x3F,
-	0x63, 0x14, 0x08, 0x14, 0x63, 0x07, 0x08, 0x70, 0x08, 0x07,
-	0x61, 0x51, 0x49, 0x45, 0x43, 0x00, 0x7F, 0x41, 0x41, 0x00,
-	0x02, 0x04, 0x08, 0x10, 0x20, 0x00, 0x41, 0x41, 0x7F, 0x00,
-	0x04, 0x02, 0x01, 0x02, 0x04, 0x40, 0x40, 0x40, 0x40, 0x40,
-};
-
 bool MiniUiActive()
 {
 	return _mini_active;
@@ -375,30 +340,19 @@ static void FillTriangle(int cx, int cy, int r, uint32_t c)
 	}
 }
 
-static void DrawChar(int x, int y, int scale, char c, uint32_t col)
+/* Text goes through the native font cache onto _screen after Present() has
+ * copied the frame, so any TrueType fallback font covers non-Latin names. */
+static void DrawScreenText(int x, int y, std::string_view text, TextColour colour = TC_WHITE)
 {
-	uint8_t uc = (uint8_t)c;
-	if (uc < 0x20 || uc >= 0x80) uc = '?';
-	if (uc >= 'a' && uc <= 'z') uc -= 0x20;
-	if (uc >= 0x60) uc = '?';
-	c = (char)uc;
-	const uint8_t *glyph = _font5x7 + (c - 0x20) * 5;
-	for (int cx = 0; cx < 5; cx++) {
-		for (int cy = 0; cy < 7; cy++) {
-			if (glyph[cx] & (1 << cy)) {
-				FillRect(x + cx * scale, y + cy * scale, x + (cx + 1) * scale - 1, y + (cy + 1) * scale - 1, col);
-			}
-		}
-	}
+	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
+	DrawString(x, _fbw - 1, y, text, colour, SA_LEFT | SA_FORCE);
 }
 
-static void DrawText(int x, int y, int scale, std::string_view text, uint32_t col = 0xFFEDF2F7U)
+static void DrawScreenTextCentred(int cx, int y, std::string_view text, TextColour colour = TC_WHITE)
 {
-	for (char c : text) {
-		DrawChar(x + scale, y + scale, scale, c, 0xFF14181CU);
-		DrawChar(x, y, scale, c, col);
-		x += 6 * scale;
-	}
+	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
+	int half = GetStringBoundingBox(text).width / 2 + 1;
+	DrawString(cx - half, cx + half, y, text, colour, SA_HOR_CENTER | SA_FORCE);
 }
 
 static uint32_t GroundColour(TileIndex tile, int h)
@@ -1046,22 +1000,20 @@ static void DrawSelectionRing(int ppt)
  * infrastructure zoom tier. Labels sit centred above their sign tile. */
 static void DrawLabels()
 {
-	int s = 1;
-	int margin = 40 * 6 * s;
+	int margin = 240;
+	int lh = GetCharacterHeight(FS_NORMAL);
 	for (const Town *t : Town::Iterate()) {
 		int cx = PxX(TileX(t->xy) + 0.5);
 		int cy = PxY(TileY(t->xy) + 0.5);
-		if (cx < -margin || cy < -20 || cx >= _fbw + margin || cy >= _fbh + 20) continue;
-		const std::string &name = t->GetCachedName();
-		DrawText(cx - (int)name.size() * 3 * s, cy - 10 * s, s, name);
+		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + lh + 4) continue;
+		DrawScreenTextCentred(cx, cy - lh - 3, t->GetCachedName());
 	}
 	if (!_zd.station_names) return;
 	for (const Station *st : Station::Iterate()) {
 		int cx = PxX(TileX(st->xy) + 0.5);
 		int cy = PxY(TileY(st->xy) + 0.5);
-		if (cx < -margin || cy < -20 || cx >= _fbw + margin || cy >= _fbh + 20) continue;
-		const std::string &name = st->GetCachedName();
-		DrawText(cx - (int)name.size() * 3 * s, cy - 10 * s, s, name, 0xFF9CD4FFU);
+		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + lh + 4) continue;
+		DrawScreenTextCentred(cx, cy - lh - 3, st->GetCachedName(), TC_LIGHT_BLUE);
 	}
 }
 
@@ -1511,9 +1463,10 @@ static void DrawHud()
 	std::string line = fmt::format("{} {} {}", ymd.day, months[ymd.month], ymd.year.base());
 	const Company *c = Company::GetIfValid(_local_company);
 	if (c != nullptr) line += fmt::format("   {}", FormatMoney((int64_t)c->money));
-	DrawText(6 * s, 6 * s, s, line);
+	int lh = GetCharacterHeight(FS_NORMAL);
+	DrawScreenText(6 * s, 6 * s, line);
 
-	if (_pause_mode.Any()) DrawText(_fbw / 2 - 3 * 6 * s, 6 * s, s, "PAUSED");
+	if (_pause_mode.Any()) DrawScreenTextCentred(_fbw / 2, 6 * s, "PAUSED");
 
 	if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
 		static const std::string_view kinds[4] = {"TRAIN", "ROAD", "SHIP", "PLANE"};
@@ -1533,7 +1486,7 @@ static void DrawHud()
 			info += fmt::format("  {} {}/{}", std::string_view(lab, 4), stored, cap);
 		}
 		info += fmt::format("  ORDERS {}  PROFIT {}", v->GetNumOrders(), FormatMoney(v->GetDisplayProfitThisYear()));
-		DrawText(6 * s, 6 * s + 10 * s, s, info);
+		DrawScreenText(6 * s, 6 * s + lh + 2, info);
 	}
 
 	std::string_view hint;
@@ -1562,8 +1515,8 @@ static void DrawHud()
 			}
 			break;
 	}
-	DrawText(6 * s, _fbh - 13 * s, s, hint);
-	if (!hint2.empty()) DrawText(6 * s, _fbh - 23 * s, s, hint2);
+	DrawScreenText(6 * s, _fbh - lh - 6 * s, hint);
+	if (!hint2.empty()) DrawScreenText(6 * s, _fbh - 2 * lh - 6 * s - 2, hint2);
 }
 
 static void Present()
@@ -1580,6 +1533,8 @@ static void Present()
 			std::fill_n(anim + (size_t)y * _screen.pitch, _fbw, 0);
 		}
 	}
+	DrawLabels();
+	DrawHud();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -1917,8 +1872,6 @@ bool MiniUiFrame(uint delta_ms)
 	DrawOrderRoute();
 	DrawVehicles(ppt);
 	DrawSelectionRing(ppt);
-	DrawLabels();
-	DrawHud();
 	DrawCursor();
 	Present();
 	return true;
