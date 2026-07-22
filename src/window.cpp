@@ -39,6 +39,7 @@
 #include "sound_func.h"
 #include "timer/timer.h"
 #include "timer/timer_window.h"
+#include "mini_ui.h"
 
 #include "table/strings.h"
 
@@ -2670,6 +2671,8 @@ void HandleKeypress(uint keycode, char32_t key)
 	 */
 	if (key == 0 && keycode == 0) return;
 
+	if (MiniUiHandleKeypress(keycode, key)) return;
+
 	/* Check if the focused window has a focused editbox */
 	if (EditBoxInGlobalFocus()) {
 		/* All input will in this case go to the focused editbox */
@@ -2969,6 +2972,8 @@ void HandleMouseEvents()
 	 * But there is no company related window open anyway, so _current_company is not used. */
 	assert(HasModalProgress() || IsLocalCompany());
 
+	if (MiniUiHandleMouseEvents()) return;
+
 	static std::chrono::steady_clock::time_point double_click_time = {};
 	static Point double_click_pos = {0, 0};
 
@@ -3138,6 +3143,8 @@ void UpdateWindows()
 	PerformanceAccumulator::Reset(PFE_DRAWWORLD);
 
 	ProcessPendingPerformanceMeasurements();
+
+	if (MiniUiFrame(delta_ms.count())) return;
 
 	TimerManager<TimerWindow>::Elapsed(delta_ms);
 	CallWindowRealtimeTickEvent(delta_ms.count());

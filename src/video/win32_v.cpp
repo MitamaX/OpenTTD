@@ -24,6 +24,7 @@
 #include "../framerate_type.h"
 #include "../library_loader.h"
 #include "../core/utf8.hpp"
+#include "../mini_ui.h"
 #include "win32_v.h"
 #include <windows.h>
 #include <imm.h>
@@ -572,6 +573,18 @@ LRESULT CALLBACK WndProcGdi(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			HandleMouseEvents();
 			return 0;
 
+		case WM_MBUTTONDOWN:
+			SetCapture(hwnd);
+			_middle_button_down = true;
+			HandleMouseEvents();
+			return 0;
+
+		case WM_MBUTTONUP:
+			ReleaseCapture();
+			_middle_button_down = false;
+			HandleMouseEvents();
+			return 0;
+
 		case WM_MOUSELEAVE:
 			UndrawMouseCursor();
 			_cursor.in_window = false;
@@ -991,6 +1004,13 @@ void VideoDriver_Win32Base::InputLoop()
 			(GetAsyncKeyState(VK_UP) < 0 ? 2 : 0) +
 			(GetAsyncKeyState(VK_RIGHT) < 0 ? 4 : 0) +
 			(GetAsyncKeyState(VK_DOWN) < 0 ? 8 : 0);
+		if (MiniUiActive()) {
+			_dirkeys |=
+				(GetAsyncKeyState('A') < 0 ? 1 : 0) |
+				(GetAsyncKeyState('W') < 0 ? 2 : 0) |
+				(GetAsyncKeyState('D') < 0 ? 4 : 0) |
+				(GetAsyncKeyState('S') < 0 ? 8 : 0);
+		}
 	} else {
 		_dirkeys = 0;
 	}
