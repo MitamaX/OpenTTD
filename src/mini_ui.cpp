@@ -29,6 +29,7 @@
 #include "landscape.h"
 #include "landscape_cmd.h"
 #include "misc_cmd.h"
+#include "network/network.h"
 #include "network/network_type.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
@@ -146,6 +147,7 @@ struct MiniRectPlan {
 static MiniRectPlan _rect_plan;
 
 struct MiniSettings {
+	int start_active = 1;
 	double pan_speed = 1600.0;
 	double pan_speed_fast = 4000.0;
 	double zoom_step = 1.25;
@@ -202,6 +204,7 @@ static void LoadMiniSettings()
 	ini.LoadFromDisk(path, NO_DIRECTORY);
 	IniGroup &group = ini.GetOrCreateGroup("mini");
 
+	ReadIniNumber(group, "start_active", _ms.start_active);
 	ReadIniNumber(group, "pan_speed", _ms.pan_speed);
 	ReadIniNumber(group, "pan_speed_fast", _ms.pan_speed_fast);
 	ReadIniNumber(group, "zoom_step", _ms.zoom_step);
@@ -1930,6 +1933,16 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 void MiniUiFrame(uint delta_ms)
 {
+	/* Entering a game activates the mini UI unless the config opts out. */
+	static GameMode last_mode = GM_MENU;
+	if (_game_mode != last_mode) {
+		last_mode = _game_mode;
+		if (!_mini_active && !_network_dedicated && (_game_mode == GM_NORMAL || _game_mode == GM_EDITOR)) {
+			LoadMiniSettings();
+			if (_ms.start_active != 0) MiniUiToggle();
+		}
+	}
+
 	if (!_mini_active) return;
 	if (_game_mode != GM_NORMAL && _game_mode != GM_EDITOR) {
 		Deactivate();
