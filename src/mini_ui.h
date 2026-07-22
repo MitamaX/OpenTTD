@@ -19,5 +19,6 @@ bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
 bool MiniUiHidesWindow(WindowClass wc);
 bool MiniUiHidesMouseCursor();
+void MiniUiScrollTo(int x, int y);
 
 #endif /* MINI_UI_H */

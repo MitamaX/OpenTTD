@@ -1654,6 +1654,16 @@ bool MiniUiHidesMouseCursor()
 	return w == nullptr || MiniUiHidesWindow(w->window_class);
 }
 
+void MiniUiScrollTo(int x, int y)
+{
+	if (!_mini_active) return;
+	_follow = false;
+	_zoom_anchored = false;
+	_cam_x = x / (double)TILE_SIZE;
+	_cam_y = y / (double)TILE_SIZE;
+	ClampCamera();
+}
+
 bool MiniUiHandleMouseEvents(bool native_capture)
 {
 	if (!_mini_active) return false;
@@ -1837,6 +1847,17 @@ void MiniUiFrame(uint delta_ms)
 	if (_game_mode != GM_NORMAL && _game_mode != GM_EDITOR) {
 		Deactivate();
 		return;
+	}
+
+	/* Native windows request vehicle following on the main viewport. */
+	static VehicleID last_native_follow = VehicleID::Invalid();
+	VehicleID native_follow = GetMainWindow()->viewport->follow_vehicle;
+	if (native_follow != last_native_follow) {
+		last_native_follow = native_follow;
+		if (native_follow != VehicleID::Invalid()) {
+			_sel_vehicle = native_follow;
+			_follow = true;
+		}
 	}
 
 	if (_fbw != _screen.width || _fbh != _screen.height) {

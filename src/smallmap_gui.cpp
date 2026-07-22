@@ -29,6 +29,7 @@
 #include "timer/timer.h"
 #include "timer/timer_window.h"
 #include "smallmap_gui.h"
+#include "mini_ui.h"
 
 #include "widgets/smallmap_widget.h"
 
@@ -2077,6 +2078,7 @@ void ShowSmallMap()
  */
 bool ScrollMainWindowTo(int x, int y, int z, bool instant)
 {
+	MiniUiScrollTo(x, y);
 	bool res = ScrollWindowTo(x, y, z, GetMainWindow(), instant);
 
 	/* If a user scrolls to a tile (via what way what so ever) and already is on
