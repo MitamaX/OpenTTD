@@ -46,6 +46,8 @@
 #include "slope_func.h"
 #include "station_base.h"
 #include "station_cmd.h"
+#include "station_func.h"
+#include "strings_func.h"
 #include "station_map.h"
 #include "terraform_cmd.h"
 #include "town.h"
@@ -59,6 +61,8 @@
 #include "water_map.h"
 #include "window_func.h"
 #include "window_gui.h"
+
+#include "table/strings.h"
 
 #include "safeguards.h"
 
@@ -998,23 +1002,64 @@ static void DrawSelectionRing(int ppt)
 
 /* Town names always show for navigation; station names join at the
  * infrastructure zoom tier. Labels sit centred above their sign tile. */
+static std::vector<std::pair<Rect, TownID>> _town_label_hits;
+static std::vector<std::pair<Rect, StationID>> _station_label_hits;
+
+/* Same plate-and-string construction as the native viewport signs, drawn in
+ * mini UI screen space because the sign kdtree lives in viewport coordinates. */
+static Rect DrawLabelPlate(int cx, int cy, std::string_view str, Colours plate, bool transparent, TextColour tc)
+{
+	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
+	const RectPadding &bevel = WidgetDimensions::scaled.fullbevel;
+	int w = GetStringBoundingBox(str).width + bevel.left + bevel.right + 4;
+	int h = bevel.top + GetCharacterHeight(FS_NORMAL) + bevel.bottom;
+	Rect r = {cx - w / 2, cy - h - 3, cx - w / 2 + w - 1, cy - 4};
+	DrawFrameRect(r.left, r.top, r.right, r.bottom, plate, transparent ? FrameFlags{FrameFlag::Transparent} : FrameFlags{});
+	DrawString(r.left + bevel.left, r.right - bevel.right, r.top + bevel.top, str, tc, SA_HOR_CENTER);
+	return r;
+}
+
 static void DrawLabels()
 {
-	int margin = 240;
-	int lh = GetCharacterHeight(FS_NORMAL);
+	_town_label_hits.clear();
+	_station_label_hits.clear();
+	int margin = 300;
+	int limit = GetCharacterHeight(FS_NORMAL) + 20;
 	for (const Town *t : Town::Iterate()) {
 		int cx = PxX(TileX(t->xy) + 0.5);
 		int cy = PxY(TileY(t->xy) + 0.5);
-		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + lh + 4) continue;
-		DrawScreenTextCentred(cx, cy - lh - 3, t->GetCachedName());
+		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
+		std::string str = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
+		Rect r = DrawLabelPlate(cx, cy, str, COLOUR_GREY, true, TC_WHITE);
+		_town_label_hits.emplace_back(r, t->index);
 	}
 	if (!_zd.station_names) return;
 	for (const Station *st : Station::Iterate()) {
 		int cx = PxX(TileX(st->xy) + 0.5);
 		int cy = PxY(TileY(st->xy) + 0.5);
-		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + lh + 4) continue;
-		DrawScreenTextCentred(cx, cy - lh - 3, st->GetCachedName(), TC_LIGHT_BLUE);
+		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
+		std::string str = GetString(STR_VIEWPORT_STATION, st->index, st->facilities);
+		Colours plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COLOUR_GREY : _company_colours[st->owner];
+		Rect r = DrawLabelPlate(cx, cy, str, plate, false, TC_BLACK);
+		_station_label_hits.emplace_back(r, st->index);
 	}
+}
+
+static bool HandleLabelClick(int x, int y)
+{
+	for (const auto &[r, id] : _station_label_hits) {
+		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+			ShowStationViewWindow(id);
+			return true;
+		}
+	}
+	for (const auto &[r, id] : _town_label_hits) {
+		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+			ShowTownViewWindow(id);
+			return true;
+		}
+	}
+	return false;
 }
 
 /* Mirrors the zigzag walk of CmdRailTrackHelper: non-diagonal pieces alternate
@@ -1635,7 +1680,9 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
 		if (_tool == MiniTool::None) {
-			if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y)) SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
+			if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
+				SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
+			}
 		} else {
 			_dragging = true;
 			_drag_remove = _ctrl_pressed;
