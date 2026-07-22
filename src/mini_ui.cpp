@@ -75,13 +75,16 @@ struct MiniRailPlan {
 static MiniRailPlan _plan;
 
 struct MiniSettings {
-	double pan_speed = 800.0;
-	double pan_speed_fast = 2000.0;
+	double pan_speed = 1600.0;
+	double pan_speed_fast = 4000.0;
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
 	int hud_scale = 2;
 	int contour_alpha = 120;
 	int relief_strength = 22;
+	int edge_scroll = 1;
+	int edge_margin = 24;
+	double edge_scroll_speed = 1600.0;
 };
 
 static MiniSettings _ms;
@@ -129,6 +132,9 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "hud_scale", _ms.hud_scale);
 	ReadIniNumber(group, "contour_alpha", _ms.contour_alpha);
 	ReadIniNumber(group, "relief_strength", _ms.relief_strength);
+	ReadIniNumber(group, "edge_scroll", _ms.edge_scroll);
+	ReadIniNumber(group, "edge_margin", _ms.edge_margin);
+	ReadIniNumber(group, "edge_scroll_speed", _ms.edge_scroll_speed);
 
 	_ms.pan_speed = Clamp(_ms.pan_speed, 100.0, 10000.0);
 	_ms.pan_speed_fast = Clamp(_ms.pan_speed_fast, 100.0, 20000.0);
@@ -137,6 +143,8 @@ static void LoadMiniSettings()
 	_ms.hud_scale = Clamp(_ms.hud_scale, 1, 4);
 	_ms.contour_alpha = Clamp(_ms.contour_alpha, 0, 255);
 	_ms.relief_strength = Clamp(_ms.relief_strength, 0, 60);
+	_ms.edge_margin = Clamp(_ms.edge_margin, 2, 200);
+	_ms.edge_scroll_speed = Clamp(_ms.edge_scroll_speed, 100.0, 10000.0);
 
 	ini.SaveToDisk(path);
 }
@@ -873,6 +881,21 @@ bool MiniUiFrame(uint delta_ms)
 		if (_dirkeys & 4) _cam_x += px;
 		if (_dirkeys & 8) _cam_y += px;
 		ClampCamera();
+	}
+
+	if (_ms.edge_scroll != 0 && _cursor.in_window && !_middle_button_down) {
+		double px = _ms.edge_scroll_speed * delta_ms / 1000.0 / _cam_ppt;
+		double ex = 0.0, ey = 0.0;
+		if (_cursor.pos.x < _ms.edge_margin) ex = -px;
+		if (_cursor.pos.x >= _fbw - _ms.edge_margin) ex = px;
+		if (_cursor.pos.y < _ms.edge_margin) ey = -px;
+		if (_cursor.pos.y >= _fbh - _ms.edge_margin) ey = px;
+		if (ex != 0.0 || ey != 0.0) {
+			_zoom_anchored = false;
+			_cam_x += ex;
+			_cam_y += ey;
+			ClampCamera();
+		}
 	}
 
 	if (_cam_ppt != _dest_ppt) {
