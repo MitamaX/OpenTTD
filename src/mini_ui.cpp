@@ -17,6 +17,7 @@
 #include "command_func.h"
 #include "company_base.h"
 #include "company_func.h"
+#include "elrail_func.h"
 #include "core/math_func.hpp"
 #include "fileio_func.h"
 #include "gfx_func.h"
@@ -172,6 +173,7 @@ static const uint32_t COL_TUNNEL = 0xFF1E2124U;
 static const uint32_t COL_BRIDGE = 0xFF9AA0A6U;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
+static const uint32_t COL_CATENARY = 0xFFE8C94AU;
 
 /* All-green ramp like the old top-down renderer settled on: one step
  * darker per height level, hue constant so slopes match their neighbours. */
@@ -459,6 +461,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 
 	int rail_w = std::max(1, ppt / 6);
 	int road_w = std::max(2, ppt / 3);
+	int cat_w = rail_w >= 2 ? std::max(1, rail_w / 3) : 0;
 
 	bool water_tile = false;
 
@@ -491,7 +494,11 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			if (IsRailDepot(tile)) {
 				DrawBlock(x0, y0, x1, y1, ppt, COL_ROAD, COL_RAIL);
 			} else {
-				DrawTrackBitsPx(GetTrackBits(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
+				TrackBits bits = GetTrackBits(tile);
+				DrawTrackBitsPx(bits, x0, y0, x1, y1, rail_w, COL_RAIL);
+				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
+					DrawTrackBitsPx(bits, x0, y0, x1, y1, cat_w, COL_CATENARY);
+				}
 			}
 			break;
 
@@ -539,7 +546,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				DrawGround(tile, x0, y0, x1, y1, ppt);
 			}
 			DrawBlock(x0, y0, x1, y1, ppt, fill, border);
-			if (HasStationRail(tile)) DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
+			if (HasStationRail(tile)) {
+				DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
+				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
+					DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, cat_w, COL_CATENARY);
+				}
+			}
 			break;
 		}
 
@@ -555,6 +567,9 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				DrawBlock(x0, y0, x1, y1, ppt, COL_TUNNEL, COL_RAIL);
 			} else {
 				DrawAxisBand(axis, x0, y0, x1, y1, road_w, COL_BRIDGE);
+				if (cat_w > 0 && GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL && HasRailCatenary(GetRailType(tile))) {
+					DrawAxisBand(axis, x0, y0, x1, y1, cat_w, COL_CATENARY);
+				}
 			}
 			break;
 		}
