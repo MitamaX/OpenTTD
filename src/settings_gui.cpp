@@ -10,6 +10,7 @@
 #include "stdafx.h"
 #include "currency.h"
 #include "error.h"
+#include "mini_ui.h"
 #include "settings_gui.h"
 #include "textbuf_gui.h"
 #include "command_func.h"
@@ -1873,8 +1874,8 @@ void DrawArrowButtons(int x, int y, Colours button_colour, uint8_t state, bool c
 
 	DrawFrameRect(lr, button_colour, (state == 1) ? FrameFlag::Lowered : FrameFlags{});
 	DrawFrameRect(rr, button_colour, (state == 2) ? FrameFlag::Lowered : FrameFlags{});
-	DrawSpriteIgnorePadding(SPR_ARROW_LEFT,  PAL_NONE, lr, SA_CENTER);
-	DrawSpriteIgnorePadding(SPR_ARROW_RIGHT, PAL_NONE, rr, SA_CENTER);
+	if (!MiniUiDrawControlGlyph(lr, button_colour, SPR_ARROW_LEFT)) DrawSpriteIgnorePadding(SPR_ARROW_LEFT, PAL_NONE, lr, SA_CENTER);
+	if (!MiniUiDrawControlGlyph(rr, button_colour, SPR_ARROW_RIGHT)) DrawSpriteIgnorePadding(SPR_ARROW_RIGHT, PAL_NONE, rr, SA_CENTER);
 
 	/* Grey out the buttons that aren't clickable */
 	bool rtl = _current_text_dir == TD_RTL;
@@ -1905,8 +1906,8 @@ void DrawUpDownButtons(int x, int y, Colours button_colour, uint8_t state, bool 
 
 	DrawFrameRect(ur, button_colour, (state == 1) ? FrameFlag::Lowered : FrameFlags{});
 	DrawFrameRect(dr, button_colour, (state == 2) ? FrameFlag::Lowered : FrameFlags{});
-	DrawSpriteIgnorePadding(SPR_ARROW_UP, PAL_NONE, ur, SA_CENTER);
-	DrawSpriteIgnorePadding(SPR_ARROW_DOWN, PAL_NONE, dr, SA_CENTER);
+	if (!MiniUiDrawControlGlyph(ur, button_colour, SPR_ARROW_UP)) DrawSpriteIgnorePadding(SPR_ARROW_UP, PAL_NONE, ur, SA_CENTER);
+	if (!MiniUiDrawControlGlyph(dr, button_colour, SPR_ARROW_DOWN)) DrawSpriteIgnorePadding(SPR_ARROW_DOWN, PAL_NONE, dr, SA_CENTER);
 
 	/* Grey out the buttons that aren't clickable */
 	if (!clickable_up) GfxFillRect(ur.Shrink(WidgetDimensions::scaled.bevel), colour, FILLRECT_CHECKER);
@@ -1928,7 +1929,7 @@ void DrawDropDownButton(int x, int y, Colours button_colour, bool state, bool cl
 	Rect r = {x, y, x + SETTING_BUTTON_WIDTH - 1, y + SETTING_BUTTON_HEIGHT - 1};
 
 	DrawFrameRect(r, button_colour, state ? FrameFlag::Lowered : FrameFlags{});
-	DrawSpriteIgnorePadding(SPR_ARROW_DOWN, PAL_NONE, r, SA_CENTER);
+	if (!MiniUiDrawControlGlyph(r, button_colour, SPR_ARROW_DOWN)) DrawSpriteIgnorePadding(SPR_ARROW_DOWN, PAL_NONE, r, SA_CENTER);
 
 	if (!clickable) {
 		GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), colour, FILLRECT_CHECKER);

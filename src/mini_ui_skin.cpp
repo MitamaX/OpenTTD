@@ -25,7 +25,9 @@ static PixelColour GlyphInk(Colours colour)
 
 static Rect GlyphBox(const Rect &r, int pad)
 {
-	int side = std::max(3, std::min(r.Width(), r.Height()) - 2 * pad);
+	int space = std::min(r.Width(), r.Height());
+	pad = std::min(pad, space / 4);
+	int side = std::max(3, space - 2 * pad);
 	int x = CentreBounds(r.left, r.right, side);
 	int y = CentreBounds(r.top, r.bottom, side);
 	return {x, y, x + side - 1, y + side - 1};
