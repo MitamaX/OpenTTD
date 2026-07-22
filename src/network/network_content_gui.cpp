@@ -8,6 +8,7 @@
 /** @file network_content_gui.cpp Implementation of the Network Content related GUIs. */
 
 #include "../stdafx.h"
+#include "../mini_ui.h"
 #include "../strings_func.h"
 #include "../gfx_func.h"
 #include "../window_func.h"
@@ -665,15 +666,17 @@ public:
 
 			SpriteID sprite;
 			SpriteID pal = PAL_NONE;
+			Colours glyph_colour = COLOUR_GREY;
 			switch (ci->state) {
 				case ContentInfo::State::Unselected: sprite = SPR_BOX_EMPTY; break;
 				case ContentInfo::State::Selected: sprite = SPR_BOX_CHECKED; break;
 				case ContentInfo::State::Autoselected: sprite = SPR_BOX_CHECKED; break;
-				case ContentInfo::State::AlreadyHere: sprite = SPR_BLOT; pal = PALETTE_TO_GREEN; break;
-				case ContentInfo::State::DoesNotExist: sprite = SPR_BLOT; pal = PALETTE_TO_RED; break;
+				case ContentInfo::State::AlreadyHere: sprite = SPR_BLOT; pal = PALETTE_TO_GREEN; glyph_colour = COLOUR_GREEN; break;
+				case ContentInfo::State::DoesNotExist: sprite = SPR_BLOT; pal = PALETTE_TO_RED; glyph_colour = COLOUR_RED; break;
 				default: NOT_REACHED();
 			}
-			DrawSpriteIgnorePadding(sprite, pal, checkbox.WithY(mr), SA_CENTER);
+			Rect cr = checkbox.WithY(mr);
+			if (!MiniUiDrawControlGlyph(cr, glyph_colour, sprite)) DrawSpriteIgnorePadding(sprite, pal, cr, SA_CENTER);
 
 			StringID str = STR_CONTENT_TYPE_BASE_GRAPHICS + ci->type - CONTENT_TYPE_BASE_GRAPHICS;
 			DrawString(type.left, type.right, mr.top + text_y_offset, str, TC_BLACK, SA_HOR_CENTER);

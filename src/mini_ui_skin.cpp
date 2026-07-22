@@ -118,6 +118,14 @@ bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite)
 		case SPR_PIN_DOWN: DrawDiscGlyph(b, false, ink, stroke); return true;
 		case SPR_WINDOW_DEFSIZE: DrawSquareGlyph(b, ink, stroke); return true;
 		case SPR_WINDOW_DEBUG:   DrawDiamondGlyph(b, ink); return true;
+		case SPR_BOX_EMPTY: DrawSquareGlyph(b, ink, stroke); return true;
+		case SPR_BOX_CHECKED: {
+			DrawSquareGlyph(b, ink, stroke);
+			Rect inner = b.Shrink(2 * stroke + 1);
+			if (inner.Width() > 0 && inner.Height() > 0) GfxFillRect(inner, ink);
+			return true;
+		}
+		case SPR_BLOT: DrawDiscGlyph(b, true, GetColourGradient(colour, SHADE_NORMAL), stroke); return true;
 		default: return false;
 	}
 }
