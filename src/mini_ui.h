@@ -10,6 +10,8 @@
 #ifndef MINI_UI_H
 #define MINI_UI_H
 
+#include "core/geometry_type.hpp"
+#include "gfx_type.h"
 #include "window_type.h"
 
 bool MiniUiActive();
@@ -20,5 +22,9 @@ bool MiniUiHandleKeypress(uint keycode, char32_t key);
 bool MiniUiHidesWindow(WindowClass wc);
 bool MiniUiHidesMouseCursor();
 void MiniUiScrollTo(int x, int y);
+
+bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);
+bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour);
+bool MiniUiDrawResizeGlyph(const Rect &r, Colours colour, bool at_left);
 
 #endif /* MINI_UI_H */

@@ -383,6 +383,8 @@ static inline void DrawImageButtons(const Rect &r, WidgetType type, Colours colo
 	assert(img != 0);
 	DrawFrameRect(r, colour, clicked ? FrameFlag::Lowered : FrameFlags{});
 
+	if (MiniUiDrawControlGlyph(r, colour, img)) return;
+
 	if ((type & WWT_MASK) == WWT_IMGBTN_2 && clicked) img++; // Show different image when clicked for #WWT_IMGBTN_2.
 	DrawSpriteIgnorePadding(img, PAL_NONE, r, align);
 }
@@ -723,6 +725,7 @@ static inline void DrawResizeBox(const Rect &r, Colours colour, bool at_left, bo
 	} else if (clicked) {
 		GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), GetColourGradient(colour, SHADE_LIGHTER));
 	}
+	if (MiniUiDrawResizeGlyph(r, colour, at_left)) return;
 	DrawSpriteIgnorePadding(at_left ? SPR_WINDOW_RESIZE_LEFT : SPR_WINDOW_RESIZE_RIGHT, PAL_NONE, r.Shrink(ScaleGUITrad(2)), at_left ? (SA_LEFT | SA_BOTTOM | SA_FORCE) : (SA_RIGHT | SA_BOTTOM | SA_FORCE));
 }
 
@@ -734,6 +737,7 @@ static inline void DrawResizeBox(const Rect &r, Colours colour, bool at_left, bo
 static inline void DrawCloseBox(const Rect &r, Colours colour)
 {
 	if (colour != COLOUR_WHITE) DrawFrameRect(r, colour, {});
+	if (MiniUiDrawCloseGlyph(r, colour)) return;
 	Point offset;
 	Dimension d = GetSpriteSize(SPR_CLOSEBOX, &offset);
 	d.width  -= offset.x;
@@ -837,12 +841,15 @@ void Window::DrawSortButtonState(WidgetID widget, SortButtonState state) const
 	if (state == SBS_OFF) return;
 
 	assert(!this->widget_lookup.empty());
-	Rect r = this->GetWidget<NWidgetBase>(widget)->GetCurrentRect();
+	const NWidgetCore *wid = this->GetWidget<NWidgetCore>(widget);
+	Rect r = wid->GetCurrentRect();
 
 	/* Sort button uses the same sprites as vertical scrollbar */
 	Dimension dim = NWidgetScrollbar::GetVerticalDimension();
 
-	DrawSpriteIgnorePadding(state == SBS_DOWN ? SPR_ARROW_DOWN : SPR_ARROW_UP, PAL_NONE, r.WithWidth(dim.width, _current_text_dir == TD_LTR), SA_CENTER);
+	Rect br = r.WithWidth(dim.width, _current_text_dir == TD_LTR);
+	if (MiniUiDrawControlGlyph(br, wid->colour, state == SBS_DOWN ? SPR_ARROW_DOWN : SPR_ARROW_UP)) return;
+	DrawSpriteIgnorePadding(state == SBS_DOWN ? SPR_ARROW_DOWN : SPR_ARROW_UP, PAL_NONE, br, SA_CENTER);
 }
 
 /**

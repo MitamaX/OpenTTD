@@ -262,6 +262,7 @@ add_files(
     map_type.h
     mini_ui.cpp
     mini_ui.h
+    mini_ui_skin.cpp
     misc.cpp
     misc_cmd.cpp
     misc_cmd.h
