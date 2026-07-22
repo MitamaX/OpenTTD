@@ -13,6 +13,7 @@
 
 #include "blitter/factory.hpp"
 #include "bridge_map.h"
+#include "cargotype.h"
 #include "clear_map.h"
 #include "command_func.h"
 #include "company_base.h"
@@ -282,6 +283,30 @@ static void ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 		int x = x0 + (x1 - x0) * i / std::max(steps, 1);
 		int y = y0 + (y1 - y0) * i / std::max(steps, 1);
 		FillRect(x - half, y - half, x - half + width - 1, y - half + width - 1, c);
+	}
+}
+
+static void FillCircle(int cx, int cy, int r, uint32_t c)
+{
+	for (int dy = -r; dy <= r; dy++) {
+		int w = (int)std::lround(std::sqrt((double)(r * r - dy * dy)));
+		FillRect(cx - w, cy + dy, cx + w, cy + dy, c);
+	}
+}
+
+static void FillDiamond(int cx, int cy, int r, uint32_t c)
+{
+	for (int dy = -r; dy <= r; dy++) {
+		int w = r - abs(dy);
+		FillRect(cx - w, cy + dy, cx + w, cy + dy, c);
+	}
+}
+
+static void FillTriangle(int cx, int cy, int r, uint32_t c)
+{
+	for (int dy = -r; dy <= r; dy++) {
+		int w = (dy + r) / 2;
+		FillRect(cx - w, cy + dy, cx + w, cy + dy, c);
 	}
 }
 
@@ -651,18 +676,50 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 	}
 }
 
+static uint32_t CargoRgb(CargoType ct)
+{
+	Colour c = _cur_palette.palette[CargoSpec::Get(ct)->legend_colour.p];
+	return 0xFF000000U | ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+}
+
+/* Silhouette tells the vehicle type apart: square train, round road
+ * vehicle, diamond ship, triangle aircraft. The centre dot is the unit's
+ * cargo in its legend colour. */
 static void DrawVehicles(int ppt)
 {
 	int half = std::max(3, ppt * 2 / 5) / 2;
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->type > VEH_AIRCRAFT) continue;
 		if (v->vehstatus.Test(VehState::Hidden)) continue;
+		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
+		int r = (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT) ? half + 2 : half;
 		int cx = PxX(v->x_pos / (double)TILE_SIZE);
 		int cy = PxY(v->y_pos / (double)TILE_SIZE);
-		if (cx < -half || cy < -half || cx >= _fbw + half || cy >= _fbh + half) continue;
+		if (cx < -r - 1 || cy < -r - 1 || cx >= _fbw + r + 1 || cy >= _fbh + r + 1) continue;
 		uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_OBJ;
-		FillRect(cx - half - 1, cy - half - 1, cx + half + 1, cy + half + 1, 0xFF14181CU);
-		FillRect(cx - half, cy - half, cx + half, cy + half, c);
+		switch (v->type) {
+			case VEH_ROAD:
+				FillCircle(cx, cy, r + 1, 0xFF14181CU);
+				FillCircle(cx, cy, r, c);
+				break;
+			case VEH_SHIP:
+				FillDiamond(cx, cy, r + 1, 0xFF14181CU);
+				FillDiamond(cx, cy, r, c);
+				break;
+			case VEH_AIRCRAFT:
+				FillTriangle(cx, cy, r + 1, 0xFF14181CU);
+				FillTriangle(cx, cy, r, c);
+				break;
+			default:
+				FillRect(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, 0xFF14181CU);
+				FillRect(cx - r, cy - r, cx + r, cy + r, c);
+				break;
+		}
+		if (half >= 3 && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
+			int dr = std::max(1, half - 2);
+			FillCircle(cx, cy, dr + 1, 0xFF14181CU);
+			FillCircle(cx, cy, dr, CargoRgb(v->cargo_type));
+		}
 	}
 }
 
