@@ -28,6 +28,7 @@
 #include "rail_cmd.h"
 #include "rail_map.h"
 #include "road_map.h"
+#include "slope_func.h"
 #include "station_map.h"
 #include "tile_map.h"
 #include "timer/timer_game_calendar.h"
@@ -169,13 +170,14 @@ static const uint32_t COL_BRIDGE = 0xFF9AA0A6U;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
 
-/* Hypsometric ramp, one flat colour per height level: green lowlands over
- * yellow-green midlands into brown highlands and grey peaks. */
+/* Hypsometric ramp, one flat colour per height level. Luminance falls
+ * monotonically with height so rising terrain always reads as darker:
+ * light green lowlands into deep green, olive, brown and dark peaks. */
 static const uint32_t _height_ramp[16] = {
-	0xFF4F9646U, 0xFF5CA14BU, 0xFF6AAC51U, 0xFF7AB658U,
-	0xFF8CBE61U, 0xFF9FC46CU, 0xFFB1C777U, 0xFFBFC47DU,
-	0xFFC4B673U, 0xFFBEA267U, 0xFFB28D5BU, 0xFFA37850U,
-	0xFF936648U, 0xFF876049U, 0xFF97815FU, 0xFFB3ACA4U,
+	0xFF9CC77AU, 0xFF8FBC6EU, 0xFF82B163U, 0xFF75A659U,
+	0xFF699B50U, 0xFF5E8F48U, 0xFF548342U, 0xFF66713AU,
+	0xFF6F6134U, 0xFF6F5530U, 0xFF6A4A2CU, 0xFF624027U,
+	0xFF583823U, 0xFF523522U, 0xFF45362AU, 0xFF3A3230U,
 };
 
 static const uint32_t _company_rgb[16] = {
@@ -305,9 +307,9 @@ static void DrawText(int x, int y, int scale, std::string_view text)
 	}
 }
 
-static uint32_t GroundColour(TileIndex tile)
+static uint32_t GroundColour(TileIndex tile, int h)
 {
-	int h = std::min<int>(TileHeight(tile), 15);
+	h = Clamp(h, 0, 15);
 	switch (GetTileType(tile)) {
 		case MP_CLEAR:
 			switch (GetClearGround(tile)) {
@@ -322,26 +324,41 @@ static uint32_t GroundColour(TileIndex tile)
 	}
 }
 
-/* Slopes catch light from the north-west: raised N/W corners lighten, raised S/E corners darken. */
-static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1)
+/* Base colour comes from the lowest corner; sloped tiles darken toward their
+ * higher corners with a bilinear gradient, matching the darker-is-higher ramp. */
+static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 {
-	FillRect(x0, y0, x1, y1, GroundColour(tile));
-	if (_ms.relief_strength == 0) return;
+	auto [s, hbase] = GetTileSlopeZ(tile);
+	FillRect(x0, y0, x1, y1, GroundColour(tile, hbase));
+	if (_ms.relief_strength == 0 || s == SLOPE_FLAT) return;
 
-	Slope s = GetTileSlope(tile);
-	if (s == SLOPE_FLAT) return;
+	int hn = GetSlopeZInCorner(s, CORNER_N);
+	int hw = GetSlopeZInCorner(s, CORNER_W);
+	int he = GetSlopeZInCorner(s, CORNER_E);
+	int hs = GetSlopeZInCorner(s, CORNER_S);
 
-	int d = 0;
-	if (s & SLOPE_N) d++;
-	if (s & SLOPE_W) d++;
-	if (s & SLOPE_S) d--;
-	if (s & SLOPE_E) d--;
-	if (d > 0) {
-		BlendRect(x0, y0, x1, y1, 0xFFFFFFFFU, _ms.relief_strength * d);
-	} else if (d < 0) {
-		BlendRect(x0, y0, x1, y1, 0xFF000000U, _ms.relief_strength * -d);
-	} else {
-		BlendRect(x0, y0, x1, y1, 0xFF000000U, _ms.relief_strength / 2);
+	if (ppt < 8) {
+		BlendRect(x0, y0, x1, y1, 0xFF000000U, _ms.relief_strength * (hn + hw + he + hs) / 4);
+		return;
+	}
+
+	const int sub = Clamp(ppt / 8, 2, 6);
+	int wpx = x1 - x0 + 1;
+	int hpx = y1 - y0 + 1;
+	int denom = (sub - 1) * (sub - 1);
+	for (int j = 0; j < sub; j++) {
+		for (int i = 0; i < sub; i++) {
+			int top = hn * (sub - 1 - i) + hw * i;
+			int bot = he * (sub - 1 - i) + hs * i;
+			int zq = top * (sub - 1 - j) + bot * j;
+			if (zq == 0) continue;
+			int sx0 = x0 + wpx * i / sub;
+			int sy0 = y0 + hpx * j / sub;
+			int sx1 = x0 + wpx * (i + 1) / sub - 1;
+			int sy1 = y0 + hpx * (j + 1) / sub - 1;
+			if (sx1 < sx0 || sy1 < sy0) continue;
+			BlendRect(sx0, sy0, sx1, sy1, 0xFF000000U, std::min(255, _ms.relief_strength * zq / denom));
+		}
 	}
 }
 
@@ -423,11 +440,11 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			break;
 
 		case MP_CLEAR:
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			break;
 
 		case MP_TREES: {
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			int cx = (x0 + x1) / 2;
 			int cy = (y0 + y1) / 2;
 			int r = std::max(1, ppt / 8);
@@ -436,7 +453,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 		}
 
 		case MP_RAILWAY:
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			if (IsRailDepot(tile)) {
 				DrawBlock(x0, y0, x1, y1, ppt, COL_ROAD, COL_RAIL);
 			} else {
@@ -445,7 +462,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			break;
 
 		case MP_ROAD:
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			if (IsLevelCrossing(tile)) {
 				DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
 				DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
@@ -458,12 +475,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			break;
 
 		case MP_HOUSE:
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			DrawBlock(x0, y0, x1, y1, ppt, COL_HOUSE, COL_HOUSE_B);
 			break;
 
 		case MP_INDUSTRY:
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			DrawBlock(x0, y0, x1, y1, ppt, COL_IND, COL_IND_B);
 			break;
 
@@ -485,7 +502,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				FillRect(x0, y0, x1, y1, COL_WATER);
 				water_tile = true;
 			} else {
-				DrawGround(tile, x0, y0, x1, y1);
+				DrawGround(tile, x0, y0, x1, y1, ppt);
 			}
 			DrawBlock(x0, y0, x1, y1, ppt, fill, border);
 			if (HasStationRail(tile)) DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
@@ -493,12 +510,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 		}
 
 		case MP_OBJECT:
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			DrawBlock(x0, y0, x1, y1, ppt, COL_OBJ, COL_OBJ_B);
 			break;
 
 		case MP_TUNNELBRIDGE: {
-			DrawGround(tile, x0, y0, x1, y1);
+			DrawGround(tile, x0, y0, x1, y1, ppt);
 			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
 			if (IsTunnel(tile)) {
 				DrawBlock(x0, y0, x1, y1, ppt, COL_TUNNEL, COL_RAIL);
