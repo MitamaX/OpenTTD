@@ -80,6 +80,7 @@
 #include "window_func.h"
 #include "tilehighlight_func.h"
 #include "window_gui.h"
+#include "mini_ui.h"
 #include "linkgraph/linkgraph_gui.h"
 #include "viewport_kdtree.h"
 #include "town_kdtree.h"
@@ -350,6 +351,9 @@ static void SetViewportPosition(Window *w, int x, int y)
 
 	vp.virtual_left = x;
 	vp.virtual_top = y;
+
+	/* A viewport hidden behind the mini UI must not scroll-blit the screen. */
+	if (MiniUiActive() && MiniUiHidesWindow(w->window_class)) return;
 
 	/* Viewport is bound to its left top corner, so it must be rounded down (UnScaleByZoomLower)
 	 * else glitch described in FS#1412 will happen (offset by 1 pixel with zoom level > NORMAL)
