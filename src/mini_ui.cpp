@@ -561,6 +561,7 @@ struct ZoomDetail {
 	bool cargo_dots;
 	bool vehicle_shapes;
 	bool station_names;
+	bool all_town_names;
 };
 
 static ZoomDetail _zd;
@@ -576,6 +577,7 @@ static void ComputeZoomDetail(int ppt)
 	_zd.cargo_dots = ppt >= 16;
 	_zd.vehicle_shapes = ppt >= 8;
 	_zd.station_names = ppt >= 8;
+	_zd.all_town_names = ppt >= 8;
 }
 
 static const int _diag_dx[4] = {-1, 0, 1, 0};
@@ -1111,6 +1113,7 @@ static void DrawLabels()
 	int margin = 300;
 	int limit = GetCharacterHeight(FS_NORMAL) + 20;
 	for (const Town *t : Town::Iterate()) {
+		if (!_zd.all_town_names && !t->larger_town) continue;
 		int cx = PxX(TileX(t->xy) + 0.5);
 		int cy = PxY(TileY(t->xy) + 0.5);
 		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
