@@ -86,6 +86,7 @@ struct MiniSettings {
 	int edge_scroll = 1;
 	int edge_margin = 24;
 	double edge_scroll_speed = 1600.0;
+	double drag_pan_multiplier = 2.0;
 };
 
 static MiniSettings _ms;
@@ -136,6 +137,7 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "edge_scroll", _ms.edge_scroll);
 	ReadIniNumber(group, "edge_margin", _ms.edge_margin);
 	ReadIniNumber(group, "edge_scroll_speed", _ms.edge_scroll_speed);
+	ReadIniNumber(group, "drag_pan_multiplier", _ms.drag_pan_multiplier);
 
 	_ms.pan_speed = Clamp(_ms.pan_speed, 100.0, 10000.0);
 	_ms.pan_speed_fast = Clamp(_ms.pan_speed_fast, 100.0, 20000.0);
@@ -146,6 +148,7 @@ static void LoadMiniSettings()
 	_ms.relief_strength = Clamp(_ms.relief_strength, 0, 60);
 	_ms.edge_margin = Clamp(_ms.edge_margin, 2, 200);
 	_ms.edge_scroll_speed = Clamp(_ms.edge_scroll_speed, 100.0, 10000.0);
+	_ms.drag_pan_multiplier = Clamp(_ms.drag_pan_multiplier, 0.5, 8.0);
 
 	ini.SaveToDisk(path);
 }
@@ -170,14 +173,13 @@ static const uint32_t COL_BRIDGE = 0xFF9AA0A6U;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
 
-/* Hypsometric ramp, one flat colour per height level. Luminance falls
- * monotonically with height so rising terrain always reads as darker:
- * light green lowlands into deep green, olive, brown and dark peaks. */
+/* All-green ramp like the old top-down renderer settled on: one step
+ * darker per height level, hue constant so slopes match their neighbours. */
 static const uint32_t _height_ramp[16] = {
-	0xFF9CC77AU, 0xFF8FBC6EU, 0xFF82B163U, 0xFF75A659U,
-	0xFF699B50U, 0xFF5E8F48U, 0xFF548342U, 0xFF66713AU,
-	0xFF6F6134U, 0xFF6F5530U, 0xFF6A4A2CU, 0xFF624027U,
-	0xFF583823U, 0xFF523522U, 0xFF45362AU, 0xFF3A3230U,
+	0xFF9CCB74U, 0xFF91C16CU, 0xFF86B765U, 0xFF7CAD5EU,
+	0xFF71A357U, 0xFF679950U, 0xFF5D8F49U, 0xFF538443U,
+	0xFF4A7A3DU, 0xFF417037U, 0xFF386631U, 0xFF305C2BU,
+	0xFF285226U, 0xFF214921U, 0xFF1A3F1CU, 0xFF143618U,
 };
 
 static const uint32_t _company_rgb[16] = {
@@ -787,8 +789,8 @@ bool MiniUiHandleMouseEvents()
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
 		_zoom_anchored = false;
-		_cam_x -= _cursor.delta.x / _cam_ppt;
-		_cam_y -= _cursor.delta.y / _cam_ppt;
+		_cam_x -= _cursor.delta.x * _ms.drag_pan_multiplier / _cam_ppt;
+		_cam_y -= _cursor.delta.y * _ms.drag_pan_multiplier / _cam_ppt;
 		ClampCamera();
 	}
 
