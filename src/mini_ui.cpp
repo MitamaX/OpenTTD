@@ -48,6 +48,7 @@
 #include "tunnelbridge_cmd.h"
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
+#include "vehicle_cmd.h"
 #include "video/video_driver.hpp"
 #include "water_map.h"
 #include "window_func.h"
@@ -105,6 +106,7 @@ static bool _drag_remove = false;
 static double _drag_ax, _drag_ay;
 
 static VehicleID _sel_vehicle = VehicleID::Invalid();
+static bool _follow = false;
 
 static bool _prev_left = false;
 
@@ -1390,7 +1392,13 @@ static void DrawHud()
 		case MiniTool::RailBridge: hint = "RAIL BRIDGE: DRAG SPAN / CLICK SLOPE TUNNEL / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::RoadBridge: hint = "ROAD BRIDGE: DRAG SPAN / CLICK SLOPE TUNNEL / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::Terraform: hint = "TERRAIN: DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
-		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE  Z TERRAIN  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
+		default:
+			if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
+				hint = _follow ? "FOLLOWING  P START STOP  H UNFOLLOW  ESC DESELECT" : "P START STOP  H FOLLOW  ESC DESELECT";
+			} else {
+				hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE  Z TERRAIN  X CLEAR  SPACE PAUSE  F9 EXIT";
+			}
+			break;
 	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
@@ -1421,6 +1429,7 @@ static void ClampCamera()
 static void ZoomAt(int sx, int sy, bool in)
 {
 	_dest_ppt = Clamp(_dest_ppt * (in ? _ms.zoom_step : 1.0 / _ms.zoom_step), MIN_PPT, MAX_PPT);
+	if (_follow) return;
 	/* Anchor the world point under the cursor; the camera follows it every
 	 * frame while the scale animates, so the point never drifts. */
 	_zoom_sx = sx;
@@ -1437,6 +1446,7 @@ static void Deactivate()
 	_dragging = false;
 	_zoom_anchored = false;
 	_sel_vehicle = VehicleID::Invalid();
+	_follow = false;
 	ClearPlans();
 	MarkWholeScreenDirty();
 }
@@ -1475,6 +1485,7 @@ bool MiniUiHandleMouseEvents()
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
 		_zoom_anchored = false;
+		_follow = false;
 		_cam_x -= _cursor.delta.x * _ms.drag_pan_multiplier / _cam_ppt;
 		_cam_y -= _cursor.delta.y * _ms.drag_pan_multiplier / _cam_ppt;
 		ClampCamera();
@@ -1553,6 +1564,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				_tool = MiniTool::None;
 			} else if (_sel_vehicle != VehicleID::Invalid()) {
 				_sel_vehicle = VehicleID::Invalid();
+				_follow = false;
 			} else {
 				Deactivate();
 			}
@@ -1606,6 +1618,16 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			_tool = _tool == MiniTool::Terraform ? MiniTool::None : MiniTool::Terraform;
 			break;
 
+		case 'P':
+			if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
+				Command<CMD_START_STOP_VEHICLE>::Post(v->tile, _sel_vehicle, false);
+			}
+			break;
+
+		case 'H':
+			_follow = !_follow && Vehicle::GetIfValid(_sel_vehicle) != nullptr;
+			break;
+
 		case WKC_SPACE:
 			Command<CMD_PAUSE>::Post(PauseMode::Normal, !_pause_mode.Test(PauseMode::Normal));
 			break;
@@ -1634,6 +1656,7 @@ bool MiniUiFrame(uint delta_ms)
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
 	if (_dirkeys != 0) {
 		_zoom_anchored = false;
+		_follow = false;
 		double px = (_shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed) * delta_ms / 1000.0 / _cam_ppt;
 		if (_dirkeys & 1) _cam_x -= px;
 		if (_dirkeys & 2) _cam_y -= px;
@@ -1651,8 +1674,20 @@ bool MiniUiFrame(uint delta_ms)
 		if (_cursor.pos.y >= _fbh - _ms.edge_margin) ey = px;
 		if (ex != 0.0 || ey != 0.0) {
 			_zoom_anchored = false;
+			_follow = false;
 			_cam_x += ex;
 			_cam_y += ey;
+			ClampCamera();
+		}
+	}
+
+	if (_follow) {
+		const Vehicle *fv = Vehicle::GetIfValid(_sel_vehicle);
+		if (fv == nullptr) {
+			_follow = false;
+		} else {
+			_cam_x = fv->x_pos / (double)TILE_SIZE;
+			_cam_y = fv->y_pos / (double)TILE_SIZE;
 			ClampCamera();
 		}
 	}
