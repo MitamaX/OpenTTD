@@ -25,7 +25,9 @@
 #include "ground_vehicle.hpp"
 #include "ini_type.h"
 #include "landscape.h"
+#include "landscape_cmd.h"
 #include "misc_cmd.h"
+#include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "openttd.h"
 #include "palette_func.h"
@@ -67,7 +69,16 @@ enum class MiniTool : uint8_t {
 	Rail,
 	Road,
 	Station,
+	BusStop,
+	TruckStop,
+	TrainDepot,
+	RoadDepot,
 };
+
+static bool IsPointTool(MiniTool t)
+{
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot;
+}
 
 static MiniTool _tool = MiniTool::None;
 static bool _dragging = false;
@@ -1025,6 +1036,90 @@ static void CommitStationPlan()
 	ClearPlans();
 }
 
+static Axis DragAxis(double wx, double wy, TileIndex tile)
+{
+	double dx = wx - _drag_ax;
+	double dy = wy - _drag_ay;
+	if (std::abs(dx) < 0.25 && std::abs(dy) < 0.25) {
+		RoadBits rb = IsTileType(tile, MP_ROAD) && IsNormalRoad(tile) ? GetRoadBits(tile, RTT_ROAD) : ROAD_NONE;
+		if ((rb & ROAD_Y) != ROAD_NONE && (rb & ROAD_X) == ROAD_NONE) return AXIS_Y;
+		return AXIS_X;
+	}
+	return std::abs(dx) >= std::abs(dy) ? AXIS_X : AXIS_Y;
+}
+
+static DiagDirection DragDir(double wx, double wy)
+{
+	double dx = wx - _drag_ax;
+	double dy = wy - _drag_ay;
+	if (std::abs(dx) >= std::abs(dy)) return dx >= 0 ? DIAGDIR_SW : DIAGDIR_NE;
+	return dy >= 0 ? DIAGDIR_SE : DIAGDIR_NW;
+}
+
+static void CommitPointTool(double wx, double wy)
+{
+	int tx = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
+	int ty = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
+	TileIndex tile = TileXY(tx, ty);
+
+	switch (_tool) {
+		case MiniTool::BusStop:
+		case MiniTool::TruckStop: {
+			RoadStopType st = _tool == MiniTool::BusStop ? RoadStopType::Bus : RoadStopType::Truck;
+			if (_drag_remove) {
+				Command<CMD_REMOVE_ROAD_STOP>::Post(tile, 1, 1, st, false);
+			} else {
+				DiagDirection ddir = AxisToDiagDir(DragAxis(wx, wy, tile));
+				Command<CMD_BUILD_ROAD_STOP>::Post(tile, 1, 1, st, true, ddir, PickRoadType(), ROADSTOP_CLASS_DFLT, 0, StationID::Invalid(), false);
+			}
+			break;
+		}
+
+		case MiniTool::TrainDepot:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(tile);
+			} else {
+				Command<CMD_BUILD_TRAIN_DEPOT>::Post(tile, PickRailType(), DragDir(wx, wy));
+			}
+			break;
+
+		case MiniTool::RoadDepot:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(tile);
+			} else {
+				Command<CMD_BUILD_ROAD_DEPOT>::Post(tile, PickRoadType(), DragDir(wx, wy));
+			}
+			break;
+
+		default:
+			break;
+	}
+}
+
+static void DrawPointToolPlan(int ppt)
+{
+	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
+	int tx = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
+	int ty = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
+	int x0 = PxX(tx);
+	int y0 = PxY(ty);
+	int x1 = PxX(tx + 1) - 1;
+	int y1 = PxY(ty + 1) - 1;
+	BlendRect(x0, y0, x1, y1, c, 90);
+	if (_drag_remove) return;
+
+	double wx = WorldX(_cursor.pos.x);
+	double wy = WorldY(_cursor.pos.y);
+	if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+		DrawAxisBand(DragAxis(wx, wy, TileXY(tx, ty)), x0, y0, x1, y1, std::max(2, ppt / 3), c);
+	} else {
+		DiagDirection d = DragDir(wx, wy);
+		int cx = (x0 + x1) / 2;
+		int cy = (y0 + y1) / 2;
+		ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 5), c);
+	}
+}
+
 static void CommitRoadPlan()
 {
 	if (_road_plan.start == INVALID_TILE) return;
@@ -1081,7 +1176,11 @@ static void DrawHud()
 		case MiniTool::Rail: hint = "RAIL: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::Road: hint = "ROAD: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::Station: hint = "STATION: DRAG AREA / CTRL DRAG REMOVE / RMB CANCEL"; break;
-		default: hint = "R RAIL   E ROAD   T STATION   SPACE PAUSE   F9 EXIT"; break;
+		case MiniTool::BusStop: hint = "BUS STOP: DRAG SETS AXIS / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::TruckStop: hint = "TRUCK STOP: DRAG SETS AXIS / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::TrainDepot: hint = "TRAIN DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::RoadDepot: hint = "ROAD DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  SPACE PAUSE  F9 EXIT"; break;
 	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
@@ -1193,6 +1292,7 @@ bool MiniUiHandleMouseEvents()
 		if (_tool == MiniTool::Rail) CommitRailPlan();
 		if (_tool == MiniTool::Road) CommitRoadPlan();
 		if (_tool == MiniTool::Station) CommitStationPlan();
+		if (IsPointTool(_tool)) CommitPointTool(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 	}
 	_prev_left = _left_button_down;
 
@@ -1250,6 +1350,22 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'T':
 			_tool = _tool == MiniTool::Station ? MiniTool::None : MiniTool::Station;
+			break;
+
+		case 'B':
+			_tool = _tool == MiniTool::BusStop ? MiniTool::None : MiniTool::BusStop;
+			break;
+
+		case 'G':
+			_tool = _tool == MiniTool::TruckStop ? MiniTool::None : MiniTool::TruckStop;
+			break;
+
+		case 'F':
+			_tool = _tool == MiniTool::TrainDepot ? MiniTool::None : MiniTool::TrainDepot;
+			break;
+
+		case 'V':
+			_tool = _tool == MiniTool::RoadDepot ? MiniTool::None : MiniTool::RoadDepot;
 			break;
 
 		case WKC_SPACE:
@@ -1340,6 +1456,8 @@ bool MiniUiFrame(uint delta_ms)
 		} else if (_tool == MiniTool::Station) {
 			UpdateStationPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 			DrawStationPlan(ppt);
+		} else if (IsPointTool(_tool)) {
+			DrawPointToolPlan(ppt);
 		}
 	} else if (_tool != MiniTool::None) {
 		int htx = (int)std::floor(WorldX(_cursor.pos.x));
