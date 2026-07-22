@@ -38,9 +38,11 @@
 #include "road_map.h"
 #include "settings_type.h"
 #include "slope_func.h"
+#include "station_base.h"
 #include "station_cmd.h"
 #include "station_map.h"
 #include "terraform_cmd.h"
+#include "town.h"
 #include "tile_map.h"
 #include "timer/timer_game_calendar.h"
 #include "tunnelbridge_cmd.h"
@@ -381,11 +383,11 @@ static void DrawChar(int x, int y, int scale, char c, uint32_t col)
 	}
 }
 
-static void DrawText(int x, int y, int scale, std::string_view text)
+static void DrawText(int x, int y, int scale, std::string_view text, uint32_t col = 0xFFEDF2F7U)
 {
 	for (char c : text) {
 		DrawChar(x + scale, y + scale, scale, c, 0xFF14181CU);
-		DrawChar(x, y, scale, c, 0xFFEDF2F7U);
+		DrawChar(x, y, scale, c, col);
 		x += 6 * scale;
 	}
 }
@@ -517,6 +519,7 @@ struct ZoomDetail {
 	bool oneway;
 	bool cargo_dots;
 	bool vehicle_shapes;
+	bool station_names;
 };
 
 static ZoomDetail _zd;
@@ -531,6 +534,7 @@ static void ComputeZoomDetail(int ppt)
 	_zd.oneway = ppt >= 8;
 	_zd.cargo_dots = ppt >= 16;
 	_zd.vehicle_shapes = ppt >= 8;
+	_zd.station_names = ppt >= 8;
 }
 
 static const int _diag_dx[4] = {-1, 0, 1, 0};
@@ -840,6 +844,29 @@ static void DrawVehicles(int ppt)
 			FillCircle(cx, cy, dr + 1, 0xFF14181CU);
 			FillCircle(cx, cy, dr, CargoRgb(v->cargo_type));
 		}
+	}
+}
+
+/* Town names always show for navigation; station names join at the
+ * infrastructure zoom tier. Labels sit centred above their sign tile. */
+static void DrawLabels()
+{
+	int s = 1;
+	int margin = 40 * 6 * s;
+	for (const Town *t : Town::Iterate()) {
+		int cx = PxX(TileX(t->xy) + 0.5);
+		int cy = PxY(TileY(t->xy) + 0.5);
+		if (cx < -margin || cy < -20 || cx >= _fbw + margin || cy >= _fbh + 20) continue;
+		const std::string &name = t->GetCachedName();
+		DrawText(cx - (int)name.size() * 3 * s, cy - 10 * s, s, name);
+	}
+	if (!_zd.station_names) return;
+	for (const Station *st : Station::Iterate()) {
+		int cx = PxX(TileX(st->xy) + 0.5);
+		int cy = PxY(TileY(st->xy) + 0.5);
+		if (cx < -margin || cy < -20 || cx >= _fbw + margin || cy >= _fbh + 20) continue;
+		const std::string &name = st->GetCachedName();
+		DrawText(cx - (int)name.size() * 3 * s, cy - 10 * s, s, name, 0xFF9CD4FFU);
 	}
 }
 
@@ -1619,6 +1646,7 @@ bool MiniUiFrame(uint delta_ms)
 	}
 
 	DrawVehicles(ppt);
+	DrawLabels();
 	DrawHud();
 	DrawCursor();
 	Present();
