@@ -85,7 +85,6 @@ struct MiniSettings {
 };
 
 static MiniSettings _ms;
-static bool _ms_loaded = false;
 
 static bool _zoom_anchored = false;
 static int _zoom_sx, _zoom_sy;
@@ -113,10 +112,10 @@ static void ReadIniNumber(IniGroup &group, std::string_view name, int &v)
 	}
 }
 
+/* Re-read on every activation, so tuning only needs an F9 round trip. */
 static void LoadMiniSettings()
 {
-	if (_ms_loaded) return;
-	_ms_loaded = true;
+	_ms = {};
 
 	std::string path = _personal_dir + "mini_ui.cfg";
 	IniFile ini;
@@ -688,6 +687,14 @@ static void Present()
 	uint32_t *dst = (uint32_t *)_screen.dst_ptr;
 	for (int y = 0; y < _fbh; y++) {
 		std::copy_n(_fb.data() + (size_t)y * _fbw, _fbw, dst + (size_t)y * _screen.pitch);
+	}
+	/* The 40bpp-anim path composes the screen from colour and palette-index
+	 * buffers in a shader; stale indexes override direct colour writes, so
+	 * clear them or the old interface stays baked over the frame. */
+	if (uint8_t *anim = VideoDriver::GetInstance()->GetAnimBuffer(); anim != nullptr) {
+		for (int y = 0; y < _fbh; y++) {
+			std::fill_n(anim + (size_t)y * _screen.pitch, _fbw, 0);
+		}
 	}
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
