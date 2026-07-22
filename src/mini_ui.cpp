@@ -387,11 +387,34 @@ static void DrawScreenText(int x, int y, std::string_view text, TextColour colou
 	DrawString(x, _fbw - 1, y, text, colour, SA_LEFT | SA_FORCE);
 }
 
-static void DrawScreenTextCentred(int cx, int y, std::string_view text, TextColour colour = TC_WHITE)
+/* HUD text sits on an ink plate blended straight into _screen, because the
+ * HUD is drawn natively after Present() has already copied the frame. */
+static void ScreenBlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
 {
-	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
-	int half = GetStringBoundingBox(text).width / 2 + 1;
-	DrawString(cx - half, cx + half, y, text, colour, SA_HOR_CENTER | SA_FORCE);
+	x0 = std::max(x0, 0);
+	y0 = std::max(y0, 0);
+	x1 = std::min(x1, _fbw - 1);
+	y1 = std::min(y1, _fbh - 1);
+	if (x1 < x0 || y1 < y0) return;
+	uint32_t *dst = (uint32_t *)_screen.dst_ptr;
+	for (int y = y0; y <= y1; y++) {
+		uint32_t *row = dst + (size_t)y * _screen.pitch;
+		for (int x = x0; x <= x1; x++) row[x] = Mix(row[x], c, alpha);
+	}
+}
+
+static void DrawHudText(int x, int y, std::string_view text)
+{
+	int pad = 3;
+	int w = GetStringBoundingBox(text).width;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	ScreenBlendRect(x - pad, y - pad, x + w + pad, y + lh + pad - 1, COL_INK, 200);
+	DrawScreenText(x, y, text);
+}
+
+static void DrawHudTextCentred(int cx, int y, std::string_view text)
+{
+	DrawHudText(cx - GetStringBoundingBox(text).width / 2, y, text);
 }
 
 static uint32_t GroundColour(TileIndex tile, int h)
@@ -1544,9 +1567,9 @@ static void DrawHud()
 	const Company *c = Company::GetIfValid(_local_company);
 	if (c != nullptr) line += fmt::format("   {}", FormatMoney((int64_t)c->money));
 	int lh = GetCharacterHeight(FS_NORMAL);
-	DrawScreenText(6 * s, 6 * s, line);
+	DrawHudText(6 * s, 6 * s, line);
 
-	if (_pause_mode.Any()) DrawScreenTextCentred(_fbw / 2, 6 * s, "PAUSED");
+	if (_pause_mode.Any()) DrawHudTextCentred(_fbw / 2, 6 * s, "PAUSED");
 
 	if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
 		static const std::string_view kinds[4] = {"TRAIN", "ROAD", "SHIP", "PLANE"};
@@ -1566,7 +1589,7 @@ static void DrawHud()
 			info += fmt::format("  {} {}/{}", std::string_view(lab, 4), stored, cap);
 		}
 		info += fmt::format("  ORDERS {}  PROFIT {}", v->GetNumOrders(), FormatMoney(v->GetDisplayProfitThisYear()));
-		DrawScreenText(6 * s, 6 * s + lh + 2, info);
+		DrawHudText(6 * s, 6 * s + lh + 8, info);
 	}
 
 	std::string_view hint;
@@ -1595,8 +1618,8 @@ static void DrawHud()
 			}
 			break;
 	}
-	DrawScreenText(6 * s, _fbh - lh - 6 * s, hint);
-	if (!hint2.empty()) DrawScreenText(6 * s, _fbh - 2 * lh - 6 * s - 2, hint2);
+	DrawHudText(6 * s, _fbh - lh - 6 * s, hint);
+	if (!hint2.empty()) DrawHudText(6 * s, _fbh - 2 * lh - 6 * s - 8, hint2);
 }
 
 static void Present()
