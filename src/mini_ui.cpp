@@ -40,6 +40,7 @@
 #include "slope_func.h"
 #include "station_cmd.h"
 #include "station_map.h"
+#include "terraform_cmd.h"
 #include "tile_map.h"
 #include "timer/timer_game_calendar.h"
 #include "tunnelbridge_cmd.h"
@@ -78,7 +79,13 @@ enum class MiniTool : uint8_t {
 	Signal,
 	RailBridge,
 	RoadBridge,
+	Terraform,
 };
+
+static bool IsRectTool(MiniTool t)
+{
+	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform;
+}
 
 static bool IsBridgeTool(MiniTool t)
 {
@@ -1074,6 +1081,22 @@ static void CommitDemolishPlan()
 	ClearPlans();
 }
 
+/* Levelling copies the anchor tile's height, so the anchor corner is passed
+ * as the reference tile rather than the normalised rectangle origin. */
+static void CommitTerraformPlan()
+{
+	if (!_rect_plan.valid) return;
+	int ax = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
+	int ay = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
+	int ex = _rect_plan.x0 == ax ? _rect_plan.x1 : _rect_plan.x0;
+	int ey = _rect_plan.y0 == ay ? _rect_plan.y1 : _rect_plan.y0;
+	TileIndex anchor = TileXY(ax, ay);
+	TileIndex end = TileXY(ex, ey);
+	LevelMode lm = _drag_remove ? LM_LOWER : (anchor == end ? LM_RAISE : LM_LEVEL);
+	Command<CMD_LEVEL_LAND>::Post(end, anchor, false, lm);
+	ClearPlans();
+}
+
 static Axis DragAxis(double wx, double wy, TileIndex tile)
 {
 	double dx = wx - _drag_ax;
@@ -1283,7 +1306,8 @@ static void DrawHud()
 		case MiniTool::Signal: hint = "SIGNAL: CLICK BUILD OR CYCLE / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::RailBridge: hint = "RAIL BRIDGE: DRAG SPAN / CLICK SLOPE TUNNEL / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::RoadBridge: hint = "ROAD BRIDGE: DRAG SPAN / CLICK SLOPE TUNNEL / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
+		case MiniTool::Terraform: hint = "TERRAIN: DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
+		default: hint = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I BRIDGE  Z TERRAIN  X CLEAR  SPACE PAUSE  F9 EXIT"; break;
 	}
 	DrawText(6 * s, _fbh - 13 * s, s, hint);
 }
@@ -1386,7 +1410,7 @@ bool MiniUiHandleMouseEvents()
 			_drag_ay = WorldY(_cursor.pos.y);
 			if (_tool == MiniTool::Rail) UpdateRailPlan(_drag_ax, _drag_ay);
 			if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(_drag_ax, _drag_ay);
-			if (_tool == MiniTool::Station || _tool == MiniTool::Demolish) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
+			if (IsRectTool(_tool)) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
 		}
 	}
 
@@ -1397,6 +1421,7 @@ bool MiniUiHandleMouseEvents()
 		if (IsBridgeTool(_tool)) CommitBridgePlan();
 		if (_tool == MiniTool::Station) CommitStationPlan();
 		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
+		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
 		if (IsPointTool(_tool)) CommitPointTool(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 	}
 	_prev_left = _left_button_down;
@@ -1489,6 +1514,10 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			_tool = _tool == MiniTool::RoadBridge ? MiniTool::None : MiniTool::RoadBridge;
 			break;
 
+		case 'Z':
+			_tool = _tool == MiniTool::Terraform ? MiniTool::None : MiniTool::Terraform;
+			break;
+
 		case WKC_SPACE:
 			Command<CMD_PAUSE>::Post(PauseMode::Normal, !_pause_mode.Test(PauseMode::Normal));
 			break;
@@ -1574,7 +1603,7 @@ bool MiniUiFrame(uint delta_ms)
 		} else if (_tool == MiniTool::Road || IsBridgeTool(_tool)) {
 			UpdateRoadPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 			DrawRoadPlan(ppt);
-		} else if (_tool == MiniTool::Station || _tool == MiniTool::Demolish) {
+		} else if (IsRectTool(_tool)) {
 			UpdateRectPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y), RectPlanLimit());
 			DrawRectPlan(ppt);
 		} else if (IsPointTool(_tool)) {
