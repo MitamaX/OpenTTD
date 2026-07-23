@@ -166,7 +166,7 @@ struct MiniSettings {
 	int menu_panel_rows = 4;
 	int contour_alpha = 120;
 	int relief_strength = 22;
-	int edge_scroll = 1;
+	int edge_scroll = 0;
 	int edge_margin = 24;
 	double edge_scroll_speed = 1600.0;
 	double drag_pan_multiplier = 2.0;
