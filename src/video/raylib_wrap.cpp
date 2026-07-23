@@ -55,6 +55,10 @@ void RlwPoll(RlwInput &in)
 	in.dir_up = IsKeyDown(KEY_UP);
 	in.dir_right = IsKeyDown(KEY_RIGHT);
 	in.dir_down = IsKeyDown(KEY_DOWN);
+	in.key_w = IsKeyDown(KEY_W);
+	in.key_a = IsKeyDown(KEY_A);
+	in.key_s = IsKeyDown(KEY_S);
+	in.key_d = IsKeyDown(KEY_D);
 	in.tab = IsKeyDown(KEY_TAB);
 	in.close_requested = WindowShouldClose();
 	in.resized = IsWindowResized();

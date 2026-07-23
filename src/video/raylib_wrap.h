@@ -27,6 +27,10 @@ struct RlwInput {
 	bool dir_up = false;
 	bool dir_right = false;
 	bool dir_down = false;
+	bool key_w = false;
+	bool key_a = false;
+	bool key_s = false;
+	bool key_d = false;
 	bool tab = false;
 	bool close_requested = false;
 	bool resized = false;

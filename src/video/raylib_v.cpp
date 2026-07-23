@@ -15,6 +15,7 @@
 #include "../core/math_func.hpp"
 #include "../core/utf8.hpp"
 #include "../framerate_type.h"
+#include "../mini_ui.h"
 #include "../progress.h"
 #include "../string_func.h"
 #include "../window_func.h"
@@ -167,6 +168,13 @@ void VideoDriver_Raylib::InputLoop()
 		(in.dir_up    ? 2 : 0) |
 		(in.dir_right ? 4 : 0) |
 		(in.dir_down  ? 8 : 0);
+	if (MiniUiActive() && !EditBoxInGlobalFocus()) {
+		_dirkeys |=
+			(in.key_a ? 1 : 0) |
+			(in.key_w ? 2 : 0) |
+			(in.key_d ? 4 : 0) |
+			(in.key_s ? 8 : 0);
+	}
 	if (old_ctrl_pressed != _ctrl_pressed) HandleCtrlChanged();
 
 	if (_cursor.UpdateCursorPosition(in.mouse_x, in.mouse_y)) {
