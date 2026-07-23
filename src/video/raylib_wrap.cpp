@@ -10,6 +10,8 @@
 #include "../stdafx.h"
 #include "../gfx_type.h"
 #include <raylib.h>
+#include <unordered_map>
+#include <vector>
 #include "raylib_wrap.h"
 
 #include "../safeguards.h"
@@ -17,6 +19,30 @@
 static Texture2D _rlw_tex;
 static bool _rlw_tex_ok = false;
 static int _rlw_tex_w, _rlw_tex_h;
+
+enum class RlwCmdType : uint8_t {
+	Rect,
+	Line,
+	Circle,
+	Diamond,
+	Triangle,
+	TexQuad,
+};
+
+struct RlwCmd {
+	RlwCmdType type;
+	int a, b, c, d, e;
+	uint32_t col;
+};
+
+static std::vector<RlwCmd> _rlw_cmds;
+static std::unordered_map<int, Texture2D> _rlw_user_tex;
+static int _rlw_next_tex = 1;
+
+static Color RlwColour(uint32_t argb)
+{
+	return { (uint8_t)(argb >> 16), (uint8_t)(argb >> 8), (uint8_t)argb, (uint8_t)(argb >> 24) };
+}
 
 bool RlwInit(int w, int h, const char *title)
 {
@@ -34,6 +60,8 @@ void RlwClose()
 		UnloadTexture(_rlw_tex);
 		_rlw_tex_ok = false;
 	}
+	for (auto &[id, tex] : _rlw_user_tex) UnloadTexture(tex);
+	_rlw_user_tex.clear();
 	CloseWindow();
 }
 
@@ -152,27 +180,160 @@ char32_t RlwNextChar()
 	return (char32_t)GetCharPressed();
 }
 
+/* (Re)creates the screen texture at the given size; fresh textures start
+ * from the passed pixels, matching ones are left untouched. */
+static bool RlwEnsureScreenTexture(const uint32_t *rgba, int w, int h)
+{
+	if (_rlw_tex_ok && _rlw_tex_w == w && _rlw_tex_h == h) return false;
+	if (_rlw_tex_ok) UnloadTexture(_rlw_tex);
+	Image img;
+	img.data = const_cast<uint32_t *>(rgba);
+	img.width = w;
+	img.height = h;
+	img.mipmaps = 1;
+	img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+	_rlw_tex = LoadTextureFromImage(img);
+	_rlw_tex_ok = true;
+	_rlw_tex_w = w;
+	_rlw_tex_h = h;
+	return true;
+}
+
 void RlwPresent(const uint32_t *rgba, int w, int h)
 {
-	if (!_rlw_tex_ok || _rlw_tex_w != w || _rlw_tex_h != h) {
-		if (_rlw_tex_ok) UnloadTexture(_rlw_tex);
-		Image img;
-		img.data = const_cast<uint32_t *>(rgba);
-		img.width = w;
-		img.height = h;
-		img.mipmaps = 1;
-		img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-		_rlw_tex = LoadTextureFromImage(img);
-		_rlw_tex_ok = true;
-		_rlw_tex_w = w;
-		_rlw_tex_h = h;
-	} else {
-		UpdateTexture(_rlw_tex, rgba);
-	}
+	if (!RlwEnsureScreenTexture(rgba, w, h)) UpdateTexture(_rlw_tex, rgba);
 
 	BeginDrawing();
 	ClearBackground(BLACK);
 	DrawTexture(_rlw_tex, 0, 0, WHITE);
+	EndDrawing();
+}
+
+void RlwCmdClear()
+{
+	_rlw_cmds.clear();
+}
+
+void RlwCmdRect(int x0, int y0, int x1, int y1, uint32_t argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::Rect, x0, y0, x1, y1, 0, argb});
+}
+
+void RlwCmdLine(int x0, int y0, int x1, int y1, int width, uint32_t argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::Line, x0, y0, x1, y1, width, argb});
+}
+
+void RlwCmdCircle(int cx, int cy, int r, uint32_t argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::Circle, cx, cy, r, 0, 0, argb});
+}
+
+void RlwCmdDiamond(int cx, int cy, int r, uint32_t argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::Diamond, cx, cy, r, 0, 0, argb});
+}
+
+void RlwCmdTriangle(int cx, int cy, int r, uint32_t argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::Triangle, cx, cy, r, 0, 0, argb});
+}
+
+void RlwCmdTexQuad(int tex, int x, int y, uint32_t tint_argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::TexQuad, tex, x, y, 0, 0, tint_argb});
+}
+
+int RlwCreateTexture(const uint32_t *rgba, int w, int h)
+{
+	Image img;
+	img.data = const_cast<uint32_t *>(rgba);
+	img.width = w;
+	img.height = h;
+	img.mipmaps = 1;
+	img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+	int id = _rlw_next_tex++;
+	_rlw_user_tex.emplace(id, LoadTextureFromImage(img));
+	return id;
+}
+
+void RlwFreeTexture(int tex)
+{
+	auto it = _rlw_user_tex.find(tex);
+	if (it == _rlw_user_tex.end()) return;
+	UnloadTexture(it->second);
+	_rlw_user_tex.erase(it);
+}
+
+static void RlwReplayCommands()
+{
+	for (const RlwCmd &c : _rlw_cmds) {
+		switch (c.type) {
+			case RlwCmdType::Rect:
+				DrawRectangle(c.a, c.b, c.c - c.a + 1, c.d - c.b + 1, RlwColour(c.col));
+				break;
+			case RlwCmdType::Line:
+				DrawLineEx({(float)c.a, (float)c.b}, {(float)c.c, (float)c.d}, (float)c.e, RlwColour(c.col));
+				break;
+			case RlwCmdType::Circle:
+				DrawCircle(c.a, c.b, (float)c.c, RlwColour(c.col));
+				break;
+			case RlwCmdType::Diamond:
+				DrawPoly({(float)c.a, (float)c.b}, 4, (float)c.c, 0.0f, RlwColour(c.col));
+				break;
+			case RlwCmdType::Triangle:
+				DrawTriangle({(float)c.a, (float)(c.b - c.c)}, {(float)(c.a - c.c), (float)(c.b + c.c)}, {(float)(c.a + c.c), (float)(c.b + c.c)}, RlwColour(c.col));
+				break;
+			case RlwCmdType::TexQuad:
+				if (auto it = _rlw_user_tex.find(c.a); it != _rlw_user_tex.end()) {
+					DrawTexture(it->second, c.b, c.c, RlwColour(c.col));
+				}
+				break;
+		}
+	}
+}
+
+void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRectI *overlays, size_t count)
+{
+	if (!_rlw_tex_ok || _rlw_tex_w != w || _rlw_tex_h != h) {
+		std::vector<uint32_t> black((size_t)w * h, 0xFF000000U);
+		RlwEnsureScreenTexture(black.data(), w, h);
+	}
+
+	/* The screen texture only stays fresh under the native windows; the rest
+	 * of the frame comes from the command buffer. */
+	static std::vector<uint32_t> stage;
+	for (size_t i = 0; i < count; i++) {
+		RlwRectI r = overlays[i];
+		if (r.x < 0) { r.w += r.x; r.x = 0; }
+		if (r.y < 0) { r.h += r.y; r.y = 0; }
+		if (r.x + r.w > w) r.w = w - r.x;
+		if (r.y + r.h > h) r.h = h - r.y;
+		if (r.w <= 0 || r.h <= 0) continue;
+		stage.resize((size_t)r.w * r.h);
+		for (int y = 0; y < r.h; y++) {
+			const uint32_t *src = argb + (size_t)(r.y + y) * pitch + r.x;
+			uint32_t *dst = stage.data() + (size_t)y * r.w;
+			for (int x = 0; x < r.w; x++) {
+				uint32_t c = src[x];
+				dst[x] = 0xFF000000 | (c & 0x0000FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
+			}
+		}
+		UpdateTextureRec(_rlw_tex, {(float)r.x, (float)r.y, (float)r.w, (float)r.h}, stage.data());
+	}
+
+	BeginDrawing();
+	ClearBackground(BLACK);
+	RlwReplayCommands();
+	for (size_t i = 0; i < count; i++) {
+		RlwRectI r = overlays[i];
+		if (r.x < 0) { r.w += r.x; r.x = 0; }
+		if (r.y < 0) { r.h += r.y; r.y = 0; }
+		if (r.x + r.w > w) r.w = w - r.x;
+		if (r.y + r.h > h) r.h = h - r.y;
+		if (r.w <= 0 || r.h <= 0) continue;
+		DrawTextureRec(_rlw_tex, {(float)r.x, (float)r.y, (float)r.w, (float)r.h}, {(float)r.x, (float)r.y}, WHITE);
+	}
 	EndDrawing();
 }
 

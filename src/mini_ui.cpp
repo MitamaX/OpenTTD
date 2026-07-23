@@ -22,6 +22,7 @@
 #include "engine_base.h"
 #include "core/backup_type.hpp"
 #include "core/math_func.hpp"
+#include <unordered_map>
 #include "fileio_func.h"
 #include "gfx_func.h"
 #include "ground_vehicle.hpp"
@@ -71,8 +72,8 @@
 
 static bool _mini_active = false;
 
-/* Framebuffer, 0xAARRGGBB, matches the memory layout of the 32bpp blitters. */
-static std::vector<uint32_t> _fb;
+/* Mini UI frame size in pixels; drawing goes through the raylib command
+ * buffer, so this only mirrors the screen dimensions. */
 static int _fbw, _fbh;
 
 static const double MIN_PPT = 4.0;
@@ -330,99 +331,114 @@ static double WorldY(int sy) { return (sy - PxBaseY()) / _cam_ppt; }
 
 static void FillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
-	x0 = std::max(x0, 0);
-	y0 = std::max(y0, 0);
-	x1 = std::min(x1, _fbw - 1);
-	y1 = std::min(y1, _fbh - 1);
 	if (x1 < x0 || y1 < y0) return;
-	for (int y = y0; y <= y1; y++) {
-		std::fill_n(_fb.data() + (size_t)y * _fbw + x0, x1 - x0 + 1, c);
-	}
+	RlwCmdRect(x0, y0, x1, y1, c);
 }
 
 static void BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
 {
-	x0 = std::max(x0, 0);
-	y0 = std::max(y0, 0);
-	x1 = std::min(x1, _fbw - 1);
-	y1 = std::min(y1, _fbh - 1);
 	if (x1 < x0 || y1 < y0) return;
-	for (int y = y0; y <= y1; y++) {
-		uint32_t *row = _fb.data() + (size_t)y * _fbw;
-		for (int x = x0; x <= x1; x++) row[x] = Mix(row[x], c, alpha);
-	}
+	RlwCmdRect(x0, y0, x1, y1, (c & 0x00FFFFFFU) | ((uint32_t)Clamp<uint>(alpha, 0, 255) << 24));
 }
 
 static void ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
-	int steps = std::max(abs(x1 - x0), abs(y1 - y0));
-	int half = width / 2;
-	for (int i = 0; i <= steps; i++) {
-		int x = x0 + (x1 - x0) * i / std::max(steps, 1);
-		int y = y0 + (y1 - y0) * i / std::max(steps, 1);
-		FillRect(x - half, y - half, x - half + width - 1, y - half + width - 1, c);
-	}
+	RlwCmdLine(x0, y0, x1, y1, std::max(width, 1), c);
 }
 
 static void FillCircle(int cx, int cy, int r, uint32_t c)
 {
-	for (int dy = -r; dy <= r; dy++) {
-		int w = (int)std::lround(std::sqrt((double)(r * r - dy * dy)));
-		FillRect(cx - w, cy + dy, cx + w, cy + dy, c);
-	}
+	RlwCmdCircle(cx, cy, std::max(r, 1), c);
 }
 
 static void FillDiamond(int cx, int cy, int r, uint32_t c)
 {
-	for (int dy = -r; dy <= r; dy++) {
-		int w = r - abs(dy);
-		FillRect(cx - w, cy + dy, cx + w, cy + dy, c);
-	}
+	RlwCmdDiamond(cx, cy, std::max(r, 1), c);
 }
 
 static void FillTriangle(int cx, int cy, int r, uint32_t c)
 {
-	for (int dy = -r; dy <= r; dy++) {
-		int w = (dy + r) / 2;
-		FillRect(cx - w, cy + dy, cx + w, cy + dy, c);
+	RlwCmdTriangle(cx, cy, std::max(r, 1), c);
+}
+
+/* Strings are laid out by the native font code into a small offscreen buffer
+ * once, cached as a white-on-transparent texture and drawn as a tinted quad,
+ * so any TrueType fallback font covers non-Latin names. */
+struct MiniTextEntry {
+	int tex;
+	int w, h;
+	uint64_t last_use;
+};
+
+static std::unordered_map<std::string, MiniTextEntry> _text_cache;
+static uint64_t _mini_frame = 0;
+
+static const MiniTextEntry *TextTexture(std::string_view text)
+{
+	if (text.empty()) return nullptr;
+	auto it = _text_cache.find(std::string(text));
+	if (it == _text_cache.end()) {
+		Dimension dim = GetStringBoundingBox(text);
+		int w = (int)dim.width;
+		int h = (int)dim.height;
+		if (w <= 0 || h <= 0) return nullptr;
+
+		std::vector<uint32_t> buf((size_t)w * h, 0xFF000000U);
+		DrawPixelInfo dpi;
+		dpi.dst_ptr = buf.data();
+		dpi.left = 0;
+		dpi.top = 0;
+		dpi.width = w;
+		dpi.height = h;
+		dpi.pitch = w;
+		dpi.zoom = ZoomLevel::Min;
+		{
+			AutoRestoreBackup dpi_backup(_cur_dpi, &dpi);
+			AutoRestoreBackup anim_backup(_screen_disable_anim, true);
+			DrawString(0, w - 1, 0, text, TC_WHITE, SA_LEFT | SA_FORCE);
+		}
+		for (uint32_t &px : buf) {
+			uint32_t a = std::max({(px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF});
+			px = (a << 24) | 0x00FFFFFFU;
+		}
+		it = _text_cache.emplace(std::string(text), MiniTextEntry{RlwCreateTexture(buf.data(), w, h), w, h, 0}).first;
+	}
+	it->second.last_use = _mini_frame;
+	return &it->second;
+}
+
+static void PruneTextCache()
+{
+	if ((_mini_frame & 0xFF) != 0) return;
+	for (auto it = _text_cache.begin(); it != _text_cache.end();) {
+		if (_mini_frame - it->second.last_use > 600) {
+			RlwFreeTexture(it->second.tex);
+			it = _text_cache.erase(it);
+		} else {
+			++it;
+		}
 	}
 }
 
-/* Text goes through the native font cache onto _screen after Present() has
- * copied the frame, so any TrueType fallback font covers non-Latin names. */
+static constexpr uint32_t TextTint(TextColour colour)
+{
+	return colour == TC_BLACK ? 0xFF000000U : 0xFFFFFFFFU;
+}
+
 static void DrawScreenText(int x, int y, std::string_view text, TextColour colour = TC_WHITE)
 {
-	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
-	DrawString(x, _fbw - 1, y, text, colour, SA_LEFT | SA_FORCE);
+	const MiniTextEntry *e = TextTexture(text);
+	if (e != nullptr) RlwCmdTexQuad(e->tex, x, y, TextTint(colour));
 }
 
-/* HUD text sits on an ink plate blended straight into _screen, because the
- * HUD is drawn natively after Present() has already copied the frame. */
 static void ScreenBlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
 {
-	x0 = std::max(x0, 0);
-	y0 = std::max(y0, 0);
-	x1 = std::min(x1, _fbw - 1);
-	y1 = std::min(y1, _fbh - 1);
-	if (x1 < x0 || y1 < y0) return;
-	uint32_t *dst = (uint32_t *)_screen.dst_ptr;
-	for (int y = y0; y <= y1; y++) {
-		uint32_t *row = dst + (size_t)y * _screen.pitch;
-		for (int x = x0; x <= x1; x++) row[x] = Mix(row[x], c, alpha);
-	}
+	BlendRect(x0, y0, x1, y1, c, alpha);
 }
 
 static void ScreenFillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
-	x0 = std::max(x0, 0);
-	y0 = std::max(y0, 0);
-	x1 = std::min(x1, _fbw - 1);
-	y1 = std::min(y1, _fbh - 1);
-	if (x1 < x0 || y1 < y0) return;
-	uint32_t *dst = (uint32_t *)_screen.dst_ptr;
-	for (int y = y0; y <= y1; y++) {
-		std::fill_n(dst + (size_t)y * _screen.pitch + x0, x1 - x0 + 1, c);
-	}
+	FillRect(x0, y0, x1, y1, c);
 }
 
 static void DrawHudText(int x, int y, std::string_view text)
@@ -1102,9 +1118,10 @@ static TextColour PlateTextColour(uint32_t c)
  * sign kdtree lives in viewport coordinates. */
 static Rect DrawLabelPlate(int cx, int cy, std::string_view str, uint32_t fill, bool transparent, TextColour tc)
 {
-	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
 	int pad = 3;
-	int w = GetStringBoundingBox(str).width + 2 * pad;
+	const MiniTextEntry *e = TextTexture(str);
+	int tw = e != nullptr ? e->w : (int)GetStringBoundingBox(str).width;
+	int w = tw + 2 * pad;
 	int h = GetCharacterHeight(FS_NORMAL) + 2 * pad;
 	Rect r = {cx - w / 2, cy - h - 3, cx - w / 2 + w - 1, cy - 4};
 	if (transparent) {
@@ -1113,7 +1130,7 @@ static Rect DrawLabelPlate(int cx, int cy, std::string_view str, uint32_t fill, 
 		ScreenFillRect(r.left, r.top, r.right, r.bottom, COL_INK);
 		ScreenFillRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, fill);
 	}
-	DrawString(r.left + pad, r.right - pad, r.top + pad, str, tc, SA_HOR_CENTER);
+	if (e != nullptr) RlwCmdTexQuad(e->tex, r.left + pad, r.top + pad, TextTint(tc));
 	return r;
 }
 
@@ -1690,21 +1707,12 @@ static int MenuTileSide()
 
 static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
-	int steps = std::max(abs(x1 - x0), abs(y1 - y0));
-	int half = width / 2;
-	for (int i = 0; i <= steps; i++) {
-		int x = x0 + (x1 - x0) * i / std::max(steps, 1);
-		int y = y0 + (y1 - y0) * i / std::max(steps, 1);
-		ScreenFillRect(x - half, y - half, x - half + width - 1, y - half + width - 1, c);
-	}
+	ThickLine(x0, y0, x1, y1, width, c);
 }
 
 static void ScreenFillCircle(int cx, int cy, int r, uint32_t c)
 {
-	for (int dy = -r; dy <= r; dy++) {
-		int w = (int)std::lround(std::sqrt((double)(r * r - dy * dy)));
-		ScreenFillRect(cx - w, cy + dy, cx + w, cy + dy, c);
-	}
+	FillCircle(cx, cy, r, c);
 }
 
 /* Tile icons reuse the map's colour language so the menu previews what the
@@ -1770,8 +1778,9 @@ static void DrawMenuTile(const Rect &r, StringID str, std::string_view fallback,
 	int cx = (r.left + r.right) / 2;
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawToolIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
-	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
-	DrawString(r.left, r.right, r.bottom - lh - 3, MenuLabel(str, fallback), active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
+	if (const MiniTextEntry *e = TextTexture(MenuLabel(str, fallback)); e != nullptr) {
+		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, TextTint(active ? TC_BLACK : TC_WHITE));
+	}
 }
 
 static void DrawBuildMenu()
@@ -1911,18 +1920,6 @@ static void DrawHud()
 
 static void Present()
 {
-	uint32_t *dst = (uint32_t *)_screen.dst_ptr;
-	for (int y = 0; y < _fbh; y++) {
-		std::copy_n(_fb.data() + (size_t)y * _fbw, _fbw, dst + (size_t)y * _screen.pitch);
-	}
-	/* The 40bpp-anim path composes the screen from colour and palette-index
-	 * buffers in a shader; stale indexes override direct colour writes, so
-	 * clear them or the old interface stays baked over the frame. */
-	if (uint8_t *anim = VideoDriver::GetInstance()->GetAnimBuffer(); anim != nullptr) {
-		for (int y = 0; y < _fbh; y++) {
-			std::fill_n(anim + (size_t)y * _screen.pitch, _fbw, 0);
-		}
-	}
 	DrawLabels();
 	DrawHud();
 	DrawBuildMenu();
@@ -1971,6 +1968,7 @@ void MiniUiToggle()
 	}
 	if (_game_mode != GM_NORMAL && _game_mode != GM_EDITOR) return;
 	if (BlitterFactory::GetCurrentBlitter()->GetScreenDepth() != 32) return;
+	if (VideoDriver::GetInstance()->GetName() != "raylib") return;
 
 	LoadMiniSettings();
 	UndrawMouseCursor();
@@ -1997,6 +1995,15 @@ void MiniUiToggle()
 bool MiniUiHidesWindow(WindowClass wc)
 {
 	return wc == WC_MAIN_WINDOW || wc == WC_MAIN_TOOLBAR || wc == WC_STATUS_BAR;
+}
+
+void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
+{
+	if (!_mini_active) return;
+	for (const Window *w : Window::IterateFromBack()) {
+		if (MiniUiHidesWindow(w->window_class)) continue;
+		rects.push_back({w->left, w->top, w->width, w->height});
+	}
 }
 
 void MiniUiScrollTo(int x, int y)
@@ -2238,12 +2245,13 @@ void MiniUiFrame(uint delta_ms)
 		}
 	}
 
-	if (_fbw != _screen.width || _fbh != _screen.height) {
-		_fbw = _screen.width;
-		_fbh = _screen.height;
-		_fb.assign((size_t)_fbw * _fbh, COL_VOID);
-	}
+	_fbw = _screen.width;
+	_fbh = _screen.height;
 	if (_fbw <= 0 || _fbh <= 0) return;
+
+	_mini_frame++;
+	PruneTextCache();
+	RlwCmdClear();
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
 	if (_dirkeys != 0) {
@@ -2319,7 +2327,7 @@ void MiniUiFrame(uint delta_ms)
 	int tx1 = std::min<int>(Map::SizeX() - 1, (int)std::floor(WorldX(_fbw - 1)));
 	int ty1 = std::min<int>(Map::SizeY() - 1, (int)std::floor(WorldY(_fbh - 1)));
 
-	std::fill(_fb.begin(), _fb.end(), COL_VOID);
+	FillRect(0, 0, _fbw - 1, _fbh - 1, COL_VOID);
 	for (int ty = ty0; ty <= ty1; ty++) {
 		for (int tx = tx0; tx <= tx1; tx++) {
 			DrawTile(TileXY(tx, ty), tx, ty, ppt);
@@ -2352,5 +2360,4 @@ void MiniUiFrame(uint delta_ms)
 	DrawVehicles(ppt);
 	DrawSelectionRing(ppt);
 	Present();
-	MarkWholeScreenDirty();
 }

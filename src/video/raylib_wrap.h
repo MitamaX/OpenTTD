@@ -10,6 +10,7 @@
 #ifndef VIDEO_RAYLIB_WRAP_H
 #define VIDEO_RAYLIB_WRAP_H
 
+#include <cstddef>
 #include <cstdint>
 
 struct RlwInput {
@@ -38,6 +39,10 @@ struct RlwInput {
 	int height = 0;
 };
 
+struct RlwRectI {
+	int x, y, w, h;
+};
+
 bool RlwInit(int w, int h, const char *title);
 void RlwClose();
 void RlwPoll(RlwInput &in);
@@ -48,5 +53,18 @@ void RlwSetSize(int w, int h);
 void RlwWarpMouse(int x, int y);
 void RlwToggleBorderless();
 bool RlwMonitorSize(int &w, int &h);
+
+/* 2D command buffer: recorded during the game tick, replayed inside the
+ * frame that RlwPresentMini draws. Colours are 0xAARRGGBB. */
+void RlwCmdClear();
+void RlwCmdRect(int x0, int y0, int x1, int y1, uint32_t argb);
+void RlwCmdLine(int x0, int y0, int x1, int y1, int width, uint32_t argb);
+void RlwCmdCircle(int cx, int cy, int r, uint32_t argb);
+void RlwCmdDiamond(int cx, int cy, int r, uint32_t argb);
+void RlwCmdTriangle(int cx, int cy, int r, uint32_t argb);
+void RlwCmdTexQuad(int tex, int x, int y, uint32_t tint_argb);
+int RlwCreateTexture(const uint32_t *rgba, int w, int h);
+void RlwFreeTexture(int tex);
+void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRectI *overlays, size_t count);
 
 #endif /* VIDEO_RAYLIB_WRAP_H */

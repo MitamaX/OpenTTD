@@ -10,8 +10,11 @@
 #ifndef MINI_UI_H
 #define MINI_UI_H
 
+#include <vector>
+
 #include "core/geometry_type.hpp"
 #include "gfx_type.h"
+#include "video/raylib_wrap.h"
 #include "window_type.h"
 
 bool MiniUiActive();
@@ -20,6 +23,7 @@ void MiniUiFrame(uint delta_ms);
 bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
 bool MiniUiHidesWindow(WindowClass wc);
+void MiniUiOverlayRects(std::vector<RlwRectI> &rects);
 void MiniUiScrollTo(int x, int y);
 
 bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);

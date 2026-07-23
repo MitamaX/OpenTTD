@@ -238,6 +238,17 @@ void VideoDriver_Raylib::Paint()
 		this->local_palette.count_dirty = 0;
 	}
 
+	if (MiniUiActive()) {
+		/* The mini UI frame comes from the command buffer; the CPU screen is
+		 * only sampled under the native windows. */
+		static std::vector<RlwRectI> rects;
+		rects.clear();
+		MiniUiOverlayRects(rects);
+		RlwPresentMini(this->vid_buf.data(), _screen.pitch, _screen.width, _screen.height, rects.data(), rects.size());
+		this->dirty_rect = {};
+		return;
+	}
+
 	/* The blitter writes 0xAARRGGBB; the texture wants RGBA bytes, so swap the
 	 * red and blue channels and force full alpha. */
 	const uint32_t *src = this->vid_buf.data();
