@@ -156,6 +156,7 @@ struct MiniSettings {
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
 	int hud_scale = 2;
+	int menu_panel_rows = 3;
 	int contour_alpha = 120;
 	int relief_strength = 22;
 	int edge_scroll = 1;
@@ -213,6 +214,7 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "zoom_step", _ms.zoom_step);
 	ReadIniNumber(group, "zoom_smooth_ms", _ms.zoom_smooth_ms);
 	ReadIniNumber(group, "hud_scale", _ms.hud_scale);
+	ReadIniNumber(group, "menu_panel_rows", _ms.menu_panel_rows);
 	ReadIniNumber(group, "contour_alpha", _ms.contour_alpha);
 	ReadIniNumber(group, "relief_strength", _ms.relief_strength);
 	ReadIniNumber(group, "edge_scroll", _ms.edge_scroll);
@@ -227,6 +229,7 @@ static void LoadMiniSettings()
 	_ms.zoom_step = Clamp(_ms.zoom_step, 1.05, 2.0);
 	_ms.zoom_smooth_ms = Clamp(_ms.zoom_smooth_ms, 1.0, 500.0);
 	_ms.hud_scale = Clamp(_ms.hud_scale, 1, 4);
+	_ms.menu_panel_rows = Clamp(_ms.menu_panel_rows, 1, 8);
 	_ms.contour_alpha = Clamp(_ms.contour_alpha, 0, 255);
 	_ms.relief_strength = Clamp(_ms.relief_strength, 0, 60);
 	_ms.edge_margin = Clamp(_ms.edge_margin, 2, 200);
@@ -1674,6 +1677,8 @@ static const MiniMenuCategory _menu_cats[] = {
 };
 
 static int _menu_open = -1;
+static int _menu_scroll = 0;
+static Rect _menu_panel_rect;
 static std::vector<std::pair<Rect, int>> _menu_cat_hits;
 static std::vector<std::pair<Rect, MiniTool>> _menu_item_hits;
 
@@ -1797,17 +1802,31 @@ static void DrawBuildMenu()
 		int n = (int)cat.items.size();
 		int cols = 3;
 		int rows = (n + cols - 1) / cols;
+		int vis = _ms.menu_panel_rows;
+		_menu_scroll = Clamp(_menu_scroll, 0, std::max(0, rows - vis));
 		int pw = cols * tile + (cols - 1) * gap + 2 * pp;
-		int ph = rows * tile + (rows - 1) * gap + 2 * pp;
+		int ph = vis * tile + (vis - 1) * gap + 2 * pp;
 		int py = bar_top - gap - ph;
+		_menu_panel_rect = {margin, py, margin + pw - 1, py + ph - 1};
 		ScreenFillRect(margin, py, margin + pw - 1, py + ph - 1, COL_INK);
 		for (int i = 0; i < n; i++) {
+			int row = i / cols - _menu_scroll;
+			if (row < 0 || row >= vis) continue;
 			const MiniMenuItem &it = cat.items[i];
 			int ix = margin + pp + (i % cols) * (tile + gap);
-			int iy = py + pp + (i / cols) * (tile + gap);
+			int iy = py + pp + row * (tile + gap);
 			Rect ir = {ix, iy, ix + tile - 1, iy + tile - 1};
 			DrawMenuTile(ir, it.str, it.fallback, it.tool, _tool == it.tool);
 			_menu_item_hits.emplace_back(ir, it.tool);
+		}
+		if (rows > vis) {
+			int track_top = py + pp;
+			int track_h = ph - 2 * pp;
+			int bx1 = margin + pw - 1 - s;
+			int bx0 = std::max(margin, bx1 - s + 1);
+			int ty0 = track_top + track_h * _menu_scroll / rows;
+			int ty1 = track_top + track_h * (_menu_scroll + vis) / rows - 1;
+			ScreenFillRect(bx0, ty0, bx1, ty1, Mix(COL_INK, COL_PAPER, 110));
 		}
 	}
 
@@ -1825,6 +1844,7 @@ static bool HandleMenuClick(int x, int y)
 	for (const auto &[r, c] : _menu_cat_hits) {
 		if (InRect(r, x, y)) {
 			_menu_open = _menu_open == c ? -1 : c;
+			_menu_scroll = 0;
 			return true;
 		}
 	}
@@ -2024,7 +2044,11 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	}
 
 	if (_cursor.wheel != 0) {
-		ZoomAt(_cursor.pos.x, _cursor.pos.y, _cursor.wheel < 0);
+		if (_menu_open >= 0 && InRect(_menu_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
+			_menu_scroll += _cursor.wheel > 0 ? 1 : -1;
+		} else {
+			ZoomAt(_cursor.pos.x, _cursor.pos.y, _cursor.wheel < 0);
+		}
 		_cursor.wheel = 0;
 	}
 
