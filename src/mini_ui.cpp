@@ -328,14 +328,16 @@ bool MiniUiActive()
 	return _mini_active;
 }
 
-static double PxBaseX() { return _fbw * 0.5 - _cam_x * _cam_ppt; }
-static double PxBaseY() { return _fbh * 0.5 - _cam_y * _cam_ppt; }
+/* Transposed projection: map X runs down the screen and map Y runs right,
+ * matching the native isometric orientation's handedness. */
+static double ScrBaseX() { return _fbw * 0.5 - _cam_y * _cam_ppt; }
+static double ScrBaseY() { return _fbh * 0.5 - _cam_x * _cam_ppt; }
 
-static int PxX(double tx) { return (int)std::lround(tx * _cam_ppt + PxBaseX()); }
-static int PxY(double ty) { return (int)std::lround(ty * _cam_ppt + PxBaseY()); }
+static int ScrX(double ty) { return (int)std::lround(ty * _cam_ppt + ScrBaseX()); }
+static int ScrY(double tx) { return (int)std::lround(tx * _cam_ppt + ScrBaseY()); }
 
-static double WorldX(int sx) { return (sx - PxBaseX()) / _cam_ppt; }
-static double WorldY(int sy) { return (sy - PxBaseY()) / _cam_ppt; }
+static double MapXAt(int sy) { return (sy - ScrBaseY()) / _cam_ppt; }
+static double MapYAt(int sx) { return (sx - ScrBaseX()) / _cam_ppt; }
 
 static void FillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
@@ -532,7 +534,7 @@ static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 		int z = GetSlopeZInCorner(s, cn);
 		return special ? Mix(flat, COL_SHADOW, std::min(255, _ms.relief_strength * z)) : RampLerp(hbase + z);
 	};
-	RlwCmdGradientRect(x0, y0, x1, y1, corner(CORNER_N), corner(CORNER_W), corner(CORNER_E), corner(CORNER_S));
+	RlwCmdGradientRect(x0, y0, x1, y1, corner(CORNER_N), corner(CORNER_E), corner(CORNER_W), corner(CORNER_S));
 }
 
 static void DrawTrackPiece(Track t, int x0, int y0, int x1, int y1, int width, uint32_t c)
@@ -540,12 +542,12 @@ static void DrawTrackPiece(Track t, int x0, int y0, int x1, int y1, int width, u
 	int cx = (x0 + x1) / 2;
 	int cy = (y0 + y1) / 2;
 	switch (t) {
-		case TRACK_X: FillRect(x0, cy - width / 2, x1, cy - width / 2 + width - 1, c); break;
-		case TRACK_Y: FillRect(cx - width / 2, y0, cx - width / 2 + width - 1, y1, c); break;
+		case TRACK_X: FillRect(cx - width / 2, y0, cx - width / 2 + width - 1, y1, c); break;
+		case TRACK_Y: FillRect(x0, cy - width / 2, x1, cy - width / 2 + width - 1, c); break;
 		case TRACK_UPPER: ThickLine(x0, cy, cx, y0, width, c); break;
 		case TRACK_LOWER: ThickLine(cx, y1, x1, cy, width, c); break;
-		case TRACK_LEFT: ThickLine(cx, y0, x1, cy, width, c); break;
-		case TRACK_RIGHT: ThickLine(x0, cy, cx, y1, width, c); break;
+		case TRACK_LEFT: ThickLine(x0, cy, cx, y1, width, c); break;
+		case TRACK_RIGHT: ThickLine(cx, y0, x1, cy, width, c); break;
 		default: break;
 	}
 }
@@ -562,10 +564,10 @@ static void DrawRoadBitsPx(RoadBits bits, int x0, int y0, int x1, int y1, int wi
 	int cx = (x0 + x1) / 2;
 	int cy = (y0 + y1) / 2;
 	int lo = width / 2;
-	if (bits & ROAD_NW) FillRect(cx - lo, y0, cx - lo + width - 1, cy, c);
-	if (bits & ROAD_SE) FillRect(cx - lo, cy, cx - lo + width - 1, y1, c);
-	if (bits & ROAD_NE) FillRect(x0, cy - lo, cx, cy - lo + width - 1, c);
-	if (bits & ROAD_SW) FillRect(cx, cy - lo, x1, cy - lo + width - 1, c);
+	if (bits & ROAD_NW) FillRect(x0, cy - lo, cx, cy - lo + width - 1, c);
+	if (bits & ROAD_SE) FillRect(cx, cy - lo, x1, cy - lo + width - 1, c);
+	if (bits & ROAD_NE) FillRect(cx - lo, y0, cx - lo + width - 1, cy, c);
+	if (bits & ROAD_SW) FillRect(cx - lo, cy, cx - lo + width - 1, y1, c);
 }
 
 struct ZoomDetail {
@@ -595,8 +597,8 @@ static void ComputeZoomDetail(int ppt)
 	_zd.all_town_names = ppt >= 8;
 }
 
-static const int _diag_dx[4] = {-1, 0, 1, 0};
-static const int _diag_dy[4] = {0, 1, 0, -1};
+static const int _diag_dx[4] = {0, 1, 0, -1};
+static const int _diag_dy[4] = {-1, 0, 1, 0};
 
 static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 {
@@ -644,11 +646,11 @@ static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 	for (int i = 0; i <= s; i++) {
 		int w = (s - i) / 2;
 		if (axis_x) {
-			int px = cx + dir * (i - s / 2);
-			FillRect(px, cy - w, px, cy + w, COL_PAPER);
-		} else {
 			int py = cy + dir * (i - s / 2);
 			FillRect(cx - w, py, cx + w, py, COL_PAPER);
+		} else {
+			int px = cx + dir * (i - s / 2);
+			FillRect(px, cy - w, px, cy + w, COL_PAPER);
 		}
 	}
 }
@@ -682,18 +684,18 @@ static void DrawAxisBand(Axis axis, int x0, int y0, int x1, int y1, int width, u
 	int cy = (y0 + y1) / 2;
 	int lo = width / 2;
 	if (axis == AXIS_X) {
-		FillRect(x0, cy - lo, x1, cy - lo + width - 1, c);
-	} else {
 		FillRect(cx - lo, y0, cx - lo + width - 1, y1, c);
+	} else {
+		FillRect(x0, cy - lo, x1, cy - lo + width - 1, c);
 	}
 }
 
 static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 {
-	int x0 = PxX(tx);
-	int y0 = PxY(ty);
-	int x1 = PxX(tx + 1) - 1;
-	int y1 = PxY(ty + 1) - 1;
+	int x0 = ScrX(ty);
+	int y0 = ScrY(tx);
+	int x1 = ScrX(ty + 1) - 1;
+	int y1 = ScrY(tx + 1) - 1;
 	if (x1 < 0 || y1 < 0 || x0 >= _fbw || y0 >= _fbh) return;
 
 	int rail_w = std::max(1, ppt / 6);
@@ -830,8 +832,8 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 	if (!water_tile) {
 		int cw = std::max(1, ppt / 8);
 		uint h = TileHeight(tile);
-		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) BlendRect(x1 - cw + 1, y0, x1, y1, COL_SHADOW, _ms.contour_alpha);
-		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) BlendRect(x0, y1 - cw + 1, x1, y1, COL_SHADOW, _ms.contour_alpha);
+		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) BlendRect(x0, y1 - cw + 1, x1, y1, COL_SHADOW, _ms.contour_alpha);
+		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) BlendRect(x1 - cw + 1, y0, x1, y1, COL_SHADOW, _ms.contour_alpha);
 	}
 }
 
@@ -876,8 +878,8 @@ static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, 
 	}
 }
 
-static const int8_t _dir_dx[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
-static const int8_t _dir_dy[8] = {-1, 0, 1, 1, 1, 0, -1, -1};
+static const int8_t _dir_dx[8] = {-1, 0, 1, 1, 1, 0, -1, -1};
+static const int8_t _dir_dy[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
 
 static uint32_t CargoRgb(CargoType ct)
 {
@@ -896,8 +898,8 @@ static void DrawVehicles(int ppt)
 		if (v->vehstatus.Test(VehState::Hidden)) continue;
 		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
 		int r = (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT) ? half + 2 : half;
-		int cx = PxX(v->x_pos / (double)TILE_SIZE);
-		int cy = PxY(v->y_pos / (double)TILE_SIZE);
+		int cx = ScrX(v->y_pos / (double)TILE_SIZE);
+		int cy = ScrY(v->x_pos / (double)TILE_SIZE);
 		if (cx < -r - 1 || cy < -r - 1 || cx >= _fbw + r + 1 || cy >= _fbh + r + 1) continue;
 		uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_OBJ;
 		if (!_zd.vehicle_shapes) {
@@ -998,8 +1000,8 @@ static EngineID PickEngine(TileIndex depot, VehicleType vt, bool alt)
 
 static void BuyAtDepot(bool alt)
 {
-	int tx = (int)std::floor(WorldX(_cursor.pos.x));
-	int ty = (int)std::floor(WorldY(_cursor.pos.y));
+	int tx = (int)std::floor(MapXAt(_cursor.pos.y));
+	int ty = (int)std::floor(MapYAt(_cursor.pos.x));
 	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return;
 	TileIndex tile = TileXY(tx, ty);
 
@@ -1027,8 +1029,8 @@ static bool TryAppendOrder(int sx, int sy)
 	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
 	if (v == nullptr || !v->IsPrimaryVehicle() || v->owner != _local_company) return false;
 
-	int tx = (int)std::floor(WorldX(sx));
-	int ty = (int)std::floor(WorldY(sy));
+	int tx = (int)std::floor(MapXAt(sy));
+	int ty = (int)std::floor(MapYAt(sx));
 	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return false;
 	TileIndex tile = TileXY(tx, ty);
 	if (!IsTileType(tile, MP_STATION)) return false;
@@ -1071,8 +1073,8 @@ static const Vehicle *SelectVehicleAt(int sx, int sy)
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->type > VEH_AIRCRAFT) continue;
 		if (v->vehstatus.Test(VehState::Hidden)) continue;
-		int dx = PxX(v->x_pos / (double)TILE_SIZE) - sx;
-		int dy = PxY(v->y_pos / (double)TILE_SIZE) - sy;
+		int dx = ScrX(v->y_pos / (double)TILE_SIZE) - sx;
+		int dy = ScrY(v->x_pos / (double)TILE_SIZE) - sy;
 		int d2 = dx * dx + dy * dy;
 		if (d2 < best_d2) {
 			best_d2 = d2;
@@ -1102,7 +1104,7 @@ static void DrawOrderRoute()
 			const Station *st = Station::GetIfValid(o.GetDestination().ToStationID());
 			if (st != nullptr) {
 				if (i == v->cur_real_order_index) cur_stop = (int)stops.size();
-				stops.emplace_back(PxX(TileX(st->xy) + 0.5), PxY(TileY(st->xy) + 0.5));
+				stops.emplace_back(ScrX(TileY(st->xy) + 0.5), ScrY(TileX(st->xy) + 0.5));
 			}
 		}
 		i++;
@@ -1118,8 +1120,8 @@ static void DrawOrderRoute()
 	for (auto [x, y] : stops) FillCircle(x, y, 4, COL_BP);
 
 	if (cur_stop >= 0) {
-		int vx = PxX(v->x_pos / (double)TILE_SIZE);
-		int vy = PxY(v->y_pos / (double)TILE_SIZE);
+		int vx = ScrX(v->y_pos / (double)TILE_SIZE);
+		int vy = ScrY(v->x_pos / (double)TILE_SIZE);
 		ThickLine(vx, vy, stops[cur_stop].first, stops[cur_stop].second, 2, COL_PAPER);
 	}
 }
@@ -1128,8 +1130,8 @@ static void DrawSelectionRing(int ppt)
 {
 	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
 	if (v == nullptr) return;
-	int cx = PxX(v->x_pos / (double)TILE_SIZE);
-	int cy = PxY(v->y_pos / (double)TILE_SIZE);
+	int cx = ScrX(v->y_pos / (double)TILE_SIZE);
+	int cy = ScrY(v->x_pos / (double)TILE_SIZE);
 	int r = std::max(6, ppt / 2 + 3);
 	FillRect(cx - r, cy - r, cx + r, cy - r + 1, COL_PAPER);
 	FillRect(cx - r, cy + r - 1, cx + r, cy + r, COL_PAPER);
@@ -1176,8 +1178,8 @@ static void DrawLabels()
 	int limit = GetCharacterHeight(FS_NORMAL) + 20;
 	for (const Town *t : Town::Iterate()) {
 		if (!_zd.all_town_names && !t->larger_town) continue;
-		int cx = PxX(TileX(t->xy) + 0.5);
-		int cy = PxY(TileY(t->xy) + 0.5);
+		int cx = ScrX(TileY(t->xy) + 0.5);
+		int cy = ScrY(TileX(t->xy) + 0.5);
 		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
 		std::string str = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
 		Rect r = DrawLabelPlate(cx, cy, str, COL_INK, true, TC_WHITE);
@@ -1185,8 +1187,8 @@ static void DrawLabels()
 	}
 	if (!_zd.station_names) return;
 	for (const Station *st : Station::Iterate()) {
-		int cx = PxX(TileX(st->xy) + 0.5);
-		int cy = PxY(TileY(st->xy) + 0.5);
+		int cx = ScrX(TileY(st->xy) + 0.5);
+		int cy = ScrY(TileX(st->xy) + 0.5);
 		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
 		std::string str = GetString(STR_VIEWPORT_STATION, st->index, st->facilities);
 		uint32_t plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COL_OBJ : _company_rgb[_company_colours[st->owner]];
@@ -1300,10 +1302,10 @@ static void DrawRailPlan(int ppt)
 	for (const auto &[tile, t] : _plan.pieces) {
 		int tx = TileX(tile);
 		int ty = TileY(tile);
-		int x0 = PxX(tx);
-		int y0 = PxY(ty);
-		int x1 = PxX(tx + 1) - 1;
-		int y1 = PxY(ty + 1) - 1;
+		int x0 = ScrX(ty);
+		int y0 = ScrY(tx);
+		int x1 = ScrX(ty + 1) - 1;
+		int y1 = ScrY(tx + 1) - 1;
 		DrawTrackPiece(t, x0, y0, x1, y1, w, c);
 	}
 }
@@ -1468,7 +1470,7 @@ static void DrawRoadPlan(int ppt)
 	for (TileIndex tile : _road_plan.tiles) {
 		int tx = TileX(tile);
 		int ty = TileY(tile);
-		DrawAxisBand(_road_plan.axis, PxX(tx), PxY(ty), PxX(tx + 1) - 1, PxY(ty + 1) - 1, w, c);
+		DrawAxisBand(_road_plan.axis, ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, w, c);
 	}
 }
 
@@ -1519,10 +1521,10 @@ static void DrawRectPlan(int ppt)
 {
 	if (!_rect_plan.valid) return;
 	uint32_t c = (_drag_remove || _tool == MiniTool::Demolish) ? COL_BP_RM : COL_BP;
-	int px0 = PxX(_rect_plan.x0);
-	int py0 = PxY(_rect_plan.y0);
-	int px1 = PxX(_rect_plan.x1 + 1) - 1;
-	int py1 = PxY(_rect_plan.y1 + 1) - 1;
+	int px0 = ScrX(_rect_plan.y0);
+	int py0 = ScrY(_rect_plan.x0);
+	int px1 = ScrX(_rect_plan.y1 + 1) - 1;
+	int py1 = ScrY(_rect_plan.x1 + 1) - 1;
 	BlendRect(px0, py0, px1, py1, c, 90);
 	int b = std::max(1, ppt / 8);
 	FillRect(px0, py0, px1, py0 + b - 1, c);
@@ -1653,14 +1655,14 @@ static void CommitPointTool()
 static void DrawPointToolPlan(int ppt)
 {
 	uint32_t c = _ctrl_pressed ? COL_BP_RM : COL_BP;
-	double wx = WorldX(_cursor.pos.x);
-	double wy = WorldY(_cursor.pos.y);
+	double wx = MapXAt(_cursor.pos.y);
+	double wy = MapYAt(_cursor.pos.x);
 	int tx = Clamp<int>((int)std::floor(wx), 1, Map::SizeX() - 2);
 	int ty = Clamp<int>((int)std::floor(wy), 1, Map::SizeY() - 2);
-	int x0 = PxX(tx);
-	int y0 = PxY(ty);
-	int x1 = PxX(tx + 1) - 1;
-	int y1 = PxY(ty + 1) - 1;
+	int x0 = ScrX(ty);
+	int y0 = ScrY(tx);
+	int x1 = ScrX(ty + 1) - 1;
+	int y1 = ScrY(tx + 1) - 1;
 	BlendRect(x0, y0, x1, y1, c, 90);
 	if (_ctrl_pressed) return;
 
@@ -2293,8 +2295,8 @@ static void ZoomAt(int sx, int sy, bool in)
 	 * frame while the scale animates, so the point never drifts. */
 	_zoom_sx = sx;
 	_zoom_sy = sy;
-	_zoom_wx = WorldX(sx);
-	_zoom_wy = WorldY(sy);
+	_zoom_wx = MapXAt(sy);
+	_zoom_wy = MapYAt(sx);
 	_zoom_anchored = true;
 }
 
@@ -2417,8 +2419,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_glide = false;
 		_pan_vx = 0.0;
 		_pan_vy = 0.0;
-		_cam_x -= _cursor.delta.x * _ms.drag_pan_multiplier / _cam_ppt;
-		_cam_y -= _cursor.delta.y * _ms.drag_pan_multiplier / _cam_ppt;
+		_cam_y -= _cursor.delta.x * _ms.drag_pan_multiplier / _cam_ppt;
+		_cam_x -= _cursor.delta.y * _ms.drag_pan_multiplier / _cam_ppt;
 		ClampCamera();
 	}
 
@@ -2440,14 +2442,14 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				}
 			} else if (IsPointTool(_tool)) {
 				_drag_remove = _ctrl_pressed;
-				_drag_ax = WorldX(_cursor.pos.x);
-				_drag_ay = WorldY(_cursor.pos.y);
+				_drag_ax = MapXAt(_cursor.pos.y);
+				_drag_ay = MapYAt(_cursor.pos.x);
 				CommitPointTool();
 			} else {
 				_dragging = true;
 				_drag_remove = _ctrl_pressed;
-				_drag_ax = WorldX(_cursor.pos.x);
-				_drag_ay = WorldY(_cursor.pos.y);
+				_drag_ax = MapXAt(_cursor.pos.y);
+				_drag_ay = MapYAt(_cursor.pos.x);
 				if (_tool == MiniTool::Rail) {
 					_plan.path.clear();
 					UpdateRailPlan(_drag_ax, _drag_ay);
@@ -2678,8 +2680,8 @@ void MiniUiFrame(uint delta_ms)
 		}
 	}
 	if (_pan_vx != 0.0 || _pan_vy != 0.0) {
-		_cam_x += _pan_vx * delta_ms / 1000.0 / _cam_ppt;
-		_cam_y += _pan_vy * delta_ms / 1000.0 / _cam_ppt;
+		_cam_y += _pan_vx * delta_ms / 1000.0 / _cam_ppt;
+		_cam_x += _pan_vy * delta_ms / 1000.0 / _cam_ppt;
 		ClampCamera();
 	}
 
@@ -2694,8 +2696,8 @@ void MiniUiFrame(uint delta_ms)
 			_zoom_anchored = false;
 			_follow = false;
 			_glide = false;
-			_cam_x += ex;
-			_cam_y += ey;
+			_cam_y += ex;
+			_cam_x += ey;
 			ClampCamera();
 		}
 	}
@@ -2730,8 +2732,8 @@ void MiniUiFrame(uint delta_ms)
 		if (std::abs(_dest_ppt - _cam_ppt) < _dest_ppt * 0.002) _cam_ppt = _dest_ppt;
 	}
 	if (_zoom_anchored) {
-		_cam_x = _zoom_wx - (_zoom_sx - _fbw * 0.5) / _cam_ppt;
-		_cam_y = _zoom_wy - (_zoom_sy - _fbh * 0.5) / _cam_ppt;
+		_cam_x = _zoom_wx - (_zoom_sy - _fbh * 0.5) / _cam_ppt;
+		_cam_y = _zoom_wy - (_zoom_sx - _fbw * 0.5) / _cam_ppt;
 		ClampCamera();
 		if (_cam_ppt == _dest_ppt) _zoom_anchored = false;
 	}
@@ -2739,10 +2741,10 @@ void MiniUiFrame(uint delta_ms)
 	int ppt = std::max(1, (int)std::lround(_cam_ppt));
 	ComputeZoomDetail(ppt);
 
-	int tx0 = std::max(0, (int)std::floor(WorldX(0)));
-	int ty0 = std::max(0, (int)std::floor(WorldY(0)));
-	int tx1 = std::min<int>(Map::SizeX() - 1, (int)std::floor(WorldX(_fbw - 1)));
-	int ty1 = std::min<int>(Map::SizeY() - 1, (int)std::floor(WorldY(_fbh - 1)));
+	int tx0 = std::max(0, (int)std::floor(MapXAt(0)));
+	int ty0 = std::max(0, (int)std::floor(MapYAt(0)));
+	int tx1 = std::min<int>(Map::SizeX() - 1, (int)std::floor(MapXAt(_fbh - 1)));
+	int ty1 = std::min<int>(Map::SizeY() - 1, (int)std::floor(MapYAt(_fbw - 1)));
 
 	FillRect(0, 0, _fbw - 1, _fbh - 1, COL_VOID);
 	static std::vector<std::pair<int, int>> tree_dots;
@@ -2752,7 +2754,7 @@ void MiniUiFrame(uint delta_ms)
 		uint32_t run_c = 0;
 		auto flush = [&](int tx_end) {
 			if (run_start < 0) return;
-			FillRect(PxX(run_start), PxY(ty), PxX(tx_end) - 1, PxY(ty + 1) - 1, run_c);
+			FillRect(ScrX(ty), ScrY(run_start), ScrX(ty + 1) - 1, ScrY(tx_end) - 1, run_c);
 			run_start = -1;
 		};
 		for (int tx = tx0; tx <= tx1; tx++) {
@@ -2775,28 +2777,28 @@ void MiniUiFrame(uint delta_ms)
 	}
 	int tree_r = std::max(1, ppt / 8);
 	for (auto [tx, ty] : tree_dots) {
-		FillCircle((PxX(tx) + PxX(tx + 1) - 1) / 2, (PxY(ty) + PxY(ty + 1) - 1) / 2, tree_r, COL_TREE);
+		FillCircle((ScrX(ty) + ScrX(ty + 1) - 1) / 2, (ScrY(tx) + ScrY(tx + 1) - 1) / 2, tree_r, COL_TREE);
 	}
 
 	if (_dragging) {
 		if (_tool == MiniTool::Rail) {
-			UpdateRailPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
+			UpdateRailPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawRailPlan(ppt);
 		} else if (_tool == MiniTool::Road) {
-			UpdateRoadPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
+			UpdateRoadPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawRoadPlan(ppt);
 		} else if (IsRectTool(_tool)) {
-			UpdateRectPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y), RectPlanLimit());
+			UpdateRectPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x), RectPlanLimit());
 			DrawRectPlan(ppt);
 		}
 	} else if (IsPointTool(_tool)) {
 		DrawPointToolPlan(ppt);
 	} else if (_tool != MiniTool::None) {
-		int htx = (int)std::floor(WorldX(_cursor.pos.x));
-		int hty = (int)std::floor(WorldY(_cursor.pos.y));
+		int htx = (int)std::floor(MapXAt(_cursor.pos.y));
+		int hty = (int)std::floor(MapYAt(_cursor.pos.x));
 		if (htx >= 0 && hty >= 0 && htx < (int)Map::SizeX() && hty < (int)Map::SizeY()) {
 			uint32_t c = _tool == MiniTool::Demolish ? COL_BP_RM : COL_BP;
-			BlendRect(PxX(htx), PxY(hty), PxX(htx + 1) - 1, PxY(hty + 1) - 1, c, 70);
+			BlendRect(ScrX(hty), ScrY(htx), ScrX(hty + 1) - 1, ScrY(htx + 1) - 1, c, 70);
 		}
 	}
 
