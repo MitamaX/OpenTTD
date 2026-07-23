@@ -1595,6 +1595,125 @@ static std::string FormatMoney(int64_t m)
 	return s;
 }
 
+/* Bottom-left build menu: a category bar with vertical submenus, drawn in
+ * screen space after Present(), so hit rects live in screen pixels. */
+struct MiniMenuItem {
+	std::string_view label;
+	MiniTool tool;
+};
+
+struct MiniMenuCategory {
+	std::string_view label;
+	std::span<const MiniMenuItem> items;
+};
+
+static const MiniMenuItem _menu_rail_items[] = {
+	{"TRACK", MiniTool::Rail},
+	{"STATION", MiniTool::Station},
+	{"SIGNAL", MiniTool::Signal},
+	{"DEPOT", MiniTool::TrainDepot},
+	{"BRIDGE", MiniTool::RailBridge},
+};
+
+static const MiniMenuItem _menu_road_items[] = {
+	{"ROAD", MiniTool::Road},
+	{"BUS", MiniTool::BusStop},
+	{"TRUCK", MiniTool::TruckStop},
+	{"DEPOT", MiniTool::RoadDepot},
+	{"BRIDGE", MiniTool::RoadBridge},
+};
+
+static const MiniMenuItem _menu_land_items[] = {
+	{"TERRAFORM", MiniTool::Terraform},
+	{"CLEAR", MiniTool::Demolish},
+};
+
+static const MiniMenuCategory _menu_cats[] = {
+	{"RAIL", _menu_rail_items},
+	{"ROAD", _menu_road_items},
+	{"LAND", _menu_land_items},
+};
+
+static int _menu_open = -1;
+static std::vector<std::pair<Rect, int>> _menu_cat_hits;
+static std::vector<std::pair<Rect, MiniTool>> _menu_item_hits;
+
+static bool InRect(const Rect &r, int x, int y)
+{
+	return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
+static int MenuButtonHeight()
+{
+	return GetCharacterHeight(FS_NORMAL) + 6 * _ms.hud_scale;
+}
+
+static void DrawMenuButton(const Rect &r, std::string_view label, bool active)
+{
+	if (active) {
+		ScreenFillRect(r.left, r.top, r.right, r.bottom, COL_PAPER);
+	} else {
+		ScreenBlendRect(r.left, r.top, r.right, r.bottom, COL_INK, 200);
+	}
+	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
+	int ty = r.top + (r.bottom - r.top + 1 - GetCharacterHeight(FS_NORMAL)) / 2;
+	DrawString(r.left, r.right, ty, label, active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
+}
+
+static void DrawBuildMenu()
+{
+	_menu_cat_hits.clear();
+	_menu_item_hits.clear();
+
+	int s = _ms.hud_scale;
+	int pad_x = 5 * s;
+	int h = MenuButtonHeight();
+	int gap = 2 * s;
+	int margin = 6 * s;
+
+	int x = margin;
+	int bar_top = _fbh - margin - h;
+	for (int c = 0; c < (int)std::size(_menu_cats); c++) {
+		const MiniMenuCategory &cat = _menu_cats[c];
+		int w = GetStringBoundingBox(cat.label).width + 2 * pad_x;
+		Rect r = {x, bar_top, x + w - 1, bar_top + h - 1};
+		bool open = _menu_open == c;
+		DrawMenuButton(r, cat.label, open);
+		_menu_cat_hits.emplace_back(r, c);
+
+		if (open) {
+			int iw = 0;
+			for (const MiniMenuItem &it : cat.items) iw = std::max<int>(iw, GetStringBoundingBox(it.label).width);
+			iw += 2 * pad_x;
+			int iy = bar_top - gap - h;
+			for (const MiniMenuItem &it : cat.items) {
+				Rect ir = {x, iy, x + iw - 1, iy + h - 1};
+				DrawMenuButton(ir, it.label, _tool == it.tool);
+				_menu_item_hits.emplace_back(ir, it.tool);
+				iy -= h + gap;
+			}
+		}
+		x += w + gap;
+	}
+}
+
+static bool HandleMenuClick(int x, int y)
+{
+	for (const auto &[r, c] : _menu_cat_hits) {
+		if (InRect(r, x, y)) {
+			_menu_open = _menu_open == c ? -1 : c;
+			return true;
+		}
+	}
+	for (const auto &[r, t] : _menu_item_hits) {
+		if (InRect(r, x, y)) {
+			_tool = _tool == t ? MiniTool::None : t;
+			return true;
+		}
+	}
+	return false;
+}
+
 static void DrawHud()
 {
 	static const std::string_view months[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
@@ -1655,8 +1774,9 @@ static void DrawHud()
 			}
 			break;
 	}
-	DrawHudText(6 * s, _fbh - lh - 6 * s, hint);
-	if (!hint2.empty()) DrawHudText(6 * s, _fbh - 2 * lh - 6 * s - 8, hint2);
+	int hint_y = _fbh - MenuButtonHeight() - 12 * s - lh;
+	DrawHudTextCentred(_fbw / 2, hint_y, hint);
+	if (!hint2.empty()) DrawHudTextCentred(_fbw / 2, hint_y - lh - 8, hint2);
 }
 
 static void Present()
@@ -1675,6 +1795,7 @@ static void Present()
 	}
 	DrawLabels();
 	DrawHud();
+	DrawBuildMenu();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -1702,6 +1823,7 @@ static void Deactivate()
 {
 	_mini_active = false;
 	_tool = MiniTool::None;
+	_menu_open = -1;
 	_dragging = false;
 	_zoom_anchored = false;
 	_glide = false;
@@ -1788,18 +1910,20 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (_tool == MiniTool::None) {
-			if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
-				if (const Vehicle *v = SelectVehicleAt(_cursor.pos.x, _cursor.pos.y); v != nullptr) ShowVehicleViewWindow(v);
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y)) {
+			if (_tool == MiniTool::None) {
+				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
+					if (const Vehicle *v = SelectVehicleAt(_cursor.pos.x, _cursor.pos.y); v != nullptr) ShowVehicleViewWindow(v);
+				}
+			} else {
+				_dragging = true;
+				_drag_remove = _ctrl_pressed;
+				_drag_ax = WorldX(_cursor.pos.x);
+				_drag_ay = WorldY(_cursor.pos.y);
+				if (_tool == MiniTool::Rail) UpdateRailPlan(_drag_ax, _drag_ay);
+				if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(_drag_ax, _drag_ay);
+				if (IsRectTool(_tool)) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
 			}
-		} else {
-			_dragging = true;
-			_drag_remove = _ctrl_pressed;
-			_drag_ax = WorldX(_cursor.pos.x);
-			_drag_ay = WorldY(_cursor.pos.y);
-			if (_tool == MiniTool::Rail) UpdateRailPlan(_drag_ax, _drag_ay);
-			if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(_drag_ax, _drag_ay);
-			if (IsRectTool(_tool)) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
 		}
 	}
 
@@ -1854,6 +1978,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				ClearPlans();
 			} else if (_tool != MiniTool::None) {
 				_tool = MiniTool::None;
+			} else if (_menu_open >= 0) {
+				_menu_open = -1;
 			} else if (_sel_vehicle != VehicleID::Invalid()) {
 				_sel_vehicle = VehicleID::Invalid();
 				_follow = false;
