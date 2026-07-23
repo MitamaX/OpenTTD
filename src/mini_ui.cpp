@@ -48,6 +48,7 @@
 #include "station_base.h"
 #include "station_cmd.h"
 #include "station_func.h"
+#include "string_func.h"
 #include "strings_func.h"
 #include "station_map.h"
 #include "terraform_cmd.h"
@@ -1564,62 +1565,53 @@ static void DrawCursor()
 	FillRect(x, y - 8, x, y + 8, COL_PAPER);
 }
 
-static std::string FormatMoney(int64_t m)
-{
-	bool neg = m < 0;
-	uint64_t v = neg ? (uint64_t)-m : (uint64_t)m;
-	std::string s;
-	int group = 0;
-	do {
-		s.insert(s.begin(), (char)('0' + v % 10));
-		v /= 10;
-		if (++group == 3 && v != 0) {
-			s.insert(s.begin(), ',');
-			group = 0;
-		}
-	} while (v != 0);
-	if (neg) s.insert(s.begin(), '-');
-	return s;
-}
-
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
  * above it, three per row. Drawn in screen space after Present(), so hit
  * rects live in screen pixels. */
 struct MiniMenuItem {
-	std::string_view label;
+	StringID str;
+	std::string_view fallback;
 	MiniTool tool;
 };
 
 struct MiniMenuCategory {
-	std::string_view label;
+	StringID str;
+	std::string_view fallback;
 	std::span<const MiniMenuItem> items;
 };
 
+/* Labels come from the official language files so translations apply; the
+ * fallback covers tools with no concise official string. */
+static std::string MenuLabel(StringID str, std::string_view fallback)
+{
+	return str == INVALID_STRING_ID ? std::string(fallback) : StrMakeValid(GetString(str), {});
+}
+
 static const MiniMenuItem _menu_rail_items[] = {
-	{"TRACK", MiniTool::Rail},
-	{"STATION", MiniTool::Station},
-	{"SIGNAL", MiniTool::Signal},
-	{"DEPOT", MiniTool::TrainDepot},
-	{"BRIDGE", MiniTool::RailBridge},
+	{STR_LAI_RAIL_DESCRIPTION_TRACK, "TRACK", MiniTool::Rail},
+	{STR_LAI_STATION_DESCRIPTION_RAILROAD_STATION, "STATION", MiniTool::Station},
+	{STR_COMPANY_INFRASTRUCTURE_VIEW_SIGNALS, "SIGNAL", MiniTool::Signal},
+	{STR_LAI_RAIL_DESCRIPTION_TRAIN_DEPOT, "DEPOT", MiniTool::TrainDepot},
+	{STR_SELECT_RAIL_BRIDGE_CAPTION, "BRIDGE", MiniTool::RailBridge},
 };
 
 static const MiniMenuItem _menu_road_items[] = {
-	{"ROAD", MiniTool::Road},
-	{"BUS", MiniTool::BusStop},
-	{"TRUCK", MiniTool::TruckStop},
-	{"DEPOT", MiniTool::RoadDepot},
-	{"BRIDGE", MiniTool::RoadBridge},
+	{STR_LAI_ROAD_DESCRIPTION_ROAD, "ROAD", MiniTool::Road},
+	{STR_LAI_STATION_DESCRIPTION_BUS_STATION, "BUS", MiniTool::BusStop},
+	{STR_LAI_STATION_DESCRIPTION_TRUCK_LOADING_AREA, "TRUCK", MiniTool::TruckStop},
+	{STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT, "DEPOT", MiniTool::RoadDepot},
+	{INVALID_STRING_ID, "BRIDGE", MiniTool::RoadBridge},
 };
 
 static const MiniMenuItem _menu_land_items[] = {
-	{"LEVEL", MiniTool::Terraform},
-	{"CLEAR", MiniTool::Demolish},
+	{INVALID_STRING_ID, "LEVEL", MiniTool::Terraform},
+	{INVALID_STRING_ID, "CLEAR", MiniTool::Demolish},
 };
 
 static const MiniMenuCategory _menu_cats[] = {
-	{"RAIL", _menu_rail_items},
-	{"ROAD", _menu_road_items},
-	{"LAND", _menu_land_items},
+	{STR_RAIL_NAME_RAILROAD, "RAIL", _menu_rail_items},
+	{STR_ROAD_NAME_ROAD, "ROAD", _menu_road_items},
+	{STR_LANDSCAPING_MENU_LANDSCAPING, "LAND", _menu_land_items},
 };
 
 static int _menu_open = -1;
@@ -1732,7 +1724,7 @@ static void DrawMenuTile(const Rect &r, const MiniMenuItem &it, bool active)
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawToolIcon(it.tool, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
 	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
-	DrawString(r.left, r.right, r.bottom - lh - 3, it.label, active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
+	DrawString(r.left, r.right, r.bottom - lh - 3, MenuLabel(it.str, it.fallback), active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
 }
 
 static void DrawBuildMenu()
@@ -1754,7 +1746,7 @@ static void DrawBuildMenu()
 
 		int tw = 0;
 		for (const MiniMenuCategory &c : _menu_cats) {
-			for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(it.label).width);
+			for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
 		}
 		int tile = std::max(tw + 10, 3 * lh);
 		int pp = 4 * s;
@@ -1778,9 +1770,10 @@ static void DrawBuildMenu()
 	int x = margin;
 	for (int c = 0; c < (int)std::size(_menu_cats); c++) {
 		const MiniMenuCategory &cat = _menu_cats[c];
-		int w = GetStringBoundingBox(cat.label).width + 2 * pad_x;
+		std::string label = MenuLabel(cat.str, cat.fallback);
+		int w = GetStringBoundingBox(label).width + 2 * pad_x;
 		Rect r = {x, bar_top, x + w - 1, bar_top + h - 1};
-		DrawMenuButton(r, cat.label, _menu_open == c);
+		DrawMenuButton(r, label, _menu_open == c);
 		_menu_cat_hits.emplace_back(r, c);
 		x += w + gap;
 	}
@@ -1805,21 +1798,18 @@ static bool HandleMenuClick(int x, int y)
 
 static void DrawHud()
 {
-	static const std::string_view months[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
 	int s = _ms.hud_scale;
-	TimerGameCalendar::YearMonthDay ymd = TimerGameCalendar::ConvertDateToYMD(TimerGameCalendar::date);
-	std::string line = fmt::format("{} {} {}", ymd.day, months[ymd.month], ymd.year.base());
+	std::string line = GetString(STR_JUST_DATE_LONG, TimerGameCalendar::date);
 	const Company *c = Company::GetIfValid(_local_company);
-	if (c != nullptr) line += fmt::format("   {}", FormatMoney((int64_t)c->money));
+	if (c != nullptr) line += fmt::format("   {}", GetString(STR_JUST_CURRENCY_LONG, c->money));
 	int lh = GetCharacterHeight(FS_NORMAL);
 	DrawHudText(6 * s, 6 * s, line);
 
-	if (_pause_mode.Any()) DrawHudTextCentred(_fbw / 2, 6 * s, "PAUSED");
+	if (_pause_mode.Any()) DrawHudTextCentred(_fbw / 2, 6 * s, StrMakeValid(GetString(STR_STATUSBAR_PAUSED), {}));
 
 	if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
-		static const std::string_view kinds[4] = {"TRAIN", "ROAD", "SHIP", "PLANE"};
-		std::string info = fmt::format("{} {}  SPD {}", kinds[v->type], v->unitnumber, v->GetDisplaySpeed());
-		if (v->vehstatus.Test(VehState::Stopped)) info += "  STOPPED";
+		std::string info = fmt::format("{} {}  SPD {}", StrMakeValid(GetString((StringID)(STR_REPLACE_VEHICLE_TRAIN + v->type)), {}), v->unitnumber, v->GetDisplaySpeed());
+		if (v->vehstatus.Test(VehState::Stopped)) info += fmt::format("  {}", StrMakeValid(GetString(STR_VEHICLE_STATUS_STOPPED), {}));
 		uint cap = 0, stored = 0;
 		CargoType ct = INVALID_CARGO;
 		for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
@@ -1833,7 +1823,7 @@ static void DrawHud()
 			char lab[4] = {(char)(l >> 24), (char)(l >> 16), (char)(l >> 8), (char)l};
 			info += fmt::format("  {} {}/{}", std::string_view(lab, 4), stored, cap);
 		}
-		info += fmt::format("  ORDERS {}  PROFIT {}", v->GetNumOrders(), FormatMoney(v->GetDisplayProfitThisYear()));
+		info += fmt::format("  ORDERS {}  PROFIT {}", v->GetNumOrders(), GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayProfitThisYear()));
 		DrawHudText(6 * s, 6 * s + lh + 8, info);
 	}
 
