@@ -1620,10 +1620,10 @@ static void DrawCursor()
 {
 	int x = _cursor.pos.x;
 	int y = _cursor.pos.y;
-	FillRect(x - 9, y - 1, x + 9, y + 1, COL_INK);
-	FillRect(x - 1, y - 9, x + 1, y + 9, COL_INK);
-	FillRect(x - 8, y, x + 8, y, COL_PAPER);
-	FillRect(x, y - 8, x, y + 8, COL_PAPER);
+	ScreenFillRect(x - 9, y - 1, x + 9, y + 1, COL_INK);
+	ScreenFillRect(x - 1, y - 9, x + 1, y + 9, COL_INK);
+	ScreenFillRect(x - 8, y, x + 8, y, COL_PAPER);
+	ScreenFillRect(x, y - 8, x, y + 8, COL_PAPER);
 }
 
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
@@ -1936,6 +1936,7 @@ static void Present()
 	DrawLabels();
 	DrawHud();
 	DrawBuildMenu();
+	DrawCursor();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -2365,7 +2366,6 @@ void MiniUiFrame(uint delta_ms)
 	DrawOrderRoute();
 	DrawVehicles(ppt);
 	DrawSelectionRing(ppt);
-	DrawCursor();
 	Present();
 	MarkWholeScreenDirty();
 }
