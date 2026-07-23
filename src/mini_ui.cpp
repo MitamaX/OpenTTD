@@ -2228,7 +2228,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			if (_follow) {
 				_glide = false;
 				_zoom_anchored = false;
-				_dest_ppt = std::max(_dest_ppt, _ms.jump_ppt);
+				_dest_ppt = MAX_PPT;
 			}
 			break;
 
@@ -2280,7 +2280,7 @@ void MiniUiFrame(uint delta_ms)
 			_follow = true;
 			_glide = false;
 			_zoom_anchored = false;
-			_dest_ppt = std::max(_dest_ppt, _ms.jump_ppt);
+			_dest_ppt = MAX_PPT;
 		}
 	}
 
