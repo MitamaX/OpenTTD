@@ -23,12 +23,14 @@
 #include "engine_base.h"
 #include "core/backup_type.hpp"
 #include "core/math_func.hpp"
+#include "core/utf8.hpp"
 #include <unordered_map>
 #include "fileio_func.h"
 #include "gfx_func.h"
 #include "graph_gui.h"
 #include "ground_vehicle.hpp"
 #include "gui.h"
+#include "industry.h"
 #include "ini_type.h"
 #include "landscape.h"
 #include "landscape_cmd.h"
@@ -39,6 +41,7 @@
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "news_gui.h"
+#include "news_type.h"
 #include "openttd.h"
 #include "order_base.h"
 #include "order_cmd.h"
@@ -119,7 +122,41 @@ static bool IsDirPointTool(MiniTool t)
 	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot;
 }
 
+enum class MiniLayer : uint8_t {
+	None,
+	Rail,
+	Road,
+};
+
+static MiniLayer ToolLayer(MiniTool t)
+{
+	switch (t) {
+		case MiniTool::Rail:
+		case MiniTool::Station:
+		case MiniTool::TrainDepot:
+		case MiniTool::Signal:
+		case MiniTool::RailTunnel:
+			return MiniLayer::Rail;
+		case MiniTool::Road:
+		case MiniTool::BusStop:
+		case MiniTool::TruckStop:
+		case MiniTool::RoadDepot:
+		case MiniTool::RoadTunnel:
+			return MiniLayer::Road;
+		default:
+			return MiniLayer::None;
+	}
+}
+
 static MiniTool _tool = MiniTool::None;
+
+/* ONI-style overlay: an explicit toggle that swaps the info layer without
+ * leaving the screen. Picking a build tool auto-engages its layer; that
+ * auto choice reverts when the tool is dropped, a manual toggle sticks. */
+static MiniLayer _overlay = MiniLayer::None;
+static bool _overlay_auto = false;
+static MiniLayer _last_tool_layer = MiniLayer::None;
+static MiniLayer _filter_layer = MiniLayer::None;
 static DiagDirection _point_dir = DIAGDIR_SE;
 static bool _dragging = false;
 static bool _drag_remove = false;
@@ -164,6 +201,7 @@ struct MiniSettings {
 	int menu_panel_rows = 4;
 	int contour_alpha = 120;
 	int relief_strength = 22;
+	int filter_alpha = 150;
 	int edge_scroll = 0;
 	int edge_margin = 24;
 	double edge_scroll_speed = 1600.0;
@@ -225,6 +263,7 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "menu_panel_rows", _ms.menu_panel_rows);
 	ReadIniNumber(group, "contour_alpha", _ms.contour_alpha);
 	ReadIniNumber(group, "relief_strength", _ms.relief_strength);
+	ReadIniNumber(group, "filter_alpha", _ms.filter_alpha);
 	ReadIniNumber(group, "edge_scroll", _ms.edge_scroll);
 	ReadIniNumber(group, "edge_margin", _ms.edge_margin);
 	ReadIniNumber(group, "edge_scroll_speed", _ms.edge_scroll_speed);
@@ -241,6 +280,7 @@ static void LoadMiniSettings()
 	_ms.menu_panel_rows = Clamp(_ms.menu_panel_rows, 1, 4);
 	_ms.contour_alpha = Clamp(_ms.contour_alpha, 0, 255);
 	_ms.relief_strength = Clamp(_ms.relief_strength, 0, 60);
+	_ms.filter_alpha = Clamp(_ms.filter_alpha, 0, 230);
 	_ms.edge_margin = Clamp(_ms.edge_margin, 2, 200);
 	_ms.edge_scroll_speed = Clamp(_ms.edge_scroll_speed, 100.0, 10000.0);
 	_ms.drag_pan_multiplier = Clamp(_ms.drag_pan_multiplier, 0.5, 8.0);
@@ -307,6 +347,16 @@ static const uint32_t COL_STOP = 0xFFE04B4BU;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
 
+/* Screen chrome follows the reference HUD: warm dark panels with a thin
+ * darker edge, teal active state, cyan accent, warm off-white text. */
+static const uint32_t COL_CH_PANEL = 0xFF262624U;
+static const uint32_t COL_CH_EDGE = 0xFF191916U;
+static const uint32_t COL_CH_TILE = 0xFF2E2E2BU;
+static const uint32_t COL_CH_ACTIVE = 0xFF3D5A5CU;
+static const uint32_t COL_CH_TEXT = 0xFFC5C0B2U;
+static const uint32_t COL_CH_DIM = 0xFF6E6A5EU;
+static const uint32_t COL_CH_ACCENT = 0xFF8FE0E8U;
+
 /* All-green ramp like the old top-down renderer settled on: one step
  * darker per height level, hue constant so slopes match their neighbours. */
 static const uint32_t _height_ramp[16] = {
@@ -339,36 +389,53 @@ static int ScrY(double tx) { return (int)std::lround(tx * _cam_ppt + ScrBaseY())
 static double MapXAt(int sy) { return (sy - ScrBaseY()) / _cam_ppt; }
 static double MapYAt(int sx) { return (sx - ScrBaseX()) / _cam_ppt; }
 
+/* Overlay mode draws the base map as darkened greyscale: luminance is kept
+ * so terrain still reads, while repainted layer content gets full colour.
+ * filter_alpha sets how far the background sinks. */
+static bool _grey_map = false;
+
+static uint32_t GreyMap(uint32_t c)
+{
+	uint lum = (77 * ((c >> 16) & 0xFFU) + 151 * ((c >> 8) & 0xFFU) + 28 * (c & 0xFFU)) >> 8;
+	uint g = 12 + lum * (255 - (uint)_ms.filter_alpha) / 255;
+	return (c & 0xFF000000U) | (g << 16) | (g << 8) | g;
+}
+
+static uint32_t MapCol(uint32_t c)
+{
+	return _grey_map ? GreyMap(c) : c;
+}
+
 static void FillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
 	if (x1 < x0 || y1 < y0) return;
-	RlwCmdRect(x0, y0, x1, y1, c);
+	RlwCmdRect(x0, y0, x1, y1, MapCol(c));
 }
 
 static void BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
 {
 	if (x1 < x0 || y1 < y0) return;
-	RlwCmdRect(x0, y0, x1, y1, (c & 0x00FFFFFFU) | ((uint32_t)Clamp<uint>(alpha, 0, 255) << 24));
+	RlwCmdRect(x0, y0, x1, y1, (MapCol(c) & 0x00FFFFFFU) | ((uint32_t)Clamp<uint>(alpha, 0, 255) << 24));
 }
 
 static void ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
-	RlwCmdLine(x0, y0, x1, y1, std::max(width, 1), c);
+	RlwCmdLine(x0, y0, x1, y1, std::max(width, 1), MapCol(c));
 }
 
 static void FillCircle(int cx, int cy, int r, uint32_t c)
 {
-	RlwCmdCircle(cx, cy, std::max(r, 1), c);
+	RlwCmdCircle(cx, cy, std::max(r, 1), MapCol(c));
 }
 
 static void FillDiamond(int cx, int cy, int r, uint32_t c)
 {
-	RlwCmdDiamond(cx, cy, std::max(r, 1), c);
+	RlwCmdDiamond(cx, cy, std::max(r, 1), MapCol(c));
 }
 
 static void FillTriangle(int cx, int cy, int r, uint32_t c)
 {
-	RlwCmdTriangle(cx, cy, std::max(r, 1), c);
+	RlwCmdTriangle(cx, cy, std::max(r, 1), MapCol(c));
 }
 
 /* Strings are laid out by the native font code into a small offscreen buffer
@@ -432,7 +499,7 @@ static void PruneTextCache()
 
 static constexpr uint32_t TextTint(TextColour colour)
 {
-	return colour == TC_BLACK ? 0xFF000000U : 0xFFFFFFFFU;
+	return colour == TC_BLACK ? 0xFF14181CU : 0xFFE6E1D3U;
 }
 
 static void DrawScreenText(int x, int y, std::string_view text, TextColour colour = TC_WHITE)
@@ -441,22 +508,24 @@ static void DrawScreenText(int x, int y, std::string_view text, TextColour colou
 	if (e != nullptr) RlwCmdTexQuad(e->tex, x, y, TextTint(colour));
 }
 
-static void ScreenBlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
-{
-	BlendRect(x0, y0, x1, y1, c, alpha);
-}
-
 static void ScreenFillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
 	FillRect(x0, y0, x1, y1, c);
 }
 
+static void ChromePanel(int x0, int y0, int x1, int y1)
+{
+	int r = 2 * _ms.hud_scale;
+	RlwCmdRoundRect(x0, y0, x1, y1, r, COL_CH_EDGE);
+	RlwCmdRoundRect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, r, COL_CH_PANEL);
+}
+
 static void DrawHudText(int x, int y, std::string_view text)
 {
-	int pad = 3;
+	int pad = 4;
 	int w = GetStringBoundingBox(text).width;
 	int lh = GetCharacterHeight(FS_NORMAL);
-	ScreenBlendRect(x - pad, y - pad, x + w + pad, y + lh + pad - 1, COL_INK, 200);
+	RlwCmdRoundRect(x - pad, y - pad, x + w + pad, y + lh + pad - 1, pad, (COL_CH_PANEL & 0x00FFFFFFU) | 0xF0000000U);
 	DrawScreenText(x, y, text);
 }
 
@@ -532,7 +601,7 @@ static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 	uint32_t flat = GroundColour(tile, hbase);
 	auto corner = [&](Corner cn) {
 		int z = GetSlopeZInCorner(s, cn);
-		return special ? Mix(flat, COL_SHADOW, std::min(255, _ms.relief_strength * z)) : RampLerp(hbase + z);
+		return MapCol(special ? Mix(flat, COL_SHADOW, std::min(255, _ms.relief_strength * z)) : RampLerp(hbase + z));
 	};
 	RlwCmdGradientRect(x0, y0, x1, y1, corner(CORNER_N), corner(CORNER_E), corner(CORNER_W), corner(CORNER_S));
 }
@@ -837,6 +906,119 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 	}
 }
 
+/* Second pass for the overlay: the base map went down as dark greyscale and
+ * the active layer's content is repainted in a bright accent so it carries
+ * the frame. Rail reads as paper-white lines, road as catenary-yellow. */
+static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer layer)
+{
+	int x0 = ScrX(ty);
+	int y0 = ScrY(tx);
+	int x1 = ScrX(ty + 1) - 1;
+	int y1 = ScrY(tx + 1) - 1;
+	if (x1 < 0 || y1 < 0 || x0 >= _fbw || y0 >= _fbh) return;
+
+	int rail_w = std::max(1, ppt / 6);
+	int road_w = std::max(2, ppt / 3);
+	int cat_w = rail_w >= 2 ? std::max(1, rail_w / 3) : 0;
+	bool rail = layer == MiniLayer::Rail;
+	uint32_t accent = rail ? COL_PAPER : COL_CATENARY;
+
+	auto depot = [&](DiagDirection exit) {
+		uint32_t fill = Darken(accent);
+		DrawBlock(x0, y0, x1, y1, ppt, fill, accent);
+		if (!_zd.block_borders) return;
+		uint lum = (77 * ((fill >> 16) & 0xFFU) + 151 * ((fill >> 8) & 0xFFU) + 28 * (fill & 0xFFU)) >> 8;
+		int cx = (x0 + x1) / 2;
+		int cy = (y0 + y1) / 2;
+		int w = std::max(2, ppt / 5);
+		ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, lum >= 140 ? COL_INK : COL_PAPER);
+	};
+
+	switch (GetTileType(tile)) {
+		case MP_RAILWAY:
+			if (!rail) break;
+			if (IsRailDepot(tile)) {
+				depot(GetRailDepotDirection(tile));
+			} else {
+				TrackBits bits = GetTrackBits(tile);
+				DrawTrackBitsPx(bits, x0, y0, x1, y1, rail_w, accent);
+				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
+					DrawTrackBitsPx(bits, x0, y0, x1, y1, cat_w, COL_CATENARY);
+				}
+				if (HasSignals(tile)) DrawSignals(tile, x0, y0, x1, y1, ppt);
+			}
+			break;
+
+		case MP_ROAD:
+			if (IsLevelCrossing(tile)) {
+				if (rail) {
+					DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, accent);
+				} else {
+					DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, accent);
+				}
+			} else if (!rail) {
+				if (IsRoadDepot(tile)) {
+					depot(GetRoadDepotDirection(tile));
+				} else {
+					RoadBits bits = GetAnyRoadBits(tile, RTT_ROAD, true) | GetAnyRoadBits(tile, RTT_TRAM, true);
+					DrawRoadBitsPx(bits, x0, y0, x1, y1, road_w, accent);
+					if (IsNormalRoad(tile)) DrawOneWay(tile, x0, y0, x1, y1, ppt);
+				}
+			}
+			break;
+
+		case MP_STATION:
+			switch (GetStationType(tile)) {
+				case StationType::Rail:
+				case StationType::RailWaypoint:
+					if (!rail) break;
+					DrawBlock(x0, y0, x1, y1, ppt, COL_ST_RAIL, COL_ST_RAIL_B);
+					DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, accent);
+					if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
+						DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, cat_w, COL_CATENARY);
+					}
+					break;
+				case StationType::Truck:
+				case StationType::Bus:
+				case StationType::RoadWaypoint:
+					if (rail) break;
+					DrawBlock(x0, y0, x1, y1, ppt, COL_ST_ROAD, COL_ST_ROAD_B);
+					if (IsDriveThroughStopTile(tile)) {
+						DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, accent);
+					}
+					break;
+				default:
+					break;
+			}
+			break;
+
+		case MP_TUNNELBRIDGE: {
+			TransportType tt = GetTunnelBridgeTransportType(tile);
+			if (rail ? tt != TRANSPORT_RAIL : tt != TRANSPORT_ROAD) break;
+			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
+			if (IsTunnel(tile)) {
+				DrawBlock(x0, y0, x1, y1, ppt, COL_TUNNEL, accent);
+			} else {
+				DrawAxisBand(axis, x0, y0, x1, y1, road_w, accent);
+				if (cat_w > 0 && rail && HasRailCatenary(GetRailType(tile))) {
+					DrawAxisBand(axis, x0, y0, x1, y1, cat_w, COL_CATENARY);
+				}
+			}
+			break;
+		}
+
+		default:
+			break;
+	}
+
+	if (IsBridgeAbove(tile)) {
+		TransportType tt = GetTunnelBridgeTransportType(GetSouthernBridgeEnd(tile));
+		if (rail ? tt == TRANSPORT_RAIL : tt == TRANSPORT_ROAD) {
+			DrawAxisBand(GetBridgeAxis(tile), x0, y0, x1, y1, road_w, accent);
+		}
+	}
+}
+
 /* A tile whose whole footprint is one solid colour can join a horizontal run
  * with equal neighbours; one rect per run keeps the command count far below
  * one per tile on open terrain and water. Tree tiles merge their ground too
@@ -890,6 +1072,15 @@ static uint32_t CargoRgb(CargoType ct)
 /* Silhouette tells the vehicle type apart: square train, round road
  * vehicle, diamond ship, triangle aircraft. The centre dot is the unit's
  * cargo in its legend colour. */
+static bool VehicleInLayer(VehicleType vt)
+{
+	switch (_filter_layer) {
+		case MiniLayer::Rail: return vt == VEH_TRAIN;
+		case MiniLayer::Road: return vt == VEH_ROAD;
+		default: return true;
+	}
+}
+
 static void DrawVehicles(int ppt)
 {
 	int half = std::max(3, ppt * 2 / 5) / 2;
@@ -902,21 +1093,27 @@ static void DrawVehicles(int ppt)
 		int cy = ScrY(v->x_pos / (double)TILE_SIZE);
 		if (cx < -r - 1 || cy < -r - 1 || cx >= _fbw + r + 1 || cy >= _fbh + r + 1) continue;
 		uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_OBJ;
+		bool dim = !VehicleInLayer(v->type);
+		uint32_t ink = COL_INK;
+		if (dim) {
+			ink = GreyMap(COL_INK);
+			c = GreyMap(c);
+		}
 		if (!_zd.vehicle_shapes) {
 			FillRect(cx - 1, cy - 1, cx + 1, cy + 1, c);
 			continue;
 		}
 		switch (v->type) {
 			case VEH_ROAD:
-				FillCircle(cx, cy, r + 1, COL_INK);
+				FillCircle(cx, cy, r + 1, ink);
 				FillCircle(cx, cy, r, c);
 				break;
 			case VEH_SHIP:
-				FillDiamond(cx, cy, r + 1, COL_INK);
+				FillDiamond(cx, cy, r + 1, ink);
 				FillDiamond(cx, cy, r, c);
 				break;
 			case VEH_AIRCRAFT:
-				FillTriangle(cx, cy, r + 1, COL_INK);
+				FillTriangle(cx, cy, r + 1, ink);
 				FillTriangle(cx, cy, r, c);
 				break;
 			case VEH_TRAIN: {
@@ -927,20 +1124,20 @@ static void DrawVehicles(int ppt)
 				int hx = (int)std::lround(_dir_dx[v->direction] * norm * len);
 				int hy = (int)std::lround(_dir_dy[v->direction] * norm * len);
 				int w = std::max(2, ppt / 4);
-				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w + 2, COL_INK);
+				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w + 2, ink);
 				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w, c);
-				if (v->IsPrimaryVehicle()) {
+				if (v->IsPrimaryVehicle() && !dim) {
 					int tr = std::max(1, w / 2 - 1);
 					FillCircle(cx + hx, cy + hy, tr, COL_PAPER);
 				}
 				break;
 			}
 			default:
-				FillRect(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, COL_INK);
+				FillRect(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, ink);
 				FillRect(cx - r, cy - r, cx + r, cy + r, c);
 				break;
 		}
-		if (_zd.cargo_dots && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
+		if (!dim && _zd.cargo_dots && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
 			int dr = std::max(1, half - 2);
 			FillCircle(cx, cy, dr + 1, COL_INK);
 			FillCircle(cx, cy, dr, CargoRgb(v->cargo_type));
@@ -1161,10 +1358,10 @@ static Rect DrawLabelPlate(int cx, int cy, std::string_view str, uint32_t fill, 
 	int h = GetCharacterHeight(FS_NORMAL) + 2 * pad;
 	Rect r = {cx - w / 2, cy - h - 3, cx - w / 2 + w - 1, cy - 4};
 	if (transparent) {
-		ScreenBlendRect(r.left, r.top, r.right, r.bottom, fill, 170);
+		RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, pad, (fill & 0x00FFFFFFU) | 0xAA000000U);
 	} else {
-		ScreenFillRect(r.left, r.top, r.right, r.bottom, COL_INK);
-		ScreenFillRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, fill);
+		RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, pad, COL_CH_EDGE);
+		RlwCmdRoundRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, pad, fill);
 	}
 	if (e != nullptr) RlwCmdTexQuad(e->tex, r.left + pad, r.top + pad, TextTint(tc));
 	return r;
@@ -1182,7 +1379,7 @@ static void DrawLabels()
 		int cy = ScrY(TileX(t->xy) + 0.5);
 		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
 		std::string str = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
-		Rect r = DrawLabelPlate(cx, cy, str, COL_INK, true, TC_WHITE);
+		Rect r = DrawLabelPlate(cx, cy, str, COL_CH_PANEL, true, TC_WHITE);
 		_town_label_hits.emplace_back(r, t->index);
 	}
 	if (!_zd.station_names) return;
@@ -1748,7 +1945,9 @@ static const MiniMenuItem _menu_road_items[] = {
 	{STR_LAI_TUNNEL_DESCRIPTION_ROAD, "TUNNEL", MiniTool::RoadTunnel},
 };
 
-static const MiniMenuItem _menu_land_items[] = {
+/* Area-command tools live apart from construction: the bottom-right corner
+ * is the command corner in the reference layout. */
+static const MiniMenuItem _cmd_items[] = {
 	{INVALID_STRING_ID, "LEVEL", MiniTool::Terraform},
 	{INVALID_STRING_ID, "CLEAR", MiniTool::Demolish},
 };
@@ -1756,7 +1955,6 @@ static const MiniMenuItem _menu_land_items[] = {
 static const MiniMenuCategory _menu_cats[] = {
 	{STR_RAIL_NAME_RAILROAD, "RAIL", MiniTool::Rail, _menu_rail_items},
 	{STR_ROAD_NAME_ROAD, "ROAD", MiniTool::Road, _menu_road_items},
-	{STR_LANDSCAPING_MENU_LANDSCAPING, "LAND", MiniTool::Terraform, _menu_land_items},
 };
 
 static int _menu_open = -1;
@@ -1770,6 +1968,16 @@ static bool InRect(const Rect &r, int x, int y)
 	return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 }
 
+/* Reference button cycle: dark tile, teal when active, cyan edge on hover. */
+static void ChromeTile(const Rect &r, bool active)
+{
+	bool hover = _cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y);
+	int rad = 2 * _ms.hud_scale;
+	int b = hover ? 2 : 1;
+	RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, rad, hover ? COL_CH_ACCENT : COL_CH_EDGE);
+	RlwCmdRoundRect(r.left + b, r.top + b, r.right - b, r.bottom - b, rad, active ? COL_CH_ACTIVE : COL_CH_TILE);
+}
+
 static int MenuTileSide()
 {
 	int lh = GetCharacterHeight(FS_NORMAL);
@@ -1778,6 +1986,7 @@ static int MenuTileSide()
 		tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(c.str, c.fallback)).width);
 		for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
 	}
+	for (const MiniMenuItem &it : _cmd_items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
 	return std::max(tw + 10, 3 * lh);
 }
 
@@ -1787,6 +1996,9 @@ static std::string ToolLabel(MiniTool tool)
 		for (const MiniMenuItem &it : c.items) {
 			if (it.tool == tool) return MenuLabel(it.str, it.fallback);
 		}
+	}
+	for (const MiniMenuItem &it : _cmd_items) {
+		if (it.tool == tool) return MenuLabel(it.str, it.fallback);
 	}
 	return std::string();
 }
@@ -1809,7 +2021,7 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 	int t = std::max(2, is / 5);
 	switch (tool) {
 		case MiniTool::Rail:
-			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_RAIL);
+			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_PAPER);
 			break;
 		case MiniTool::Road:
 			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_ROAD);
@@ -1831,7 +2043,7 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 			break;
 		case MiniTool::TrainDepot:
 		case MiniTool::RoadDepot:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_DEPOT);
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ROAD);
 			ScreenFillRect(cx + h - 2, cy - is / 4, cx + h, cy + is / 4, COL_PAPER);
 			break;
 		case MiniTool::Signal:
@@ -1840,7 +2052,7 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 			break;
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, tool == MiniTool::RailTunnel ? COL_RAIL : COL_ROAD);
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, tool == MiniTool::RailTunnel ? COL_PAPER : COL_BRIDGE);
 			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_TUNNEL);
 			break;
 		case MiniTool::Terraform:
@@ -1859,13 +2071,13 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 
 static void DrawMenuTile(const Rect &r, StringID str, std::string_view fallback, MiniTool icon, bool active)
 {
-	ScreenFillRect(r.left, r.top, r.right, r.bottom, active ? COL_PAPER : Mix(COL_INK, COL_PAPER, 25));
+	ChromeTile(r, active);
 	int lh = GetCharacterHeight(FS_NORMAL);
 	int cx = (r.left + r.right) / 2;
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawToolIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
 	if (const MiniTextEntry *e = TextTexture(MenuLabel(str, fallback)); e != nullptr) {
-		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, TextTint(active ? TC_BLACK : TC_WHITE));
+		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
 	}
 }
 
@@ -1893,7 +2105,7 @@ static void DrawBuildMenu()
 		int ph = vis * tile + (vis - 1) * gap + 2 * pp;
 		int py = bar_top - gap - ph;
 		_menu_panel_rect = {margin, py, margin + pw - 1, py + ph - 1};
-		ScreenFillRect(margin, py, margin + pw - 1, py + ph - 1, COL_INK);
+		ChromePanel(margin, py, margin + pw - 1, py + ph - 1);
 		for (int i = 0; i < n; i++) {
 			int row = i / cols - _menu_scroll;
 			if (row < 0 || row >= vis) continue;
@@ -1911,7 +2123,7 @@ static void DrawBuildMenu()
 			int bx0 = std::max(margin, bx1 - s + 1);
 			int ty0 = track_top + track_h * _menu_scroll / rows;
 			int ty1 = track_top + track_h * (_menu_scroll + vis) / rows - 1;
-			ScreenFillRect(bx0, ty0, bx1, ty1, Mix(COL_INK, COL_PAPER, 110));
+			ScreenFillRect(bx0, ty0, bx1, ty1, COL_CH_DIM);
 		}
 	}
 
@@ -1934,6 +2146,40 @@ static bool HandleMenuClick(int x, int y)
 		}
 	}
 	for (const auto &[r, t] : _menu_item_hits) {
+		if (InRect(r, x, y)) {
+			_tool = _tool == t ? MiniTool::None : t;
+			return true;
+		}
+	}
+	return false;
+}
+
+static std::vector<std::pair<Rect, MiniTool>> _cmd_hits;
+
+static void DrawCmdBar()
+{
+	_cmd_hits.clear();
+
+	int s = _ms.hud_scale;
+	int gap = 2 * s;
+	int margin = 6 * s;
+	int tile = MenuTileSide();
+
+	int n = (int)std::size(_cmd_items);
+	int x0 = _fbw - margin - n * tile - (n - 1) * gap;
+	int y = _fbh - margin - tile;
+	for (int i = 0; i < n; i++) {
+		const MiniMenuItem &it = _cmd_items[i];
+		int x = x0 + i * (tile + gap);
+		Rect r = {x, y, x + tile - 1, y + tile - 1};
+		DrawMenuTile(r, it.str, it.fallback, it.tool, _tool == it.tool);
+		_cmd_hits.emplace_back(r, it.tool);
+	}
+}
+
+static bool HandleCmdClick(int x, int y)
+{
+	for (const auto &[r, t] : _cmd_hits) {
 		if (InRect(r, x, y)) {
 			_tool = _tool == t ? MiniTool::None : t;
 			return true;
@@ -2008,6 +2254,7 @@ static int _win_bar_bottom = 0;
 static Rect _win_panel_rect;
 static std::vector<std::pair<Rect, int>> _win_cat_hits;
 static std::vector<std::pair<Rect, MiniWin>> _win_item_hits;
+static std::vector<std::pair<Rect, MiniLayer>> _ovl_hits;
 
 static int WinTileSide()
 {
@@ -2094,13 +2341,13 @@ static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
 
 static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, MiniWin icon, bool active)
 {
-	ScreenFillRect(r.left, r.top, r.right, r.bottom, active ? COL_PAPER : Mix(COL_INK, COL_PAPER, 25));
+	ChromeTile(r, active);
 	int lh = GetCharacterHeight(FS_NORMAL);
 	int cx = (r.left + r.right) / 2;
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawWinIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
 	if (const MiniTextEntry *e = TextTexture(MenuLabel(str, fallback)); e != nullptr) {
-		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, TextTint(active ? TC_BLACK : TC_WHITE));
+		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
 	}
 }
 
@@ -2125,10 +2372,33 @@ static void OpenMiniWindow(MiniWin win)
 	}
 }
 
+static void DrawOverlayGlyph(MiniLayer layer, int cx, int cy, int os, bool active)
+{
+	uint32_t g = active ? COL_CH_ACCENT : COL_CH_TEXT;
+	uint32_t bg = active ? COL_CH_ACTIVE : COL_CH_TILE;
+	int gl = os / 2 - 2;
+	if (layer == MiniLayer::Rail) {
+		ScreenThickLine(cx - gl, cy, cx + gl, cy, std::max(2, os / 8), g);
+		int th = std::max(2, os / 6);
+		for (int i = -1; i <= 1; i++) {
+			int px = cx + i * (gl - 1);
+			ScreenFillRect(px, cy - th, px + 1, cy + th, g);
+		}
+	} else {
+		int bh = std::max(2, os / 5);
+		ScreenFillRect(cx - gl, cy - bh, cx + gl, cy + bh, g);
+		for (int i = -1; i <= 1; i++) {
+			int px = cx + i * (gl - 1);
+			ScreenFillRect(px - 1, cy, px + 1, cy, bg);
+		}
+	}
+}
+
 static void DrawWinBar()
 {
 	_win_cat_hits.clear();
 	_win_item_hits.clear();
+	_ovl_hits.clear();
 
 	int s = _ms.hud_scale;
 	int gap = 2 * s;
@@ -2148,6 +2418,30 @@ static void DrawWinBar()
 		_win_cat_hits.emplace_back(r, c);
 	}
 
+	/* Second row under the window bar: the overlay strip. Compact icon
+	 * toggles, same click cycle as the reference: re-click clears, another
+	 * button switches. */
+	if (_ms.filter_alpha > 0) {
+		static const MiniLayer layers[] = {MiniLayer::Rail, MiniLayer::Road};
+		int os = 12 * s;
+		int op = 2 * s;
+		int n = (int)std::size(layers);
+		int sw = n * os + (n - 1) * gap + 2 * op;
+		int sh = os + 2 * op;
+		int sx = _fbw - margin - sw;
+		int sy = _win_bar_bottom + 1 + gap;
+		ChromePanel(sx, sy, sx + sw - 1, sy + sh - 1);
+		for (int i = 0; i < n; i++) {
+			int x = sx + op + i * (os + gap);
+			Rect r = {x, sy + op, x + os - 1, sy + op + os - 1};
+			bool active = _overlay == layers[i];
+			ChromeTile(r, active);
+			DrawOverlayGlyph(layers[i], (r.left + r.right) / 2, (r.top + r.bottom) / 2, os, active);
+			_ovl_hits.emplace_back(r, layers[i]);
+		}
+		_win_bar_bottom = sy + sh - 1;
+	}
+
 	if (_win_open >= 0) {
 		const MiniWinCategory &cat = _win_cats[_win_open];
 		int n = (int)cat.items.size();
@@ -2158,7 +2452,7 @@ static void DrawWinBar()
 		int px = _fbw - margin - pw;
 		int py = _win_bar_bottom + 1 + gap;
 		_win_panel_rect = {px, py, px + pw - 1, py + ph - 1};
-		ScreenFillRect(px, py, px + pw - 1, py + ph - 1, COL_INK);
+		ChromePanel(px, py, px + pw - 1, py + ph - 1);
 		for (int i = 0; i < n; i++) {
 			const MiniWinItem &it = cat.items[i];
 			int ix = px + pp + (i % cols) * (tile + gap);
@@ -2172,6 +2466,13 @@ static void DrawWinBar()
 
 static bool HandleWinClick(int x, int y)
 {
+	for (const auto &[r, l] : _ovl_hits) {
+		if (InRect(r, x, y)) {
+			_overlay = _overlay == l ? MiniLayer::None : l;
+			_overlay_auto = false;
+			return true;
+		}
+	}
 	for (const auto &[r, c] : _win_cat_hits) {
 		if (InRect(r, x, y)) {
 			_win_open = _win_open == c ? -1 : c;
@@ -2191,16 +2492,99 @@ static bool HandleWinClick(int x, int y)
 	return false;
 }
 
-static void DrawHud()
-{
-	int s = _ms.hud_scale;
-	std::string line = GetString(STR_JUST_DATE_LONG, TimerGameCalendar::date);
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c != nullptr) line += fmt::format("   {}", GetString(STR_JUST_CURRENCY_LONG, c->money));
-	int lh = GetCharacterHeight(FS_NORMAL);
-	DrawHudText(6 * s, 6 * s, line);
+/* Top-left status corner in the reference layout: a panel docked flush to
+ * the corner carrying the year gauge, company identity, money and the time
+ * controls, with the selected-vehicle readout hanging below it. */
+static std::vector<std::pair<Rect, int>> _speed_hits;
+static int _colony_bottom = 0;
+static const uint32_t COL_CH_GAUGE = 0xFFE8B94DU;
 
-	if (_pause_mode.Any()) DrawHudTextCentred(_fbw / 2, 6 * s, StrMakeValid(GetString(STR_STATUSBAR_PAUSED), {}));
+static void DrawPlayTriangle(int x0, int cy, int w, int hh, uint32_t c)
+{
+	for (int i = 0; i < w; i++) {
+		int h = hh * (w - i) / w;
+		if (h <= 0) break;
+		ScreenFillRect(x0 + i, cy - h, x0 + i, cy + h, c);
+	}
+}
+
+static void DrawColonyPanel()
+{
+	_speed_hits.clear();
+
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int pad = 5 * s;
+	int gap = 2 * s;
+	int ring = lh;
+
+	const Company *c = Company::GetIfValid(_local_company);
+	std::string name = c != nullptr ? StrMakeValid(GetString(STR_COMPANY_NAME, c->index), {}) : std::string();
+	std::string date = GetString(STR_JUST_DATE_LONG, TimerGameCalendar::date);
+	std::string funds;
+	if (c != nullptr) {
+		uint veh = 0;
+		for (int t = 0; t < VEH_COMPANY_END; t++) veh += c->group_all[t].num_vehicle;
+		funds = fmt::format("{}   VEH {}", GetString(STR_JUST_CURRENCY_LONG, c->money), veh);
+	}
+
+	int bw = 12 * s, bh = 10 * s;
+	int text_x = pad + 2 * ring + 4 * s;
+	int w = std::max({text_x + std::max<int>(GetStringBoundingBox(name).width, GetStringBoundingBox(date).width),
+			pad + (int)GetStringBoundingBox(funds).width,
+			pad + 3 * bw + 2 * gap}) + pad;
+	int rows_bottom = pad + std::max(2 * ring, 2 * lh + gap);
+	int funds_y = rows_bottom + 2 * s;
+	int btn_y = funds.empty() ? funds_y : funds_y + lh + 3 * s;
+	int h = btn_y + bh + pad;
+
+	/* Extending past the screen edge clips the border and rounding, so the
+	 * panel reads as docked to the corner like the reference. */
+	ChromePanel(-3 * s, -3 * s, w, h);
+
+	/* Year gauge: segmented ring, elapsed part in the reference cycle gold. */
+	TimerGameCalendar::YearMonthDay ymd = TimerGameCalendar::ConvertDateToYMD(TimerGameCalendar::date);
+	double frac = (ymd.month + (ymd.day - 1) / 31.0) / 12.0;
+	int cx = pad + ring, cy = pad + ring;
+	const int N = 28;
+	const double TAU = 6.283185307179586;
+	int rr = ring - s;
+	for (int i = 0; i < N; i++) {
+		double a0 = -TAU / 4 + TAU * i / N;
+		double a1 = -TAU / 4 + TAU * (i + 1) / N;
+		uint32_t col = ((double)i + 0.5) / N < frac ? COL_CH_GAUGE : COL_CH_TILE;
+		RlwCmdLine(cx + (int)std::lround(cos(a0) * rr), cy + (int)std::lround(sin(a0) * rr),
+				cx + (int)std::lround(cos(a1) * rr), cy + (int)std::lround(sin(a1) * rr), 2 * s, col);
+	}
+
+	if (!name.empty()) DrawScreenText(text_x, pad, name);
+	DrawScreenText(text_x, pad + lh + gap, date);
+	if (!funds.empty()) DrawScreenText(pad, funds_y, funds);
+
+	int active = _pause_mode.Any() ? 0 : (_game_speed == 100 ? 1 : 2);
+	for (int i = 0; i < 3; i++) {
+		int bx = pad + i * (bw + gap);
+		Rect r = {bx, btn_y, bx + bw - 1, btn_y + bh - 1};
+		ChromeTile(r, active == i);
+		uint32_t gc = active == i ? COL_CH_ACCENT : (i == 2 && _networking ? COL_CH_DIM : COL_CH_TEXT);
+		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
+		int gh = std::max(2, (bh - 4 * s) / 2);
+		switch (i) {
+			case 0:
+				ScreenFillRect(gcx - 2 * s, gcy - gh, gcx - s, gcy + gh, gc);
+				ScreenFillRect(gcx + s, gcy - gh, gcx + 2 * s, gcy + gh, gc);
+				break;
+			case 1:
+				DrawPlayTriangle(gcx - (gh + 2 * s) / 2, gcy, gh + 2 * s, gh, gc);
+				break;
+			case 2:
+				DrawPlayTriangle(gcx - (gh + s), gcy, gh + s, gh, gc);
+				DrawPlayTriangle(gcx, gcy, gh + s, gh, gc);
+				break;
+		}
+		_speed_hits.emplace_back(r, i);
+	}
+	_colony_bottom = h;
 
 	if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
 		std::string info = fmt::format("{} {}  SPD {}", StrMakeValid(GetString((StringID)(STR_REPLACE_VEHICLE_TRAIN + v->type)), {}), v->unitnumber, v->GetDisplaySpeed());
@@ -2219,8 +2603,158 @@ static void DrawHud()
 			info += fmt::format("  {} {}/{}", std::string_view(lab, 4), stored, cap);
 		}
 		info += fmt::format("  ORDERS {}  PROFIT {}", v->GetNumOrders(), GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayProfitThisYear()));
-		DrawHudText(6 * s, 6 * s + lh + 8, info);
+		DrawHudText(6 * s, _colony_bottom + 6 * s, info);
+		_colony_bottom += 6 * s + lh + 4 * s;
 	}
+}
+
+static bool HandleSpeedClick(int x, int y)
+{
+	for (const auto &[r, i] : _speed_hits) {
+		if (!InRect(r, x, y)) continue;
+		switch (i) {
+			case 0:
+				Command<CMD_PAUSE>::Post(PauseMode::Normal, !_pause_mode.Test(PauseMode::Normal));
+				break;
+			case 1:
+				if (_pause_mode.Test(PauseMode::Normal)) Command<CMD_PAUSE>::Post(PauseMode::Normal, false);
+				ChangeGameSpeed(false);
+				break;
+			case 2:
+				if (_networking) break;
+				if (_pause_mode.Test(PauseMode::Normal)) Command<CMD_PAUSE>::Post(PauseMode::Normal, false);
+				ChangeGameSpeed(true);
+				break;
+		}
+		return true;
+	}
+	return false;
+}
+
+/* Left-edge notification stream: recent news as severity-coloured cards;
+ * clicking jumps the camera to the site like the reference. */
+struct MiniNewsHit {
+	Rect r;
+	TileIndex tile;
+	VehicleID veh;
+};
+static std::vector<MiniNewsHit> _news_hits;
+static std::unordered_map<std::string, std::string> _news_trunc;
+
+static TileIndex NewsTile(const NewsReference &ref)
+{
+	struct visitor {
+		TileIndex operator()(std::monostate) { return INVALID_TILE; }
+		TileIndex operator()(TileIndex t) { return t; }
+		TileIndex operator()(VehicleID v) { const Vehicle *u = Vehicle::GetIfValid(v); return u != nullptr ? u->tile : INVALID_TILE; }
+		TileIndex operator()(StationID s) { return Station::Get(s)->xy; }
+		TileIndex operator()(IndustryID i) { return Industry::Get(i)->location.tile; }
+		TileIndex operator()(TownID t) { return Town::Get(t)->xy; }
+		TileIndex operator()(EngineID) { return INVALID_TILE; }
+	};
+	return std::visit(visitor{}, ref);
+}
+
+static VehicleID NewsVehicle(const NewsReference &ref)
+{
+	const VehicleID *v = std::get_if<VehicleID>(&ref);
+	return v != nullptr ? *v : VehicleID::Invalid();
+}
+
+static std::string_view TruncateText(const std::string &text, int maxw)
+{
+	if ((int)GetStringBoundingBox(text).width <= maxw) return text;
+	auto it = _news_trunc.find(text);
+	if (it == _news_trunc.end()) {
+		if (_news_trunc.size() > 128) _news_trunc.clear();
+		std::string best;
+		Utf8View view(text);
+		for (auto vit = view.begin(); vit != view.end();) {
+			++vit;
+			std::string cand = text.substr(0, vit.GetByteOffset()) + "...";
+			if ((int)GetStringBoundingBox(cand).width > maxw) break;
+			best = std::move(cand);
+		}
+		it = _news_trunc.emplace(text, std::move(best)).first;
+	}
+	return it->second;
+}
+
+static void DrawNewsStream()
+{
+	_news_hits.clear();
+
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int maxw = 70 * s;
+	int y = _colony_bottom + 4 * s;
+
+	int shown = 0;
+	for (const NewsItem &ni : GetNews()) {
+		if (shown == 4) break;
+		if (TimerGameCalendar::date.base() - ni.date.base() > 45) break;
+
+		uint32_t bar, bg, tcol;
+		switch (ni.type) {
+			case NewsType::Accident:
+			case NewsType::AccidentOther:
+				bar = 0xFFE05F4AU; bg = 0xFF4A2320U; tcol = 0xFFF2D9D2U;
+				break;
+			case NewsType::Advice:
+			case NewsType::Economy:
+			case NewsType::CompanyInfo:
+			case NewsType::IndustryClose:
+				bar = 0xFFE0B64AU; bg = COL_CH_PANEL; tcol = 0xFFD9CFAEU;
+				break;
+			default:
+				bar = COL_CH_DIM; bg = COL_CH_PANEL; tcol = 0xFFA8A294U;
+				break;
+		}
+
+		TileIndex tile = NewsTile(ni.ref1);
+		VehicleID veh = NewsVehicle(ni.ref1);
+		if (tile == INVALID_TILE) tile = NewsTile(ni.ref2);
+		if (veh == VehicleID::Invalid()) veh = NewsVehicle(ni.ref2);
+
+		std::string text = StrMakeValid(ni.GetStatusText(), {});
+		std::string_view t = TruncateText(text, maxw);
+		if (t.empty()) continue;
+		int ch = lh + 5 * s;
+		int cw = 7 * s + (int)GetStringBoundingBox(t).width + 4 * s;
+		Rect r = {0, y, cw - 1, y + ch - 1};
+		ScreenFillRect(r.left, r.top, 3 * s - 1, r.bottom, bar);
+		ScreenFillRect(3 * s, r.top, r.right, r.bottom, bg);
+		if (_cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y)) BlendRect(r.left, r.top, r.right, r.bottom, COL_PAPER, 28);
+		if (const MiniTextEntry *e = TextTexture(t); e != nullptr) RlwCmdTexQuad(e->tex, 7 * s, y + (ch - lh) / 2, tcol);
+		_news_hits.push_back({r, tile, veh});
+		y += ch + 2 * s;
+		shown++;
+	}
+}
+
+static bool HandleNewsClick(int x, int y)
+{
+	for (const MiniNewsHit &n : _news_hits) {
+		if (!InRect(n.r, x, y)) continue;
+		if (n.veh != VehicleID::Invalid()) {
+			if (const Vehicle *v = Vehicle::GetIfValid(n.veh); v != nullptr) {
+				_sel_vehicle = n.veh;
+				MiniUiScrollTo(v->x_pos, v->y_pos);
+				return true;
+			}
+		}
+		if (n.tile != INVALID_TILE) MiniUiScrollTo(TileX(n.tile) * TILE_SIZE + TILE_SIZE / 2, TileY(n.tile) * TILE_SIZE + TILE_SIZE / 2);
+		return true;
+	}
+	return false;
+}
+
+static void DrawHud()
+{
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+
+	if (_pause_mode.Any()) DrawHudTextCentred(_fbw / 2, 6 * s, StrMakeValid(GetString(STR_STATUSBAR_PAUSED), {}));
 
 	if (_tool != MiniTool::None) {
 		/* The active tool announces itself beside the cursor: official name on
@@ -2254,20 +2788,13 @@ static void DrawHud()
 			DrawHudText(tx, ty, title);
 			DrawHudText(tx, ty + lh + 4, hint);
 		}
-	} else {
-		std::string_view hint;
-		std::string_view hint2;
-		if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
-			hint = _follow
-				? "FOLLOWING  CLICK STATION ORDER  O DROP ORDER  P START STOP  H UNFOLLOW  ESC DESELECT"
-				: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
-		} else {
-			hint = "Z TERRAIN  X CLEAR  N BUY AT DEPOT / CTRL WAGON OR FREIGHT  SPACE PAUSE  F9 EXIT";
-			hint2 = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I TUNNEL";
-		}
-		int hint_y = _fbh - MenuTileSide() - 12 * s - lh;
-		DrawHudTextCentred(_fbw / 2, hint_y, hint);
-		if (!hint2.empty()) DrawHudTextCentred(_fbw / 2, hint_y - lh - 8, hint2);
+	} else if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
+		/* Transient state only: the reference keeps the centre of the screen
+		 * clear unless something is selected or being placed. */
+		std::string_view hint = _follow
+			? "FOLLOWING  CLICK STATION ORDER  O DROP ORDER  P START STOP  H UNFOLLOW  ESC DESELECT"
+			: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
+		DrawHudTextCentred(_fbw / 2, _fbh - MenuTileSide() - 12 * s - lh, hint);
 	}
 }
 
@@ -2275,7 +2802,10 @@ static void Present()
 {
 	DrawLabels();
 	DrawHud();
+	DrawColonyPanel();
+	DrawNewsStream();
 	DrawBuildMenu();
+	DrawCmdBar();
 	DrawWinBar();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
@@ -2304,6 +2834,9 @@ static void Deactivate()
 {
 	_mini_active = false;
 	_tool = MiniTool::None;
+	_overlay = MiniLayer::None;
+	_overlay_auto = false;
+	_last_tool_layer = MiniLayer::None;
 	_menu_open = -1;
 	_win_open = -1;
 	_dragging = false;
@@ -2435,7 +2968,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleNewsClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
 					if (const Vehicle *v = SelectVehicleAt(_cursor.pos.x, _cursor.pos.y); v != nullptr) ShowVehicleViewWindow(v);
@@ -2741,14 +3274,30 @@ void MiniUiFrame(uint delta_ms)
 	int ppt = std::max(1, (int)std::lround(_cam_ppt));
 	ComputeZoomDetail(ppt);
 
+	MiniLayer tool_layer = ToolLayer(_tool);
+	if (tool_layer != _last_tool_layer) {
+		if (tool_layer != MiniLayer::None) {
+			_overlay = tool_layer;
+			_overlay_auto = true;
+		} else if (_overlay_auto) {
+			_overlay = MiniLayer::None;
+			_overlay_auto = false;
+		}
+		_last_tool_layer = tool_layer;
+	}
+	_filter_layer = _ms.filter_alpha > 0 ? _overlay : MiniLayer::None;
+
 	int tx0 = std::max(0, (int)std::floor(MapXAt(0)));
 	int ty0 = std::max(0, (int)std::floor(MapYAt(0)));
 	int tx1 = std::min<int>(Map::SizeX() - 1, (int)std::floor(MapXAt(_fbh - 1)));
 	int ty1 = std::min<int>(Map::SizeY() - 1, (int)std::floor(MapYAt(_fbw - 1)));
 
+	_grey_map = _filter_layer != MiniLayer::None;
 	FillRect(0, 0, _fbw - 1, _fbh - 1, COL_VOID);
 	static std::vector<std::pair<int, int>> tree_dots;
+	static std::vector<std::pair<int, int>> layer_tiles;
 	tree_dots.clear();
+	layer_tiles.clear();
 	for (int ty = ty0; ty <= ty1; ty++) {
 		int run_start = -1;
 		uint32_t run_c = 0;
@@ -2771,6 +3320,7 @@ void MiniUiFrame(uint delta_ms)
 			} else {
 				flush(tx);
 				DrawTile(tile, tx, ty, ppt);
+				if (_filter_layer != MiniLayer::None) layer_tiles.emplace_back(tx, ty);
 			}
 		}
 		flush(tx1 + 1);
@@ -2778,6 +3328,16 @@ void MiniUiFrame(uint delta_ms)
 	int tree_r = std::max(1, ppt / 8);
 	for (auto [tx, ty] : tree_dots) {
 		FillCircle((ScrX(ty) + ScrX(ty + 1) - 1) / 2, (ScrY(tx) + ScrY(tx + 1) - 1) / 2, tree_r, COL_TREE);
+	}
+
+	_grey_map = false;
+
+	/* Runs only merge bare ground and water, so every tile that can carry
+	 * layer content already went through DrawTile and sits in layer_tiles. */
+	if (_filter_layer != MiniLayer::None) {
+		for (auto [tx, ty] : layer_tiles) {
+			DrawTileLayer(TileXY(tx, ty), tx, ty, ppt, _filter_layer);
+		}
 	}
 
 	if (_dragging) {

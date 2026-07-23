@@ -22,6 +22,7 @@ static int _rlw_tex_w, _rlw_tex_h;
 
 enum class RlwCmdType : uint8_t {
 	Rect,
+	RoundRect,
 	GradientRect,
 	Line,
 	Circle,
@@ -221,6 +222,11 @@ void RlwCmdRect(int x0, int y0, int x1, int y1, uint32_t argb)
 	_rlw_cmds.push_back({RlwCmdType::Rect, x0, y0, x1, y1, 0, argb, 0, 0, 0});
 }
 
+void RlwCmdRoundRect(int x0, int y0, int x1, int y1, int radius, uint32_t argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::RoundRect, x0, y0, x1, y1, radius, argb, 0, 0, 0});
+}
+
 void RlwCmdGradientRect(int x0, int y0, int x1, int y1, uint32_t tl, uint32_t tr, uint32_t bl, uint32_t br)
 {
 	_rlw_cmds.push_back({RlwCmdType::GradientRect, x0, y0, x1, y1, 0, tl, tr, bl, br});
@@ -279,6 +285,15 @@ static void RlwReplayCommands()
 			case RlwCmdType::Rect:
 				DrawRectangle(c.a, c.b, c.c - c.a + 1, c.d - c.b + 1, RlwColour(c.col));
 				break;
+			case RlwCmdType::RoundRect: {
+				float w = (float)(c.c - c.a + 1);
+				float h = (float)(c.d - c.b + 1);
+				float m = w < h ? w : h;
+				float round = m > 0.0f ? 2.0f * c.e / m : 0.0f;
+				if (round > 1.0f) round = 1.0f;
+				DrawRectangleRounded({(float)c.a, (float)c.b, w, h}, round, 6, RlwColour(c.col));
+				break;
+			}
 			case RlwCmdType::GradientRect:
 				DrawRectangleGradientEx({(float)c.a, (float)c.b, (float)(c.c - c.a + 1), (float)(c.d - c.b + 1)}, RlwColour(c.col), RlwColour(c.col_bl), RlwColour(c.col_br), RlwColour(c.col_tr));
 				break;
