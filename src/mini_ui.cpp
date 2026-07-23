@@ -1976,7 +1976,10 @@ void MiniUiToggle()
 	UndrawMouseCursor();
 	/* One palette-driven fill resets the 32bpp-anim mapping buffer, so later
 	 * direct framebuffer writes are not overwritten by palette animation. */
-	GfxFillRect(0, 0, _screen.width - 1, _screen.height - 1, PC_BLACK);
+	{
+		AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
+		GfxFillRect(0, 0, _screen.width - 1, _screen.height - 1, PC_BLACK);
+	}
 
 	if (Window *w = GetMainWindow(); w != nullptr && w->viewport != nullptr) {
 		Point centre = InverseRemapCoords(w->viewport->virtual_left + w->viewport->virtual_width / 2, w->viewport->virtual_top + w->viewport->virtual_height / 2);
