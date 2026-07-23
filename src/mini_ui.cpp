@@ -18,6 +18,7 @@
 #include "command_func.h"
 #include "company_base.h"
 #include "company_func.h"
+#include "company_gui.h"
 #include "elrail_func.h"
 #include "engine_base.h"
 #include "core/backup_type.hpp"
@@ -25,15 +26,19 @@
 #include <unordered_map>
 #include "fileio_func.h"
 #include "gfx_func.h"
+#include "graph_gui.h"
 #include "ground_vehicle.hpp"
+#include "gui.h"
 #include "ini_type.h"
 #include "landscape.h"
 #include "landscape_cmd.h"
+#include "league_gui.h"
 #include "misc_cmd.h"
 #include "network/network.h"
 #include "network/network_type.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
+#include "news_gui.h"
 #include "openttd.h"
 #include "order_base.h"
 #include "order_cmd.h"
@@ -1887,6 +1892,255 @@ static bool HandleMenuClick(int x, int y)
 	return false;
 }
 
+/* Top-right window bar: category tiles whose panels open native status
+ * windows. Same tile language as the build menu. */
+enum class MiniWin : uint8_t {
+	Finances,
+	CompanyInfo,
+	Goals,
+	League,
+	Graph,
+	Stations,
+	Trains,
+	RoadVehicles,
+	Ships,
+	Aircraft,
+	News,
+	Towns,
+	Industries,
+	Subsidies,
+};
+
+struct MiniWinItem {
+	StringID str;
+	std::string_view fallback;
+	MiniWin win;
+};
+
+struct MiniWinCategory {
+	StringID str;
+	std::string_view fallback;
+	MiniWin icon;
+	std::span<const MiniWinItem> items;
+};
+
+static const MiniWinItem _win_company_items[] = {
+	{INVALID_STRING_ID, "FINANCES", MiniWin::Finances},
+	{INVALID_STRING_ID, "INFO", MiniWin::CompanyInfo},
+	{INVALID_STRING_ID, "GOALS", MiniWin::Goals},
+	{STR_GRAPH_MENU_COMPANY_LEAGUE_TABLE, "LEAGUE", MiniWin::League},
+	{STR_GRAPH_MENU_OPERATING_PROFIT_GRAPH, "GRAPH", MiniWin::Graph},
+};
+
+static const MiniWinItem _win_vehicle_items[] = {
+	{INVALID_STRING_ID, "STATIONS", MiniWin::Stations},
+	{STR_REPLACE_VEHICLE_TRAIN, "TRAIN", MiniWin::Trains},
+	{STR_REPLACE_VEHICLE_ROAD_VEHICLE, "ROAD", MiniWin::RoadVehicles},
+	{STR_REPLACE_VEHICLE_SHIP, "SHIP", MiniWin::Ships},
+	{STR_REPLACE_VEHICLE_AIRCRAFT, "AIRCRAFT", MiniWin::Aircraft},
+};
+
+static const MiniWinItem _win_world_items[] = {
+	{STR_NEWS_MENU_MESSAGE_HISTORY_MENU, "NEWS", MiniWin::News},
+	{STR_TOWN_MENU_TOWN_DIRECTORY, "TOWNS", MiniWin::Towns},
+	{STR_INDUSTRY_MENU_INDUSTRY_DIRECTORY, "INDUSTRY", MiniWin::Industries},
+	{STR_SUBSIDIES_MENU_SUBSIDIES, "SUBSIDY", MiniWin::Subsidies},
+};
+
+static const MiniWinCategory _win_cats[] = {
+	{STR_CONFIG_SETTING_COMPANY, "COMPANY", MiniWin::Finances, _win_company_items},
+	{STR_CONFIG_SETTING_VEHICLES, "VEHICLES", MiniWin::Trains, _win_vehicle_items},
+	{STR_CONFIG_SETTING_ENVIRONMENT, "WORLD", MiniWin::Towns, _win_world_items},
+};
+
+static int _win_open = -1;
+static int _win_bar_bottom = 0;
+static Rect _win_panel_rect;
+static std::vector<std::pair<Rect, int>> _win_cat_hits;
+static std::vector<std::pair<Rect, MiniWin>> _win_item_hits;
+
+static int WinTileSide()
+{
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int tw = 0;
+	for (const MiniWinCategory &c : _win_cats) {
+		tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(c.str, c.fallback)).width);
+		for (const MiniWinItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
+	}
+	return std::max(tw + 10, 3 * lh);
+}
+
+static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
+{
+	int h = is / 2;
+	int t = std::max(2, is / 5);
+	uint32_t cc = Company::IsValidID(_local_company) ? _company_rgb[_company_colours[_local_company]] : COL_OBJ;
+	switch (win) {
+		case MiniWin::Finances:
+			ScreenFillCircle(cx, cy, h, COL_ST_BUOY);
+			ScreenFillCircle(cx, cy, std::max(1, h - t), Darken(COL_ST_BUOY));
+			break;
+		case MiniWin::CompanyInfo:
+			ScreenFillRect(cx - h, cy - h, cx - h + 1, cy + h, COL_PAPER);
+			ScreenFillRect(cx - h + 2, cy - h, cx + h, cy, cc);
+			break;
+		case MiniWin::Goals:
+			ScreenFillCircle(cx, cy, h, COL_STOP);
+			ScreenFillCircle(cx, cy, std::max(2, h - t), COL_PAPER);
+			ScreenFillCircle(cx, cy, std::max(1, h - 2 * t), COL_STOP);
+			break;
+		case MiniWin::League:
+			ScreenFillRect(cx - h, cy, cx - h / 3 - 1, cy + h, COL_OBJ);
+			ScreenFillRect(cx - h / 3 + 1, cy - h, cx + h / 3 - 1, cy + h, COL_ST_BUOY);
+			ScreenFillRect(cx + h / 3 + 1, cy - h / 3, cx + h, cy + h, COL_OBJ);
+			break;
+		case MiniWin::Graph:
+			ScreenThickLine(cx - h, cy + h, cx - h / 4, cy, t, COL_GO);
+			ScreenThickLine(cx - h / 4, cy, cx + h / 4, cy + h / 3, t, COL_GO);
+			ScreenThickLine(cx + h / 4, cy + h / 3, cx + h, cy - h, t, COL_GO);
+			break;
+		case MiniWin::Stations:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_RAIL_B);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_RAIL);
+			break;
+		case MiniWin::Trains:
+			ScreenThickLine(cx - h, cy, cx + h - t, cy, t + 1, cc);
+			ScreenFillCircle(cx + h - t, cy, t, COL_PAPER);
+			break;
+		case MiniWin::RoadVehicles:
+			ScreenFillCircle(cx, cy, h, COL_INK);
+			ScreenFillCircle(cx, cy, h - 1, cc);
+			break;
+		case MiniWin::Ships:
+			FillDiamond(cx, cy, h, COL_INK);
+			FillDiamond(cx, cy, h - 1, cc);
+			break;
+		case MiniWin::Aircraft:
+			FillTriangle(cx, cy, h, COL_INK);
+			FillTriangle(cx, cy, h - 1, cc);
+			break;
+		case MiniWin::News:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_PAPER);
+			for (int i = -1; i <= 1; i++) ScreenFillRect(cx - h + 2, cy + i * (is / 4) - 1, cx + h - 2, cy + i * (is / 4), COL_INK);
+			break;
+		case MiniWin::Towns:
+			ScreenFillRect(cx - h, cy - is / 6, cx - 1, cy + h, COL_HOUSE_B);
+			ScreenFillRect(cx - h + 1, cy - is / 6 + 1, cx - 2, cy + h - 1, COL_HOUSE);
+			ScreenFillRect(cx + 1, cy - h, cx + h, cy + h, COL_HOUSE_B);
+			ScreenFillRect(cx + 2, cy - h + 1, cx + h - 1, cy + h - 1, COL_HOUSE);
+			break;
+		case MiniWin::Industries:
+			ScreenFillRect(cx - h, cy - is / 6, cx + h, cy + h, COL_IND_B);
+			ScreenFillRect(cx - h + 2, cy - is / 6 + 2, cx + h - 2, cy + h - 2, COL_IND);
+			ScreenFillRect(cx + h / 4, cy - h, cx + h / 4 + t, cy - is / 6, COL_IND_B);
+			break;
+		case MiniWin::Subsidies:
+			ScreenFillCircle(cx - h + t, cy + h - t, t, COL_HOUSE);
+			ScreenFillCircle(cx + h - t, cy - h + t, t, COL_IND);
+			ScreenThickLine(cx - h + 2 * t, cy + h - 2 * t, cx + h - 2 * t, cy - h + 2 * t, std::max(2, t - 1), COL_PAPER);
+			break;
+	}
+}
+
+static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, MiniWin icon, bool active)
+{
+	ScreenFillRect(r.left, r.top, r.right, r.bottom, active ? COL_PAPER : Mix(COL_INK, COL_PAPER, 25));
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int cx = (r.left + r.right) / 2;
+	int icon_h = r.bottom - r.top + 1 - lh - 9;
+	DrawWinIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
+	if (const MiniTextEntry *e = TextTexture(MenuLabel(str, fallback)); e != nullptr) {
+		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, TextTint(active ? TC_BLACK : TC_WHITE));
+	}
+}
+
+static void OpenMiniWindow(MiniWin win)
+{
+	bool company = Company::IsValidID(_local_company);
+	switch (win) {
+		case MiniWin::Finances: if (company) ShowCompanyFinances(_local_company); break;
+		case MiniWin::CompanyInfo: if (company) ShowCompany(_local_company); break;
+		case MiniWin::Goals: if (company) ShowGoalsList(_local_company); break;
+		case MiniWin::League: ShowPerformanceLeagueTable(); break;
+		case MiniWin::Graph: ShowOperatingProfitGraph(); break;
+		case MiniWin::Stations: if (company) ShowCompanyStations(_local_company); break;
+		case MiniWin::Trains: if (company) ShowVehicleListWindow(_local_company, VEH_TRAIN); break;
+		case MiniWin::RoadVehicles: if (company) ShowVehicleListWindow(_local_company, VEH_ROAD); break;
+		case MiniWin::Ships: if (company) ShowVehicleListWindow(_local_company, VEH_SHIP); break;
+		case MiniWin::Aircraft: if (company) ShowVehicleListWindow(_local_company, VEH_AIRCRAFT); break;
+		case MiniWin::News: ShowMessageHistory(); break;
+		case MiniWin::Towns: ShowTownDirectory(); break;
+		case MiniWin::Industries: ShowIndustryDirectory(); break;
+		case MiniWin::Subsidies: ShowSubsidiesList(); break;
+	}
+}
+
+static void DrawWinBar()
+{
+	_win_cat_hits.clear();
+	_win_item_hits.clear();
+
+	int s = _ms.hud_scale;
+	int gap = 2 * s;
+	int margin = 6 * s;
+	int pp = 4 * s;
+	int tile = WinTileSide();
+
+	int ncats = (int)std::size(_win_cats);
+	int bar_left = _fbw - margin - ncats * tile - (ncats - 1) * gap;
+	_win_bar_bottom = margin + tile - 1;
+
+	for (int c = 0; c < ncats; c++) {
+		const MiniWinCategory &cat = _win_cats[c];
+		int x = bar_left + c * (tile + gap);
+		Rect r = {x, margin, x + tile - 1, margin + tile - 1};
+		DrawWinTile(r, cat.str, cat.fallback, cat.icon, _win_open == c);
+		_win_cat_hits.emplace_back(r, c);
+	}
+
+	if (_win_open >= 0) {
+		const MiniWinCategory &cat = _win_cats[_win_open];
+		int n = (int)cat.items.size();
+		int cols = 3;
+		int rows = (n + cols - 1) / cols;
+		int pw = cols * tile + (cols - 1) * gap + 2 * pp;
+		int ph = rows * tile + (rows - 1) * gap + 2 * pp;
+		int px = _fbw - margin - pw;
+		int py = _win_bar_bottom + 1 + gap;
+		_win_panel_rect = {px, py, px + pw - 1, py + ph - 1};
+		ScreenFillRect(px, py, px + pw - 1, py + ph - 1, COL_INK);
+		for (int i = 0; i < n; i++) {
+			const MiniWinItem &it = cat.items[i];
+			int ix = px + pp + (i % cols) * (tile + gap);
+			int iy = py + pp + (i / cols) * (tile + gap);
+			Rect ir = {ix, iy, ix + tile - 1, iy + tile - 1};
+			DrawWinTile(ir, it.str, it.fallback, it.win, false);
+			_win_item_hits.emplace_back(ir, it.win);
+		}
+	}
+}
+
+static bool HandleWinClick(int x, int y)
+{
+	for (const auto &[r, c] : _win_cat_hits) {
+		if (InRect(r, x, y)) {
+			_win_open = _win_open == c ? -1 : c;
+			return true;
+		}
+	}
+	if (_win_open >= 0) {
+		for (const auto &[r, w] : _win_item_hits) {
+			if (InRect(r, x, y)) {
+				OpenMiniWindow(w);
+				_win_open = -1;
+				return true;
+			}
+		}
+		if (InRect(_win_panel_rect, x, y)) return true;
+	}
+	return false;
+}
+
 static void DrawHud()
 {
 	int s = _ms.hud_scale;
@@ -1954,6 +2208,7 @@ static void Present()
 	DrawLabels();
 	DrawHud();
 	DrawBuildMenu();
+	DrawWinBar();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -1982,6 +2237,7 @@ static void Deactivate()
 	_mini_active = false;
 	_tool = MiniTool::None;
 	_menu_open = -1;
+	_win_open = -1;
 	_dragging = false;
 	_zoom_anchored = false;
 	_glide = false;
@@ -2035,8 +2291,9 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	if (!_mini_active) return false;
 
 	int right = std::max(0, _screen.width - width);
+	int y0 = _win_bar_bottom + 1;
 	for (int x = right; x >= 0; x -= width) {
-		int y = 0;
+		int y = y0;
 		bool moved = true;
 		while (moved) {
 			moved = false;
@@ -2110,7 +2367,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
 					if (const Vehicle *v = SelectVehicleAt(_cursor.pos.x, _cursor.pos.y); v != nullptr) ShowVehicleViewWindow(v);
@@ -2181,8 +2438,9 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				ClearPlans();
 			} else if (_tool != MiniTool::None) {
 				_tool = MiniTool::None;
-			} else if (_menu_open >= 0) {
+			} else if (_menu_open >= 0 || _win_open >= 0) {
 				_menu_open = -1;
+				_win_open = -1;
 			} else if (_sel_vehicle != VehicleID::Invalid()) {
 				_sel_vehicle = VehicleID::Invalid();
 				_follow = false;
