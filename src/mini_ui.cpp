@@ -494,6 +494,13 @@ static bool IsSpecialGround(TileIndex tile)
 	}
 }
 
+static uint32_t GroundOverviewColour(TileIndex tile, Slope s, int hbase)
+{
+	double avg = (GetSlopeZInCorner(s, CORNER_N) + GetSlopeZInCorner(s, CORNER_W) + GetSlopeZInCorner(s, CORNER_E) + GetSlopeZInCorner(s, CORNER_S)) / 4.0;
+	if (IsSpecialGround(tile)) return Mix(GroundColour(tile, hbase), COL_SHADOW, std::min(255, (int)(_ms.relief_strength * avg)));
+	return RampLerp(hbase + avg);
+}
+
 /* Sloped ramp ground samples the height ramp per subcell at its absolute
  * interpolated height, endpoint inclusive, so the top of a slope lands on
  * exactly the colour of the next level and gradients run tile to tile. */
@@ -505,22 +512,17 @@ static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 		return;
 	}
 
+	if (ppt < 8) {
+		FillRect(x0, y0, x1, y1, GroundOverviewColour(tile, s, hbase));
+		return;
+	}
+
 	bool special = IsSpecialGround(tile);
 	uint32_t flat = GroundColour(tile, hbase);
 	int hn = GetSlopeZInCorner(s, CORNER_N);
 	int hw = GetSlopeZInCorner(s, CORNER_W);
 	int he = GetSlopeZInCorner(s, CORNER_E);
 	int hs = GetSlopeZInCorner(s, CORNER_S);
-
-	if (ppt < 8) {
-		double avg = (hn + hw + he + hs) / 4.0;
-		if (special) {
-			FillRect(x0, y0, x1, y1, Mix(flat, COL_SHADOW, std::min(255, (int)(_ms.relief_strength * avg))));
-		} else {
-			FillRect(x0, y0, x1, y1, RampLerp(hbase + avg));
-		}
-		return;
-	}
 
 	const int sub = Clamp(ppt / 4, 2, 12);
 	int wpx = x1 - x0 + 1;
@@ -839,6 +841,45 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 		uint h = TileHeight(tile);
 		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) BlendRect(x1 - cw + 1, y0, x1, y1, COL_SHADOW, _ms.contour_alpha);
 		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) BlendRect(x0, y1 - cw + 1, x1, y1, COL_SHADOW, _ms.contour_alpha);
+	}
+}
+
+/* A tile whose whole footprint is one solid colour can join a horizontal run
+ * with equal neighbours; one rect per run keeps the command count far below
+ * one per tile on open terrain and water. */
+static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c)
+{
+	if (IsBridgeAbove(tile)) return false;
+	switch (GetTileType(tile)) {
+		case MP_VOID:
+			c = COL_VOID;
+			return true;
+
+		case MP_WATER:
+			if (IsShipDepot(tile)) return false;
+			c = COL_WATER;
+			return true;
+
+		case MP_TREES:
+			if (_zd.tree_dots) return false;
+			[[fallthrough]];
+		case MP_CLEAR: {
+			auto [s, hbase] = GetTileSlopeZ(tile);
+			if (s == SLOPE_FLAT) {
+				c = GroundColour(tile, hbase);
+			} else if (ppt < 8) {
+				c = GroundOverviewColour(tile, s, hbase);
+			} else {
+				return false;
+			}
+			uint h = TileHeight(tile);
+			if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) return false;
+			if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) return false;
+			return true;
+		}
+
+		default:
+			return false;
 	}
 }
 
@@ -2329,9 +2370,28 @@ void MiniUiFrame(uint delta_ms)
 
 	FillRect(0, 0, _fbw - 1, _fbh - 1, COL_VOID);
 	for (int ty = ty0; ty <= ty1; ty++) {
+		int run_start = -1;
+		uint32_t run_c = 0;
+		auto flush = [&](int tx_end) {
+			if (run_start < 0) return;
+			FillRect(PxX(run_start), PxY(ty), PxX(tx_end) - 1, PxY(ty + 1) - 1, run_c);
+			run_start = -1;
+		};
 		for (int tx = tx0; tx <= tx1; tx++) {
-			DrawTile(TileXY(tx, ty), tx, ty, ppt);
+			TileIndex tile = TileXY(tx, ty);
+			uint32_t c;
+			if (TileRunColour(tile, tx, ty, ppt, c)) {
+				if (run_start >= 0 && c != run_c) flush(tx);
+				if (run_start < 0) {
+					run_start = tx;
+					run_c = c;
+				}
+			} else {
+				flush(tx);
+				DrawTile(tile, tx, ty, ppt);
+			}
 		}
+		flush(tx1 + 1);
 	}
 
 	if (_dragging) {
