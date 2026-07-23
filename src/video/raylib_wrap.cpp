@@ -25,7 +25,6 @@ bool RlwInit(int w, int h, const char *title)
 	InitWindow(w, h, title);
 	if (!IsWindowReady()) return false;
 	SetExitKey(KEY_NULL);
-	HideCursor();
 	return true;
 }
 

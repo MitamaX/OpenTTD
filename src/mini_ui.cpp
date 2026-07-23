@@ -1616,16 +1616,6 @@ static void CommitRoadPlan()
 	ClearPlans();
 }
 
-static void DrawCursor()
-{
-	int x = _cursor.pos.x;
-	int y = _cursor.pos.y;
-	ScreenFillRect(x - 9, y - 1, x + 9, y + 1, COL_INK);
-	ScreenFillRect(x - 1, y - 9, x + 1, y + 9, COL_INK);
-	ScreenFillRect(x - 8, y, x + 8, y, COL_PAPER);
-	ScreenFillRect(x, y - 8, x, y + 8, COL_PAPER);
-}
-
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
  * above it, three per row. Drawn in screen space after Present(), so hit
  * rects live in screen pixels. */
@@ -1936,7 +1926,6 @@ static void Present()
 	DrawLabels();
 	DrawHud();
 	DrawBuildMenu();
-	DrawCursor();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -2005,13 +1994,6 @@ void MiniUiToggle()
 bool MiniUiHidesWindow(WindowClass wc)
 {
 	return wc == WC_MAIN_WINDOW || wc == WC_MAIN_TOOLBAR || wc == WC_STATUS_BAR;
-}
-
-bool MiniUiHidesMouseCursor()
-{
-	if (!_mini_active) return false;
-	Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
-	return w == nullptr || MiniUiHidesWindow(w->window_class);
 }
 
 void MiniUiScrollTo(int x, int y)

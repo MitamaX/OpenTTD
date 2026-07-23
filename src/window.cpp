@@ -3169,7 +3169,7 @@ void UpdateWindows()
 	}
 	NetworkDrawChatMessage();
 	/* Redraw mouse cursor in case it was hidden */
-	if (!MiniUiHidesMouseCursor()) DrawMouseCursor();
+	DrawMouseCursor();
 
 	if (_newgrf_debug_sprite_picker.mode == SPM_REDRAW) {
 		/* We are done with the last draw-frame, so we know what sprites we

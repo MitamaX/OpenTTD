@@ -20,7 +20,6 @@ void MiniUiFrame(uint delta_ms);
 bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
 bool MiniUiHidesWindow(WindowClass wc);
-bool MiniUiHidesMouseCursor();
 void MiniUiScrollTo(int x, int y);
 
 bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);

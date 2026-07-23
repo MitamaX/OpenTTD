@@ -30,6 +30,8 @@ public:
 
 	bool AfterBlitterChange() override;
 
+	bool UseSystemCursor() override { return true; }
+
 	void EditBoxGainedFocus() override { this->edit_box_focused = true; }
 
 	void EditBoxLostFocus() override { this->edit_box_focused = false; }
