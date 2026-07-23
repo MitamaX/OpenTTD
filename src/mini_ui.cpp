@@ -1596,8 +1596,8 @@ static std::string FormatMoney(int64_t m)
 }
 
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
- * sliding up above it. Drawn in screen space after Present(), so hit rects
- * live in screen pixels. */
+ * above it, three per row. Drawn in screen space after Present(), so hit
+ * rects live in screen pixels. */
 struct MiniMenuItem {
 	std::string_view label;
 	MiniTool tool;
@@ -1636,8 +1636,6 @@ static const MiniMenuCategory _menu_cats[] = {
 };
 
 static int _menu_open = -1;
-static double _menu_anim = 0.0;
-static uint _frame_delta_ms = 0;
 static std::vector<std::pair<Rect, int>> _menu_cat_hits;
 static std::vector<std::pair<Rect, MiniTool>> _menu_item_hits;
 
@@ -1765,28 +1763,29 @@ static void DrawBuildMenu()
 	int bar_top = _fbh - margin - h;
 
 	if (_menu_open >= 0) {
-		_menu_anim = std::min(1.0, _menu_anim + _frame_delta_ms / 120.0);
 		const MiniMenuCategory &cat = _menu_cats[_menu_open];
 
 		int tw = 0;
-		for (const MiniMenuItem &it : cat.items) tw = std::max<int>(tw, GetStringBoundingBox(it.label).width);
+		for (const MiniMenuCategory &c : _menu_cats) {
+			for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(it.label).width);
+		}
 		int tile = std::max(tw + 10, 3 * lh);
 		int pp = 4 * s;
 		int n = (int)cat.items.size();
-		int pw = n * tile + (n - 1) * gap + 2 * pp;
-		int ph = tile + 2 * pp;
-		int off = (int)std::lround((1.0 - _menu_anim) * (ph + margin));
-		int py = bar_top - gap - ph + off;
+		int cols = 3;
+		int rows = (n + cols - 1) / cols;
+		int pw = cols * tile + (cols - 1) * gap + 2 * pp;
+		int ph = rows * tile + (rows - 1) * gap + 2 * pp;
+		int py = bar_top - gap - ph;
 		ScreenFillRect(margin, py, margin + pw - 1, py + ph - 1, COL_INK);
-		int ix = margin + pp;
-		for (const MiniMenuItem &it : cat.items) {
-			Rect ir = {ix, py + pp, ix + tile - 1, py + pp + tile - 1};
+		for (int i = 0; i < n; i++) {
+			const MiniMenuItem &it = cat.items[i];
+			int ix = margin + pp + (i % cols) * (tile + gap);
+			int iy = py + pp + (i / cols) * (tile + gap);
+			Rect ir = {ix, iy, ix + tile - 1, iy + tile - 1};
 			DrawMenuTile(ir, it, _tool == it.tool);
 			_menu_item_hits.emplace_back(ir, it.tool);
-			ix += tile + gap;
 		}
-	} else {
-		_menu_anim = 0.0;
 	}
 
 	int x = margin;
@@ -1804,12 +1803,7 @@ static bool HandleMenuClick(int x, int y)
 {
 	for (const auto &[r, c] : _menu_cat_hits) {
 		if (InRect(r, x, y)) {
-			if (_menu_open == c) {
-				_menu_open = -1;
-			} else {
-				if (_menu_open < 0) _menu_anim = 0.0;
-				_menu_open = c;
-			}
+			_menu_open = _menu_open == c ? -1 : c;
 			return true;
 		}
 	}
@@ -2211,7 +2205,6 @@ void MiniUiFrame(uint delta_ms)
 		_fb.assign((size_t)_fbw * _fbh, COL_VOID);
 	}
 	if (_fbw <= 0 || _fbh <= 0) return;
-	_frame_delta_ms = delta_ms;
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
 	if (_dirkeys != 0) {
