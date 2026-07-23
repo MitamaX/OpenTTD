@@ -2544,14 +2544,13 @@ static void DrawColonyPanel()
 	int btn_y = funds.empty() ? funds_y : funds_y + lh + 3 * s;
 	int h = btn_y + bh + pad;
 
-	/* Extending past the screen edge clips the border and rounding, so the
-	 * panel reads as docked to the corner like the reference. */
-	ChromePanel(-3 * s, -3 * s, w, h);
+	int m = 6 * s;
+	ChromePanel(m, m, m + w - 1, m + h - 1);
 
 	/* Year gauge: segmented ring, elapsed part in the reference cycle gold. */
 	TimerGameCalendar::YearMonthDay ymd = TimerGameCalendar::ConvertDateToYMD(TimerGameCalendar::date);
 	double frac = (ymd.month + (ymd.day - 1) / 31.0) / 12.0;
-	int cx = pad + ring, cy = pad + ring;
+	int cx = m + pad + ring, cy = m + pad + ring;
 	const int N = 28;
 	const double TAU = 6.283185307179586;
 	int rr = ring - s;
@@ -2563,14 +2562,14 @@ static void DrawColonyPanel()
 				cx + (int)std::lround(cos(a1) * rr), cy + (int)std::lround(sin(a1) * rr), 2 * s, col);
 	}
 
-	if (!name.empty()) DrawScreenText(text_x, pad, name);
-	DrawScreenText(text_x, pad + lh + gap, date);
-	if (!funds.empty()) DrawScreenText(pad, funds_y, funds);
+	if (!name.empty()) DrawScreenText(m + text_x, m + pad, name);
+	DrawScreenText(m + text_x, m + pad + lh + gap, date);
+	if (!funds.empty()) DrawScreenText(m + pad, m + funds_y, funds);
 
 	int active = _pause_mode.Any() ? 0 : (_game_speed == 100 ? 1 : 2);
 	for (int i = 0; i < 3; i++) {
-		int bx = pad + i * (bw + gap);
-		Rect r = {bx, btn_y, bx + bw - 1, btn_y + bh - 1};
+		int bx = m + pad + i * (bw + gap);
+		Rect r = {bx, m + btn_y, bx + bw - 1, m + btn_y + bh - 1};
 		ChromeTile(r, active == i);
 		uint32_t gc = active == i ? COL_CH_ACCENT : (i == 2 && _networking ? COL_CH_DIM : COL_CH_TEXT);
 		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
@@ -2590,7 +2589,7 @@ static void DrawColonyPanel()
 		}
 		_speed_hits.emplace_back(r, i);
 	}
-	_colony_bottom = h;
+	_colony_bottom = m + h;
 
 	if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
 		std::string info = fmt::format("{} {}  SPD {}", StrMakeValid(GetString((StringID)(STR_REPLACE_VEHICLE_TRAIN + v->type)), {}), v->unitnumber, v->GetDisplaySpeed());
