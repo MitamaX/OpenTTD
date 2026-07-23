@@ -93,6 +93,8 @@ enum class MiniTool : uint8_t {
 	RoadDepot,
 	Demolish,
 	Signal,
+	RailTunnel,
+	RoadTunnel,
 	Terraform,
 };
 
@@ -103,7 +105,7 @@ static bool IsRectTool(MiniTool t)
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -1526,6 +1528,17 @@ static void CommitPointTool()
 			}
 			break;
 
+		case MiniTool::RailTunnel:
+		case MiniTool::RoadTunnel: {
+			bool rail = _tool == MiniTool::RailTunnel;
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+			} else {
+				Command<CMD_BUILD_TUNNEL>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, tile, rail ? TRANSPORT_RAIL : TRANSPORT_ROAD, rail ? (uint8_t)PickRailType() : (uint8_t)PickRoadType());
+			}
+			break;
+		}
+
 		case MiniTool::Signal: {
 			Track track = PickSignalTrack(tile, _drag_ax, _drag_ay);
 			if (track == INVALID_TRACK) break;
@@ -1562,7 +1575,14 @@ static void DrawPointToolPlan(int ppt)
 		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
 	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
 		DrawAxisBand(DiagDirToAxis(_point_dir), x0, y0, x1, y1, std::max(2, ppt / 3), c);
-	} else {
+	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel) {
+		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
+		if (d != INVALID_DIAGDIR) {
+			int cx = (x0 + x1) / 2;
+			int cy = (y0 + y1) / 2;
+			ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 5), c);
+		}
+	} else if (IsDirPointTool(_tool)) {
 		int cx = (x0 + x1) / 2;
 		int cy = (y0 + y1) / 2;
 		ThickLine(cx, cy, cx + _diag_dx[_point_dir] * (ppt / 2), cy + _diag_dy[_point_dir] * (ppt / 2), std::max(2, ppt / 5), c);
@@ -1630,6 +1650,7 @@ static const MiniMenuItem _menu_rail_items[] = {
 	{STR_LAI_STATION_DESCRIPTION_RAILROAD_STATION, "STATION", MiniTool::Station},
 	{STR_COMPANY_INFRASTRUCTURE_VIEW_SIGNALS, "SIGNAL", MiniTool::Signal},
 	{STR_LAI_RAIL_DESCRIPTION_TRAIN_DEPOT, "DEPOT", MiniTool::TrainDepot},
+	{STR_LAI_TUNNEL_DESCRIPTION_RAILROAD, "TUNNEL", MiniTool::RailTunnel},
 };
 
 static const MiniMenuItem _menu_road_items[] = {
@@ -1637,6 +1658,7 @@ static const MiniMenuItem _menu_road_items[] = {
 	{STR_LAI_STATION_DESCRIPTION_BUS_STATION, "BUS", MiniTool::BusStop},
 	{STR_LAI_STATION_DESCRIPTION_TRUCK_LOADING_AREA, "TRUCK", MiniTool::TruckStop},
 	{STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT, "DEPOT", MiniTool::RoadDepot},
+	{STR_LAI_TUNNEL_DESCRIPTION_ROAD, "TUNNEL", MiniTool::RoadTunnel},
 };
 
 static const MiniMenuItem _menu_land_items[] = {
@@ -1731,6 +1753,11 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 		case MiniTool::Signal:
 			ScreenFillCircle(cx - is / 4, cy + is / 4, t, COL_STOP);
 			ScreenFillCircle(cx + is / 4, cy - is / 4, t, COL_GO);
+			break;
+		case MiniTool::RailTunnel:
+		case MiniTool::RoadTunnel:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, tool == MiniTool::RailTunnel ? COL_RAIL : COL_ROAD);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_TUNNEL);
 			break;
 		case MiniTool::Terraform:
 			ScreenFillRect(cx - h, cy + is / 6, cx + h, cy + h, _height_ramp[3]);
@@ -1869,6 +1896,8 @@ static void DrawHud()
 		case MiniTool::RoadDepot: hint = "ROAD DEPOT: CLICK PLACE / Q E ROTATE EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::Demolish: hint = "CLEAR: DRAG AREA / RMB CANCEL"; break;
 		case MiniTool::Signal: hint = "SIGNAL: CLICK BUILD OR CYCLE / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::RailTunnel: hint = "RAIL TUNNEL: CLICK SLOPE / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::RoadTunnel: hint = "ROAD TUNNEL: CLICK SLOPE / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::Terraform: hint = "TERRAIN: DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
 		default:
 			if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
@@ -1877,7 +1906,7 @@ static void DrawHud()
 					: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
 			} else {
 				hint = "Z TERRAIN  X CLEAR  N BUY AT DEPOT / CTRL WAGON OR FREIGHT  SPACE PAUSE  F9 EXIT";
-				hint2 = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL";
+				hint2 = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I TUNNEL";
 			}
 			break;
 	}
@@ -2140,6 +2169,14 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'L':
 			_tool = _tool == MiniTool::Signal ? MiniTool::None : MiniTool::Signal;
+			break;
+
+		case 'U':
+			_tool = _tool == MiniTool::RailTunnel ? MiniTool::None : MiniTool::RailTunnel;
+			break;
+
+		case 'I':
+			_tool = _tool == MiniTool::RoadTunnel ? MiniTool::None : MiniTool::RoadTunnel;
 			break;
 
 		case 'Z':
