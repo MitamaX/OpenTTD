@@ -154,6 +154,7 @@ struct MiniSettings {
 	int start_active = 1;
 	double pan_speed = 1600.0;
 	double pan_speed_fast = 4000.0;
+	double pan_smooth_ms = 120.0;
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
 	int hud_scale = 2;
@@ -176,6 +177,8 @@ static double _zoom_wx, _zoom_wy;
 
 static bool _glide = false;
 static double _glide_x, _glide_y;
+
+static double _pan_vx, _pan_vy;
 
 static void ReadIniNumber(IniGroup &group, std::string_view name, double &v)
 {
@@ -212,6 +215,7 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "start_active", _ms.start_active);
 	ReadIniNumber(group, "pan_speed", _ms.pan_speed);
 	ReadIniNumber(group, "pan_speed_fast", _ms.pan_speed_fast);
+	ReadIniNumber(group, "pan_smooth_ms", _ms.pan_smooth_ms);
 	ReadIniNumber(group, "zoom_step", _ms.zoom_step);
 	ReadIniNumber(group, "zoom_smooth_ms", _ms.zoom_smooth_ms);
 	ReadIniNumber(group, "hud_scale", _ms.hud_scale);
@@ -227,6 +231,7 @@ static void LoadMiniSettings()
 
 	_ms.pan_speed = Clamp(_ms.pan_speed, 100.0, 10000.0);
 	_ms.pan_speed_fast = Clamp(_ms.pan_speed_fast, 100.0, 20000.0);
+	_ms.pan_smooth_ms = Clamp(_ms.pan_smooth_ms, 1.0, 500.0);
 	_ms.zoom_step = Clamp(_ms.zoom_step, 1.05, 2.0);
 	_ms.zoom_smooth_ms = Clamp(_ms.zoom_smooth_ms, 1.0, 500.0);
 	_ms.hud_scale = Clamp(_ms.hud_scale, 1, 4);
@@ -2057,6 +2062,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_zoom_anchored = false;
 		_follow = false;
 		_glide = false;
+		_pan_vx = 0.0;
+		_pan_vy = 0.0;
 		_cam_x -= _cursor.delta.x * _ms.drag_pan_multiplier / _cam_ppt;
 		_cam_y -= _cursor.delta.y * _ms.drag_pan_multiplier / _cam_ppt;
 		ClampCamera();
@@ -2279,17 +2286,35 @@ void MiniUiFrame(uint delta_ms)
 	PruneTextCache();
 	RlwCmdClear();
 
-	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
+	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space.
+	 * Velocity eases toward the held direction like zoom, so release coasts to a stop. */
 	if (_dirkeys != 0) {
 		_zoom_anchored = false;
 		_follow = false;
 		_glide = false;
-		double px = (_shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed) * delta_ms / 1000.0 / _cam_ppt;
-		if (_dirkeys & 1) _cam_x -= px;
-		if (_dirkeys & 2) _cam_y -= px;
-		if (_dirkeys & 4) _cam_x += px;
-		if (_dirkeys & 8) _cam_y += px;
-		ClampCamera();
+	} else if (_follow || _glide || _zoom_anchored) {
+		_pan_vx = 0.0;
+		_pan_vy = 0.0;
+	}
+	{
+		double speed = _shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed;
+		double tvx = 0.0, tvy = 0.0;
+		if (_dirkeys & 1) tvx -= speed;
+		if (_dirkeys & 2) tvy -= speed;
+		if (_dirkeys & 4) tvx += speed;
+		if (_dirkeys & 8) tvy += speed;
+		double f = 1.0 - std::exp(delta_ms / -_ms.pan_smooth_ms);
+		_pan_vx += (tvx - _pan_vx) * f;
+		_pan_vy += (tvy - _pan_vy) * f;
+		if (_dirkeys == 0 && std::abs(_pan_vx) < 5.0 && std::abs(_pan_vy) < 5.0) {
+			_pan_vx = 0.0;
+			_pan_vy = 0.0;
+		}
+		if (_pan_vx != 0.0 || _pan_vy != 0.0) {
+			_cam_x += _pan_vx * delta_ms / 1000.0 / _cam_ppt;
+			_cam_y += _pan_vy * delta_ms / 1000.0 / _cam_ppt;
+			ClampCamera();
+		}
 	}
 
 	if (_ms.edge_scroll != 0 && _cursor.in_window && !_middle_button_down) {
