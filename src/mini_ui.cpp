@@ -156,7 +156,7 @@ struct MiniSettings {
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
 	int hud_scale = 2;
-	int menu_panel_rows = 3;
+	int menu_panel_rows = 4;
 	int contour_alpha = 120;
 	int relief_strength = 22;
 	int edge_scroll = 1;
@@ -229,7 +229,7 @@ static void LoadMiniSettings()
 	_ms.zoom_step = Clamp(_ms.zoom_step, 1.05, 2.0);
 	_ms.zoom_smooth_ms = Clamp(_ms.zoom_smooth_ms, 1.0, 500.0);
 	_ms.hud_scale = Clamp(_ms.hud_scale, 1, 4);
-	_ms.menu_panel_rows = Clamp(_ms.menu_panel_rows, 1, 8);
+	_ms.menu_panel_rows = Clamp(_ms.menu_panel_rows, 1, 4);
 	_ms.contour_alpha = Clamp(_ms.contour_alpha, 0, 255);
 	_ms.relief_strength = Clamp(_ms.relief_strength, 0, 60);
 	_ms.edge_margin = Clamp(_ms.edge_margin, 2, 200);
