@@ -131,9 +131,7 @@ static bool _follow = false;
 static bool _prev_left = false;
 
 struct MiniRailPlan {
-	TileIndex start = INVALID_TILE;
-	TileIndex end = INVALID_TILE;
-	Track track = INVALID_TRACK;
+	std::vector<TileIndex> path;
 	std::vector<std::pair<TileIndex, Track>> pieces;
 };
 
@@ -1216,68 +1214,83 @@ static bool HandleLabelClick(int x, int y)
 
 /* Mirrors the zigzag walk of CmdRailTrackHelper: non-diagonal pieces alternate
  * between the two halves of the pair while stepping one tile per piece. */
-static void WalkRail(TileIndex start, Track track, int sx, int sy, int steps, std::vector<std::pair<TileIndex, Track>> &out)
+/* Pipe-style placement: the drag lays a free-form path that follows the
+ * cursor tile by tile and turns where the cursor turns; stepping back onto
+ * the previous tile undoes the last step. Pieces derive from the pairs of
+ * tile edges the path crosses. Edge bits: 1 = -x, 2 = +x, 4 = -y, 8 = +y. */
+static int StepBit(TileIndex from, TileIndex to)
 {
-	int tx = TileX(start);
-	int ty = TileY(start);
-	Track t = track;
-	for (int i = 0; i <= steps; i++) {
-		if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() - 1 || ty >= (int)Map::SizeY() - 1) break;
-		out.emplace_back(TileXY(tx, ty), t);
-		if (i == steps) break;
-		switch (t) {
-			case TRACK_X: tx += sx; break;
-			case TRACK_Y: ty += sy; break;
-			case TRACK_UPPER: if (sy < 0) ty--; else tx--; t = TRACK_LOWER; break;
-			case TRACK_LOWER: if (sy < 0) tx++; else ty++; t = TRACK_UPPER; break;
-			case TRACK_LEFT: if (sx > 0) tx++; else ty--; t = TRACK_RIGHT; break;
-			case TRACK_RIGHT: if (sx > 0) ty++; else tx--; t = TRACK_LEFT; break;
-			default: return;
-		}
+	if ((int)TileX(to) < (int)TileX(from)) return 1;
+	if ((int)TileX(to) > (int)TileX(from)) return 2;
+	if ((int)TileY(to) < (int)TileY(from)) return 4;
+	return 8;
+}
+
+static int OppositeBit(int b)
+{
+	switch (b) {
+		case 1: return 2;
+		case 2: return 1;
+		case 4: return 8;
+		default: return 4;
+	}
+}
+
+static Track EdgePairTrack(int mask)
+{
+	switch (mask) {
+		case 1 | 2: return TRACK_X;
+		case 4 | 8: return TRACK_Y;
+		case 1 | 4: return TRACK_UPPER;
+		case 2 | 8: return TRACK_LOWER;
+		case 2 | 4: return TRACK_LEFT;
+		case 1 | 8: return TRACK_RIGHT;
+		default: return INVALID_TRACK;
+	}
+}
+
+static void RailPathPieces()
+{
+	_plan.pieces.clear();
+	size_t n = _plan.path.size();
+	if (n < 2) return;
+	for (size_t i = 0; i < n; i++) {
+		int in = i > 0 ? OppositeBit(StepBit(_plan.path[i - 1], _plan.path[i])) : 0;
+		int out = i + 1 < n ? StepBit(_plan.path[i], _plan.path[i + 1]) : 0;
+		if (in == 0) in = OppositeBit(out);
+		if (out == 0) out = OppositeBit(in);
+		Track t = EdgePairTrack(in | out);
+		if (t != INVALID_TRACK) _plan.pieces.emplace_back(_plan.path[i], t);
 	}
 }
 
 static void UpdateRailPlan(double wx, double wy)
 {
-	_plan.pieces.clear();
-	_plan.start = INVALID_TILE;
+	int tx = Clamp<int>((int)std::floor(wx), 0, Map::SizeX() - 2);
+	int ty = Clamp<int>((int)std::floor(wy), 0, Map::SizeY() - 2);
 
-	int atx = Clamp<int>((int)std::floor(_drag_ax), 0, Map::SizeX() - 2);
-	int aty = Clamp<int>((int)std::floor(_drag_ay), 0, Map::SizeY() - 2);
-	double dx = wx - _drag_ax;
-	double dy = wy - _drag_ay;
+	if (_plan.path.empty()) {
+		int ax = Clamp<int>((int)std::floor(_drag_ax), 0, Map::SizeX() - 2);
+		int ay = Clamp<int>((int)std::floor(_drag_ay), 0, Map::SizeY() - 2);
+		_plan.path.push_back(TileXY(ax, ay));
+	}
 
-	TileIndex start = TileXY(atx, aty);
-	double ax = std::abs(dx), ay = std::abs(dy);
-	int sx = dx >= 0 ? 1 : -1;
-	int sy = dy >= 0 ? 1 : -1;
-
-	Track track;
-	int steps;
-	/* Snap to the nearest of the four rail directions by comparing axis dominance. */
-	if (ax > ay * 2.414) {
-		track = TRACK_X;
-		steps = std::min<int>((int)std::lround(ax), 127);
-	} else if (ay > ax * 2.414) {
-		track = TRACK_Y;
-		steps = std::min<int>((int)std::lround(ay), 127);
-	} else {
-		steps = std::min<int>((int)std::lround(ax + ay), 254);
-		double fx = _drag_ax - std::floor(_drag_ax);
-		double fy = _drag_ay - std::floor(_drag_ay);
-		if (sx != sy) {
-			track = (fx + fy < 1.0) ? TRACK_UPPER : TRACK_LOWER;
+	while (_plan.path.size() < 1024) {
+		TileIndex cur = _plan.path.back();
+		int cx = (int)TileX(cur), cy = (int)TileY(cur);
+		int dx = tx - cx, dy = ty - cy;
+		if (dx == 0 && dy == 0) break;
+		int nx = cx, ny = cy;
+		if (std::abs(dx) >= std::abs(dy)) nx += dx > 0 ? 1 : -1; else ny += dy > 0 ? 1 : -1;
+		TileIndex next = TileXY(nx, ny);
+		if (_plan.path.size() >= 2 && next == _plan.path[_plan.path.size() - 2]) {
+			_plan.path.pop_back();
 		} else {
-			track = (fx > fy) ? TRACK_LEFT : TRACK_RIGHT;
+			_plan.path.push_back(next);
 		}
 	}
 
-	WalkRail(start, track, sx, sy, steps, _plan.pieces);
-	if (_plan.pieces.empty()) return;
-
-	_plan.start = _plan.pieces.front().first;
-	_plan.end = _plan.pieces.back().first;
-	_plan.track = _plan.pieces.front().second;
+	RailPathPieces();
 }
 
 static void DrawRailPlan(int ppt)
@@ -1309,7 +1322,7 @@ static RailType PickRailType()
 static void ClearPlans()
 {
 	_plan.pieces.clear();
-	_plan.start = INVALID_TILE;
+	_plan.path.clear();
 	_road_plan.tiles.clear();
 	_road_plan.start = INVALID_TILE;
 	_rect_plan.valid = false;
@@ -1365,28 +1378,53 @@ static MiniSpans SplitWaterSpans(std::span<const TileIndex> ts)
 
 static void CommitRailPlan()
 {
-	if (_plan.start == INVALID_TILE) return;
-	if (_drag_remove) {
-		Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, _plan.end, _plan.start, _plan.track);
+	if (_plan.pieces.empty()) {
 		ClearPlans();
 		return;
 	}
 
-	MiniSpans spans;
-	std::vector<TileIndex> tiles;
-	if (_plan.track == TRACK_X || _plan.track == TRACK_Y) {
-		for (const auto &[tile, t] : _plan.pieces) tiles.push_back(tile);
-		spans = SplitWaterSpans(tiles);
+	if (_drag_remove) {
+		for (const auto &[tile, t] : _plan.pieces) {
+			Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
+		}
+		ClearPlans();
+		return;
 	}
-	if (!spans.ok) {
-		Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, _plan.end, _plan.start, PickRailType(), _plan.track, true, false);
-	} else {
-		for (auto [a, b] : spans.bridges) {
-			Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, tiles[b], tiles[a], TRANSPORT_RAIL, PickBridgeType((uint)(b - a - 1)), (uint8_t)PickRailType());
+
+	/* Maximal straight runs go through the range command so the water
+	 * auto-bridge logic still applies; corner pieces commit tile by tile. */
+	RailType rt = PickRailType();
+	size_t i = 0;
+	while (i < _plan.pieces.size()) {
+		auto [tile, t] = _plan.pieces[i];
+		size_t j = i;
+		if (t == TRACK_X || t == TRACK_Y) {
+			int dir = 0;
+			while (j + 1 < _plan.pieces.size() && _plan.pieces[j + 1].second == t) {
+				int step = StepBit(_plan.pieces[j].first, _plan.pieces[j + 1].first);
+				if (dir != 0 && step != dir) break;
+				dir = step;
+				j++;
+			}
 		}
-		for (auto [a, b] : spans.land) {
-			Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tiles[b], tiles[a], PickRailType(), _plan.track, true, false);
+		if (j > i) {
+			std::vector<TileIndex> tiles;
+			for (size_t k = i; k <= j; k++) tiles.push_back(_plan.pieces[k].first);
+			MiniSpans spans = SplitWaterSpans(tiles);
+			if (!spans.ok) {
+				Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tiles.back(), tiles.front(), rt, t, true, false);
+			} else {
+				for (auto [a, b] : spans.bridges) {
+					Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, tiles[b], tiles[a], TRANSPORT_RAIL, PickBridgeType((uint)(b - a - 1)), (uint8_t)rt);
+				}
+				for (auto [a, b] : spans.land) {
+					Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tiles[b], tiles[a], rt, t, true, false);
+				}
+			}
+		} else {
+			Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tile, tile, rt, t, true, false);
 		}
+		i = j + 1;
 	}
 	ClearPlans();
 }
@@ -2175,7 +2213,7 @@ static void DrawHud()
 	std::string_view hint;
 	std::string_view hint2;
 	switch (_tool) {
-		case MiniTool::Rail: hint = "RAIL: DRAG BUILD / AUTO BRIDGE OVER WATER / CTRL DRAG REMOVE / RMB CANCEL"; break;
+		case MiniTool::Rail: hint = "RAIL: DRAG PATH / AUTO BRIDGE OVER WATER / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::Road: hint = "ROAD: DRAG BUILD / AUTO BRIDGE OVER WATER / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::Station: hint = "STATION: DRAG AREA / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::BusStop: hint = "BUS STOP: CLICK PLACE / Q E ROTATE / CTRL CLICK REMOVE / RMB CANCEL"; break;
@@ -2382,7 +2420,10 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				_drag_remove = _ctrl_pressed;
 				_drag_ax = WorldX(_cursor.pos.x);
 				_drag_ay = WorldY(_cursor.pos.y);
-				if (_tool == MiniTool::Rail) UpdateRailPlan(_drag_ax, _drag_ay);
+				if (_tool == MiniTool::Rail) {
+					_plan.path.clear();
+					UpdateRailPlan(_drag_ax, _drag_ay);
+				}
 				if (_tool == MiniTool::Road) UpdateRoadPlan(_drag_ax, _drag_ay);
 				if (IsRectTool(_tool)) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
 			}
