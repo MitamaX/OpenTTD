@@ -159,7 +159,7 @@ struct MiniSettings {
 	int start_active = 1;
 	double pan_speed = 1600.0;
 	double pan_speed_fast = 4000.0;
-	double pan_smooth_ms = 120.0;
+	double pan_smooth_ms = 60.0;
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
 	int hud_scale = 2;
@@ -2581,25 +2581,31 @@ void MiniUiFrame(uint delta_ms)
 	RlwCmdClear();
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space.
-	 * Held keys set the velocity directly so movement starts instantly; only the
-	 * release decays it, so the camera coasts to a stop like zoom. */
+	 * A held axis takes its velocity directly so movement starts instantly; a
+	 * released axis decays on its own, so letting go of one diagonal key keeps
+	 * the other axis coasting. */
 	if (_dirkeys != 0) {
 		_zoom_anchored = false;
 		_follow = false;
 		_glide = false;
-		double speed = _shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed;
-		_pan_vx = ((_dirkeys & 4) ? speed : 0.0) - ((_dirkeys & 1) ? speed : 0.0);
-		_pan_vy = ((_dirkeys & 8) ? speed : 0.0) - ((_dirkeys & 2) ? speed : 0.0);
 	} else if (_follow || _glide || _zoom_anchored) {
 		_pan_vx = 0.0;
 		_pan_vy = 0.0;
-	} else {
+	}
+	{
+		double speed = _shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed;
 		double f = 1.0 - std::exp(delta_ms / -_ms.pan_smooth_ms);
-		_pan_vx -= _pan_vx * f;
-		_pan_vy -= _pan_vy * f;
-		if (std::abs(_pan_vx) < 5.0 && std::abs(_pan_vy) < 5.0) {
-			_pan_vx = 0.0;
-			_pan_vy = 0.0;
+		if (_dirkeys & (1 | 4)) {
+			_pan_vx = ((_dirkeys & 4) ? speed : 0.0) - ((_dirkeys & 1) ? speed : 0.0);
+		} else {
+			_pan_vx -= _pan_vx * f;
+			if (std::abs(_pan_vx) < 5.0) _pan_vx = 0.0;
+		}
+		if (_dirkeys & (2 | 8)) {
+			_pan_vy = ((_dirkeys & 8) ? speed : 0.0) - ((_dirkeys & 2) ? speed : 0.0);
+		} else {
+			_pan_vy -= _pan_vy * f;
+			if (std::abs(_pan_vy) < 5.0) _pan_vy = 0.0;
 		}
 	}
 	if (_pan_vx != 0.0 || _pan_vy != 0.0) {
