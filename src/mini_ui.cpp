@@ -2323,34 +2323,31 @@ void MiniUiFrame(uint delta_ms)
 	RlwCmdClear();
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space.
-	 * Velocity eases toward the held direction like zoom, so release coasts to a stop. */
+	 * Held keys set the velocity directly so movement starts instantly; only the
+	 * release decays it, so the camera coasts to a stop like zoom. */
 	if (_dirkeys != 0) {
 		_zoom_anchored = false;
 		_follow = false;
 		_glide = false;
+		double speed = _shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed;
+		_pan_vx = ((_dirkeys & 4) ? speed : 0.0) - ((_dirkeys & 1) ? speed : 0.0);
+		_pan_vy = ((_dirkeys & 8) ? speed : 0.0) - ((_dirkeys & 2) ? speed : 0.0);
 	} else if (_follow || _glide || _zoom_anchored) {
 		_pan_vx = 0.0;
 		_pan_vy = 0.0;
-	}
-	{
-		double speed = _shift_pressed ? _ms.pan_speed_fast : _ms.pan_speed;
-		double tvx = 0.0, tvy = 0.0;
-		if (_dirkeys & 1) tvx -= speed;
-		if (_dirkeys & 2) tvy -= speed;
-		if (_dirkeys & 4) tvx += speed;
-		if (_dirkeys & 8) tvy += speed;
+	} else {
 		double f = 1.0 - std::exp(delta_ms / -_ms.pan_smooth_ms);
-		_pan_vx += (tvx - _pan_vx) * f;
-		_pan_vy += (tvy - _pan_vy) * f;
-		if (_dirkeys == 0 && std::abs(_pan_vx) < 5.0 && std::abs(_pan_vy) < 5.0) {
+		_pan_vx -= _pan_vx * f;
+		_pan_vy -= _pan_vy * f;
+		if (std::abs(_pan_vx) < 5.0 && std::abs(_pan_vy) < 5.0) {
 			_pan_vx = 0.0;
 			_pan_vy = 0.0;
 		}
-		if (_pan_vx != 0.0 || _pan_vy != 0.0) {
-			_cam_x += _pan_vx * delta_ms / 1000.0 / _cam_ppt;
-			_cam_y += _pan_vy * delta_ms / 1000.0 / _cam_ppt;
-			ClampCamera();
-		}
+	}
+	if (_pan_vx != 0.0 || _pan_vy != 0.0) {
+		_cam_x += _pan_vx * delta_ms / 1000.0 / _cam_ppt;
+		_cam_y += _pan_vy * delta_ms / 1000.0 / _cam_ppt;
+		ClampCamera();
 	}
 
 	if (_ms.edge_scroll != 0 && _cursor.in_window && !_middle_button_down) {
