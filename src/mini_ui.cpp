@@ -112,7 +112,13 @@ static bool IsPointTool(MiniTool t)
 	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal;
 }
 
+static bool IsDirPointTool(MiniTool t)
+{
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot;
+}
+
 static MiniTool _tool = MiniTool::None;
+static DiagDirection _point_dir = DIAGDIR_SE;
 static bool _dragging = false;
 static bool _drag_remove = false;
 static double _drag_ax, _drag_ay;
@@ -1410,40 +1416,22 @@ static void CommitTerraformPlan()
 	ClearPlans();
 }
 
-static Axis DragAxis(double wx, double wy, TileIndex tile)
-{
-	double dx = wx - _drag_ax;
-	double dy = wy - _drag_ay;
-	if (std::abs(dx) < 0.25 && std::abs(dy) < 0.25) {
-		RoadBits rb = IsTileType(tile, MP_ROAD) && IsNormalRoad(tile) ? GetRoadBits(tile, RTT_ROAD) : ROAD_NONE;
-		if ((rb & ROAD_Y) != ROAD_NONE && (rb & ROAD_X) == ROAD_NONE) return AXIS_Y;
-		return AXIS_X;
-	}
-	return std::abs(dx) >= std::abs(dy) ? AXIS_X : AXIS_Y;
-}
-
-static DiagDirection DragDir(double wx, double wy)
-{
-	double dx = wx - _drag_ax;
-	double dy = wy - _drag_ay;
-	if (std::abs(dx) >= std::abs(dy)) return dx >= 0 ? DIAGDIR_SW : DIAGDIR_NE;
-	return dy >= 0 ? DIAGDIR_SE : DIAGDIR_NW;
-}
-
 /* Same sub-track pick as GenericPlaceSignals: on paired straight pieces the
  * fractional click position decides which half gets the signal. */
-static Track PickSignalTrack(TileIndex tile)
+static Track PickSignalTrack(TileIndex tile, double wx, double wy)
 {
 	if (!IsPlainRailTile(tile)) return INVALID_TRACK;
 	TrackBits trackbits = GetTrackBits(tile);
-	double fx = _drag_ax - std::floor(_drag_ax);
-	double fy = _drag_ay - std::floor(_drag_ay);
+	double fx = wx - std::floor(wx);
+	double fy = wy - std::floor(wy);
 	if (trackbits & TRACK_BIT_VERT) trackbits = (fx <= fy) ? TRACK_BIT_RIGHT : TRACK_BIT_LEFT;
 	if (trackbits & TRACK_BIT_HORZ) trackbits = (fx + fy <= 1.0) ? TRACK_BIT_UPPER : TRACK_BIT_LOWER;
 	return FindFirstTrack(trackbits);
 }
 
-static void CommitPointTool(double wx, double wy)
+/* Point tools place on click: the blueprint floats on the hover tile and
+ * Q/E spin _point_dir, so no drag gesture is involved. */
+static void CommitPointTool()
 {
 	int tx = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
 	int ty = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
@@ -1457,7 +1445,7 @@ static void CommitPointTool(double wx, double wy)
 			if (_drag_remove) {
 				Command<CMD_REMOVE_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_REMOVE_BUS_STATION : STR_ERROR_CAN_T_REMOVE_TRUCK_STATION, tile, 1, 1, st, false);
 			} else {
-				DiagDirection ddir = AxisToDiagDir(DragAxis(wx, wy, tile));
+				DiagDirection ddir = AxisToDiagDir(DiagDirToAxis(_point_dir));
 				Command<CMD_BUILD_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_BUILD_BUS_STATION : STR_ERROR_CAN_T_BUILD_TRUCK_STATION, tile, 1, 1, st, true, ddir, PickRoadType(), ROADSTOP_CLASS_DFLT, 0, StationID::Invalid(), false);
 			}
 			break;
@@ -1467,7 +1455,7 @@ static void CommitPointTool(double wx, double wy)
 			if (_drag_remove) {
 				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
 			} else {
-				Command<CMD_BUILD_TRAIN_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_TRAIN_DEPOT, tile, PickRailType(), DragDir(wx, wy));
+				Command<CMD_BUILD_TRAIN_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_TRAIN_DEPOT, tile, PickRailType(), _point_dir);
 			}
 			break;
 
@@ -1475,12 +1463,12 @@ static void CommitPointTool(double wx, double wy)
 			if (_drag_remove) {
 				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
 			} else {
-				Command<CMD_BUILD_ROAD_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_ROAD_DEPOT, tile, PickRoadType(), DragDir(wx, wy));
+				Command<CMD_BUILD_ROAD_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_ROAD_DEPOT, tile, PickRoadType(), _point_dir);
 			}
 			break;
 
 		case MiniTool::Signal: {
-			Track track = PickSignalTrack(tile);
+			Track track = PickSignalTrack(tile, _drag_ax, _drag_ay);
 			if (track == INVALID_TRACK) break;
 			if (_drag_remove) {
 				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, tile, track);
@@ -1498,28 +1486,27 @@ static void CommitPointTool(double wx, double wy)
 
 static void DrawPointToolPlan(int ppt)
 {
-	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
-	int tx = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
-	int ty = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
+	uint32_t c = _ctrl_pressed ? COL_BP_RM : COL_BP;
+	double wx = WorldX(_cursor.pos.x);
+	double wy = WorldY(_cursor.pos.y);
+	int tx = Clamp<int>((int)std::floor(wx), 1, Map::SizeX() - 2);
+	int ty = Clamp<int>((int)std::floor(wy), 1, Map::SizeY() - 2);
 	int x0 = PxX(tx);
 	int y0 = PxY(ty);
 	int x1 = PxX(tx + 1) - 1;
 	int y1 = PxY(ty + 1) - 1;
 	BlendRect(x0, y0, x1, y1, c, 90);
-	if (_drag_remove) return;
+	if (_ctrl_pressed) return;
 
-	double wx = WorldX(_cursor.pos.x);
-	double wy = WorldY(_cursor.pos.y);
 	if (_tool == MiniTool::Signal) {
-		Track track = PickSignalTrack(TileXY(tx, ty));
+		Track track = PickSignalTrack(TileXY(tx, ty), wx, wy);
 		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
 	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-		DrawAxisBand(DragAxis(wx, wy, TileXY(tx, ty)), x0, y0, x1, y1, std::max(2, ppt / 3), c);
+		DrawAxisBand(DiagDirToAxis(_point_dir), x0, y0, x1, y1, std::max(2, ppt / 3), c);
 	} else {
-		DiagDirection d = DragDir(wx, wy);
 		int cx = (x0 + x1) / 2;
 		int cy = (y0 + y1) / 2;
-		ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 5), c);
+		ThickLine(cx, cy, cx + _diag_dx[_point_dir] * (ppt / 2), cy + _diag_dy[_point_dir] * (ppt / 2), std::max(2, ppt / 5), c);
 	}
 }
 
@@ -1856,10 +1843,10 @@ static void DrawHud()
 		case MiniTool::Rail: hint = "RAIL: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::Road: hint = "ROAD: DRAG BUILD / CTRL DRAG REMOVE / RMB CANCEL"; break;
 		case MiniTool::Station: hint = "STATION: DRAG AREA / CTRL DRAG REMOVE / RMB CANCEL"; break;
-		case MiniTool::BusStop: hint = "BUS STOP: DRAG SETS AXIS / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::TruckStop: hint = "TRUCK STOP: DRAG SETS AXIS / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::TrainDepot: hint = "TRAIN DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::RoadDepot: hint = "ROAD DEPOT: DRAG SETS EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::BusStop: hint = "BUS STOP: CLICK PLACE / Q E ROTATE / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::TruckStop: hint = "TRUCK STOP: CLICK PLACE / Q E ROTATE / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::TrainDepot: hint = "TRAIN DEPOT: CLICK PLACE / Q E ROTATE EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
+		case MiniTool::RoadDepot: hint = "ROAD DEPOT: CLICK PLACE / Q E ROTATE EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::Demolish: hint = "CLEAR: DRAG AREA / RMB CANCEL"; break;
 		case MiniTool::Signal: hint = "SIGNAL: CLICK BUILD OR CYCLE / CTRL CLICK REMOVE / RMB CANCEL"; break;
 		case MiniTool::RailBridge: hint = "RAIL BRIDGE: DRAG SPAN / CLICK SLOPE TUNNEL / CTRL CLICK REMOVE / RMB CANCEL"; break;
@@ -2017,6 +2004,11 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
 					if (const Vehicle *v = SelectVehicleAt(_cursor.pos.x, _cursor.pos.y); v != nullptr) ShowVehicleViewWindow(v);
 				}
+			} else if (IsPointTool(_tool)) {
+				_drag_remove = _ctrl_pressed;
+				_drag_ax = WorldX(_cursor.pos.x);
+				_drag_ay = WorldY(_cursor.pos.y);
+				CommitPointTool();
 			} else {
 				_dragging = true;
 				_drag_remove = _ctrl_pressed;
@@ -2037,7 +2029,6 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		if (_tool == MiniTool::Station) CommitStationPlan();
 		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
 		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
-		if (IsPointTool(_tool)) CommitPointTool(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y));
 	}
 	_prev_left = _left_button_down;
 
@@ -2095,7 +2086,15 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			break;
 
 		case 'E':
-			_tool = _tool == MiniTool::Road ? MiniTool::None : MiniTool::Road;
+			if (IsDirPointTool(_tool)) {
+				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
+			} else {
+				_tool = _tool == MiniTool::Road ? MiniTool::None : MiniTool::Road;
+			}
+			break;
+
+		case 'Q':
+			if (IsDirPointTool(_tool)) _point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
 			break;
 
 		case 'T':
@@ -2297,9 +2296,9 @@ void MiniUiFrame(uint delta_ms)
 		} else if (IsRectTool(_tool)) {
 			UpdateRectPlan(WorldX(_cursor.pos.x), WorldY(_cursor.pos.y), RectPlanLimit());
 			DrawRectPlan(ppt);
-		} else if (IsPointTool(_tool)) {
-			DrawPointToolPlan(ppt);
 		}
+	} else if (IsPointTool(_tool)) {
+		DrawPointToolPlan(ppt);
 	} else if (_tool != MiniTool::None) {
 		int htx = (int)std::floor(WorldX(_cursor.pos.x));
 		int hty = (int)std::floor(WorldY(_cursor.pos.y));
