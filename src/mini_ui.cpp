@@ -846,9 +846,11 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 
 /* A tile whose whole footprint is one solid colour can join a horizontal run
  * with equal neighbours; one rect per run keeps the command count far below
- * one per tile on open terrain and water. */
-static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c)
+ * one per tile on open terrain and water. Tree tiles merge their ground too
+ * and only defer the dot on top. */
+static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, bool &tree_dot)
 {
+	tree_dot = false;
 	if (IsBridgeAbove(tile)) return false;
 	switch (GetTileType(tile)) {
 		case MP_VOID:
@@ -861,7 +863,7 @@ static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c)
 			return true;
 
 		case MP_TREES:
-			if (_zd.tree_dots) return false;
+			tree_dot = _zd.tree_dots;
 			[[fallthrough]];
 		case MP_CLEAR: {
 			auto [s, hbase] = GetTileSlopeZ(tile);
@@ -2369,6 +2371,8 @@ void MiniUiFrame(uint delta_ms)
 	int ty1 = std::min<int>(Map::SizeY() - 1, (int)std::floor(WorldY(_fbh - 1)));
 
 	FillRect(0, 0, _fbw - 1, _fbh - 1, COL_VOID);
+	static std::vector<std::pair<int, int>> tree_dots;
+	tree_dots.clear();
 	for (int ty = ty0; ty <= ty1; ty++) {
 		int run_start = -1;
 		uint32_t run_c = 0;
@@ -2380,18 +2384,24 @@ void MiniUiFrame(uint delta_ms)
 		for (int tx = tx0; tx <= tx1; tx++) {
 			TileIndex tile = TileXY(tx, ty);
 			uint32_t c;
-			if (TileRunColour(tile, tx, ty, ppt, c)) {
+			bool tree_dot;
+			if (TileRunColour(tile, tx, ty, ppt, c, tree_dot)) {
 				if (run_start >= 0 && c != run_c) flush(tx);
 				if (run_start < 0) {
 					run_start = tx;
 					run_c = c;
 				}
+				if (tree_dot) tree_dots.emplace_back(tx, ty);
 			} else {
 				flush(tx);
 				DrawTile(tile, tx, ty, ppt);
 			}
 		}
 		flush(tx1 + 1);
+	}
+	int tree_r = std::max(1, ppt / 8);
+	for (auto [tx, ty] : tree_dots) {
+		FillCircle((PxX(tx) + PxX(tx + 1) - 1) / 2, (PxY(ty) + PxY(ty + 1) - 1) / 2, tree_r, COL_TREE);
 	}
 
 	if (_dragging) {

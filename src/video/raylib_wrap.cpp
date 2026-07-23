@@ -276,7 +276,13 @@ static void RlwReplayCommands()
 				DrawLineEx({(float)c.a, (float)c.b}, {(float)c.c, (float)c.d}, (float)c.e, RlwColour(c.col));
 				break;
 			case RlwCmdType::Circle:
-				DrawCircle(c.a, c.b, (float)c.c, RlwColour(c.col));
+				/* DrawCircle always tessellates 36 segments; thousands of tiny
+				 * dots per frame want far fewer vertices than that. */
+				if (c.c <= 1) {
+					DrawRectangle(c.a - c.c, c.b - c.c, 2 * c.c + 1, 2 * c.c + 1, RlwColour(c.col));
+				} else {
+					DrawPoly({(float)c.a, (float)c.b}, c.c <= 4 ? 8 : 20, (float)c.c, 0.0f, RlwColour(c.col));
+				}
 				break;
 			case RlwCmdType::Diamond:
 				DrawPoly({(float)c.a, (float)c.b}, 4, (float)c.c, 0.0f, RlwColour(c.col));
