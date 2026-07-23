@@ -23,6 +23,7 @@ void MiniUiFrame(uint delta_ms);
 bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
 bool MiniUiHidesWindow(WindowClass wc);
+bool MiniUiWindowPlacement(int width, int height, Point &pt);
 void MiniUiOverlayRects(std::vector<RlwRectI> &rects);
 void MiniUiScrollTo(int x, int y);
 

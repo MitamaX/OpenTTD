@@ -2028,6 +2028,36 @@ bool MiniUiHidesWindow(WindowClass wc)
 	return wc == WC_MAIN_WINDOW || wc == WC_MAIN_TOOLBAR || wc == WC_STATUS_BAR;
 }
 
+/* Native windows dock to the top-right corner, stacking downward column by
+ * column; when no column has room the newest window covers the corner. */
+bool MiniUiWindowPlacement(int width, int height, Point &pt)
+{
+	if (!_mini_active) return false;
+
+	int right = std::max(0, _screen.width - width);
+	for (int x = right; x >= 0; x -= width) {
+		int y = 0;
+		bool moved = true;
+		while (moved) {
+			moved = false;
+			for (const Window *w : Window::Iterate()) {
+				if (MiniUiHidesWindow(w->window_class)) continue;
+				if (x < w->left + w->width && w->left < x + width && y < w->top + w->height && w->top < y + height) {
+					y = w->top + w->height;
+					moved = true;
+				}
+			}
+		}
+		if (y + height <= _screen.height) {
+			pt = {x, y};
+			return true;
+		}
+	}
+
+	pt = {right, 0};
+	return true;
+}
+
 void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 {
 	if (!_mini_active) return;

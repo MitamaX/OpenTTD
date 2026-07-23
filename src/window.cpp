@@ -1762,6 +1762,11 @@ static Point LocalGetWindowPlacement(const WindowDesc &desc, int16_t sm_width, i
 		}
 	}
 
+	if ((desc.default_pos == WDP_AUTO || desc.default_pos == WDP_ALIGN_TOOLBAR) &&
+			MiniUiWindowPlacement(default_width, default_height, pt)) {
+		return pt;
+	}
+
 	switch (desc.default_pos) {
 		case WDP_ALIGN_TOOLBAR: // Align to the toolbar
 			return GetToolbarAlignedWindowPosition(default_width);
