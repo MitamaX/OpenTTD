@@ -520,10 +520,10 @@ static void ChromePanel(int x0, int y0, int x1, int y1)
 	RlwCmdRoundRect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, r, COL_CH_PANEL);
 }
 
-static void DrawHudText(int x, int y, std::string_view text)
+static void DrawHudText(int x, int y, std::string_view text, int min_w = 0)
 {
 	int pad = 4;
-	int w = GetStringBoundingBox(text).width;
+	int w = std::max<int>(GetStringBoundingBox(text).width, min_w);
 	int lh = GetCharacterHeight(FS_NORMAL);
 	RlwCmdRoundRect(x - pad, y - pad, x + w + pad, y + lh + pad - 1, pad, (COL_CH_PANEL & 0x00FFFFFFU) | 0xF0000000U);
 	DrawScreenText(x, y, text);
@@ -2533,6 +2533,12 @@ static void DrawColonyPanel()
 	int w = std::max({text_x + std::max<int>(GetStringBoundingBox(name).width, GetStringBoundingBox(date).width),
 			pad + (int)GetStringBoundingBox(funds).width,
 			pad + 3 * bw + 2 * gap}) + pad;
+	/* Text widths shift every tick; quantised and monotonic width keeps the
+	 * panel from breathing. */
+	w = (w + 8 * s - 1) / (8 * s) * (8 * s);
+	static int stable_w = 0;
+	w = std::max(w, stable_w);
+	stable_w = w;
 	int rows_bottom = pad + std::max(2 * ring, 2 * lh + gap);
 	int funds_y = rows_bottom + 2 * s;
 	int btn_y = funds.empty() ? funds_y : funds_y + lh + 3 * s;
@@ -2603,7 +2609,14 @@ static void DrawColonyPanel()
 			info += fmt::format("  {} {}/{}", std::string_view(lab, 4), stored, cap);
 		}
 		info += fmt::format("  ORDERS {}  PROFIT {}", v->GetNumOrders(), GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayProfitThisYear()));
-		DrawHudText(6 * s, _colony_bottom + 6 * s, info);
+		static VehicleID info_veh = VehicleID::Invalid();
+		static int info_w = 0;
+		if (info_veh != _sel_vehicle) {
+			info_veh = _sel_vehicle;
+			info_w = 0;
+		}
+		info_w = std::max<int>(info_w, GetStringBoundingBox(info).width);
+		DrawHudText(6 * s, _colony_bottom + 6 * s, info, info_w);
 		_colony_bottom += 6 * s + lh + 4 * s;
 	}
 }
@@ -2637,8 +2650,11 @@ struct MiniNewsHit {
 	Rect r;
 	TileIndex tile;
 	VehicleID veh;
+	int32_t date;
+	std::string text;
 };
 static std::vector<MiniNewsHit> _news_hits;
+static std::vector<std::pair<int32_t, std::string>> _news_dismissed;
 static std::unordered_map<std::string, std::string> _news_trunc;
 
 static TileIndex NewsTile(const NewsReference &ref)
@@ -2686,47 +2702,46 @@ static void DrawNewsStream()
 
 	int s = _ms.hud_scale;
 	int lh = GetCharacterHeight(FS_NORMAL);
-	int maxw = 70 * s;
-	int y = _colony_bottom + 4 * s;
+	int margin = 6 * s;
+	int bar_w = 3 * s;
+	int card_w = 84 * s;
+	int maxw = card_w - bar_w - 8 * s;
+	int y = _colony_bottom + margin;
+
+	int32_t today = TimerGameCalendar::date.base();
+	std::erase_if(_news_dismissed, [&](const auto &d) { return today - d.first > 45; });
 
 	int shown = 0;
 	for (const NewsItem &ni : GetNews()) {
 		if (shown == 4) break;
-		if (TimerGameCalendar::date.base() - ni.date.base() > 45) break;
+		if (today - ni.date.base() > 45) break;
 
-		uint32_t bar, bg, tcol;
-		switch (ni.type) {
-			case NewsType::Accident:
-			case NewsType::AccidentOther:
-				bar = 0xFFE05F4AU; bg = 0xFF4A2320U; tcol = 0xFFF2D9D2U;
-				break;
-			case NewsType::Advice:
-			case NewsType::Economy:
-			case NewsType::CompanyInfo:
-			case NewsType::IndustryClose:
-				bar = 0xFFE0B64AU; bg = COL_CH_PANEL; tcol = 0xFFD9CFAEU;
-				break;
-			default:
-				bar = COL_CH_DIM; bg = COL_CH_PANEL; tcol = 0xFFA8A294U;
-				break;
-		}
+		std::string text = StrMakeValid(ni.GetStatusText(), {});
+		if (std::find(_news_dismissed.begin(), _news_dismissed.end(), std::make_pair(ni.date.base(), text)) != _news_dismissed.end()) continue;
+
+		/* Stuck and lost vehicles are as urgent as crashes even though they
+		 * arrive as advice. */
+		bool crit = ni.type == NewsType::Accident || ni.type == NewsType::AccidentOther ||
+				(ni.type == NewsType::Advice && (ni.advice_type == AdviceType::TrainStuck || ni.advice_type == AdviceType::VehicleLost || ni.advice_type == AdviceType::AircraftDestinationTooFar));
+		bool warn = !crit && (ni.type == NewsType::Advice || ni.type == NewsType::Economy || ni.type == NewsType::CompanyInfo || ni.type == NewsType::IndustryClose);
+		uint32_t bar = crit ? 0xFFE05F4AU : warn ? 0xFFE0B64AU : COL_CH_DIM;
+		uint32_t bg = crit ? 0xFF4A2320U : warn ? 0xFF453A1EU : COL_CH_PANEL;
+		uint32_t tcol = crit ? 0xFFF2D9D2U : warn ? 0xFFEBD9A8U : 0xFFA8A294U;
 
 		TileIndex tile = NewsTile(ni.ref1);
 		VehicleID veh = NewsVehicle(ni.ref1);
 		if (tile == INVALID_TILE) tile = NewsTile(ni.ref2);
 		if (veh == VehicleID::Invalid()) veh = NewsVehicle(ni.ref2);
 
-		std::string text = StrMakeValid(ni.GetStatusText(), {});
 		std::string_view t = TruncateText(text, maxw);
 		if (t.empty()) continue;
 		int ch = lh + 5 * s;
-		int cw = 7 * s + (int)GetStringBoundingBox(t).width + 4 * s;
-		Rect r = {0, y, cw - 1, y + ch - 1};
-		ScreenFillRect(r.left, r.top, 3 * s - 1, r.bottom, bar);
-		ScreenFillRect(3 * s, r.top, r.right, r.bottom, bg);
+		Rect r = {margin, y, margin + card_w - 1, y + ch - 1};
+		ScreenFillRect(r.left, r.top, r.left + bar_w - 1, r.bottom, bar);
+		ScreenFillRect(r.left + bar_w, r.top, r.right, r.bottom, bg);
 		if (_cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y)) BlendRect(r.left, r.top, r.right, r.bottom, COL_PAPER, 28);
-		if (const MiniTextEntry *e = TextTexture(t); e != nullptr) RlwCmdTexQuad(e->tex, 7 * s, y + (ch - lh) / 2, tcol);
-		_news_hits.push_back({r, tile, veh});
+		if (const MiniTextEntry *e = TextTexture(t); e != nullptr) RlwCmdTexQuad(e->tex, r.left + bar_w + 4 * s, y + (ch - lh) / 2, tcol);
+		_news_hits.push_back({r, tile, veh, ni.date.base(), std::move(text)});
 		y += ch + 2 * s;
 		shown++;
 	}
@@ -2736,6 +2751,7 @@ static bool HandleNewsClick(int x, int y)
 {
 	for (const MiniNewsHit &n : _news_hits) {
 		if (!InRect(n.r, x, y)) continue;
+		_news_dismissed.emplace_back(n.date, n.text);
 		if (n.veh != VehicleID::Invalid()) {
 			if (const Vehicle *v = Vehicle::GetIfValid(n.veh); v != nullptr) {
 				_sel_vehicle = n.veh;
