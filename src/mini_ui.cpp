@@ -58,6 +58,7 @@
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
 #include "vehicle_cmd.h"
+#include "vehicle_gui.h"
 #include "video/video_driver.hpp"
 #include "water_map.h"
 #include "window_func.h"
@@ -1008,7 +1009,7 @@ static bool TryAppendOrder(int sx, int sy)
 
 /* Any unit of a consist selects its head, so the info line always
  * describes the whole vehicle. */
-static void SelectVehicleAt(int sx, int sy)
+static const Vehicle *SelectVehicleAt(int sx, int sy)
 {
 	const Vehicle *best = nullptr;
 	int best_d2 = 15 * 15;
@@ -1023,7 +1024,12 @@ static void SelectVehicleAt(int sx, int sy)
 			best = v;
 		}
 	}
-	_sel_vehicle = best != nullptr ? best->First()->index : VehicleID::Invalid();
+	if (best == nullptr) {
+		_sel_vehicle = VehicleID::Invalid();
+		return nullptr;
+	}
+	_sel_vehicle = best->First()->index;
+	return best->First();
 }
 
 /* Route preview for the selected vehicle: stop-to-stop legs in blueprint
@@ -1784,7 +1790,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_left_button_clicked = true;
 		if (_tool == MiniTool::None) {
 			if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
-				SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
+				if (const Vehicle *v = SelectVehicleAt(_cursor.pos.x, _cursor.pos.y); v != nullptr) ShowVehicleViewWindow(v);
 			}
 		} else {
 			_dragging = true;
