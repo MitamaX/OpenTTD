@@ -165,7 +165,7 @@ struct MiniSettings {
 	int edge_margin = 24;
 	double edge_scroll_speed = 1600.0;
 	double drag_pan_multiplier = 2.0;
-	double jump_ppt = 16.0;
+	double jump_ppt = 32.0;
 	double glide_ms = 250.0;
 };
 
@@ -2045,7 +2045,7 @@ void MiniUiScrollTo(int x, int y)
 	_glide = true;
 	_glide_x = x / (double)TILE_SIZE;
 	_glide_y = y / (double)TILE_SIZE;
-	_dest_ppt = _ms.jump_ppt;
+	_dest_ppt = std::max(_dest_ppt, _ms.jump_ppt);
 }
 
 bool MiniUiHandleMouseEvents(bool native_capture)
@@ -2225,7 +2225,11 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 		case 'H':
 			_follow = !_follow && Vehicle::GetIfValid(_sel_vehicle) != nullptr;
-			if (_follow) _glide = false;
+			if (_follow) {
+				_glide = false;
+				_zoom_anchored = false;
+				_dest_ppt = std::max(_dest_ppt, _ms.jump_ppt);
+			}
 			break;
 
 		case 'O':
@@ -2275,6 +2279,8 @@ void MiniUiFrame(uint delta_ms)
 			_sel_vehicle = native_follow;
 			_follow = true;
 			_glide = false;
+			_zoom_anchored = false;
+			_dest_ppt = std::max(_dest_ppt, _ms.jump_ppt);
 		}
 	}
 
