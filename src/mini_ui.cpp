@@ -1779,6 +1779,16 @@ static int MenuTileSide()
 	return std::max(tw + 10, 3 * lh);
 }
 
+static std::string ToolLabel(MiniTool tool)
+{
+	for (const MiniMenuCategory &c : _menu_cats) {
+		for (const MiniMenuItem &it : c.items) {
+			if (it.tool == tool) return MenuLabel(it.str, it.fallback);
+		}
+	}
+	return std::string();
+}
+
 static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
 	ThickLine(x0, y0, x1, y1, width, c);
@@ -2210,35 +2220,53 @@ static void DrawHud()
 		DrawHudText(6 * s, 6 * s + lh + 8, info);
 	}
 
-	std::string_view hint;
-	std::string_view hint2;
-	switch (_tool) {
-		case MiniTool::Rail: hint = "RAIL: DRAG PATH / AUTO BRIDGE OVER WATER / CTRL DRAG REMOVE / RMB CANCEL"; break;
-		case MiniTool::Road: hint = "ROAD: DRAG BUILD / AUTO BRIDGE OVER WATER / CTRL DRAG REMOVE / RMB CANCEL"; break;
-		case MiniTool::Station: hint = "STATION: DRAG AREA / CTRL DRAG REMOVE / RMB CANCEL"; break;
-		case MiniTool::BusStop: hint = "BUS STOP: CLICK PLACE / Q E ROTATE / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::TruckStop: hint = "TRUCK STOP: CLICK PLACE / Q E ROTATE / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::TrainDepot: hint = "TRAIN DEPOT: CLICK PLACE / Q E ROTATE EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::RoadDepot: hint = "ROAD DEPOT: CLICK PLACE / Q E ROTATE EXIT / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::Demolish: hint = "CLEAR: DRAG AREA / RMB CANCEL"; break;
-		case MiniTool::Signal: hint = "SIGNAL: CLICK BUILD OR CYCLE / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::RailTunnel: hint = "RAIL TUNNEL: CLICK SLOPE / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::RoadTunnel: hint = "ROAD TUNNEL: CLICK SLOPE / CTRL CLICK REMOVE / RMB CANCEL"; break;
-		case MiniTool::Terraform: hint = "TERRAIN: DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
-		default:
-			if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
-				hint = _follow
-					? "FOLLOWING  CLICK STATION ORDER  O DROP ORDER  P START STOP  H UNFOLLOW  ESC DESELECT"
-					: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
-			} else {
-				hint = "Z TERRAIN  X CLEAR  N BUY AT DEPOT / CTRL WAGON OR FREIGHT  SPACE PAUSE  F9 EXIT";
-				hint2 = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I TUNNEL";
+	if (_tool != MiniTool::None) {
+		/* The active tool announces itself beside the cursor: official name on
+		 * top, action and rotation hints below, live size while dragging. */
+		std::string_view hint;
+		switch (_tool) {
+			case MiniTool::Rail: hint = "DRAG PATH / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Road: hint = "DRAG LINE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Station: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::BusStop:
+			case MiniTool::TruckStop: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::TrainDepot:
+			case MiniTool::RoadDepot: hint = "Q E ROTATE EXIT / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
+			case MiniTool::Signal: hint = "CLICK BUILD OR CYCLE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RailTunnel:
+			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Terraform: hint = "DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
+			default: break;
+		}
+		if (_cursor.in_window) {
+			std::string title = ToolLabel(_tool);
+			if (_dragging) {
+				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
+				if (_tool == MiniTool::Road && !_road_plan.tiles.empty()) title += fmt::format("  {}", _road_plan.tiles.size());
+				if (IsRectTool(_tool) && _rect_plan.valid) title += fmt::format("  {}x{}", _rect_plan.x1 - _rect_plan.x0 + 1, _rect_plan.y1 - _rect_plan.y0 + 1);
 			}
-			break;
+			int wmax = std::max<int>(GetStringBoundingBox(title).width, GetStringBoundingBox(hint).width);
+			int tx = std::min(_cursor.pos.x + 9 * s, _fbw - wmax - 4 * s);
+			int ty = std::min(_cursor.pos.y + 11 * s, _fbh - 2 * lh - 8 * s);
+			DrawHudText(tx, ty, title);
+			DrawHudText(tx, ty + lh + 4, hint);
+		}
+	} else {
+		std::string_view hint;
+		std::string_view hint2;
+		if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
+			hint = _follow
+				? "FOLLOWING  CLICK STATION ORDER  O DROP ORDER  P START STOP  H UNFOLLOW  ESC DESELECT"
+				: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
+		} else {
+			hint = "Z TERRAIN  X CLEAR  N BUY AT DEPOT / CTRL WAGON OR FREIGHT  SPACE PAUSE  F9 EXIT";
+			hint2 = "R RAIL  E ROAD  T STATION  B BUS  G TRUCK  F/V DEPOT  L SIGNAL  U/I TUNNEL";
+		}
+		int hint_y = _fbh - MenuTileSide() - 12 * s - lh;
+		DrawHudTextCentred(_fbw / 2, hint_y, hint);
+		if (!hint2.empty()) DrawHudTextCentred(_fbw / 2, hint_y - lh - 8, hint2);
 	}
-	int hint_y = _fbh - MenuTileSide() - 12 * s - lh;
-	DrawHudTextCentred(_fbw / 2, hint_y, hint);
-	if (!hint2.empty()) DrawHudTextCentred(_fbw / 2, hint_y - lh - 8, hint2);
 }
 
 static void Present()
