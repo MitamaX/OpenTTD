@@ -1595,8 +1595,9 @@ static std::string FormatMoney(int64_t m)
 	return s;
 }
 
-/* Bottom-left build menu: a category bar with vertical submenus, drawn in
- * screen space after Present(), so hit rects live in screen pixels. */
+/* Bottom-left build menu: a category bar with one panel of square icon tiles
+ * sliding up above it. Drawn in screen space after Present(), so hit rects
+ * live in screen pixels. */
 struct MiniMenuItem {
 	std::string_view label;
 	MiniTool tool;
@@ -1624,7 +1625,7 @@ static const MiniMenuItem _menu_road_items[] = {
 };
 
 static const MiniMenuItem _menu_land_items[] = {
-	{"TERRAFORM", MiniTool::Terraform},
+	{"LEVEL", MiniTool::Terraform},
 	{"CLEAR", MiniTool::Demolish},
 };
 
@@ -1635,6 +1636,8 @@ static const MiniMenuCategory _menu_cats[] = {
 };
 
 static int _menu_open = -1;
+static double _menu_anim = 0.0;
+static uint _frame_delta_ms = 0;
 static std::vector<std::pair<Rect, int>> _menu_cat_hits;
 static std::vector<std::pair<Rect, MiniTool>> _menu_item_hits;
 
@@ -1660,6 +1663,93 @@ static void DrawMenuButton(const Rect &r, std::string_view label, bool active)
 	DrawString(r.left, r.right, ty, label, active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
 }
 
+static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
+{
+	int steps = std::max(abs(x1 - x0), abs(y1 - y0));
+	int half = width / 2;
+	for (int i = 0; i <= steps; i++) {
+		int x = x0 + (x1 - x0) * i / std::max(steps, 1);
+		int y = y0 + (y1 - y0) * i / std::max(steps, 1);
+		ScreenFillRect(x - half, y - half, x - half + width - 1, y - half + width - 1, c);
+	}
+}
+
+static void ScreenFillCircle(int cx, int cy, int r, uint32_t c)
+{
+	for (int dy = -r; dy <= r; dy++) {
+		int w = (int)std::lround(std::sqrt((double)(r * r - dy * dy)));
+		ScreenFillRect(cx - w, cy + dy, cx + w, cy + dy, c);
+	}
+}
+
+/* Tile icons reuse the map's colour language so the menu previews what the
+ * tool paints on the terrain. */
+static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
+{
+	int h = is / 2;
+	int t = std::max(2, is / 5);
+	switch (tool) {
+		case MiniTool::Rail:
+			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_RAIL);
+			break;
+		case MiniTool::Road:
+			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_ROAD);
+			for (int i = -1; i <= 1; i++) ScreenFillRect(cx + i * (is / 3) - 1, cy - 1, cx + i * (is / 3) + 1, cy + 1, COL_PAPER);
+			break;
+		case MiniTool::Station:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_RAIL_B);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_RAIL);
+			break;
+		case MiniTool::BusStop:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_ROAD_B);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_ROAD);
+			ScreenFillCircle(cx, cy, t, COL_PAPER);
+			break;
+		case MiniTool::TruckStop:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_ROAD_B);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_ROAD);
+			ScreenFillRect(cx - t, cy - t, cx + t, cy + t, COL_PAPER);
+			break;
+		case MiniTool::TrainDepot:
+		case MiniTool::RoadDepot:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_DEPOT);
+			ScreenFillRect(cx + h - 2, cy - is / 4, cx + h, cy + is / 4, COL_PAPER);
+			break;
+		case MiniTool::Signal:
+			ScreenFillCircle(cx - is / 4, cy + is / 4, t, COL_STOP);
+			ScreenFillCircle(cx + is / 4, cy - is / 4, t, COL_GO);
+			break;
+		case MiniTool::RailBridge:
+		case MiniTool::RoadBridge:
+			ScreenFillRect(cx - h, cy - is / 6, cx + h, cy, COL_BRIDGE);
+			ScreenFillRect(cx - h + 1, cy, cx - h + 3, cy + h, COL_BRIDGE);
+			ScreenFillRect(cx + h - 3, cy, cx + h - 1, cy + h, COL_BRIDGE);
+			break;
+		case MiniTool::Terraform:
+			ScreenFillRect(cx - h, cy + is / 6, cx + h, cy + h, _height_ramp[3]);
+			ScreenFillRect(cx - h + is / 5, cy - is / 6, cx + h - is / 5, cy + is / 6, _height_ramp[6]);
+			ScreenFillRect(cx - h + 2 * is / 5, cy - h, cx + h - 2 * is / 5, cy - is / 6, _height_ramp[9]);
+			break;
+		case MiniTool::Demolish:
+			ScreenThickLine(cx - h, cy - h, cx + h, cy + h, t, COL_STOP);
+			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_STOP);
+			break;
+		default:
+			break;
+	}
+}
+
+static void DrawMenuTile(const Rect &r, const MiniMenuItem &it, bool active)
+{
+	ScreenFillRect(r.left, r.top, r.right, r.bottom, active ? COL_PAPER : Mix(COL_INK, COL_PAPER, 25));
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int cx = (r.left + r.right) / 2;
+	int icon_h = r.bottom - r.top + 1 - lh - 9;
+	DrawToolIcon(it.tool, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
+	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
+	DrawString(r.left, r.right, r.bottom - lh - 3, it.label, active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
+}
+
 static void DrawBuildMenu()
 {
 	_menu_cat_hits.clear();
@@ -1670,29 +1760,42 @@ static void DrawBuildMenu()
 	int h = MenuButtonHeight();
 	int gap = 2 * s;
 	int margin = 6 * s;
+	int lh = GetCharacterHeight(FS_NORMAL);
+
+	int bar_top = _fbh - margin - h;
+
+	if (_menu_open >= 0) {
+		_menu_anim = std::min(1.0, _menu_anim + _frame_delta_ms / 120.0);
+		const MiniMenuCategory &cat = _menu_cats[_menu_open];
+
+		int tw = 0;
+		for (const MiniMenuItem &it : cat.items) tw = std::max<int>(tw, GetStringBoundingBox(it.label).width);
+		int tile = std::max(tw + 10, 3 * lh);
+		int pp = 4 * s;
+		int n = (int)cat.items.size();
+		int pw = n * tile + (n - 1) * gap + 2 * pp;
+		int ph = tile + 2 * pp;
+		int off = (int)std::lround((1.0 - _menu_anim) * (ph + margin));
+		int py = bar_top - gap - ph + off;
+		ScreenFillRect(margin, py, margin + pw - 1, py + ph - 1, COL_INK);
+		int ix = margin + pp;
+		for (const MiniMenuItem &it : cat.items) {
+			Rect ir = {ix, py + pp, ix + tile - 1, py + pp + tile - 1};
+			DrawMenuTile(ir, it, _tool == it.tool);
+			_menu_item_hits.emplace_back(ir, it.tool);
+			ix += tile + gap;
+		}
+	} else {
+		_menu_anim = 0.0;
+	}
 
 	int x = margin;
-	int bar_top = _fbh - margin - h;
 	for (int c = 0; c < (int)std::size(_menu_cats); c++) {
 		const MiniMenuCategory &cat = _menu_cats[c];
 		int w = GetStringBoundingBox(cat.label).width + 2 * pad_x;
 		Rect r = {x, bar_top, x + w - 1, bar_top + h - 1};
-		bool open = _menu_open == c;
-		DrawMenuButton(r, cat.label, open);
+		DrawMenuButton(r, cat.label, _menu_open == c);
 		_menu_cat_hits.emplace_back(r, c);
-
-		if (open) {
-			int iw = 0;
-			for (const MiniMenuItem &it : cat.items) iw = std::max<int>(iw, GetStringBoundingBox(it.label).width);
-			iw += 2 * pad_x;
-			int iy = bar_top - gap - h;
-			for (const MiniMenuItem &it : cat.items) {
-				Rect ir = {x, iy, x + iw - 1, iy + h - 1};
-				DrawMenuButton(ir, it.label, _tool == it.tool);
-				_menu_item_hits.emplace_back(ir, it.tool);
-				iy -= h + gap;
-			}
-		}
 		x += w + gap;
 	}
 }
@@ -1701,7 +1804,12 @@ static bool HandleMenuClick(int x, int y)
 {
 	for (const auto &[r, c] : _menu_cat_hits) {
 		if (InRect(r, x, y)) {
-			_menu_open = _menu_open == c ? -1 : c;
+			if (_menu_open == c) {
+				_menu_open = -1;
+			} else {
+				if (_menu_open < 0) _menu_anim = 0.0;
+				_menu_open = c;
+			}
 			return true;
 		}
 	}
@@ -2103,6 +2211,7 @@ void MiniUiFrame(uint delta_ms)
 		_fb.assign((size_t)_fbw * _fbh, COL_VOID);
 	}
 	if (_fbw <= 0 || _fbh <= 0) return;
+	_frame_delta_ms = delta_ms;
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
 	if (_dirkeys != 0) {
