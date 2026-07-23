@@ -1635,6 +1635,7 @@ struct MiniMenuItem {
 struct MiniMenuCategory {
 	StringID str;
 	std::string_view fallback;
+	MiniTool icon;
 	std::span<const MiniMenuItem> items;
 };
 
@@ -1667,9 +1668,9 @@ static const MiniMenuItem _menu_land_items[] = {
 };
 
 static const MiniMenuCategory _menu_cats[] = {
-	{STR_RAIL_NAME_RAILROAD, "RAIL", _menu_rail_items},
-	{STR_ROAD_NAME_ROAD, "ROAD", _menu_road_items},
-	{STR_LANDSCAPING_MENU_LANDSCAPING, "LAND", _menu_land_items},
+	{STR_RAIL_NAME_RAILROAD, "RAIL", MiniTool::Rail, _menu_rail_items},
+	{STR_ROAD_NAME_ROAD, "ROAD", MiniTool::Road, _menu_road_items},
+	{STR_LANDSCAPING_MENU_LANDSCAPING, "LAND", MiniTool::Terraform, _menu_land_items},
 };
 
 static int _menu_open = -1;
@@ -1681,21 +1682,15 @@ static bool InRect(const Rect &r, int x, int y)
 	return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 }
 
-static int MenuButtonHeight()
+static int MenuTileSide()
 {
-	return GetCharacterHeight(FS_NORMAL) + 6 * _ms.hud_scale;
-}
-
-static void DrawMenuButton(const Rect &r, std::string_view label, bool active)
-{
-	if (active) {
-		ScreenFillRect(r.left, r.top, r.right, r.bottom, COL_PAPER);
-	} else {
-		ScreenBlendRect(r.left, r.top, r.right, r.bottom, COL_INK, 200);
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int tw = 0;
+	for (const MiniMenuCategory &c : _menu_cats) {
+		tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(c.str, c.fallback)).width);
+		for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
 	}
-	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
-	int ty = r.top + (r.bottom - r.top + 1 - GetCharacterHeight(FS_NORMAL)) / 2;
-	DrawString(r.left, r.right, ty, label, active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
+	return std::max(tw + 10, 3 * lh);
 }
 
 static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
@@ -1773,15 +1768,15 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 	}
 }
 
-static void DrawMenuTile(const Rect &r, const MiniMenuItem &it, bool active)
+static void DrawMenuTile(const Rect &r, StringID str, std::string_view fallback, MiniTool icon, bool active)
 {
 	ScreenFillRect(r.left, r.top, r.right, r.bottom, active ? COL_PAPER : Mix(COL_INK, COL_PAPER, 25));
 	int lh = GetCharacterHeight(FS_NORMAL);
 	int cx = (r.left + r.right) / 2;
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
-	DrawToolIcon(it.tool, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
+	DrawToolIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
 	AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
-	DrawString(r.left, r.right, r.bottom - lh - 3, MenuLabel(it.str, it.fallback), active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
+	DrawString(r.left, r.right, r.bottom - lh - 3, MenuLabel(str, fallback), active ? TC_BLACK : TC_WHITE, SA_HOR_CENTER | SA_FORCE);
 }
 
 static void DrawBuildMenu()
@@ -1790,23 +1785,15 @@ static void DrawBuildMenu()
 	_menu_item_hits.clear();
 
 	int s = _ms.hud_scale;
-	int pad_x = 5 * s;
-	int h = MenuButtonHeight();
 	int gap = 2 * s;
 	int margin = 6 * s;
-	int lh = GetCharacterHeight(FS_NORMAL);
+	int pp = 4 * s;
+	int tile = MenuTileSide();
 
-	int bar_top = _fbh - margin - h;
+	int bar_top = _fbh - margin - tile;
 
 	if (_menu_open >= 0) {
 		const MiniMenuCategory &cat = _menu_cats[_menu_open];
-
-		int tw = 0;
-		for (const MiniMenuCategory &c : _menu_cats) {
-			for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
-		}
-		int tile = std::max(tw + 10, 3 * lh);
-		int pp = 4 * s;
 		int n = (int)cat.items.size();
 		int cols = 3;
 		int rows = (n + cols - 1) / cols;
@@ -1819,20 +1806,17 @@ static void DrawBuildMenu()
 			int ix = margin + pp + (i % cols) * (tile + gap);
 			int iy = py + pp + (i / cols) * (tile + gap);
 			Rect ir = {ix, iy, ix + tile - 1, iy + tile - 1};
-			DrawMenuTile(ir, it, _tool == it.tool);
+			DrawMenuTile(ir, it.str, it.fallback, it.tool, _tool == it.tool);
 			_menu_item_hits.emplace_back(ir, it.tool);
 		}
 	}
 
-	int x = margin;
 	for (int c = 0; c < (int)std::size(_menu_cats); c++) {
 		const MiniMenuCategory &cat = _menu_cats[c];
-		std::string label = MenuLabel(cat.str, cat.fallback);
-		int w = GetStringBoundingBox(label).width + 2 * pad_x;
-		Rect r = {x, bar_top, x + w - 1, bar_top + h - 1};
-		DrawMenuButton(r, label, _menu_open == c);
+		int x = margin + c * (tile + gap);
+		Rect r = {x, bar_top, x + tile - 1, bar_top + tile - 1};
+		DrawMenuTile(r, cat.str, cat.fallback, cat.icon, _menu_open == c);
 		_menu_cat_hits.emplace_back(r, c);
-		x += w + gap;
 	}
 }
 
@@ -1910,7 +1894,7 @@ static void DrawHud()
 			}
 			break;
 	}
-	int hint_y = _fbh - MenuButtonHeight() - 12 * s - lh;
+	int hint_y = _fbh - MenuTileSide() - 12 * s - lh;
 	DrawHudTextCentred(_fbw / 2, hint_y, hint);
 	if (!hint2.empty()) DrawHudTextCentred(_fbw / 2, hint_y - lh - 8, hint2);
 }
