@@ -57,7 +57,7 @@ private:
 
 class FVideoDriver_Raylib : public DriverFactoryBase {
 public:
-	FVideoDriver_Raylib() : DriverFactoryBase(Driver::DT_VIDEO, 4, "raylib", "raylib Video Driver") {}
+	FVideoDriver_Raylib() : DriverFactoryBase(Driver::DT_VIDEO, 10, "raylib", "raylib Video Driver") {}
 	std::unique_ptr<Driver> CreateInstance() const override { return std::make_unique<VideoDriver_Raylib>(); }
 };
 
