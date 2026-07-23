@@ -501,9 +501,10 @@ static uint32_t GroundOverviewColour(TileIndex tile, Slope s, int hbase)
 	return RampLerp(hbase + avg);
 }
 
-/* Sloped ramp ground samples the height ramp per subcell at its absolute
- * interpolated height, endpoint inclusive, so the top of a slope lands on
- * exactly the colour of the next level and gradients run tile to tile. */
+/* Sloped ground is one gradient quad: the corner colours sample the height
+ * ramp at the corner levels and the GPU interpolates between them, so the
+ * top of a slope lands on exactly the colour of the next level and
+ * gradients run tile to tile. */
 static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 {
 	auto [s, hbase] = GetTileSlopeZ(tile);
@@ -519,29 +520,11 @@ static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 
 	bool special = IsSpecialGround(tile);
 	uint32_t flat = GroundColour(tile, hbase);
-	int hn = GetSlopeZInCorner(s, CORNER_N);
-	int hw = GetSlopeZInCorner(s, CORNER_W);
-	int he = GetSlopeZInCorner(s, CORNER_E);
-	int hs = GetSlopeZInCorner(s, CORNER_S);
-
-	const int sub = Clamp(ppt / 4, 2, 12);
-	int wpx = x1 - x0 + 1;
-	int hpx = y1 - y0 + 1;
-	double denom = (sub - 1) * (sub - 1);
-	for (int j = 0; j < sub; j++) {
-		for (int i = 0; i < sub; i++) {
-			int top = hn * (sub - 1 - i) + hw * i;
-			int bot = he * (sub - 1 - i) + hs * i;
-			double z = (top * (sub - 1 - j) + bot * j) / denom;
-			int sx0 = x0 + wpx * i / sub;
-			int sy0 = y0 + hpx * j / sub;
-			int sx1 = x0 + wpx * (i + 1) / sub - 1;
-			int sy1 = y0 + hpx * (j + 1) / sub - 1;
-			if (sx1 < sx0 || sy1 < sy0) continue;
-			uint32_t c = special ? Mix(flat, COL_SHADOW, std::min(255, (int)(_ms.relief_strength * z))) : RampLerp(hbase + z);
-			FillRect(sx0, sy0, sx1, sy1, c);
-		}
-	}
+	auto corner = [&](Corner cn) {
+		int z = GetSlopeZInCorner(s, cn);
+		return special ? Mix(flat, COL_SHADOW, std::min(255, _ms.relief_strength * z)) : RampLerp(hbase + z);
+	};
+	RlwCmdGradientRect(x0, y0, x1, y1, corner(CORNER_N), corner(CORNER_W), corner(CORNER_E), corner(CORNER_S));
 }
 
 static void DrawTrackPiece(Track t, int x0, int y0, int x1, int y1, int width, uint32_t c)

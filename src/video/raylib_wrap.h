@@ -58,6 +58,7 @@ bool RlwMonitorSize(int &w, int &h);
  * frame that RlwPresentMini draws. Colours are 0xAARRGGBB. */
 void RlwCmdClear();
 void RlwCmdRect(int x0, int y0, int x1, int y1, uint32_t argb);
+void RlwCmdGradientRect(int x0, int y0, int x1, int y1, uint32_t tl, uint32_t tr, uint32_t bl, uint32_t br);
 void RlwCmdLine(int x0, int y0, int x1, int y1, int width, uint32_t argb);
 void RlwCmdCircle(int cx, int cy, int r, uint32_t argb);
 void RlwCmdDiamond(int cx, int cy, int r, uint32_t argb);

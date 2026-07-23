@@ -22,6 +22,7 @@ static int _rlw_tex_w, _rlw_tex_h;
 
 enum class RlwCmdType : uint8_t {
 	Rect,
+	GradientRect,
 	Line,
 	Circle,
 	Diamond,
@@ -33,6 +34,7 @@ struct RlwCmd {
 	RlwCmdType type;
 	int a, b, c, d, e;
 	uint32_t col;
+	uint32_t col_tr, col_bl, col_br;
 };
 
 static std::vector<RlwCmd> _rlw_cmds;
@@ -216,7 +218,12 @@ void RlwCmdClear()
 
 void RlwCmdRect(int x0, int y0, int x1, int y1, uint32_t argb)
 {
-	_rlw_cmds.push_back({RlwCmdType::Rect, x0, y0, x1, y1, 0, argb});
+	_rlw_cmds.push_back({RlwCmdType::Rect, x0, y0, x1, y1, 0, argb, 0, 0, 0});
+}
+
+void RlwCmdGradientRect(int x0, int y0, int x1, int y1, uint32_t tl, uint32_t tr, uint32_t bl, uint32_t br)
+{
+	_rlw_cmds.push_back({RlwCmdType::GradientRect, x0, y0, x1, y1, 0, tl, tr, bl, br});
 }
 
 void RlwCmdLine(int x0, int y0, int x1, int y1, int width, uint32_t argb)
@@ -271,6 +278,9 @@ static void RlwReplayCommands()
 		switch (c.type) {
 			case RlwCmdType::Rect:
 				DrawRectangle(c.a, c.b, c.c - c.a + 1, c.d - c.b + 1, RlwColour(c.col));
+				break;
+			case RlwCmdType::GradientRect:
+				DrawRectangleGradientEx({(float)c.a, (float)c.b, (float)(c.c - c.a + 1), (float)(c.d - c.b + 1)}, RlwColour(c.col), RlwColour(c.col_bl), RlwColour(c.col_br), RlwColour(c.col_tr));
 				break;
 			case RlwCmdType::Line:
 				DrawLineEx({(float)c.a, (float)c.b}, {(float)c.c, (float)c.d}, (float)c.e, RlwColour(c.col));
