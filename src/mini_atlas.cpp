@@ -27,6 +27,14 @@ static const int ATLAS_ROWS = ((int)MiniSprite::End + ATLAS_COLS - 1) / ATLAS_CO
 
 static int _atlas_tex = 0;
 static bool _has_art[(size_t)MiniSprite::End];
+static int _tile_tex[(size_t)MiniSprite::End];
+
+/* Ground kinds also get a standalone repeat-wrapped texture, so merged runs
+ * of equal tiles can draw as one quad without per-tile seams. */
+static bool IsGroundSlot(MiniSprite s)
+{
+	return s >= MiniSprite::Grass && s <= MiniSprite::Water;
+}
 
 /* Art file base names inside mini_art, one per MiniSprite slot. */
 static const char *_slot_names[] = {
@@ -75,6 +83,7 @@ void MiniAtlasEnsure()
 			for (int y = 0; y < content; y++) {
 				std::copy_n(&art[(size_t)y * content], content, &px[(size_t)(oy + y) * w + ox]);
 			}
+			if (IsGroundSlot((MiniSprite)i)) _tile_tex[i] = RlwCreateTileTexture(art.data(), content, content);
 			continue;
 		}
 		for (int y = 0; y < content; y++) {
@@ -96,11 +105,15 @@ void MiniAtlasEnsure()
 	_atlas_tex = RlwCreateAtlasTexture(px.data(), w, h);
 }
 
-/* Frees the texture so the next frame rebuilds it and re-reads art files. */
+/* Frees the textures so the next frame rebuilds them and re-reads art files. */
 void MiniAtlasReload()
 {
 	if (_atlas_tex != 0) RlwFreeTexture(_atlas_tex);
 	_atlas_tex = 0;
+	for (int &t : _tile_tex) {
+		if (t != 0) RlwFreeTexture(t);
+		t = 0;
+	}
 }
 
 bool MiniAtlasHasArt(MiniSprite sprite)
@@ -108,11 +121,12 @@ bool MiniAtlasHasArt(MiniSprite sprite)
 	return sprite < MiniSprite::End && _has_art[(size_t)sprite];
 }
 
-/* The driver unloads every texture on shutdown; forgetting the id here makes
- * the next frame rebuild the atlas instead of drawing with a dead handle. */
+/* The driver unloads every texture on shutdown; forgetting the ids here makes
+ * the next frame rebuild the atlas instead of drawing with dead handles. */
 void MiniAtlasReset()
 {
 	_atlas_tex = 0;
+	for (int &t : _tile_tex) t = 0;
 }
 
 static bool AtlasSprite(MiniSprite sprite, int x0, int y0, int x1, int y1, int angle_deg, uint32_t argb)
@@ -133,4 +147,16 @@ bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t a
 bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, int angle_deg, uint32_t argb)
 {
 	return AtlasSprite(sprite, cx - r, cy - r, cx + r, cy + r, angle_deg, argb);
+}
+
+/* One quad for a vertical run of equal tiles; the repeat wrap keeps the
+ * pattern continuous, so no per-tile draw calls and no seams. */
+bool MiniAtlasTileRun(MiniSprite sprite, int x0, int y0, int x1, int y1, int run_tiles, uint32_t argb)
+{
+	if (sprite >= MiniSprite::End || x1 < x0 || y1 < y0) return false;
+	int tex = _tile_tex[(size_t)sprite];
+	if (tex == 0) return false;
+	int content = ATLAS_CELL - 2 * ATLAS_GUTTER;
+	RlwCmdSprite(tex, 0, 0, content, content * std::max(run_tiles, 1), x0, y0, x1, y1, 0, argb);
+	return true;
 }

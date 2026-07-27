@@ -639,9 +639,11 @@ static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 	auto [s, hbase] = GetTileSlopeZ(tile);
 
 	/* Ground art is a luminance texture tinted by the ramp colour, so height
-	 * bands and hillshading survive the swap to real tiles. */
+	 * bands and hillshading survive the swap to real tiles. The overview tier
+	 * stays on flat colours: per-tile quads are slow at that tile count and
+	 * their seams read as a grid. */
 	MiniSprite slot = GroundSlot(tile);
-	if (MiniAtlasHasArt(slot)) {
+	if (ppt >= 8 && MiniAtlasHasArt(slot)) {
 		uint32_t c = s == SLOPE_FLAT ? GroundColour(tile, hbase) : GroundOverviewColour(tile, s, hbase);
 		if (MiniAtlasQuad(slot, x0, y0, x1, y1, MapCol(c))) return;
 	}
@@ -785,7 +787,7 @@ static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 
 static void DrawBlock(MiniSprite s, int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
 {
-	if (MiniAtlasHasArt(s) && MiniAtlasQuad(s, x0, y0, x1, y1, MapCol(fill))) return;
+	if (ppt >= 8 && MiniAtlasHasArt(s) && MiniAtlasQuad(s, x0, y0, x1, y1, MapCol(fill))) return;
 	if (!_zd.block_borders) {
 		FillRect(x0, y0, x1, y1, fill);
 		return;
@@ -800,7 +802,7 @@ static void DrawBlock(MiniSprite s, int x0, int y0, int x1, int y1, int ppt, uin
  * authored exit-up and rotates to the real exit instead of the tick. */
 static void DrawDepot(int x0, int y0, int x1, int y1, int ppt, DiagDirection exit)
 {
-	if (MiniAtlasHasArt(MiniSprite::Depot)) {
+	if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Depot)) {
 		if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, MapCol(COL_DEPOT))) return;
 	}
 	DrawBlock(MiniSprite::Depot, x0, y0, x1, y1, ppt, COL_DEPOT, COL_INK);
@@ -811,9 +813,9 @@ static void DrawDepot(int x0, int y0, int x1, int y1, int ppt, DiagDirection exi
 	ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, COL_PAPER);
 }
 
-static void DrawWater(int x0, int y0, int x1, int y1)
+static void DrawWater(int x0, int y0, int x1, int y1, int ppt)
 {
-	if (MiniAtlasHasArt(MiniSprite::Water) && MiniAtlasQuad(MiniSprite::Water, x0, y0, x1, y1, MapCol(COL_WATER))) return;
+	if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Water) && MiniAtlasQuad(MiniSprite::Water, x0, y0, x1, y1, MapCol(COL_WATER))) return;
 	FillRect(x0, y0, x1, y1, COL_WATER);
 }
 
@@ -849,7 +851,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			return;
 
 		case MP_WATER:
-			DrawWater(x0, y0, x1, y1);
+			DrawWater(x0, y0, x1, y1, ppt);
 			water_tile = true;
 			if (IsShipDepot(tile)) DrawDepot(x0, y0, x1, y1, ppt, GetShipDepotDirection(tile));
 			break;
@@ -922,7 +924,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				default: fill = COL_OBJ; border = COL_OBJ_B; on_water = true; break;
 			}
 			if (on_water) {
-				DrawWater(x0, y0, x1, y1);
+				DrawWater(x0, y0, x1, y1, ppt);
 				water_tile = true;
 			} else {
 				DrawGround(tile, x0, y0, x1, y1, ppt);
@@ -994,7 +996,7 @@ static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer lay
 	uint32_t accent = rail ? COL_PAPER : COL_CATENARY;
 
 	auto depot = [&](DiagDirection exit) {
-		if (MiniAtlasHasArt(MiniSprite::Depot)) {
+		if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Depot)) {
 			if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, MapCol(accent))) return;
 		}
 		uint32_t fill = Darken(accent);
@@ -1095,10 +1097,12 @@ static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer lay
 /* A tile whose whole footprint is one solid colour can join a horizontal run
  * with equal neighbours; one rect per run keeps the command count far below
  * one per tile on open terrain and water. Tree tiles merge their ground too
- * and only defer the dot on top. */
-static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, bool &tree_dot)
+ * and only defer the dot on top. Ground with art still merges: the run draws
+ * as one repeat-wrapped quad instead of a rect, keyed by the art slot. */
+static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, bool &tree_dot, MiniSprite &art)
 {
 	tree_dot = false;
+	art = MiniSprite::End;
 	if (IsBridgeAbove(tile)) return false;
 	switch (GetTileType(tile)) {
 		case MP_VOID:
@@ -1107,18 +1111,21 @@ static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, 
 
 		case MP_WATER:
 			if (IsShipDepot(tile)) return false;
-			if (MiniAtlasHasArt(MiniSprite::Water)) return false;
 			c = COL_WATER;
+			if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Water)) art = MiniSprite::Water;
 			return true;
 
 		case MP_TREES:
 			tree_dot = _zd.tree_dots;
 			[[fallthrough]];
 		case MP_CLEAR: {
-			if (MiniAtlasHasArt(GroundSlot(tile))) return false;
 			auto [s, hbase] = GetTileSlopeZ(tile);
 			if (s == SLOPE_FLAT) {
 				c = GroundColour(tile, hbase);
+				if (ppt >= 8) {
+					MiniSprite g = GroundSlot(tile);
+					if (MiniAtlasHasArt(g)) art = g;
+				}
 			} else if (ppt < 8) {
 				c = GroundOverviewColour(tile, s, hbase);
 			} else {
@@ -3755,20 +3762,26 @@ void MiniUiFrame(uint delta_ms)
 	for (int ty = ty0; ty <= ty1; ty++) {
 		int run_start = -1;
 		uint32_t run_c = 0;
+		MiniSprite run_art = MiniSprite::End;
 		auto flush = [&](int tx_end) {
 			if (run_start < 0) return;
-			FillRect(ScrX(ty), ScrY(run_start), ScrX(ty + 1) - 1, ScrY(tx_end) - 1, run_c);
+			int x0 = ScrX(ty), y0 = ScrY(run_start), x1 = ScrX(ty + 1) - 1, y1 = ScrY(tx_end) - 1;
+			if (run_art == MiniSprite::End || !MiniAtlasTileRun(run_art, x0, y0, x1, y1, tx_end - run_start, MapCol(run_c))) {
+				FillRect(x0, y0, x1, y1, run_c);
+			}
 			run_start = -1;
 		};
 		for (int tx = tx0; tx <= tx1; tx++) {
 			TileIndex tile = TileXY(tx, ty);
 			uint32_t c;
 			bool tree_dot;
-			if (TileRunColour(tile, tx, ty, ppt, c, tree_dot)) {
-				if (run_start >= 0 && c != run_c) flush(tx);
+			MiniSprite art;
+			if (TileRunColour(tile, tx, ty, ppt, c, tree_dot, art)) {
+				if (run_start >= 0 && (c != run_c || art != run_art)) flush(tx);
 				if (run_start < 0) {
 					run_start = tx;
 					run_c = c;
+					run_art = art;
 				}
 				if (tree_dot) tree_dots.emplace_back(tx, ty);
 			} else {

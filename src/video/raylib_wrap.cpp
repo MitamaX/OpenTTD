@@ -288,6 +288,17 @@ int RlwCreateAtlasTexture(const uint32_t *rgba, int w, int h)
 	return id;
 }
 
+/* Ground art repeats along merged tile runs, so its wrap mode must tile. */
+int RlwCreateTileTexture(const uint32_t *rgba, int w, int h)
+{
+	int id = RlwCreateTexture(rgba, w, h);
+	Texture2D &tex = _rlw_user_tex.at(id);
+	GenTextureMipmaps(&tex);
+	SetTextureFilter(tex, TEXTURE_FILTER_TRILINEAR);
+	SetTextureWrap(tex, TEXTURE_WRAP_REPEAT);
+	return id;
+}
+
 /* Decodes an image file and delivers it as exactly w x h RGBA pixels. */
 bool RlwLoadImageInto(const char *path, uint32_t *rgba, int w, int h)
 {
