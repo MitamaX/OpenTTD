@@ -201,6 +201,7 @@ struct MiniSettings {
 	double zoom_smooth_ms = 80.0;
 	int hud_scale = 2;
 	int menu_panel_rows = 4;
+	int grid_alpha = 32;
 	int contour_alpha = 120;
 	int relief_strength = 22;
 	int filter_alpha = 150;
@@ -263,6 +264,7 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "zoom_smooth_ms", _ms.zoom_smooth_ms);
 	ReadIniNumber(group, "hud_scale", _ms.hud_scale);
 	ReadIniNumber(group, "menu_panel_rows", _ms.menu_panel_rows);
+	ReadIniNumber(group, "grid_alpha", _ms.grid_alpha);
 	ReadIniNumber(group, "contour_alpha", _ms.contour_alpha);
 	ReadIniNumber(group, "relief_strength", _ms.relief_strength);
 	ReadIniNumber(group, "filter_alpha", _ms.filter_alpha);
@@ -280,6 +282,7 @@ static void LoadMiniSettings()
 	_ms.zoom_smooth_ms = Clamp(_ms.zoom_smooth_ms, 1.0, 500.0);
 	_ms.hud_scale = Clamp(_ms.hud_scale, 1, 4);
 	_ms.menu_panel_rows = Clamp(_ms.menu_panel_rows, 1, 4);
+	_ms.grid_alpha = Clamp(_ms.grid_alpha, 0, 255);
 	_ms.contour_alpha = Clamp(_ms.contour_alpha, 0, 255);
 	_ms.relief_strength = Clamp(_ms.relief_strength, 0, 60);
 	_ms.filter_alpha = Clamp(_ms.filter_alpha, 0, 230);
@@ -3792,6 +3795,24 @@ void MiniUiFrame(uint delta_ms)
 		}
 		flush(tx1 + 1);
 	}
+
+	/* Deliberate tile grid at build zooms: merged runs are seamless, so tile
+	 * boundaries return as their own faint overlay instead of draw artefacts. */
+	if (ppt >= 8 && _ms.grid_alpha > 0) {
+		int gx0 = std::max(0, ScrX(ty0));
+		int gx1 = std::min(_fbw - 1, ScrX(ty1 + 1) - 1);
+		int gy0 = std::max(0, ScrY(tx0));
+		int gy1 = std::min(_fbh - 1, ScrY(tx1 + 1) - 1);
+		for (int ty = ty0; ty <= ty1 + 1; ty++) {
+			int x = ScrX(ty);
+			if (x >= 0 && x < _fbw) BlendRect(x, gy0, x, gy1, COL_SHADOW, _ms.grid_alpha);
+		}
+		for (int tx = tx0; tx <= tx1 + 1; tx++) {
+			int y = ScrY(tx);
+			if (y >= 0 && y < _fbh) BlendRect(gx0, y, gx1, y, COL_SHADOW, _ms.grid_alpha);
+		}
+	}
+
 	int tree_r = std::max(1, ppt / 8);
 	for (auto [tx, ty] : tree_dots) {
 		FillShapeRot(MiniSprite::Tree, (ScrX(ty) + ScrX(ty + 1) - 1) / 2, (ScrY(tx) + ScrY(tx + 1) - 1) / 2, tree_r, 0, COL_TREE);
