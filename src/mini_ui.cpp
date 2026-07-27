@@ -1731,6 +1731,28 @@ static void RailPathPieces()
 	}
 }
 
+static bool StepBitIsX(int b)
+{
+	return b == 1 || b == 2;
+}
+
+/* Two corner pieces meeting as a switchback turn a train 90 degrees, which
+ * rail cannot carry: with the last two steps perpendicular, a new step that
+ * reverses the older one is refused and the walk detours instead. */
+static bool RailStepAllowed(int d_pp, int d_prev, int d_new)
+{
+	if (d_pp == 0 || d_prev == 0) return true;
+	return StepBitIsX(d_pp) == StepBitIsX(d_prev) || d_new != OppositeBit(d_pp);
+}
+
+static TileIndex StepTile(TileIndex t, int b)
+{
+	int x = (int)TileX(t) + (b == 2) - (b == 1);
+	int y = (int)TileY(t) + (b == 8) - (b == 4);
+	if (x < 0 || y < 0 || x > (int)Map::SizeX() - 2 || y > (int)Map::SizeY() - 2) return INVALID_TILE;
+	return TileXY(x, y);
+}
+
 static void UpdateRailPlan(double wx, double wy)
 {
 	int tx = Clamp<int>((int)std::floor(wx), 0, Map::SizeX() - 2);
@@ -1742,19 +1764,37 @@ static void UpdateRailPlan(double wx, double wy)
 		_plan.path.push_back(TileXY(ax, ay));
 	}
 
-	while (_plan.path.size() < 1024) {
+	for (int guard = 0; guard < 4096 && _plan.path.size() < 1024; guard++) {
 		TileIndex cur = _plan.path.back();
 		int cx = (int)TileX(cur), cy = (int)TileY(cur);
 		int dx = tx - cx, dy = ty - cy;
 		if (dx == 0 && dy == 0) break;
-		int nx = cx, ny = cy;
-		if (std::abs(dx) >= std::abs(dy)) nx += dx > 0 ? 1 : -1; else ny += dy > 0 ? 1 : -1;
-		TileIndex next = TileXY(nx, ny);
-		if (_plan.path.size() >= 2 && next == _plan.path[_plan.path.size() - 2]) {
+
+		size_t n = _plan.path.size();
+		int d_prev = n >= 2 ? StepBit(_plan.path[n - 2], _plan.path[n - 1]) : 0;
+		int d_pp = n >= 3 ? StepBit(_plan.path[n - 3], _plan.path[n - 2]) : 0;
+
+		int step_x = dx != 0 ? (dx > 0 ? 2 : 1) : 0;
+		int step_y = dy != 0 ? (dy > 0 ? 8 : 4) : 0;
+		int prim = std::abs(dx) >= std::abs(dy) ? step_x : step_y;
+		int sec = prim == step_x ? step_y : step_x;
+
+		/* Dragging back onto the previous tile stays the undo gesture. */
+		if (d_prev != 0 && prim == OppositeBit(d_prev)) {
 			_plan.path.pop_back();
-		} else {
-			_plan.path.push_back(next);
+			continue;
 		}
+
+		TileIndex next = INVALID_TILE;
+		for (int cand : {prim, sec, d_prev}) {
+			if (cand == 0) continue;
+			if (d_prev != 0 && cand == OppositeBit(d_prev)) continue;
+			if (!RailStepAllowed(d_pp, d_prev, cand)) continue;
+			next = StepTile(cur, cand);
+			if (next != INVALID_TILE) break;
+		}
+		if (next == INVALID_TILE) break;
+		_plan.path.push_back(next);
 	}
 
 	RailPathPieces();
