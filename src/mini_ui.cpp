@@ -25,6 +25,7 @@
 #include "core/math_func.hpp"
 #include "core/utf8.hpp"
 #include <unordered_map>
+#include <unordered_set>
 #include "fileio_func.h"
 #include "gfx_func.h"
 #include "graph_gui.h"
@@ -2891,6 +2892,7 @@ enum class MiniStatus : uint8_t {
 	Stuck,
 	Broken,
 	NoOrders,
+	BadOrders,
 	OldAge,
 	Unprofitable,
 	End,
@@ -2910,14 +2912,42 @@ static std::string StatusLabel(int st)
 		case MiniStatus::Stuck: return MenuLabel(INVALID_STRING_ID, "STUCK");
 		case MiniStatus::Broken: return MenuLabel(STR_VEHICLE_STATUS_BROKEN_DOWN, "BROKEN DOWN");
 		case MiniStatus::NoOrders: return MenuLabel(INVALID_STRING_ID, "NO ORDERS");
+		case MiniStatus::BadOrders: return MenuLabel(INVALID_STRING_ID, "BAD ORDERS");
 		case MiniStatus::OldAge: return MenuLabel(INVALID_STRING_ID, "OLD AGE");
 		default: return MenuLabel(INVALID_STRING_ID, "IN THE RED");
 	}
 }
 
+/* Mirrors the order review behind the native advice news, minus the runway
+ * case: void orders, a station the vehicle cannot use, a duplicate first and
+ * last entry, or fewer than two stations. */
+static bool HasBadOrders(const Vehicle *v)
+{
+	if (v->GetNumOrders() == 0) return false;
+	int n_st = 0;
+	for (const Order &order : v->Orders()) {
+		if (order.IsType(OT_DUMMY)) return true;
+		if (order.IsType(OT_GOTO_STATION)) {
+			n_st++;
+			if (!CanVehicleUseStation(v, Station::Get(order.GetDestination().ToStationID()))) return true;
+		}
+	}
+	if (v->GetNumOrders() > 1) {
+		auto orders = v->Orders();
+		if (orders.front().Equals(orders.back())) return true;
+	}
+	return n_st < 2;
+}
+
+/* Waiting at a signal is normal traffic; a stuck train only becomes a status
+ * row past the same wait the stuck news uses, and stays one until it moves. */
+static std::unordered_set<uint32_t> _stuck_long;
+
 static void ScanStatuses()
 {
 	for (auto &l : _status_veh) l.clear();
+	static std::unordered_set<uint32_t> keep;
+	keep.clear();
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
 		if (v->vehstatus.Test(VehState::Crashed)) {
@@ -2925,12 +2955,23 @@ static void ScanStatuses()
 			continue;
 		}
 		if (v->vehicle_flags.Test(VehicleFlag::PathfinderLost)) _status_veh[(int)MiniStatus::Lost].push_back(v->index);
-		if (v->type == VEH_TRAIN && Train::From(v)->flags.Test(VehicleRailFlag::Stuck)) _status_veh[(int)MiniStatus::Stuck].push_back(v->index);
+		if (v->type == VEH_TRAIN) {
+			const Train *t = Train::From(v);
+			if (t->flags.Test(VehicleRailFlag::Stuck)) {
+				uint32_t id = v->index.base();
+				if (t->wait_counter >= _settings_game.pf.wait_for_pbs_path * Ticks::DAY_TICKS || _stuck_long.contains(id)) {
+					keep.insert(id);
+					_status_veh[(int)MiniStatus::Stuck].push_back(v->index);
+				}
+			}
+		}
 		if (v->type != VEH_AIRCRAFT && v->breakdown_ctr == 1) _status_veh[(int)MiniStatus::Broken].push_back(v->index);
 		if (v->GetNumOrders() == 0 && !v->vehstatus.Test(VehState::Stopped)) _status_veh[(int)MiniStatus::NoOrders].push_back(v->index);
+		if (HasBadOrders(v)) _status_veh[(int)MiniStatus::BadOrders].push_back(v->index);
 		if (v->age > v->max_age) _status_veh[(int)MiniStatus::OldAge].push_back(v->index);
 		if (v->economy_age >= VEHICLE_PROFIT_MIN_AGE && v->GetDisplayProfitLastYear() < 0) _status_veh[(int)MiniStatus::Unprofitable].push_back(v->index);
 	}
+	std::swap(_stuck_long, keep);
 }
 
 static std::string_view TruncateText(const std::string &text, int maxw)
