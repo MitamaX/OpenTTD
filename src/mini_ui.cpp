@@ -3547,6 +3547,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			Deactivate();
 			break;
 
+		/* Escape only unwinds mini UI state; leaving the mini UI is F9 alone. */
 		case WKC_ESC:
 			if (_dragging) {
 				_dragging = false;
@@ -3559,8 +3560,6 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			} else if (_sel_vehicle != VehicleID::Invalid()) {
 				_sel_vehicle = VehicleID::Invalid();
 				_follow = false;
-			} else {
-				Deactivate();
 			}
 			break;
 
