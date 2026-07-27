@@ -12,6 +12,7 @@
 #include <cmath>
 #include <vector>
 
+#include "fileio_func.h"
 #include "mini_atlas.h"
 #include "video/raylib_wrap.h"
 
@@ -25,6 +26,15 @@ static const int ATLAS_COLS = 4;
 static const int ATLAS_ROWS = ((int)MiniSprite::End + ATLAS_COLS - 1) / ATLAS_COLS;
 
 static int _atlas_tex = 0;
+static bool _has_art[(size_t)MiniSprite::End];
+
+/* Art file base names inside mini_art, one per MiniSprite slot. */
+static const char *_slot_names[] = {
+	"disc", "diamond", "triangle", "tree", "road_vehicle", "ship", "aircraft",
+	"grass", "field", "rock", "snow", "desert", "water",
+	"house", "industry", "station", "object", "depot", "tunnel",
+};
+static_assert(lengthof(_slot_names) == (size_t)MiniSprite::End);
 
 /* Shapes live in a unit square; x grows right, y grows down. */
 static bool SpriteHit(MiniSprite sprite, double x, double y)
@@ -42,7 +52,7 @@ static bool SpriteHit(MiniSprite sprite, double x, double y)
 		case MiniSprite::Triangle:
 		case MiniSprite::Aircraft:
 			return std::abs(dx) <= y * 0.5;
-		default: return false;
+		default: return true;
 	}
 }
 
@@ -54,10 +64,19 @@ void MiniAtlasEnsure()
 	int h = ATLAS_ROWS * ATLAS_CELL;
 	int content = ATLAS_CELL - 2 * ATLAS_GUTTER;
 	std::vector<uint32_t> px((size_t)w * h, 0x00FFFFFFU);
+	std::vector<uint32_t> art((size_t)content * content);
 
 	for (int i = 0; i < (int)MiniSprite::End; i++) {
 		int ox = (i % ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
 		int oy = (i / ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
+		std::string path = _personal_dir + "mini_art/" + _slot_names[i] + ".png";
+		_has_art[i] = RlwLoadImageInto(path.c_str(), art.data(), content, content);
+		if (_has_art[i]) {
+			for (int y = 0; y < content; y++) {
+				std::copy_n(&art[(size_t)y * content], content, &px[(size_t)(oy + y) * w + ox]);
+			}
+			continue;
+		}
 		for (int y = 0; y < content; y++) {
 			for (int x = 0; x < content; x++) {
 				int hits = 0;
@@ -75,6 +94,18 @@ void MiniAtlasEnsure()
 	}
 
 	_atlas_tex = RlwCreateAtlasTexture(px.data(), w, h);
+}
+
+/* Frees the texture so the next frame rebuilds it and re-reads art files. */
+void MiniAtlasReload()
+{
+	if (_atlas_tex != 0) RlwFreeTexture(_atlas_tex);
+	_atlas_tex = 0;
+}
+
+bool MiniAtlasHasArt(MiniSprite sprite)
+{
+	return sprite < MiniSprite::End && _has_art[(size_t)sprite];
 }
 
 /* The driver unloads every texture on shutdown; forgetting the id here makes

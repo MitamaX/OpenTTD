@@ -587,6 +587,20 @@ static uint32_t GroundColour(TileIndex tile, int h)
 	}
 }
 
+static MiniSprite GroundSlot(TileIndex tile)
+{
+	if (GetTileType(tile) == MP_CLEAR) {
+		switch (GetClearGround(tile)) {
+			case CLEAR_FIELDS: return MiniSprite::Field;
+			case CLEAR_ROCKS: return MiniSprite::Rock;
+			case CLEAR_SNOW: return MiniSprite::Snow;
+			case CLEAR_DESERT: return MiniSprite::Desert;
+			default: break;
+		}
+	}
+	return MiniSprite::Grass;
+}
+
 static uint32_t RampLerp(double h)
 {
 	h = Clamp(h, 0.0, 15.0);
@@ -623,6 +637,15 @@ static uint32_t GroundOverviewColour(TileIndex tile, Slope s, int hbase)
 static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 {
 	auto [s, hbase] = GetTileSlopeZ(tile);
+
+	/* Ground art is a luminance texture tinted by the ramp colour, so height
+	 * bands and hillshading survive the swap to real tiles. */
+	MiniSprite slot = GroundSlot(tile);
+	if (MiniAtlasHasArt(slot)) {
+		uint32_t c = s == SLOPE_FLAT ? GroundColour(tile, hbase) : GroundOverviewColour(tile, s, hbase);
+		if (MiniAtlasQuad(slot, x0, y0, x1, y1, MapCol(c))) return;
+	}
+
 	if (s == SLOPE_FLAT) {
 		FillRect(x0, y0, x1, y1, GroundColour(tile, hbase));
 		return;
@@ -760,8 +783,9 @@ static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 	}
 }
 
-static void DrawBlock(int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
+static void DrawBlock(MiniSprite s, int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
 {
+	if (MiniAtlasHasArt(s) && MiniAtlasQuad(s, x0, y0, x1, y1, MapCol(fill))) return;
 	if (!_zd.block_borders) {
 		FillRect(x0, y0, x1, y1, fill);
 		return;
@@ -772,15 +796,25 @@ static void DrawBlock(int x0, int y0, int x1, int y1, int ppt, uint32_t fill, ui
 	FillRect(x0 + inset + b, y0 + inset + b, x1 - inset - b, y1 - inset - b, fill);
 }
 
-/* Dark block with a bright tick pointing out of the exit side. */
+/* Dark block with a bright tick pointing out of the exit side. Depot art is
+ * authored exit-up and rotates to the real exit instead of the tick. */
 static void DrawDepot(int x0, int y0, int x1, int y1, int ppt, DiagDirection exit)
 {
-	DrawBlock(x0, y0, x1, y1, ppt, COL_DEPOT, COL_INK);
+	if (MiniAtlasHasArt(MiniSprite::Depot)) {
+		if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, MapCol(COL_DEPOT))) return;
+	}
+	DrawBlock(MiniSprite::Depot, x0, y0, x1, y1, ppt, COL_DEPOT, COL_INK);
 	if (!_zd.block_borders) return;
 	int cx = (x0 + x1) / 2;
 	int cy = (y0 + y1) / 2;
 	int w = std::max(2, ppt / 5);
 	ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, COL_PAPER);
+}
+
+static void DrawWater(int x0, int y0, int x1, int y1)
+{
+	if (MiniAtlasHasArt(MiniSprite::Water) && MiniAtlasQuad(MiniSprite::Water, x0, y0, x1, y1, MapCol(COL_WATER))) return;
+	FillRect(x0, y0, x1, y1, COL_WATER);
 }
 
 static void DrawAxisBand(Axis axis, int x0, int y0, int x1, int y1, int width, uint32_t c)
@@ -815,7 +849,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 			return;
 
 		case MP_WATER:
-			FillRect(x0, y0, x1, y1, COL_WATER);
+			DrawWater(x0, y0, x1, y1);
 			water_tile = true;
 			if (IsShipDepot(tile)) DrawDepot(x0, y0, x1, y1, ppt, GetShipDepotDirection(tile));
 			break;
@@ -865,12 +899,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 
 		case MP_HOUSE:
 			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(x0, y0, x1, y1, ppt, COL_HOUSE, COL_HOUSE_B);
+			DrawBlock(MiniSprite::House, x0, y0, x1, y1, ppt, COL_HOUSE, COL_HOUSE_B);
 			break;
 
 		case MP_INDUSTRY:
 			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(x0, y0, x1, y1, ppt, COL_IND, COL_IND_B);
+			DrawBlock(MiniSprite::Industry, x0, y0, x1, y1, ppt, COL_IND, COL_IND_B);
 			break;
 
 		case MP_STATION: {
@@ -888,12 +922,12 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				default: fill = COL_OBJ; border = COL_OBJ_B; on_water = true; break;
 			}
 			if (on_water) {
-				FillRect(x0, y0, x1, y1, COL_WATER);
+				DrawWater(x0, y0, x1, y1);
 				water_tile = true;
 			} else {
 				DrawGround(tile, x0, y0, x1, y1, ppt);
 			}
-			DrawBlock(x0, y0, x1, y1, ppt, fill, border);
+			DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, fill, border);
 			if (IsDriveThroughStopTile(tile)) {
 				DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
 			}
@@ -908,14 +942,14 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 
 		case MP_OBJECT:
 			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(x0, y0, x1, y1, ppt, COL_OBJ, COL_OBJ_B);
+			DrawBlock(MiniSprite::Object, x0, y0, x1, y1, ppt, COL_OBJ, COL_OBJ_B);
 			break;
 
 		case MP_TUNNELBRIDGE: {
 			DrawGround(tile, x0, y0, x1, y1, ppt);
 			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
 			if (IsTunnel(tile)) {
-				DrawBlock(x0, y0, x1, y1, ppt, COL_TUNNEL, COL_RAIL);
+				DrawBlock(MiniSprite::Tunnel, x0, y0, x1, y1, ppt, COL_TUNNEL, COL_RAIL);
 			} else {
 				DrawAxisBand(axis, x0, y0, x1, y1, road_w, COL_BRIDGE);
 				if (cat_w > 0 && GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL && HasRailCatenary(GetRailType(tile))) {
@@ -960,8 +994,11 @@ static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer lay
 	uint32_t accent = rail ? COL_PAPER : COL_CATENARY;
 
 	auto depot = [&](DiagDirection exit) {
+		if (MiniAtlasHasArt(MiniSprite::Depot)) {
+			if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, MapCol(accent))) return;
+		}
 		uint32_t fill = Darken(accent);
-		DrawBlock(x0, y0, x1, y1, ppt, fill, accent);
+		DrawBlock(MiniSprite::Depot, x0, y0, x1, y1, ppt, fill, accent);
 		if (!_zd.block_borders) return;
 		uint lum = (77 * ((fill >> 16) & 0xFFU) + 151 * ((fill >> 8) & 0xFFU) + 28 * (fill & 0xFFU)) >> 8;
 		int cx = (x0 + x1) / 2;
@@ -1008,7 +1045,7 @@ static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer lay
 				case StationType::Rail:
 				case StationType::RailWaypoint:
 					if (!rail) break;
-					DrawBlock(x0, y0, x1, y1, ppt, COL_ST_RAIL, COL_ST_RAIL_B);
+					DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, COL_ST_RAIL, COL_ST_RAIL_B);
 					DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, accent);
 					if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
 						DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, cat_w, COL_CATENARY);
@@ -1018,7 +1055,7 @@ static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer lay
 				case StationType::Bus:
 				case StationType::RoadWaypoint:
 					if (rail) break;
-					DrawBlock(x0, y0, x1, y1, ppt, COL_ST_ROAD, COL_ST_ROAD_B);
+					DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, COL_ST_ROAD, COL_ST_ROAD_B);
 					if (IsDriveThroughStopTile(tile)) {
 						DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, accent);
 					}
@@ -1033,7 +1070,7 @@ static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer lay
 			if (rail ? tt != TRANSPORT_RAIL : tt != TRANSPORT_ROAD) break;
 			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
 			if (IsTunnel(tile)) {
-				DrawBlock(x0, y0, x1, y1, ppt, COL_TUNNEL, accent);
+				DrawBlock(MiniSprite::Tunnel, x0, y0, x1, y1, ppt, COL_TUNNEL, accent);
 			} else {
 				DrawAxisBand(axis, x0, y0, x1, y1, road_w, accent);
 				if (cat_w > 0 && rail && HasRailCatenary(GetRailType(tile))) {
@@ -1070,6 +1107,7 @@ static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, 
 
 		case MP_WATER:
 			if (IsShipDepot(tile)) return false;
+			if (MiniAtlasHasArt(MiniSprite::Water)) return false;
 			c = COL_WATER;
 			return true;
 
@@ -1077,6 +1115,7 @@ static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, 
 			tree_dot = _zd.tree_dots;
 			[[fallthrough]];
 		case MP_CLEAR: {
+			if (MiniAtlasHasArt(GroundSlot(tile))) return false;
 			auto [s, hbase] = GetTileSlopeZ(tile);
 			if (s == SLOPE_FLAT) {
 				c = GroundColour(tile, hbase);
@@ -3081,6 +3120,7 @@ void MiniUiToggle()
 	if (VideoDriver::GetInstance()->GetName() != "raylib") return;
 
 	LoadMiniSettings();
+	MiniAtlasReload();
 	UndrawMouseCursor();
 	/* One palette-driven fill resets the 32bpp-anim mapping buffer, so later
 	 * direct framebuffer writes are not overwritten by palette animation. */

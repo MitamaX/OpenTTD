@@ -288,6 +288,19 @@ int RlwCreateAtlasTexture(const uint32_t *rgba, int w, int h)
 	return id;
 }
 
+/* Decodes an image file and delivers it as exactly w x h RGBA pixels. */
+bool RlwLoadImageInto(const char *path, uint32_t *rgba, int w, int h)
+{
+	if (!FileExists(path)) return false;
+	Image img = LoadImage(path);
+	if (img.data == nullptr) return false;
+	ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+	if (img.width != w || img.height != h) ImageResize(&img, w, h);
+	std::copy_n(static_cast<const uint32_t *>(img.data), (size_t)w * h, rgba);
+	UnloadImage(img);
+	return true;
+}
+
 void RlwFreeTexture(int tex)
 {
 	auto it = _rlw_user_tex.find(tex);
