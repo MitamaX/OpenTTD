@@ -35,6 +35,7 @@
 #include "landscape.h"
 #include "landscape_cmd.h"
 #include "league_gui.h"
+#include "mini_atlas.h"
 #include "misc_cmd.h"
 #include "network/network.h"
 #include "network/network_type.h"
@@ -423,19 +424,31 @@ static void ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 	RlwCmdLine(x0, y0, x1, y1, std::max(width, 1), MapCol(c));
 }
 
+/* Shape fills prefer an atlas quad so the silhouettes are already on the
+ * sprite pipeline; sizes too small to sample cleanly and frames without an
+ * atlas fall back to the geometric primitives. */
 static void FillCircle(int cx, int cy, int r, uint32_t c)
 {
-	RlwCmdCircle(cx, cy, std::max(r, 1), MapCol(c));
+	r = std::max(r, 1);
+	uint32_t col = MapCol(c);
+	if (r >= 2 && MiniAtlasQuad(MiniSprite::Disc, cx - r, cy - r, cx + r, cy + r, col)) return;
+	RlwCmdCircle(cx, cy, r, col);
 }
 
 static void FillDiamond(int cx, int cy, int r, uint32_t c)
 {
-	RlwCmdDiamond(cx, cy, std::max(r, 1), MapCol(c));
+	r = std::max(r, 1);
+	uint32_t col = MapCol(c);
+	if (r >= 2 && MiniAtlasQuad(MiniSprite::Diamond, cx - r, cy - r, cx + r, cy + r, col)) return;
+	RlwCmdDiamond(cx, cy, r, col);
 }
 
 static void FillTriangle(int cx, int cy, int r, uint32_t c)
 {
-	RlwCmdTriangle(cx, cy, std::max(r, 1), MapCol(c));
+	r = std::max(r, 1);
+	uint32_t col = MapCol(c);
+	if (r >= 2 && MiniAtlasQuad(MiniSprite::Triangle, cx - r, cy - r, cx + r, cy + r, col)) return;
+	RlwCmdTriangle(cx, cy, r, col);
 }
 
 /* Strings are laid out by the native font code into a small offscreen buffer
@@ -3197,6 +3210,7 @@ void MiniUiFrame(uint delta_ms)
 
 	_mini_frame++;
 	PruneTextCache();
+	MiniAtlasEnsure();
 	RlwCmdClear();
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space.

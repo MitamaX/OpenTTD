@@ -29,6 +29,7 @@ enum class RlwCmdType : uint8_t {
 	Diamond,
 	Triangle,
 	TexQuad,
+	Sprite,
 };
 
 struct RlwCmd {
@@ -257,6 +258,12 @@ void RlwCmdTexQuad(int tex, int x, int y, uint32_t tint_argb)
 	_rlw_cmds.push_back({RlwCmdType::TexQuad, tex, x, y, 0, 0, tint_argb});
 }
 
+/* The atlas source rectangle rides in the spare colour words. */
+void RlwCmdSprite(int tex, int sx, int sy, int sw, int sh, int dx0, int dy0, int dx1, int dy1, uint32_t tint_argb)
+{
+	_rlw_cmds.push_back({RlwCmdType::Sprite, tex, dx0, dy0, dx1, dy1, tint_argb, ((uint32_t)sx << 16) | (uint32_t)sy, ((uint32_t)sw << 16) | (uint32_t)sh, 0});
+}
+
 int RlwCreateTexture(const uint32_t *rgba, int w, int h)
 {
 	Image img;
@@ -267,6 +274,17 @@ int RlwCreateTexture(const uint32_t *rgba, int w, int h)
 	img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
 	int id = _rlw_next_tex++;
 	_rlw_user_tex.emplace(id, LoadTextureFromImage(img));
+	return id;
+}
+
+/* Atlas sprites are drawn at many scales, so they get mipmaps and smooth
+ * filtering; plain textures stay point-sampled for 1:1 blits. */
+int RlwCreateAtlasTexture(const uint32_t *rgba, int w, int h)
+{
+	int id = RlwCreateTexture(rgba, w, h);
+	Texture2D &tex = _rlw_user_tex.at(id);
+	GenTextureMipmaps(&tex);
+	SetTextureFilter(tex, TEXTURE_FILTER_TRILINEAR);
 	return id;
 }
 
@@ -318,6 +336,13 @@ static void RlwReplayCommands()
 			case RlwCmdType::TexQuad:
 				if (auto it = _rlw_user_tex.find(c.a); it != _rlw_user_tex.end()) {
 					DrawTexture(it->second, c.b, c.c, RlwColour(c.col));
+				}
+				break;
+			case RlwCmdType::Sprite:
+				if (auto it = _rlw_user_tex.find(c.a); it != _rlw_user_tex.end()) {
+					Rectangle src = {(float)(c.col_tr >> 16), (float)(c.col_tr & 0xFFFF), (float)(c.col_bl >> 16), (float)(c.col_bl & 0xFFFF)};
+					Rectangle dst = {(float)c.b, (float)c.c, (float)(c.d - c.b + 1), (float)(c.e - c.c + 1)};
+					DrawTexturePro(it->second, src, dst, {0.0f, 0.0f}, 0.0f, RlwColour(c.col));
 				}
 				break;
 		}

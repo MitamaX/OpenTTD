@@ -260,6 +260,8 @@ add_files(
     map.cpp
     map_func.h
     map_type.h
+    mini_atlas.cpp
+    mini_atlas.h
     mini_ui.cpp
     mini_ui.h
     mini_ui_skin.cpp

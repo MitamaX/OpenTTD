@@ -65,7 +65,9 @@ void RlwCmdCircle(int cx, int cy, int r, uint32_t argb);
 void RlwCmdDiamond(int cx, int cy, int r, uint32_t argb);
 void RlwCmdTriangle(int cx, int cy, int r, uint32_t argb);
 void RlwCmdTexQuad(int tex, int x, int y, uint32_t tint_argb);
+void RlwCmdSprite(int tex, int sx, int sy, int sw, int sh, int dx0, int dy0, int dx1, int dy1, uint32_t tint_argb);
 int RlwCreateTexture(const uint32_t *rgba, int w, int h);
+int RlwCreateAtlasTexture(const uint32_t *rgba, int w, int h);
 void RlwFreeTexture(int tex);
 void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRectI *overlays, size_t count);
 

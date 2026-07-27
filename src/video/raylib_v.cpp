@@ -15,6 +15,7 @@
 #include "../core/math_func.hpp"
 #include "../core/utf8.hpp"
 #include "../framerate_type.h"
+#include "../mini_atlas.h"
 #include "../mini_ui.h"
 #include "../progress.h"
 #include "../string_func.h"
@@ -61,6 +62,7 @@ std::optional<std::string_view> VideoDriver_Raylib::Start(const StringList &para
 
 void VideoDriver_Raylib::Stop()
 {
+	MiniAtlasReset();
 	RlwClose();
 }
 
