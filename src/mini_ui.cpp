@@ -1237,19 +1237,69 @@ static void DrawHeadingDot(int cx, int cy, int r, Direction dir)
 	FillCircle(px, py, std::max(1, (r + 1) / 3), COL_PAPER);
 }
 
-/* A consist draws as one polyline through its unit centres, so car spacing
- * follows the real path geometry on diagonals and curves. Ink underlays the
- * whole line before the colour pass, so joints stay clean. */
+/* A consist draws as one polyline through its unit centres. The game spaces
+ * units in path steps, and a cardinal step moves both map axes, so raw
+ * centres sit sqrt(2) apart on diagonals; the native isometric projection
+ * cancels that but a top-down view shows it as a stretched train. Units are
+ * therefore re-laid along their own polyline at true unit lengths from the
+ * head, which keeps the drawn length constant on any mix of track. Ink
+ * underlays the whole line before the colour pass, so joints stay clean. */
 static void DrawTrainConsist(const Vehicle *head, int ppt)
 {
+	static std::vector<std::pair<double, double>> raw;
+	static std::vector<double> arc;
+	static std::vector<double> want;
 	static std::vector<std::pair<int, int>> pts;
+	raw.clear();
+	arc.clear();
+	want.clear();
 	pts.clear();
 
 	const Vehicle *tail = head;
+	double s = 0.0;
+	double prev_len = 0.0;
 	for (const Vehicle *u = head; u != nullptr; u = u->Next()) {
 		auto [ux, uy] = LerpVehWorld(u);
-		pts.emplace_back(ScrX(uy), ScrY(ux));
+		raw.emplace_back(uy * _cam_ppt + ScrBaseX(), ux * _cam_ppt + ScrBaseY());
+		double len = u->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
+		if (!want.empty()) s += (prev_len + len) * 0.5;
+		want.push_back(s);
+		prev_len = len;
 		tail = u;
+	}
+
+	arc.resize(raw.size());
+	arc[0] = 0.0;
+	for (size_t i = 1; i < raw.size(); i++) {
+		double dx = raw[i].first - raw[i - 1].first;
+		double dy = raw[i].second - raw[i - 1].second;
+		arc[i] = arc[i - 1] + std::sqrt(dx * dx + dy * dy);
+	}
+
+	size_t seg = 0;
+	for (size_t i = 0; i < raw.size(); i++) {
+		double t = want[i];
+		double x, y;
+		if (t >= arc.back()) {
+			x = raw.back().first;
+			y = raw.back().second;
+			if (raw.size() >= 2) {
+				double dx = x - raw[raw.size() - 2].first;
+				double dy = y - raw[raw.size() - 2].second;
+				double d = std::sqrt(dx * dx + dy * dy);
+				if (d > 0.0) {
+					x += dx / d * (t - arc.back());
+					y += dy / d * (t - arc.back());
+				}
+			}
+		} else {
+			while (seg + 2 < raw.size() && arc[seg + 1] <= t) seg++;
+			double span = arc[seg + 1] - arc[seg];
+			double f = span > 0.0 ? (t - arc[seg]) / span : 0.0;
+			x = raw[seg].first + (raw[seg + 1].first - raw[seg].first) * f;
+			y = raw[seg].second + (raw[seg + 1].second - raw[seg].second) * f;
+		}
+		pts.emplace_back((int)std::lround(x), (int)std::lround(y));
 	}
 
 	/* The nose and tail stick out half a unit length past the end centres. */
