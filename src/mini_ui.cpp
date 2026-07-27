@@ -42,7 +42,6 @@
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "news_gui.h"
-#include "news_type.h"
 #include "openttd.h"
 #include "order_base.h"
 #include "order_cmd.h"
@@ -70,6 +69,7 @@
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
 #include "vehicle_cmd.h"
+#include "vehicle_func.h"
 #include "vehicle_gui.h"
 #include "video/video_driver.hpp"
 #include "water_map.h"
@@ -2802,37 +2802,52 @@ static bool HandleSpeedClick(int x, int y)
 	return false;
 }
 
-/* Left-edge notification stream: recent news as severity-coloured cards;
- * clicking jumps the camera to the site like the reference. */
-struct MiniNewsHit {
-	Rect r;
-	TileIndex tile;
-	VehicleID veh;
-	int32_t date;
-	std::string text;
+/* Left-edge status stream like the reference: no event cards, only live
+ * aggregated problem states. A row shows the category and count, hovering
+ * lists the affected vehicles, clicking cycles the camera through them. */
+enum class MiniStatus : uint8_t {
+	Crashed,
+	Lost,
+	Broken,
+	NoOrders,
+	OldAge,
+	Unprofitable,
+	End,
 };
-static std::vector<MiniNewsHit> _news_hits;
-static std::vector<std::pair<int32_t, std::string>> _news_dismissed;
+
+static const int MINI_STATUS_COUNT = (int)MiniStatus::End;
+static std::vector<VehicleID> _status_veh[MINI_STATUS_COUNT];
+static std::vector<std::pair<Rect, int>> _status_rows;
+static uint32_t _status_cursor[MINI_STATUS_COUNT];
 static std::unordered_map<std::string, std::string> _news_trunc;
 
-static TileIndex NewsTile(const NewsReference &ref)
+static std::string StatusLabel(int st)
 {
-	struct visitor {
-		TileIndex operator()(std::monostate) { return INVALID_TILE; }
-		TileIndex operator()(TileIndex t) { return t; }
-		TileIndex operator()(VehicleID v) { const Vehicle *u = Vehicle::GetIfValid(v); return u != nullptr ? u->tile : INVALID_TILE; }
-		TileIndex operator()(StationID s) { return Station::Get(s)->xy; }
-		TileIndex operator()(IndustryID i) { return Industry::Get(i)->location.tile; }
-		TileIndex operator()(TownID t) { return Town::Get(t)->xy; }
-		TileIndex operator()(EngineID) { return INVALID_TILE; }
-	};
-	return std::visit(visitor{}, ref);
+	switch ((MiniStatus)st) {
+		case MiniStatus::Crashed: return MenuLabel(STR_VEHICLE_STATUS_CRASHED, "CRASHED");
+		case MiniStatus::Lost: return MenuLabel(INVALID_STRING_ID, "LOST");
+		case MiniStatus::Broken: return MenuLabel(STR_VEHICLE_STATUS_BROKEN_DOWN, "BROKEN DOWN");
+		case MiniStatus::NoOrders: return MenuLabel(INVALID_STRING_ID, "NO ORDERS");
+		case MiniStatus::OldAge: return MenuLabel(INVALID_STRING_ID, "OLD AGE");
+		default: return MenuLabel(INVALID_STRING_ID, "IN THE RED");
+	}
 }
 
-static VehicleID NewsVehicle(const NewsReference &ref)
+static void ScanStatuses()
 {
-	const VehicleID *v = std::get_if<VehicleID>(&ref);
-	return v != nullptr ? *v : VehicleID::Invalid();
+	for (auto &l : _status_veh) l.clear();
+	for (const Vehicle *v : Vehicle::Iterate()) {
+		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
+		if (v->vehstatus.Test(VehState::Crashed)) {
+			_status_veh[(int)MiniStatus::Crashed].push_back(v->index);
+			continue;
+		}
+		if (v->vehicle_flags.Test(VehicleFlag::PathfinderLost)) _status_veh[(int)MiniStatus::Lost].push_back(v->index);
+		if (v->type != VEH_AIRCRAFT && v->breakdown_ctr == 1) _status_veh[(int)MiniStatus::Broken].push_back(v->index);
+		if (v->GetNumOrders() == 0 && !v->vehstatus.Test(VehState::Stopped)) _status_veh[(int)MiniStatus::NoOrders].push_back(v->index);
+		if (v->age > v->max_age) _status_veh[(int)MiniStatus::OldAge].push_back(v->index);
+		if (v->economy_age >= VEHICLE_PROFIT_MIN_AGE && v->GetDisplayProfitLastYear() < 0) _status_veh[(int)MiniStatus::Unprofitable].push_back(v->index);
+	}
 }
 
 static std::string_view TruncateText(const std::string &text, int maxw)
@@ -2854,9 +2869,10 @@ static std::string_view TruncateText(const std::string &text, int maxw)
 	return it->second;
 }
 
-static void DrawNewsStream()
+static void DrawStatusStream()
 {
-	_news_hits.clear();
+	ScanStatuses();
+	_status_rows.clear();
 
 	int s = _ms.hud_scale;
 	int lh = GetCharacterHeight(FS_NORMAL);
@@ -2866,58 +2882,81 @@ static void DrawNewsStream()
 	int maxw = card_w - bar_w - 8 * s;
 	int y = _colony_bottom + margin;
 
-	int32_t today = TimerGameCalendar::date.base();
-	std::erase_if(_news_dismissed, [&](const auto &d) { return today - d.first > 45; });
+	int hover = -1;
+	Rect hover_r{};
+	for (int st = 0; st < MINI_STATUS_COUNT; st++) {
+		const auto &list = _status_veh[st];
+		if (list.empty()) continue;
 
-	int shown = 0;
-	for (const NewsItem &ni : GetNews()) {
-		if (shown == 4) break;
-		if (today - ni.date.base() > 45) break;
+		bool crit = st <= (int)MiniStatus::Broken;
+		uint32_t bar = crit ? 0xFFE05F4AU : 0xFFE0B64AU;
+		uint32_t bg = crit ? 0xFF4A2320U : 0xFF453A1EU;
+		uint32_t tcol = crit ? 0xFFF2D9D2U : 0xFFEBD9A8U;
 
-		std::string text = StrMakeValid(ni.GetStatusText(), {});
-		if (std::find(_news_dismissed.begin(), _news_dismissed.end(), std::make_pair(ni.date.base(), text)) != _news_dismissed.end()) continue;
-
-		/* Stuck and lost vehicles are as urgent as crashes even though they
-		 * arrive as advice. */
-		bool crit = ni.type == NewsType::Accident || ni.type == NewsType::AccidentOther ||
-				(ni.type == NewsType::Advice && (ni.advice_type == AdviceType::TrainStuck || ni.advice_type == AdviceType::VehicleLost || ni.advice_type == AdviceType::AircraftDestinationTooFar));
-		bool warn = !crit && (ni.type == NewsType::Advice || ni.type == NewsType::Economy || ni.type == NewsType::CompanyInfo || ni.type == NewsType::IndustryClose);
-		uint32_t bar = crit ? 0xFFE05F4AU : warn ? 0xFFE0B64AU : COL_CH_DIM;
-		uint32_t bg = crit ? 0xFF4A2320U : warn ? 0xFF453A1EU : COL_CH_PANEL;
-		uint32_t tcol = crit ? 0xFFF2D9D2U : warn ? 0xFFEBD9A8U : 0xFFA8A294U;
-
-		TileIndex tile = NewsTile(ni.ref1);
-		VehicleID veh = NewsVehicle(ni.ref1);
-		if (tile == INVALID_TILE) tile = NewsTile(ni.ref2);
-		if (veh == VehicleID::Invalid()) veh = NewsVehicle(ni.ref2);
-
+		std::string text = fmt::format("{} ({})", StatusLabel(st), list.size());
 		std::string_view t = TruncateText(text, maxw);
 		if (t.empty()) continue;
 		int ch = lh + 5 * s;
 		Rect r = {margin, y, margin + card_w - 1, y + ch - 1};
 		ScreenFillRect(r.left, r.top, r.left + bar_w - 1, r.bottom, bar);
 		ScreenFillRect(r.left + bar_w, r.top, r.right, r.bottom, bg);
-		if (_cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y)) BlendRect(r.left, r.top, r.right, r.bottom, COL_PAPER, 28);
+		if (_cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y)) {
+			BlendRect(r.left, r.top, r.right, r.bottom, COL_PAPER, 28);
+			hover = st;
+			hover_r = r;
+		}
 		if (const MiniTextEntry *e = TextTexture(t); e != nullptr) RlwCmdTexQuad(e->tex, r.left + bar_w + 4 * s, y + (ch - lh) / 2, tcol);
-		_news_hits.push_back({r, tile, veh, ni.date.base(), std::move(text)});
+		_status_rows.push_back({r, st});
 		y += ch + 2 * s;
-		shown++;
+	}
+
+	/* Hover panel: the affected vehicles by name, capped at eight. */
+	if (hover >= 0) {
+		const auto &list = _status_veh[hover];
+		static std::vector<std::string> names;
+		names.clear();
+		int wmax = 0;
+		for (size_t i = 0; i < list.size() && i < 8; i++) {
+			const Vehicle *v = Vehicle::GetIfValid(list[i]);
+			if (v == nullptr) continue;
+			names.push_back(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}));
+			wmax = std::max(wmax, (int)GetStringBoundingBox(names.back()).width);
+		}
+		if (list.size() > names.size()) {
+			names.push_back(fmt::format("+{}", list.size() - names.size()));
+			wmax = std::max(wmax, (int)GetStringBoundingBox(names.back()).width);
+		}
+		if (!names.empty()) {
+			int pad = 4 * s;
+			int x0 = hover_r.right + 4 * s;
+			int y0 = hover_r.top;
+			int w = wmax + 2 * pad;
+			int h = (int)names.size() * (lh + 2 * s) + 2 * pad - 2 * s;
+			if (y0 + h >= _fbh) y0 = std::max(0, _fbh - h - 1);
+			ChromePanel(x0, y0, x0 + w - 1, y0 + h - 1);
+			int ty = y0 + pad;
+			for (const std::string &n : names) {
+				DrawScreenText(x0 + pad, ty, n);
+				ty += lh + 2 * s;
+			}
+		}
 	}
 }
 
-static bool HandleNewsClick(int x, int y)
+static bool HandleStatusClick(int x, int y)
 {
-	for (const MiniNewsHit &n : _news_hits) {
-		if (!InRect(n.r, x, y)) continue;
-		_news_dismissed.emplace_back(n.date, n.text);
-		if (n.veh != VehicleID::Invalid()) {
-			if (const Vehicle *v = Vehicle::GetIfValid(n.veh); v != nullptr) {
-				_sel_vehicle = n.veh;
-				MiniUiScrollTo(v->x_pos, v->y_pos);
-				return true;
-			}
+	for (const auto &[r, st] : _status_rows) {
+		if (!InRect(r, x, y)) continue;
+		const auto &list = _status_veh[st];
+		for (size_t i = 0; i < list.size(); i++) {
+			size_t idx = _status_cursor[st] % list.size();
+			_status_cursor[st]++;
+			const Vehicle *v = Vehicle::GetIfValid(list[idx]);
+			if (v == nullptr) continue;
+			_sel_vehicle = v->index;
+			MiniUiScrollTo(v->x_pos, v->y_pos);
+			return true;
 		}
-		if (n.tile != INVALID_TILE) MiniUiScrollTo(TileX(n.tile) * TILE_SIZE + TILE_SIZE / 2, TileY(n.tile) * TILE_SIZE + TILE_SIZE / 2);
 		return true;
 	}
 	return false;
@@ -2977,7 +3016,7 @@ static void Present()
 	DrawLabels();
 	DrawHud();
 	DrawColonyPanel();
-	DrawNewsStream();
+	DrawStatusStream();
 	DrawBuildMenu();
 	DrawCmdBar();
 	DrawWinBar();
@@ -3143,7 +3182,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleNewsClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
 					if (const Vehicle *v = SelectVehicleAt(_cursor.pos.x, _cursor.pos.y); v != nullptr) ShowVehicleViewWindow(v);
