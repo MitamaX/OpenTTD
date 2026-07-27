@@ -63,6 +63,7 @@
 #include "terraform_cmd.h"
 #include "town.h"
 #include "tile_map.h"
+#include "train.h"
 #include "timer/timer_game_calendar.h"
 #include "timer/timer_game_tick.h"
 #include "tunnelbridge_cmd.h"
@@ -2887,6 +2888,7 @@ static bool HandleSpeedClick(int x, int y)
 enum class MiniStatus : uint8_t {
 	Crashed,
 	Lost,
+	Stuck,
 	Broken,
 	NoOrders,
 	OldAge,
@@ -2905,6 +2907,7 @@ static std::string StatusLabel(int st)
 	switch ((MiniStatus)st) {
 		case MiniStatus::Crashed: return MenuLabel(STR_VEHICLE_STATUS_CRASHED, "CRASHED");
 		case MiniStatus::Lost: return MenuLabel(INVALID_STRING_ID, "LOST");
+		case MiniStatus::Stuck: return MenuLabel(INVALID_STRING_ID, "STUCK");
 		case MiniStatus::Broken: return MenuLabel(STR_VEHICLE_STATUS_BROKEN_DOWN, "BROKEN DOWN");
 		case MiniStatus::NoOrders: return MenuLabel(INVALID_STRING_ID, "NO ORDERS");
 		case MiniStatus::OldAge: return MenuLabel(INVALID_STRING_ID, "OLD AGE");
@@ -2922,6 +2925,7 @@ static void ScanStatuses()
 			continue;
 		}
 		if (v->vehicle_flags.Test(VehicleFlag::PathfinderLost)) _status_veh[(int)MiniStatus::Lost].push_back(v->index);
+		if (v->type == VEH_TRAIN && Train::From(v)->flags.Test(VehicleRailFlag::Stuck)) _status_veh[(int)MiniStatus::Stuck].push_back(v->index);
 		if (v->type != VEH_AIRCRAFT && v->breakdown_ctr == 1) _status_veh[(int)MiniStatus::Broken].push_back(v->index);
 		if (v->GetNumOrders() == 0 && !v->vehstatus.Test(VehState::Stopped)) _status_veh[(int)MiniStatus::NoOrders].push_back(v->index);
 		if (v->age > v->max_age) _status_veh[(int)MiniStatus::OldAge].push_back(v->index);
