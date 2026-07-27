@@ -65,6 +65,7 @@
 #include "town.h"
 #include "tile_map.h"
 #include "timer/timer_game_calendar.h"
+#include "timer/timer_game_tick.h"
 #include "tunnelbridge_cmd.h"
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
@@ -1093,6 +1094,62 @@ static void FillShapeRot(MiniSprite s, int cx, int cy, int r, int angle, uint32_
 	}
 }
 
+/* Vehicles only move on game ticks while drawing runs at render rate, so
+ * raw positions stutter. Each frame interpolates between a unit's previous
+ * and current tick position; the fraction comes from a smoothed measure of
+ * the real tick interval, which also absorbs fast forward. */
+struct MiniVehSnap {
+	int32_t px, py;
+	int32_t cx, cy;
+	uint64_t tick;
+};
+
+static std::unordered_map<uint32_t, MiniVehSnap> _veh_snap;
+static uint64_t _lerp_tick = 0;
+static double _lerp_since = 0.0;
+static double _lerp_interval = 30.0;
+static double _lerp_alpha = 1.0;
+
+static void UpdateLerpClock(uint delta_ms)
+{
+	_lerp_since += delta_ms;
+	uint64_t t = TimerGameTick::counter;
+	if (t != _lerp_tick) {
+		double per = _lerp_since / (double)(t - _lerp_tick);
+		if (per >= 5.0 && per <= 200.0) _lerp_interval = _lerp_interval * 0.7 + per * 0.3;
+		_lerp_tick = t;
+		_lerp_since = 0.0;
+	}
+	_lerp_alpha = std::min(_lerp_since / _lerp_interval, 1.0);
+	if ((_mini_frame & 0xFF) == 0) {
+		std::erase_if(_veh_snap, [](const auto &kv) { return kv.second.tick + 64 < _lerp_tick; });
+	}
+}
+
+/* Returns the display position in tile units. Entries older than one tick
+ * and jumps wider than two tiles snap instead of streaking. */
+static std::pair<double, double> LerpVehWorld(const Vehicle *v)
+{
+	MiniVehSnap &e = _veh_snap[v->index.base()];
+	if (e.tick != _lerp_tick) {
+		if (e.tick + 1 == _lerp_tick) {
+			e.px = e.cx;
+			e.py = e.cy;
+		} else {
+			e.px = v->x_pos;
+			e.py = v->y_pos;
+		}
+		e.cx = v->x_pos;
+		e.cy = v->y_pos;
+		e.tick = _lerp_tick;
+	}
+	if (std::abs(e.cx - e.px) > 32 || std::abs(e.cy - e.py) > 32) {
+		e.px = e.cx;
+		e.py = e.cy;
+	}
+	return {(e.px + (e.cx - e.px) * _lerp_alpha) / TILE_SIZE, (e.py + (e.cy - e.py) * _lerp_alpha) / TILE_SIZE};
+}
+
 static uint32_t CargoRgb(CargoType ct)
 {
 	Colour c = _cur_palette.palette[CargoSpec::Get(ct)->legend_colour.p];
@@ -1131,8 +1188,9 @@ static void DrawVehicles(int ppt)
 		if (v->vehstatus.Test(VehState::Hidden)) continue;
 		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
 		int r = (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT) ? half + 2 : half;
-		int cx = ScrX(v->y_pos / (double)TILE_SIZE);
-		int cy = ScrY(v->x_pos / (double)TILE_SIZE);
+		auto [wx, wy] = LerpVehWorld(v);
+		int cx = ScrX(wy);
+		int cy = ScrY(wx);
 		if (cx < -r - 1 || cy < -r - 1 || cx >= _fbw + r + 1 || cy >= _fbh + r + 1) continue;
 		uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_OBJ;
 		bool dim = !VehicleInLayer(v->type);
@@ -1364,8 +1422,9 @@ static void DrawOrderRoute()
 	for (auto [x, y] : stops) FillCircle(x, y, 4, COL_BP);
 
 	if (cur_stop >= 0) {
-		int vx = ScrX(v->y_pos / (double)TILE_SIZE);
-		int vy = ScrY(v->x_pos / (double)TILE_SIZE);
+		auto [wx, wy] = LerpVehWorld(v);
+		int vx = ScrX(wy);
+		int vy = ScrY(wx);
 		ThickLine(vx, vy, stops[cur_stop].first, stops[cur_stop].second, 2, COL_PAPER);
 	}
 }
@@ -1374,8 +1433,9 @@ static void DrawSelectionRing(int ppt)
 {
 	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
 	if (v == nullptr) return;
-	int cx = ScrX(v->y_pos / (double)TILE_SIZE);
-	int cy = ScrY(v->x_pos / (double)TILE_SIZE);
+	auto [wx, wy] = LerpVehWorld(v);
+	int cx = ScrX(wy);
+	int cy = ScrY(wx);
 	int r = std::max(6, ppt / 2 + 3);
 	FillRect(cx - r, cy - r, cx + r, cy - r + 1, COL_PAPER);
 	FillRect(cx - r, cy + r - 1, cx + r, cy + r, COL_PAPER);
@@ -2906,6 +2966,7 @@ static void Deactivate()
 	_glide = false;
 	_sel_vehicle = VehicleID::Invalid();
 	_follow = false;
+	_veh_snap.clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
 }
@@ -3245,6 +3306,7 @@ void MiniUiFrame(uint delta_ms)
 	_mini_frame++;
 	PruneTextCache();
 	MiniAtlasEnsure();
+	UpdateLerpClock(delta_ms);
 	RlwCmdClear();
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space.
@@ -3303,8 +3365,9 @@ void MiniUiFrame(uint delta_ms)
 		if (fv == nullptr) {
 			_follow = false;
 		} else {
-			_cam_x = fv->x_pos / (double)TILE_SIZE;
-			_cam_y = fv->y_pos / (double)TILE_SIZE;
+			auto [wx, wy] = LerpVehWorld(fv);
+			_cam_x = wx;
+			_cam_y = wy;
 			ClampCamera();
 		}
 	}
