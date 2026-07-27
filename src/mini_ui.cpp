@@ -1779,20 +1779,24 @@ static void UpdateRailPlan(double wx, double wy)
 		int prim = std::abs(dx) >= std::abs(dy) ? step_x : step_y;
 		int sec = prim == step_x ? step_y : step_x;
 
-		/* Dragging back onto the previous tile stays the undo gesture. */
-		if (d_prev != 0 && prim == OppositeBit(d_prev)) {
-			_plan.path.pop_back();
-			continue;
-		}
-
 		TileIndex next = INVALID_TILE;
+		bool popped = false;
 		for (int cand : {prim, sec, d_prev}) {
 			if (cand == 0) continue;
-			if (d_prev != 0 && cand == OppositeBit(d_prev)) continue;
+			TileIndex t = StepTile(cur, cand);
+			if (t == INVALID_TILE) continue;
+			/* Any candidate stepping back onto the previous tile is the undo
+			 * gesture; undoing ignores the turn rule. */
+			if (n >= 2 && t == _plan.path[n - 2]) {
+				_plan.path.pop_back();
+				popped = true;
+				break;
+			}
 			if (!RailStepAllowed(d_pp, d_prev, cand)) continue;
-			next = StepTile(cur, cand);
-			if (next != INVALID_TILE) break;
+			next = t;
+			break;
 		}
+		if (popped) continue;
 		if (next == INVALID_TILE) break;
 		_plan.path.push_back(next);
 	}
