@@ -32,9 +32,16 @@ static bool SpriteHit(MiniSprite sprite, double x, double y)
 	double dx = x - 0.5;
 	double dy = y - 0.5;
 	switch (sprite) {
-		case MiniSprite::Disc: return dx * dx + dy * dy <= 0.25;
-		case MiniSprite::Diamond: return std::abs(dx) + std::abs(dy) <= 0.5;
-		case MiniSprite::Triangle: return std::abs(dx) <= y * 0.5;
+		case MiniSprite::Disc:
+		case MiniSprite::Tree:
+		case MiniSprite::RoadVeh:
+			return dx * dx + dy * dy <= 0.25;
+		case MiniSprite::Diamond:
+		case MiniSprite::Ship:
+			return std::abs(dx) + std::abs(dy) <= 0.5;
+		case MiniSprite::Triangle:
+		case MiniSprite::Aircraft:
+			return std::abs(dx) <= y * 0.5;
 		default: return false;
 	}
 }

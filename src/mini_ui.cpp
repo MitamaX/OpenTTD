@@ -452,6 +452,28 @@ static void FillTriangle(int cx, int cy, int r, uint32_t c)
 	RlwCmdTriangle(cx, cy, r, col);
 }
 
+/* Rotated silhouette: ships and aircraft point along their heading. Without
+ * an atlas the shape falls back unrotated. */
+static void FillShapeRot(MiniSprite s, int cx, int cy, int r, int angle, uint32_t c)
+{
+	r = std::max(r, 1);
+	uint32_t col = MapCol(c);
+	if (r >= 2 && MiniAtlasQuadRot(s, cx, cy, r, angle, col)) return;
+	switch (s) {
+		case MiniSprite::Triangle:
+		case MiniSprite::Aircraft:
+			RlwCmdTriangle(cx, cy, r, col);
+			break;
+		case MiniSprite::Diamond:
+		case MiniSprite::Ship:
+			RlwCmdDiamond(cx, cy, r, col);
+			break;
+		default:
+			RlwCmdCircle(cx, cy, r, col);
+			break;
+	}
+}
+
 /* Strings are laid out by the native font code into a small offscreen buffer
  * once, cached as a white-on-transparent texture and drawn as a tinted quad,
  * so any TrueType fallback font covers non-Latin names. */
@@ -808,7 +830,7 @@ static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
 				int cx = (x0 + x1) / 2;
 				int cy = (y0 + y1) / 2;
 				int r = std::max(1, ppt / 8);
-				FillCircle(cx, cy, r, COL_TREE);
+				FillShapeRot(MiniSprite::Tree, cx, cy, r, 0, COL_TREE);
 			}
 			break;
 		}
@@ -1080,20 +1102,6 @@ static const int8_t _dir_dy[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
 /* Screen-space heading in degrees clockwise from up, per Direction. */
 static const int16_t _dir_angle[8] = {-45, 0, 45, 90, 135, 180, -135, -90};
 
-/* Rotated silhouette: ships and aircraft point along their heading. Without
- * an atlas the shape falls back unrotated. */
-static void FillShapeRot(MiniSprite s, int cx, int cy, int r, int angle, uint32_t c)
-{
-	r = std::max(r, 1);
-	uint32_t col = MapCol(c);
-	if (r >= 2 && MiniAtlasQuadRot(s, cx, cy, r, angle, col)) return;
-	if (s == MiniSprite::Triangle) {
-		RlwCmdTriangle(cx, cy, r, col);
-	} else {
-		RlwCmdDiamond(cx, cy, r, col);
-	}
-}
-
 /* Vehicles only move on game ticks while drawing runs at render rate, so
  * raw positions stutter. Each frame interpolates between a unit's previous
  * and current tick position; the fraction comes from a smoothed measure of
@@ -1276,20 +1284,20 @@ static void DrawVehicles(int ppt)
 		int angle = _dir_angle[v->direction];
 		switch (v->type) {
 			case VEH_ROAD:
-				FillCircle(cx, cy, r + 1, ink);
-				FillCircle(cx, cy, r, c);
+				FillShapeRot(MiniSprite::RoadVeh, cx, cy, r + 1, angle, ink);
+				FillShapeRot(MiniSprite::RoadVeh, cx, cy, r, angle, c);
 				if (!dim) DrawHeadingDot(cx, cy, r, v->direction);
 				break;
 			case VEH_SHIP:
 				/* The diamond only shows its axis when rotated; the head dot
 				 * picks which end leads. */
-				FillShapeRot(MiniSprite::Diamond, cx, cy, r + 1, angle, ink);
-				FillShapeRot(MiniSprite::Diamond, cx, cy, r, angle, c);
+				FillShapeRot(MiniSprite::Ship, cx, cy, r + 1, angle, ink);
+				FillShapeRot(MiniSprite::Ship, cx, cy, r, angle, c);
 				if (!dim) DrawHeadingDot(cx, cy, r, v->direction);
 				break;
 			case VEH_AIRCRAFT:
-				FillShapeRot(MiniSprite::Triangle, cx, cy, r + 1, angle, ink);
-				FillShapeRot(MiniSprite::Triangle, cx, cy, r, angle, c);
+				FillShapeRot(MiniSprite::Aircraft, cx, cy, r + 1, angle, ink);
+				FillShapeRot(MiniSprite::Aircraft, cx, cy, r, angle, c);
 				break;
 			default:
 				break;
@@ -3544,7 +3552,7 @@ void MiniUiFrame(uint delta_ms)
 	}
 	int tree_r = std::max(1, ppt / 8);
 	for (auto [tx, ty] : tree_dots) {
-		FillCircle((ScrX(ty) + ScrX(ty + 1) - 1) / 2, (ScrY(tx) + ScrY(tx + 1) - 1) / 2, tree_r, COL_TREE);
+		FillShapeRot(MiniSprite::Tree, (ScrX(ty) + ScrX(ty + 1) - 1) / 2, (ScrY(tx) + ScrY(tx + 1) - 1) / 2, tree_r, 0, COL_TREE);
 	}
 
 	_grey_map = false;

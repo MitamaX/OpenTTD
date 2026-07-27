@@ -16,6 +16,10 @@ enum class MiniSprite : uint8_t {
 	Disc,
 	Diamond,
 	Triangle,
+	Tree,
+	RoadVeh,
+	Ship,
+	Aircraft,
 	End,
 };
 
