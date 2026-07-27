@@ -1180,6 +1180,72 @@ static void DrawHeadingDot(int cx, int cy, int r, Direction dir)
 	FillCircle(px, py, std::max(1, (r + 1) / 3), COL_PAPER);
 }
 
+/* A consist draws as one polyline through its unit centres, so car spacing
+ * follows the real path geometry on diagonals and curves. Ink underlays the
+ * whole line before the colour pass, so joints stay clean. */
+static void DrawTrainConsist(const Vehicle *head, int ppt)
+{
+	static std::vector<std::pair<int, int>> pts;
+	pts.clear();
+
+	const Vehicle *tail = head;
+	for (const Vehicle *u = head; u != nullptr; u = u->Next()) {
+		auto [ux, uy] = LerpVehWorld(u);
+		pts.emplace_back(ScrX(uy), ScrY(ux));
+		tail = u;
+	}
+
+	/* The nose and tail stick out half a unit length past the end centres. */
+	auto overhang = [&](const Vehicle *u, int sign) {
+		double len = u->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
+		double inv = (_dir_dx[u->direction] != 0 && _dir_dy[u->direction] != 0) ? 0.70710678 : 1.0;
+		return std::pair<int, int>(
+				(int)std::lround(sign * _dir_dx[u->direction] * inv * len * 0.5),
+				(int)std::lround(sign * _dir_dy[u->direction] * inv * len * 0.5));
+	};
+	auto [nx, ny] = overhang(head, 1);
+	pts.insert(pts.begin(), {pts.front().first + nx, pts.front().second + ny});
+	auto [bx, by] = overhang(tail, -1);
+	pts.emplace_back(pts.back().first + bx, pts.back().second + by);
+
+	int w = std::max(2, ppt / 4);
+	int m = w + 2;
+	int minx = pts[0].first, maxx = minx, miny = pts[0].second, maxy = miny;
+	for (auto [x, y] : pts) {
+		minx = std::min(minx, x);
+		maxx = std::max(maxx, x);
+		miny = std::min(miny, y);
+		maxy = std::max(maxy, y);
+	}
+	if (maxx < -m || maxy < -m || minx >= _fbw + m || miny >= _fbh + m) return;
+
+	uint32_t c = Company::IsValidID(head->owner) ? _company_rgb[_company_colours[head->owner]] : COL_OBJ;
+	bool dim = !VehicleInLayer(VEH_TRAIN);
+	uint32_t ink = COL_INK;
+	if (dim) {
+		ink = GreyMap(COL_INK);
+		c = GreyMap(c);
+	}
+
+	for (size_t i = 0; i + 1 < pts.size(); i++) ThickLine(pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second, w + 2, ink);
+	for (size_t i = 1; i + 1 < pts.size(); i++) FillCircle(pts[i].first, pts[i].second, (w + 2) / 2, ink);
+	for (size_t i = 0; i + 1 < pts.size(); i++) ThickLine(pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second, w, c);
+	for (size_t i = 1; i + 1 < pts.size(); i++) FillCircle(pts[i].first, pts[i].second, std::max(1, w / 2), c);
+
+	if (!dim) FillCircle(pts[0].first, pts[0].second, std::max(1, w / 2 - 1), COL_PAPER);
+
+	if (!dim && _zd.cargo_dots) {
+		int half = std::max(3, ppt * 2 / 5) / 2;
+		int dr = std::max(1, half - 2);
+		size_t i = 1;
+		for (const Vehicle *u = head; u != nullptr; u = u->Next(), i++) {
+			if (u->cargo_cap == 0 || !IsValidCargoType(u->cargo_type)) continue;
+			FillCircle(pts[i].first, pts[i].second, dr + 1, COL_INK);
+			FillCircle(pts[i].first, pts[i].second, dr, CargoRgb(u->cargo_type));
+		}
+	}
+}
+
 static void DrawVehicles(int ppt)
 {
 	int half = std::max(3, ppt * 2 / 5) / 2;
@@ -1187,6 +1253,10 @@ static void DrawVehicles(int ppt)
 		if (v->type > VEH_AIRCRAFT) continue;
 		if (v->vehstatus.Test(VehState::Hidden)) continue;
 		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
+		if (v->type == VEH_TRAIN && _zd.vehicle_shapes) {
+			if (v->IsPrimaryVehicle()) DrawTrainConsist(v, ppt);
+			continue;
+		}
 		int r = (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT) ? half + 2 : half;
 		auto [wx, wy] = LerpVehWorld(v);
 		int cx = ScrX(wy);
@@ -1221,25 +1291,7 @@ static void DrawVehicles(int ppt)
 				FillShapeRot(MiniSprite::Triangle, cx, cy, r + 1, angle, ink);
 				FillShapeRot(MiniSprite::Triangle, cx, cy, r, angle, c);
 				break;
-			case VEH_TRAIN: {
-				/* Each unit is a segment of its cached length along its heading,
-				 * so a consist reads as one continuous line on the track. */
-				double len = v->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
-				double norm = (v->direction & 1) ? 0.5 : 0.35355339;
-				int hx = (int)std::lround(_dir_dx[v->direction] * norm * len);
-				int hy = (int)std::lround(_dir_dy[v->direction] * norm * len);
-				int w = std::max(2, ppt / 4);
-				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w + 2, ink);
-				ThickLine(cx - hx, cy - hy, cx + hx, cy + hy, w, c);
-				if (v->IsPrimaryVehicle() && !dim) {
-					int tr = std::max(1, w / 2 - 1);
-					FillCircle(cx + hx, cy + hy, tr, COL_PAPER);
-				}
-				break;
-			}
 			default:
-				FillRect(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, ink);
-				FillRect(cx - r, cy - r, cx + r, cy + r, c);
 				break;
 		}
 		if (!dim && _zd.cargo_dots && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
