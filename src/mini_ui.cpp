@@ -1076,6 +1076,23 @@ static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, 
 static const int8_t _dir_dx[8] = {-1, 0, 1, 1, 1, 0, -1, -1};
 static const int8_t _dir_dy[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
 
+/* Screen-space heading in degrees clockwise from up, per Direction. */
+static const int16_t _dir_angle[8] = {-45, 0, 45, 90, 135, 180, -135, -90};
+
+/* Rotated silhouette: ships and aircraft point along their heading. Without
+ * an atlas the shape falls back unrotated. */
+static void FillShapeRot(MiniSprite s, int cx, int cy, int r, int angle, uint32_t c)
+{
+	r = std::max(r, 1);
+	uint32_t col = MapCol(c);
+	if (r >= 2 && MiniAtlasQuadRot(s, cx, cy, r, angle, col)) return;
+	if (s == MiniSprite::Triangle) {
+		RlwCmdTriangle(cx, cy, r, col);
+	} else {
+		RlwCmdDiamond(cx, cy, r, col);
+	}
+}
+
 static uint32_t CargoRgb(CargoType ct)
 {
 	Colour c = _cur_palette.palette[CargoSpec::Get(ct)->legend_colour.p];
@@ -1092,6 +1109,18 @@ static bool VehicleInLayer(VehicleType vt)
 		case MiniLayer::Road: return vt == VEH_ROAD;
 		default: return true;
 	}
+}
+
+/* Shapes without a clear nose carry a paper dot on the leading edge, the
+ * same accent as the train head dot. */
+static void DrawHeadingDot(int cx, int cy, int r, Direction dir)
+{
+	if (r < 3) return;
+	int d = dir;
+	double inv = (_dir_dx[d] != 0 && _dir_dy[d] != 0) ? 0.70710678 : 1.0;
+	int px = cx + (int)std::lround(_dir_dx[d] * inv * 0.62 * r);
+	int py = cy + (int)std::lround(_dir_dy[d] * inv * 0.62 * r);
+	FillCircle(px, py, std::max(1, (r + 1) / 3), COL_PAPER);
 }
 
 static void DrawVehicles(int ppt)
@@ -1116,18 +1145,23 @@ static void DrawVehicles(int ppt)
 			FillRect(cx - 1, cy - 1, cx + 1, cy + 1, c);
 			continue;
 		}
+		int angle = _dir_angle[v->direction];
 		switch (v->type) {
 			case VEH_ROAD:
 				FillCircle(cx, cy, r + 1, ink);
 				FillCircle(cx, cy, r, c);
+				if (!dim) DrawHeadingDot(cx, cy, r, v->direction);
 				break;
 			case VEH_SHIP:
-				FillDiamond(cx, cy, r + 1, ink);
-				FillDiamond(cx, cy, r, c);
+				/* The diamond only shows its axis when rotated; the head dot
+				 * picks which end leads. */
+				FillShapeRot(MiniSprite::Diamond, cx, cy, r + 1, angle, ink);
+				FillShapeRot(MiniSprite::Diamond, cx, cy, r, angle, c);
+				if (!dim) DrawHeadingDot(cx, cy, r, v->direction);
 				break;
 			case VEH_AIRCRAFT:
-				FillTriangle(cx, cy, r + 1, ink);
-				FillTriangle(cx, cy, r, c);
+				FillShapeRot(MiniSprite::Triangle, cx, cy, r + 1, angle, ink);
+				FillShapeRot(MiniSprite::Triangle, cx, cy, r, angle, c);
 				break;
 			case VEH_TRAIN: {
 				/* Each unit is a segment of its cached length along its heading,

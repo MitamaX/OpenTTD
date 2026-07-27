@@ -77,12 +77,22 @@ void MiniAtlasReset()
 	_atlas_tex = 0;
 }
 
-bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t argb)
+static bool AtlasSprite(MiniSprite sprite, int x0, int y0, int x1, int y1, int angle_deg, uint32_t argb)
 {
 	if (_atlas_tex == 0 || sprite >= MiniSprite::End || x1 < x0 || y1 < y0) return false;
 	int content = ATLAS_CELL - 2 * ATLAS_GUTTER;
 	int sx = ((int)sprite % ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
 	int sy = ((int)sprite / ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
-	RlwCmdSprite(_atlas_tex, sx, sy, content, content, x0, y0, x1, y1, argb);
+	RlwCmdSprite(_atlas_tex, sx, sy, content, content, x0, y0, x1, y1, angle_deg, argb);
 	return true;
+}
+
+bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t argb)
+{
+	return AtlasSprite(sprite, x0, y0, x1, y1, 0, argb);
+}
+
+bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, int angle_deg, uint32_t argb)
+{
+	return AtlasSprite(sprite, cx - r, cy - r, cx + r, cy + r, angle_deg, argb);
 }

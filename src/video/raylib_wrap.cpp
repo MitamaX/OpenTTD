@@ -258,10 +258,10 @@ void RlwCmdTexQuad(int tex, int x, int y, uint32_t tint_argb)
 	_rlw_cmds.push_back({RlwCmdType::TexQuad, tex, x, y, 0, 0, tint_argb});
 }
 
-/* The atlas source rectangle rides in the spare colour words. */
-void RlwCmdSprite(int tex, int sx, int sy, int sw, int sh, int dx0, int dy0, int dx1, int dy1, uint32_t tint_argb)
+/* The atlas source rectangle and rotation ride in the spare colour words. */
+void RlwCmdSprite(int tex, int sx, int sy, int sw, int sh, int dx0, int dy0, int dx1, int dy1, int angle_deg, uint32_t tint_argb)
 {
-	_rlw_cmds.push_back({RlwCmdType::Sprite, tex, dx0, dy0, dx1, dy1, tint_argb, ((uint32_t)sx << 16) | (uint32_t)sy, ((uint32_t)sw << 16) | (uint32_t)sh, 0});
+	_rlw_cmds.push_back({RlwCmdType::Sprite, tex, dx0, dy0, dx1, dy1, tint_argb, ((uint32_t)sx << 16) | (uint32_t)sy, ((uint32_t)sw << 16) | (uint32_t)sh, (uint32_t)(int32_t)angle_deg});
 }
 
 int RlwCreateTexture(const uint32_t *rgba, int w, int h)
@@ -341,8 +341,13 @@ static void RlwReplayCommands()
 			case RlwCmdType::Sprite:
 				if (auto it = _rlw_user_tex.find(c.a); it != _rlw_user_tex.end()) {
 					Rectangle src = {(float)(c.col_tr >> 16), (float)(c.col_tr & 0xFFFF), (float)(c.col_bl >> 16), (float)(c.col_bl & 0xFFFF)};
-					Rectangle dst = {(float)c.b, (float)c.c, (float)(c.d - c.b + 1), (float)(c.e - c.c + 1)};
-					DrawTexturePro(it->second, src, dst, {0.0f, 0.0f}, 0.0f, RlwColour(c.col));
+					float w = (float)(c.d - c.b + 1);
+					float h = (float)(c.e - c.c + 1);
+					/* The quad rotates about its centre; the origin offset puts the
+					 * centre back on the destination rectangle, so angle 0 lands
+					 * pixel-exact on the unrotated position. */
+					Rectangle dst = {c.b + w * 0.5f, c.c + h * 0.5f, w, h};
+					DrawTexturePro(it->second, src, dst, {w * 0.5f, h * 0.5f}, (float)(int32_t)c.col_br, RlwColour(c.col));
 				}
 				break;
 		}
