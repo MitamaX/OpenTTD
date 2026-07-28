@@ -1257,18 +1257,24 @@ static void DrawTrainConsist(const Vehicle *head, int ppt)
 	want.clear();
 	pts.clear();
 
-	const Vehicle *tail = head;
+	/* Units inside a depot are hidden one by one; the consist keeps drawing
+	 * through its still-visible run. */
+	const Vehicle *first = nullptr;
+	const Vehicle *tail = nullptr;
 	double s = 0.0;
 	double prev_len = 0.0;
 	for (const Vehicle *u = head; u != nullptr; u = u->Next()) {
+		if (u->vehstatus.Test(VehState::Hidden)) continue;
 		auto [ux, uy] = LerpVehWorld(u);
 		raw.emplace_back(uy * _cam_ppt + ScrBaseX(), ux * _cam_ppt + ScrBaseY());
 		double len = u->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
 		if (!want.empty()) s += (prev_len + len) * 0.5;
 		want.push_back(s);
 		prev_len = len;
+		if (first == nullptr) first = u;
 		tail = u;
 	}
+	if (raw.empty()) return;
 
 	arc.resize(raw.size());
 	arc[0] = 0.0;
@@ -1312,7 +1318,7 @@ static void DrawTrainConsist(const Vehicle *head, int ppt)
 				(int)std::lround(sign * _dir_dx[u->direction] * inv * len * 0.5),
 				(int)std::lround(sign * _dir_dy[u->direction] * inv * len * 0.5));
 	};
-	auto [nx, ny] = overhang(head, 1);
+	auto [nx, ny] = overhang(first, 1);
 	pts.insert(pts.begin(), {pts.front().first + nx, pts.front().second + ny});
 	auto [bx, by] = overhang(tail, -1);
 	pts.emplace_back(pts.back().first + bx, pts.back().second + by);
@@ -1341,16 +1347,19 @@ static void DrawTrainConsist(const Vehicle *head, int ppt)
 	for (size_t i = 0; i + 1 < pts.size(); i++) ThickLine(pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second, w, c);
 	for (size_t i = 1; i + 1 < pts.size(); i++) FillCircle(pts[i].first, pts[i].second, std::max(1, w / 2), c);
 
-	if (!dim) FillCircle(pts[0].first, pts[0].second, std::max(1, w / 2 - 1), COL_PAPER);
+	if (!dim && first == head) FillCircle(pts[0].first, pts[0].second, std::max(1, w / 2 - 1), COL_PAPER);
 
 	if (!dim && _zd.cargo_dots) {
 		int half = std::max(3, ppt * 2 / 5) / 2;
 		int dr = std::max(1, half - 2);
 		size_t i = 1;
-		for (const Vehicle *u = head; u != nullptr; u = u->Next(), i++) {
-			if (u->cargo_cap == 0 || !IsValidCargoType(u->cargo_type)) continue;
-			FillCircle(pts[i].first, pts[i].second, dr + 1, COL_INK);
-			FillCircle(pts[i].first, pts[i].second, dr, CargoRgb(u->cargo_type));
+		for (const Vehicle *u = head; u != nullptr; u = u->Next()) {
+			if (u->vehstatus.Test(VehState::Hidden)) continue;
+			if (u->cargo_cap != 0 && IsValidCargoType(u->cargo_type)) {
+				FillCircle(pts[i].first, pts[i].second, dr + 1, COL_INK);
+				FillCircle(pts[i].first, pts[i].second, dr, CargoRgb(u->cargo_type));
+			}
+			i++;
 		}
 	}
 }
@@ -1360,12 +1369,12 @@ static void DrawVehicles(int ppt)
 	int half = std::max(3, ppt * 2 / 5) / 2;
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->type > VEH_AIRCRAFT) continue;
-		if (v->vehstatus.Test(VehState::Hidden)) continue;
-		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
 		if (v->type == VEH_TRAIN && _zd.vehicle_shapes) {
 			if (v->IsPrimaryVehicle()) DrawTrainConsist(v, ppt);
 			continue;
 		}
+		if (v->vehstatus.Test(VehState::Hidden)) continue;
+		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
 		int r = (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT) ? half + 2 : half;
 		auto [wx, wy] = LerpVehWorld(v);
 		int cx = ScrX(wy);
