@@ -167,6 +167,7 @@ static bool _drag_remove = false;
 static double _drag_ax, _drag_ay;
 
 static VehicleID _sel_vehicle = VehicleID::Invalid();
+static StationID _sel_station = StationID::Invalid();
 static bool _follow = false;
 
 static bool _prev_left = false;
@@ -1531,6 +1532,7 @@ static bool TryAppendOrder(int sx, int sy)
  * describes the whole vehicle. */
 static const Vehicle *SelectVehicleAt(int sx, int sy)
 {
+	_sel_station = StationID::Invalid();
 	const Vehicle *best = nullptr;
 	int best_d2 = 15 * 15;
 	for (const Vehicle *v : Vehicle::Iterate()) {
@@ -1666,7 +1668,9 @@ static bool HandleLabelClick(int x, int y)
 {
 	for (const auto &[r, id] : _station_label_hits) {
 		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			ShowStationViewWindow(id);
+			_sel_station = id;
+			_sel_vehicle = VehicleID::Invalid();
+			_follow = false;
 			return true;
 		}
 	}
@@ -3344,6 +3348,174 @@ static bool HandleVehPanelClick(int x, int y)
 	return true;
 }
 
+/* Right-edge station screen for the station selected via its plate: waiting
+ * cargo with ratings, accepted cargo dots and command tiles. */
+static std::vector<std::pair<Rect, int>> _st_btn_hits;
+static Rect _st_panel_rect;
+static bool _st_panel_shown = false;
+
+enum {
+	ST_BTN_GOTO,
+	ST_BTN_NATIVE,
+};
+
+static void DrawStationPanel()
+{
+	_st_btn_hits.clear();
+	_st_panel_shown = false;
+
+	const Station *st = Station::GetIfValid(_sel_station);
+	if (st == nullptr) return;
+
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int pad = 5 * s;
+	int gap = 2 * s;
+	int w = 110 * s;
+	int maxw = w - 2 * pad;
+	int row_h = lh + gap;
+
+	std::string title = StrMakeValid(GetString(STR_STATION_NAME, st->index), {});
+
+	static std::vector<uint32_t> facil;
+	facil.clear();
+	if (st->facilities.Test(StationFacility::Train)) facil.push_back(COL_ST_RAIL);
+	if (st->facilities.Any({StationFacility::BusStop, StationFacility::TruckStop})) facil.push_back(COL_ST_ROAD);
+	if (st->facilities.Test(StationFacility::Airport)) facil.push_back(COL_ST_AIR);
+	if (st->facilities.Test(StationFacility::Dock)) facil.push_back(COL_ST_DOCK);
+
+	/* Waiting rows: legend dot, cargo label, waiting count and rating. */
+	static std::vector<std::tuple<std::string, uint32_t, uint32_t>> cargo;
+	cargo.clear();
+	static std::vector<CargoType> accepts;
+	accepts.clear();
+	for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+		const GoodsEntry &ge = st->goods[cs->Index()];
+		if (ge.status.Test(GoodsEntry::State::Acceptance)) accepts.push_back(cs->Index());
+		uint waiting = ge.TotalCount();
+		if (!ge.HasRating() && waiting == 0) continue;
+		uint pct = ToPercent8(ge.rating);
+		uint32_t tint = pct <= 25 ? 0xFFE05F4AU : (pct <= 50 ? 0xFFE0B64AU : COL_CH_TEXT);
+		uint32_t l = cs->label.base();
+		char lab[4] = {(char)(l >> 24), (char)(l >> 16), (char)(l >> 8), (char)l};
+		cargo.emplace_back(fmt::format("{} {}  {}%", std::string_view(lab, 4), waiting, pct), tint, CargoRgb(cs->Index()));
+	}
+
+	int dot_r = std::max(2, lh / 4);
+	int dot_step = 2 * dot_r + 3 * s;
+	int dots_per_row = std::max(1, maxw / dot_step);
+	int accept_rows = ((int)accepts.size() + dots_per_row - 1) / dots_per_row;
+
+	int bw = 12 * s, bh = 10 * s;
+	int x1 = _fbw - 1 - 6 * s;
+	int x0 = x1 - w + 1;
+	int y0 = _win_bar_bottom + 6 * s;
+
+	int town_rows = st->town != nullptr ? 1 : 0;
+	int fixed = pad + lh + 3 * s + town_rows * row_h + (facil.empty() ? 0 : row_h) + 3 * s
+			+ (accepts.empty() ? 0 : lh + gap + accept_rows * row_h) + 4 * s + bh + pad;
+	int limit = _fbh - MenuTileSide() - 18 * s;
+	int max_cargo = std::max(0, (limit - y0 - fixed) / row_h);
+	bool more = (int)cargo.size() > max_cargo;
+	int shown = more ? std::max(0, max_cargo - 1) : (int)cargo.size();
+
+	int h = fixed + (shown + (more ? 1 : 0)) * row_h;
+	ChromePanel(x0, y0, x0 + w - 1, y0 + h - 1);
+	_st_panel_rect = {x0, y0, x0 + w - 1, y0 + h - 1};
+	_st_panel_shown = true;
+
+	int y = y0 + pad;
+	DrawScreenText(x0 + pad, y, TruncateText(title, maxw));
+	y += lh + s;
+	ScreenFillRect(x0 + pad, y, x0 + w - 1 - pad, y + s - 1, COL_CH_ACCENT);
+	y += 2 * s;
+
+	if (st->town != nullptr) {
+		if (const MiniTextEntry *e = TextTexture(TruncateText(StrMakeValid(GetString(STR_TOWN_NAME, st->town->index), {}), maxw)); e != nullptr) RlwCmdTexQuad(e->tex, x0 + pad, y, COL_CH_DIM);
+		y += row_h;
+	}
+
+	if (!facil.empty()) {
+		int sq = std::max(4, lh - 2 * s);
+		int fx = x0 + pad;
+		for (uint32_t c : facil) {
+			ScreenFillRect(fx, y + 1, fx + sq - 1, y + sq, c);
+			fx += sq + 3 * s;
+		}
+		y += row_h;
+	}
+	y += 3 * s;
+
+	for (int n = 0; n < shown; n++) {
+		const auto &[text, tint, dot] = cargo[n];
+		int tx = x0 + pad;
+		FillCircle(tx + dot_r, y + lh / 2, dot_r, dot);
+		tx += 2 * dot_r + 3 * s;
+		if (const MiniTextEntry *e = TextTexture(TruncateText(text, maxw - (tx - x0 - pad))); e != nullptr) RlwCmdTexQuad(e->tex, tx, y, tint);
+		y += row_h;
+	}
+	if (more) {
+		if (const MiniTextEntry *e = TextTexture(fmt::format("+{}", cargo.size() - shown)); e != nullptr) RlwCmdTexQuad(e->tex, x0 + pad + 4 * s, y, COL_CH_DIM);
+		y += row_h;
+	}
+
+	if (!accepts.empty()) {
+		if (const MiniTextEntry *e = TextTexture(MenuLabel(INVALID_STRING_ID, "ACCEPTS")); e != nullptr) RlwCmdTexQuad(e->tex, x0 + pad, y, COL_CH_DIM);
+		y += lh + gap;
+		int n = 0;
+		for (CargoType ct : accepts) {
+			int col = n % dots_per_row;
+			FillCircle(x0 + pad + col * dot_step + dot_r, y + lh / 2, dot_r, CargoRgb(ct));
+			n++;
+			if (col == dots_per_row - 1) y += row_h;
+		}
+		if (n % dots_per_row != 0) y += row_h;
+	}
+	y += 4 * s;
+
+	for (int i = 0; i < 2; i++) {
+		int bx = x0 + pad + i * (bw + gap);
+		Rect r = {bx, y, bx + bw - 1, y + bh - 1};
+		ChromeTile(r, false);
+		uint32_t gc = COL_CH_TEXT;
+		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
+		int gh = std::max(2, (bh - 4 * s) / 2);
+		switch (i) {
+			case ST_BTN_GOTO:
+				for (int j = -gh; j <= gh; j++) ScreenFillRect(gcx - (gh - abs(j)), gcy + j, gcx + (gh - abs(j)), gcy + j, gc);
+				break;
+			case ST_BTN_NATIVE:
+				ScreenFillRect(gcx - gh, gcy - gh, gcx + gh, gcy - gh + std::max(1, s), gc);
+				ScreenFillRect(gcx - gh, gcy - gh, gcx - gh + std::max(1, s) - 1, gcy + gh, gc);
+				ScreenFillRect(gcx + gh - std::max(1, s) + 1, gcy - gh, gcx + gh, gcy + gh, gc);
+				ScreenFillRect(gcx - gh, gcy + gh - std::max(1, s) + 1, gcx + gh, gcy + gh, gc);
+				break;
+		}
+		_st_btn_hits.push_back({r, i});
+	}
+}
+
+static bool HandleStPanelClick(int x, int y)
+{
+	if (!_st_panel_shown || !InRect(_st_panel_rect, x, y)) return false;
+	const Station *st = Station::GetIfValid(_sel_station);
+	if (st == nullptr) return true;
+
+	for (const auto &[r, i] : _st_btn_hits) {
+		if (!InRect(r, x, y)) continue;
+		switch (i) {
+			case ST_BTN_GOTO:
+				MiniUiScrollTo(TileX(st->xy) * (int)TILE_SIZE, TileY(st->xy) * (int)TILE_SIZE);
+				break;
+			case ST_BTN_NATIVE:
+				ShowStationViewWindow(st->index);
+				break;
+		}
+		return true;
+	}
+	return true;
+}
+
 static void DrawHud()
 {
 	int s = _ms.hud_scale;
@@ -3403,6 +3575,7 @@ static void Present()
 	DrawCmdBar();
 	DrawWinBar();
 	DrawVehPanel();
+	DrawStationPanel();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -3439,8 +3612,10 @@ static void Deactivate()
 	_zoom_anchored = false;
 	_glide = false;
 	_sel_vehicle = VehicleID::Invalid();
+	_sel_station = StationID::Invalid();
 	_follow = false;
 	_veh_panel_shown = false;
+	_st_panel_shown = false;
 	_veh_snap.clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
@@ -3492,6 +3667,7 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 
 	int right = std::max(0, _screen.width - width);
 	if (_veh_panel_shown) right = std::max(0, _veh_panel_rect.left - width);
+	if (_st_panel_shown) right = std::max(0, _st_panel_rect.left - width);
 	int y0 = _win_bar_bottom + 1;
 	for (int x = right; x >= 0; x -= width) {
 		int y = y0;
@@ -3568,7 +3744,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y) && !HandleVehPanelClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y) && !HandleVehPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleStPanelClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
 					SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
@@ -3646,8 +3822,9 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			} else if (_menu_open >= 0 || _win_open >= 0) {
 				_menu_open = -1;
 				_win_open = -1;
-			} else if (_sel_vehicle != VehicleID::Invalid()) {
+			} else if (_sel_vehicle != VehicleID::Invalid() || _sel_station != StationID::Invalid()) {
 				_sel_vehicle = VehicleID::Invalid();
+				_sel_station = StationID::Invalid();
 				_follow = false;
 			}
 			break;
