@@ -3334,6 +3334,9 @@ static Window *EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
 	}
 	if (cw->width != w || cw->height != h) ResizeWindow(cw, w - cw->width, h - cw->height, false);
 	if (cw->left != x || cw->top != y) {
+		/* The vacated region must repaint too, or its pixels linger in the
+		 * screen buffer and smear through other carriers' overlay rects. */
+		cw->SetDirty();
 		if (cw->viewport != nullptr) {
 			cw->viewport->left += x - cw->left;
 			cw->viewport->top += y - cw->top;
