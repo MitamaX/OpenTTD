@@ -1549,6 +1549,7 @@ static const Vehicle *SelectVehicleAt(int sx, int sy)
 		return nullptr;
 	}
 	_sel_vehicle = best->First()->index;
+	ShowVehicleViewWindow(best->First());
 	return best->First();
 }
 
@@ -3152,220 +3153,6 @@ static bool HandleStatusClick(int x, int y)
 	return false;
 }
 
-/* Right-edge vehicle screen like the reference side screens: info rows, the
- * order list and command tiles for the selected vehicle. Map clicks only
- * select; the window tile still opens the native vehicle window. */
-static std::vector<std::pair<Rect, int>> _veh_btn_hits;
-static std::vector<std::pair<Rect, int>> _veh_order_hits;
-static Rect _veh_panel_rect;
-static bool _veh_panel_shown = false;
-
-enum {
-	VEH_BTN_STARTSTOP,
-	VEH_BTN_DEPOT,
-	VEH_BTN_FOLLOW,
-	VEH_BTN_NATIVE,
-};
-
-static std::string VehOrderLabel(const Order &o)
-{
-	switch (o.GetType()) {
-		case OT_GOTO_STATION: return StrMakeValid(GetString(STR_STATION_NAME, o.GetDestination().ToStationID()), {});
-		case OT_GOTO_WAYPOINT: return StrMakeValid(GetString(STR_WAYPOINT_NAME, o.GetDestination().ToStationID()), {});
-		case OT_GOTO_DEPOT: return MenuLabel(INVALID_STRING_ID, "DEPOT");
-		case OT_CONDITIONAL: return fmt::format("IF > {}", o.GetConditionSkipToOrder() + 1);
-		default: return std::string();
-	}
-}
-
-static void DrawVehPanel()
-{
-	_veh_btn_hits.clear();
-	_veh_order_hits.clear();
-	_veh_panel_shown = false;
-
-	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
-	if (v == nullptr || !v->IsPrimaryVehicle()) return;
-
-	int s = _ms.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int pad = 5 * s;
-	int gap = 2 * s;
-	int w = 110 * s;
-	int maxw = w - 2 * pad;
-	int row_h = lh + gap;
-
-	std::string title = StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {});
-
-	/* Info rows: text, tint and an optional legend dot colour. */
-	static std::vector<std::tuple<std::string, uint32_t, uint32_t>> rows;
-	rows.clear();
-	rows.emplace_back(fmt::format("{} {}", StrMakeValid(GetString((StringID)(STR_REPLACE_VEHICLE_TRAIN + v->type)), {}), v->unitnumber), COL_CH_DIM, 0);
-	if (v->vehstatus.Test(VehState::Crashed)) {
-		rows.emplace_back(StrMakeValid(GetString(STR_VEHICLE_STATUS_CRASHED), {}), 0xFFE05F4AU, 0);
-	} else if (v->vehstatus.Test(VehState::Stopped)) {
-		rows.emplace_back(StrMakeValid(GetString(STR_VEHICLE_STATUS_STOPPED), {}), 0xFFE05F4AU, 0);
-	} else {
-		rows.emplace_back(fmt::format("SPD {} / {}", v->GetDisplaySpeed(), v->GetDisplayMaxSpeed()), COL_CH_TEXT, 0);
-	}
-	rows.emplace_back(fmt::format("PROFIT {} / {}", GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayProfitThisYear()), GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayProfitLastYear())), COL_CH_TEXT, 0);
-	rows.emplace_back(fmt::format("AGE {}Y / {}Y   REL {}%", v->age.base() / 366, v->max_age.base() / 366, v->reliability * 100 >> 16), COL_CH_TEXT, 0);
-
-	/* Cargo totals across the consist, one row per cargo kind. */
-	static std::vector<std::tuple<CargoType, uint, uint>> cargo;
-	cargo.clear();
-	for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
-		if (u->cargo_cap == 0 || !IsValidCargoType(u->cargo_type)) continue;
-		auto it = std::find_if(cargo.begin(), cargo.end(), [&](const auto &e) { return std::get<0>(e) == u->cargo_type; });
-		if (it == cargo.end()) it = cargo.emplace(cargo.end(), u->cargo_type, 0, 0);
-		std::get<1>(*it) += u->cargo_cap;
-		std::get<2>(*it) += u->cargo.StoredCount();
-	}
-	for (auto &[ct, cap, stored] : cargo) {
-		uint32_t l = CargoSpec::Get(ct)->label.base();
-		char lab[4] = {(char)(l >> 24), (char)(l >> 16), (char)(l >> 8), (char)l};
-		rows.emplace_back(fmt::format("{} {}/{}", std::string_view(lab, 4), stored, cap), COL_CH_TEXT, CargoRgb(ct));
-	}
-
-	/* Order rows keep their real order index for the skip command. */
-	static std::vector<std::tuple<int, std::string, bool>> orders;
-	orders.clear();
-	int oi = 0;
-	for (const Order &o : v->Orders()) {
-		std::string label = VehOrderLabel(o);
-		if (!label.empty()) orders.emplace_back(oi, std::move(label), oi == v->cur_real_order_index);
-		oi++;
-	}
-
-	int bw = 12 * s, bh = 10 * s;
-	int x1 = _fbw - 1 - 6 * s;
-	int x0 = x1 - w + 1;
-	int y0 = _win_bar_bottom + 6 * s;
-
-	int fixed = pad + lh + 3 * s + (int)rows.size() * row_h + 3 * s + (orders.empty() ? 0 : lh + gap) + 4 * s + bh + pad;
-	int limit = _fbh - MenuTileSide() - 18 * s;
-	int max_orders = std::max(0, (limit - y0 - fixed) / row_h);
-	bool more = (int)orders.size() > max_orders;
-	int shown = more ? std::max(0, max_orders - 1) : (int)orders.size();
-
-	int h = fixed + (shown + (more ? 1 : 0)) * row_h;
-	ChromePanel(x0, y0, x0 + w - 1, y0 + h - 1);
-	_veh_panel_rect = {x0, y0, x0 + w - 1, y0 + h - 1};
-	_veh_panel_shown = true;
-
-	int y = y0 + pad;
-	DrawScreenText(x0 + pad, y, TruncateText(title, maxw));
-	y += lh + s;
-	ScreenFillRect(x0 + pad, y, x0 + w - 1 - pad, y + s - 1, COL_CH_ACCENT);
-	y += 2 * s;
-
-	for (const auto &[text, tint, dot] : rows) {
-		int tx = x0 + pad;
-		if (dot != 0) {
-			int r = std::max(2, lh / 4);
-			FillCircle(tx + r, y + lh / 2, r, dot);
-			tx += 2 * r + 3 * s;
-		}
-		if (const MiniTextEntry *e = TextTexture(TruncateText(text, maxw - (tx - x0 - pad))); e != nullptr) RlwCmdTexQuad(e->tex, tx, y, tint);
-		y += row_h;
-	}
-	y += 3 * s;
-
-	if (!orders.empty()) {
-		if (const MiniTextEntry *e = TextTexture(MenuLabel(INVALID_STRING_ID, "ORDERS")); e != nullptr) RlwCmdTexQuad(e->tex, x0 + pad, y, COL_CH_DIM);
-		y += lh + gap;
-		for (int n = 0; n < shown; n++) {
-			const auto &[idx, label, cur] = orders[n];
-			Rect r = {x0 + pad, y, x0 + w - 1 - pad, y + row_h - 1};
-			if (_cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y)) BlendRect(r.left, r.top, r.right, r.bottom, COL_PAPER, 28);
-			if (cur) ScreenFillRect(r.left, r.top, r.left + 2 * s - 1, r.bottom, COL_CH_ACCENT);
-			std::string line = fmt::format("{}. {}", idx + 1, label);
-			if (const MiniTextEntry *e = TextTexture(TruncateText(line, maxw - 4 * s)); e != nullptr) RlwCmdTexQuad(e->tex, r.left + 4 * s, y, cur ? COL_CH_ACCENT : COL_CH_TEXT);
-			_veh_order_hits.push_back({r, idx});
-			y += row_h;
-		}
-		if (more) {
-			if (const MiniTextEntry *e = TextTexture(fmt::format("+{}", orders.size() - shown)); e != nullptr) RlwCmdTexQuad(e->tex, x0 + pad + 4 * s, y, COL_CH_DIM);
-			y += row_h;
-		}
-	}
-	y += 4 * s;
-
-	bool stopped = v->vehstatus.Test(VehState::Stopped);
-	for (int i = 0; i < 4; i++) {
-		int bx = x0 + pad + i * (bw + gap);
-		Rect r = {bx, y, bx + bw - 1, y + bh - 1};
-		ChromeTile(r, i == VEH_BTN_FOLLOW && _follow);
-		uint32_t gc = (i == VEH_BTN_FOLLOW && _follow) ? COL_CH_ACCENT : COL_CH_TEXT;
-		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
-		int gh = std::max(2, (bh - 4 * s) / 2);
-		switch (i) {
-			case VEH_BTN_STARTSTOP:
-				if (stopped) {
-					DrawPlayTriangle(gcx - (gh + 2 * s) / 2, gcy, gh + 2 * s, gh, gc);
-				} else {
-					ScreenFillRect(gcx - gh + 1, gcy - gh + 1, gcx + gh - 1, gcy + gh - 1, gc);
-				}
-				break;
-			case VEH_BTN_DEPOT:
-				for (int j = 0; j < gh; j++) ScreenFillRect(gcx - (gh - j), gcy - gh + j, gcx + (gh - j), gcy - gh + j, gc);
-				ScreenFillRect(gcx - gh, gcy + 1, gcx + gh, gcy + std::max(1, s), gc);
-				break;
-			case VEH_BTN_FOLLOW:
-				ScreenFillRect(gcx - s, gcy - s, gcx + s, gcy + s, gc);
-				ScreenFillRect(gcx - gh - s, gcy, gcx - gh + s, gcy, gc);
-				ScreenFillRect(gcx + gh - s, gcy, gcx + gh + s, gcy, gc);
-				ScreenFillRect(gcx, gcy - gh - s, gcx, gcy - gh + s, gc);
-				ScreenFillRect(gcx, gcy + gh - s, gcx, gcy + gh + s, gc);
-				break;
-			case VEH_BTN_NATIVE:
-				ScreenFillRect(gcx - gh, gcy - gh, gcx + gh, gcy - gh + std::max(1, s), gc);
-				ScreenFillRect(gcx - gh, gcy - gh, gcx - gh + std::max(1, s) - 1, gcy + gh, gc);
-				ScreenFillRect(gcx + gh - std::max(1, s) + 1, gcy - gh, gcx + gh, gcy + gh, gc);
-				ScreenFillRect(gcx - gh, gcy + gh - std::max(1, s) + 1, gcx + gh, gcy + gh, gc);
-				break;
-		}
-		_veh_btn_hits.push_back({r, i});
-	}
-}
-
-static bool HandleVehPanelClick(int x, int y)
-{
-	if (!_veh_panel_shown || !InRect(_veh_panel_rect, x, y)) return false;
-	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
-	if (v == nullptr) return true;
-
-	for (const auto &[r, i] : _veh_btn_hits) {
-		if (!InRect(r, x, y)) continue;
-		switch (i) {
-			case VEH_BTN_STARTSTOP:
-				Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, v->index, false);
-				break;
-			case VEH_BTN_DEPOT:
-				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg(v), v->index, _ctrl_pressed ? DepotCommandFlag::Service : DepotCommandFlags{}, {});
-				break;
-			case VEH_BTN_FOLLOW:
-				_follow = !_follow;
-				if (_follow) {
-					_glide = false;
-					_zoom_anchored = false;
-					_dest_ppt = MAX_PPT;
-				}
-				break;
-			case VEH_BTN_NATIVE:
-				ShowVehicleViewWindow(v);
-				break;
-		}
-		return true;
-	}
-	for (const auto &[r, idx] : _veh_order_hits) {
-		if (!InRect(r, x, y)) continue;
-		Command<CMD_SKIP_TO_ORDER>::Post(STR_ERROR_CAN_T_SKIP_TO_ORDER, v->tile, v->index, (VehicleOrderID)idx);
-		return true;
-	}
-	return true;
-}
-
 static void DrawHud()
 {
 	int s = _ms.hud_scale;
@@ -3424,7 +3211,6 @@ static void Present()
 	DrawBuildMenu();
 	DrawCmdBar();
 	DrawWinBar();
-	DrawVehPanel();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -3462,7 +3248,6 @@ static void Deactivate()
 	_glide = false;
 	_sel_vehicle = VehicleID::Invalid();
 	_follow = false;
-	_veh_panel_shown = false;
 	_veh_snap.clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
@@ -3513,7 +3298,6 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	if (!_mini_active) return false;
 
 	int right = std::max(0, _screen.width - width);
-	if (_veh_panel_shown) right = std::max(0, _veh_panel_rect.left - width);
 	int y0 = _win_bar_bottom + 1;
 	for (int x = right; x >= 0; x -= width) {
 		int y = y0;
@@ -3590,7 +3374,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y) && !HandleVehPanelClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
 					SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
