@@ -173,7 +173,6 @@ static void OpenVehWin(VehicleID id);
 static void OpenStationWin(StationID id);
 static void OpenTownWin(TownID id);
 static void OpenFinanceWin();
-static void OpenIndustryWin(IndustryID id);
 
 static bool _prev_left = false;
 
@@ -1695,7 +1694,7 @@ static bool HandleLabelClick(int x, int y)
 	}
 	for (const auto &[r, id] : _industry_label_hits) {
 		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			OpenIndustryWin(id);
+			ShowIndustryViewWindow(id);
 			return true;
 		}
 	}
@@ -3166,7 +3165,6 @@ enum class MiniWndKind : uint8_t {
 	Vehicle,
 	Station,
 	Town,
-	Industry,
 	Finance,
 };
 
@@ -3175,7 +3173,6 @@ struct MiniWnd {
 	VehicleID veh = VehicleID::Invalid();
 	StationID st = StationID::Invalid();
 	TownID town = TownID::Invalid();
-	IndustryID ind = IndustryID::Invalid();
 	int x = 0, y = 0, w = 0, h = 0;
 	std::vector<std::pair<Rect, int>> btn_hits;
 	std::vector<std::pair<Rect, int>> row_hits;
@@ -3212,7 +3209,7 @@ static void CloseMiniWin(size_t i)
 static void OpenMiniWin(MiniWnd &&mw)
 {
 	for (size_t i = 0; i < _wins.size(); i++) {
-		if (_wins[i].kind == mw.kind && _wins[i].veh == mw.veh && _wins[i].st == mw.st && _wins[i].town == mw.town && _wins[i].ind == mw.ind) {
+		if (_wins[i].kind == mw.kind && _wins[i].veh == mw.veh && _wins[i].st == mw.st && _wins[i].town == mw.town) {
 			RaiseMiniWin(i);
 			return;
 		}
@@ -3252,14 +3249,6 @@ static void OpenFinanceWin()
 {
 	MiniWnd mw;
 	mw.kind = MiniWndKind::Finance;
-	OpenMiniWin(std::move(mw));
-}
-
-static void OpenIndustryWin(IndustryID id)
-{
-	MiniWnd mw;
-	mw.kind = MiniWndKind::Industry;
-	mw.ind = id;
 	OpenMiniWin(std::move(mw));
 }
 
@@ -3648,71 +3637,6 @@ static bool DrawTownWin(MiniWnd &mw)
 	return true;
 }
 
-/* Last month's production with the transported share, and accepted cargo
- * with the amount waiting to be processed. */
-static bool DrawIndustryWin(MiniWnd &mw)
-{
-	const Industry *ind = Industry::GetIfValid(mw.ind);
-	if (ind == nullptr) return false;
-
-	int s = _ms.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int pad = 5 * s;
-	int gap = 2 * s;
-	int w = 110 * s;
-	int maxw = w - 2 * pad;
-	int row_h = lh + gap;
-	int bh = 10 * s;
-
-	std::string title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {});
-
-	static std::vector<std::tuple<std::string, uint32_t, uint32_t>> prod;
-	prod.clear();
-	for (const auto &p : ind->produced) {
-		if (!IsValidCargoType(p.cargo)) continue;
-		uint pct = ToPercent8(p.history[LAST_MONTH].PctTransported());
-		uint32_t tint = pct <= 25 ? 0xFFE05F4AU : (pct <= 50 ? 0xFFE0B64AU : COL_CH_TEXT);
-		uint32_t l = CargoSpec::Get(p.cargo)->label.base();
-		char lab[4] = {(char)(l >> 24), (char)(l >> 16), (char)(l >> 8), (char)l};
-		prod.emplace_back(fmt::format("{} {}  {}%", std::string_view(lab, 4), p.history[LAST_MONTH].production, pct), tint, CargoRgb(p.cargo));
-	}
-
-	static std::vector<std::tuple<std::string, uint32_t, uint32_t>> acc;
-	acc.clear();
-	for (const auto &a : ind->accepted) {
-		if (!IsValidCargoType(a.cargo)) continue;
-		uint32_t l = CargoSpec::Get(a.cargo)->label.base();
-		char lab[4] = {(char)(l >> 24), (char)(l >> 16), (char)(l >> 8), (char)l};
-		acc.emplace_back(fmt::format("{} {}", std::string_view(lab, 4), a.waiting), COL_CH_TEXT, CargoRgb(a.cargo));
-	}
-
-	mw.w = w;
-	mw.h = pad + lh + 3 * s
-			+ (prod.empty() ? 0 : lh + gap + (int)prod.size() * row_h)
-			+ (acc.empty() ? 0 : lh + gap + (int)acc.size() * row_h)
-			+ 4 * s + bh + pad;
-	int y = DrawMiniWinFrame(mw, title);
-
-	int dot_r = std::max(2, lh / 4);
-	for (int sec = 0; sec < 2; sec++) {
-		const auto &rows = sec == 0 ? prod : acc;
-		if (rows.empty()) continue;
-		if (const MiniTextEntry *e = TextTexture(sec == 0 ? MenuLabel(INVALID_STRING_ID, "OUTPUT") : MenuLabel(INVALID_STRING_ID, "ACCEPTS")); e != nullptr) RlwCmdTexQuad(e->tex, mw.x + pad, y, COL_CH_DIM);
-		y += lh + gap;
-		for (const auto &[text, tint, dot] : rows) {
-			int tx = mw.x + pad;
-			FillCircle(tx + dot_r, y + lh / 2, dot_r, dot);
-			tx += 2 * dot_r + 3 * s;
-			if (const MiniTextEntry *e = TextTexture(TruncateText(text, maxw - (tx - mw.x - pad))); e != nullptr) RlwCmdTexQuad(e->tex, tx, y, tint);
-			y += row_h;
-		}
-	}
-	y += 4 * s;
-
-	DrawPlaceBtnTiles(mw, y);
-	return true;
-}
-
 /* Balance, loan and the quarter's flow, with borrow and repay tiles.
  * Control-click borrows or repays the maximum. */
 enum {
@@ -3793,7 +3717,6 @@ static void DrawMiniWins()
 			case MiniWndKind::Vehicle: ok = DrawVehWin(mw); break;
 			case MiniWndKind::Station: ok = DrawStationWin(mw); break;
 			case MiniWndKind::Town: ok = DrawTownWin(mw); break;
-			case MiniWndKind::Industry: ok = DrawIndustryWin(mw); break;
 			default: ok = DrawFinanceWin(mw); break;
 		}
 		if (!ok) {
@@ -3851,19 +3774,6 @@ static bool MiniWinBtnClick(MiniWnd &mw, int btn)
 				break;
 			case MW_BTN_OPEN:
 				ShowTownViewWindow(t->index);
-				break;
-		}
-	} else if (mw.kind == MiniWndKind::Industry) {
-		const Industry *ind = Industry::GetIfValid(mw.ind);
-		if (ind == nullptr) return true;
-		switch (btn) {
-			case MW_BTN_GOTO: {
-				TileIndex tile = ind->location.GetCenterTile();
-				MiniUiScrollTo(TileX(tile) * (int)TILE_SIZE, TileY(tile) * (int)TILE_SIZE);
-				break;
-			}
-			case MW_BTN_OPEN:
-				ShowIndustryViewWindow(ind->index);
 				break;
 		}
 	} else {
