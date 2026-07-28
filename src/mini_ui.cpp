@@ -169,8 +169,6 @@ static bool _dragging = false;
 static bool _drag_remove = false;
 static double _drag_ax, _drag_ay;
 
-static VehicleID _follow_vehicle = VehicleID::Invalid();
-
 static bool _prev_left = false;
 
 struct MiniRailPlan {
@@ -3143,10 +3141,6 @@ static void DrawHud()
 			DrawHudText(tx, ty, title);
 			DrawHudText(tx, ty + lh + 4, hint);
 		}
-	} else if (Vehicle::GetIfValid(_follow_vehicle) != nullptr) {
-		/* Transient state only: the reference keeps the centre of the screen
-		 * clear unless the camera is chasing or a tool is placing. */
-		DrawHudTextCentred(_fbw / 2, _fbh - MenuTileSide() - 12 * s - lh, "FOLLOWING  H UNFOLLOW  ESC STOP");
 	}
 }
 
@@ -3917,7 +3911,6 @@ static void ClampCamera()
 static void ZoomAt(int sx, int sy, bool in)
 {
 	_dest_ppt = Clamp(_dest_ppt * (in ? _ms.zoom_step : 1.0 / _ms.zoom_step), MIN_PPT, MAX_PPT);
-	if (_follow_vehicle != VehicleID::Invalid()) return;
 	_glide = false;
 	/* Anchor the world point under the cursor; the camera follows it every
 	 * frame while the scale animates, so the point never drifts. */
@@ -3941,7 +3934,6 @@ static void Deactivate()
 	_dragging = false;
 	_zoom_anchored = false;
 	_glide = false;
-	_follow_vehicle = VehicleID::Invalid();
 	_veh_snap.clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
@@ -4028,7 +4020,6 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 void MiniUiScrollTo(int x, int y)
 {
 	if (!_mini_active) return;
-	_follow_vehicle = VehicleID::Invalid();
 	_zoom_anchored = false;
 	_glide = true;
 	_glide_x = x / (double)TILE_SIZE;
@@ -4058,7 +4049,6 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
 		_zoom_anchored = false;
-		_follow_vehicle = VehicleID::Invalid();
 		_glide = false;
 		_pan_vx = 0.0;
 		_pan_vy = 0.0;
@@ -4160,8 +4150,6 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			} else if (_menu_open >= 0 || _win_open >= 0) {
 				_menu_open = -1;
 				_win_open = -1;
-			} else if (_follow_vehicle != VehicleID::Invalid()) {
-				_follow_vehicle = VehicleID::Invalid();
 			}
 			break;
 
@@ -4221,17 +4209,6 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			_tool = _tool == MiniTool::Terraform ? MiniTool::None : MiniTool::Terraform;
 			break;
 
-		case 'H':
-			if (_follow_vehicle != VehicleID::Invalid()) {
-				_follow_vehicle = VehicleID::Invalid();
-			} else if (Vehicle::GetIfValid(FrontWndVehicle()) != nullptr) {
-				_follow_vehicle = FrontWndVehicle();
-				_glide = false;
-				_zoom_anchored = false;
-				_dest_ppt = MAX_PPT;
-			}
-			break;
-
 		case 'N':
 			BuyAtDepot(_ctrl_pressed);
 			break;
@@ -4264,19 +4241,6 @@ void MiniUiFrame(uint delta_ms)
 		return;
 	}
 
-	/* Native windows request vehicle following on the main viewport. */
-	static VehicleID last_native_follow = VehicleID::Invalid();
-	VehicleID native_follow = GetMainWindow()->viewport->follow_vehicle;
-	if (native_follow != last_native_follow) {
-		last_native_follow = native_follow;
-		if (native_follow != VehicleID::Invalid()) {
-			_follow_vehicle = native_follow;
-			_glide = false;
-			_zoom_anchored = false;
-			_dest_ppt = MAX_PPT;
-		}
-	}
-
 	_fbw = _screen.width;
 	_fbh = _screen.height;
 	if (_fbw <= 0 || _fbh <= 0) return;
@@ -4293,9 +4257,8 @@ void MiniUiFrame(uint delta_ms)
 	 * the other axis coasting. */
 	if (_dirkeys != 0) {
 		_zoom_anchored = false;
-		_follow_vehicle = VehicleID::Invalid();
 		_glide = false;
-	} else if (_follow_vehicle != VehicleID::Invalid() || _glide || _zoom_anchored) {
+	} else if (_glide || _zoom_anchored) {
 		_pan_vx = 0.0;
 		_pan_vy = 0.0;
 	}
@@ -4330,22 +4293,9 @@ void MiniUiFrame(uint delta_ms)
 		if (_cursor.pos.y >= _fbh - _ms.edge_margin) ey = px;
 		if (ex != 0.0 || ey != 0.0) {
 			_zoom_anchored = false;
-			_follow_vehicle = VehicleID::Invalid();
 			_glide = false;
 			_cam_y += ex;
 			_cam_x += ey;
-			ClampCamera();
-		}
-	}
-
-	if (_follow_vehicle != VehicleID::Invalid()) {
-		const Vehicle *fv = Vehicle::GetIfValid(_follow_vehicle);
-		if (fv == nullptr) {
-			_follow_vehicle = VehicleID::Invalid();
-		} else {
-			auto [wx, wy] = LerpVehWorld(fv);
-			_cam_x = wx;
-			_cam_y = wy;
 			ClampCamera();
 		}
 	}
