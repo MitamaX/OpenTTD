@@ -12,10 +12,12 @@
 
 /** Widgets of the #MusicTrackSelectionWindow class. */
 enum MusicTrackSelectionWidgets : WidgetID {
-	WID_MTS_CAPTION,    ///< Window caption.
-	WID_MTS_LIST_LEFT,  ///< Left button.
-	WID_MTS_PLAYLIST,   ///< Playlist.
-	WID_MTS_LIST_RIGHT, ///< Right button.
+	WID_MTS_CAPTION,      ///< Window caption.
+	WID_MTS_LIST_LEFT,    ///< Left button.
+	WID_MTS_SCROLL_LEFT,  ///< Scrollbar of the left list.
+	WID_MTS_PLAYLIST,     ///< Playlist.
+	WID_MTS_LIST_RIGHT,   ///< Right button.
+	WID_MTS_SCROLL_RIGHT, ///< Scrollbar of the right list.
 	WID_MTS_MUSICSET,   ///< Music set selection.
 	WID_MTS_ALL,        ///< All button.
 	WID_MTS_OLD,        ///< Old button.

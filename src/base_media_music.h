@@ -13,14 +13,14 @@
 #include "base_media_base.h"
 
 /** Maximum number of songs in the 'class' playlists. */
-static const uint NUM_SONGS_CLASS     = 10;
+static const uint NUM_SONGS_CLASS     = 160;
 /** Number of classes for songs */
 static const uint NUM_SONG_CLASSES    = 3;
 /** Maximum number of songs in the full playlist; theme song + the classes */
 static const uint NUM_SONGS_AVAILABLE = 1 + NUM_SONG_CLASSES * NUM_SONGS_CLASS;
 
 /** Maximum number of songs in the (custom) playlist */
-static const uint NUM_SONGS_PLAYLIST  = 32;
+static const uint NUM_SONGS_PLAYLIST  = 128;
 
 /* Functions to read DOS music CAT files, similar to but not quite the same as sound effect CAT files */
 std::optional<std::string> GetMusicCatEntryName(const std::string &filename, size_t entrynum);
@@ -38,7 +38,7 @@ struct MusicSongInfo {
 	int cat_index; ///< entry index in CAT file, for filetype==MTT_MPSMIDI
 	int override_start; ///< MIDI ticks to skip over in beginning
 	int override_end; ///< MIDI tick to end the song at (0 if no override)
-	uint8_t tracknr; ///< track number of song displayed in UI
+	uint16_t tracknr; ///< track number of song displayed in UI
 	MusicTrackType filetype; ///< decoder required for song file
 	bool loop; ///< song should play in a tight loop if possible, never ending
 };
@@ -47,6 +47,8 @@ template <> struct BaseSetTraits<struct MusicSet> {
 	static constexpr size_t num_files = NUM_SONGS_AVAILABLE;
 	static constexpr bool search_in_tars = false;
 	static constexpr std::string_view set_type = "music";
+	/* .obm files written for the standard 31 slots lack the extended slot keys; treat absent keys as empty. */
+	static constexpr bool allow_missing_files = true;
 };
 
 /** All data of a music set. */
@@ -54,7 +56,7 @@ struct MusicSet : BaseSet<MusicSet> {
 	/** Data about individual songs in set. */
 	MusicSongInfo songinfo[NUM_SONGS_AVAILABLE];
 	/** Number of valid songs in set. */
-	uint8_t num_available = 0;
+	uint16_t num_available = 0;
 
 	bool FillSetDetails(const IniFile &ini, const std::string &path, const std::string &full_filename);
 };

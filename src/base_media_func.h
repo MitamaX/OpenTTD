@@ -117,16 +117,19 @@ bool BaseSet<T>::FillSetDetails(const IniFile &ini, const std::string &path, con
 		std::byteswap(this->shortname) == 'TTDO' || // TTD sound
 		std::byteswap(this->shortname) == 'TTOD'; // TTO music
 
+	bool allow_missing_files = false;
+	if constexpr (requires { BaseSetTraits<T>::allow_missing_files; }) allow_missing_files = BaseSetTraits<T>::allow_missing_files;
+
 	for (uint i = 0; i < BaseSet<T>::NUM_FILES; i++) {
 		MD5File *file = &this->files[i];
 		/* Find the filename first. */
 		item = files != nullptr ? files->GetItem(file_names[i]) : nullptr;
-		if (item == nullptr || (!item->value.has_value() && !allow_empty_filename)) {
+		if ((item == nullptr && !allow_missing_files) || (item != nullptr && !item->value.has_value() && !allow_empty_filename)) {
 			this->LogError(full_filename, fmt::format("files.{} field missing", file_names[i]));
 			return false;
 		}
 
-		if (!item->value.has_value()) {
+		if (item == nullptr || !item->value.has_value()) {
 			file->filename.clear();
 			/* If we list no file, that file must be valid */
 			this->valid_files++;

@@ -427,7 +427,7 @@ void MusicSystem::ChangePlaylistPosition(int ofs)
  */
 void MusicSystem::SaveCustomPlaylist(PlaylistChoices pl)
 {
-	uint8_t *settings_pl;
+	uint16_t *settings_pl;
 	if (pl == PLCH_CUSTOM1) {
 		settings_pl = _settings_client.music.custom_1;
 	} else if (pl == PLCH_CUSTOM2) {
@@ -441,7 +441,7 @@ void MusicSystem::SaveCustomPlaylist(PlaylistChoices pl)
 
 	for (const auto &song : this->standard_playlists[pl]) {
 		/* Music set indices in the settings playlist are 1-based, 0 means unused slot */
-		settings_pl[num++] = (uint8_t)song.set_index + 1;
+		settings_pl[num++] = (uint16_t)(song.set_index + 1);
 	}
 }
 
@@ -476,13 +476,26 @@ void InitializeMusic()
 
 
 struct MusicTrackSelectionWindow : public Window {
+	Scrollbar *vscroll_left = nullptr;
+	Scrollbar *vscroll_right = nullptr;
+
 	MusicTrackSelectionWindow(WindowDesc &desc, WindowNumber number) : Window(desc)
 	{
-		this->InitNested(number);
+		this->CreateNestedTree();
+		this->vscroll_left = this->GetScrollbar(WID_MTS_SCROLL_LEFT);
+		this->vscroll_right = this->GetScrollbar(WID_MTS_SCROLL_RIGHT);
+		this->FinishInitNested(number);
 		this->LowerWidget(WID_MTS_LIST_LEFT);
 		this->LowerWidget(WID_MTS_LIST_RIGHT);
 		this->SetWidgetDisabledState(WID_MTS_CLEAR, _settings_client.music.playlist <= 3);
 		this->LowerWidget(WID_MTS_ALL + _settings_client.music.playlist);
+		this->UpdateScrollCounts();
+	}
+
+	void UpdateScrollCounts()
+	{
+		this->vscroll_left->SetCount(_music.music_set.size());
+		this->vscroll_right->SetCount(_music.active_playlist.size());
 	}
 
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
@@ -511,12 +524,19 @@ struct MusicTrackSelectionWindow : public Window {
 			this->SetWidgetLoweredState(WID_MTS_ALL + i, i == _settings_client.music.playlist);
 		}
 		this->SetWidgetDisabledState(WID_MTS_CLEAR, _settings_client.music.playlist <= 3);
+		this->UpdateScrollCounts();
 
 		if (data == 1) {
 			this->ReInit();
 		} else {
 			this->SetDirty();
 		}
+	}
+
+	void OnResize() override
+	{
+		this->vscroll_left->SetCapacityFromWidget(this, WID_MTS_LIST_LEFT, WidgetDimensions::scaled.framerect.Vertical());
+		this->vscroll_right->SetCapacityFromWidget(this, WID_MTS_LIST_RIGHT, WidgetDimensions::scaled.framerect.Vertical());
 	}
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
@@ -538,9 +558,10 @@ struct MusicTrackSelectionWindow : public Window {
 				Dimension d = {0, 0};
 
 				for (const auto &song : _music.music_set) {
-					d = maxdim(d, GetStringBoundingBox(GetString(STR_PLAYLIST_TRACK_NAME, song.tracknr, 2, song.songname)));
+					d = maxdim(d, GetStringBoundingBox(GetString(STR_PLAYLIST_TRACK_NAME, song.tracknr, 3, song.songname)));
 				}
-				d.height *= std::max(NUM_SONGS_AVAILABLE, NUM_SONGS_PLAYLIST);
+				resize.height = std::max<uint>(d.height, GetCharacterHeight(FS_SMALL));
+				d.height = resize.height * 20;
 
 				d.width += padding.width;
 				d.height += padding.height;
@@ -557,8 +578,9 @@ struct MusicTrackSelectionWindow : public Window {
 				GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), PC_BLACK);
 
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
-				for (const auto &song : _music.music_set) {
-					DrawString(tr, GetString(STR_PLAYLIST_TRACK_NAME, song.tracknr, 2, song.songname));
+				auto [first, last] = this->vscroll_left->GetVisibleRangeIterators(_music.music_set);
+				for (auto it = first; it != last; ++it) {
+					DrawString(tr, GetString(STR_PLAYLIST_TRACK_NAME, it->tracknr, 3, it->songname));
 					tr.top += GetCharacterHeight(FS_SMALL);
 				}
 				break;
@@ -568,8 +590,9 @@ struct MusicTrackSelectionWindow : public Window {
 				GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), PC_BLACK);
 
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
-				for (const auto &song : _music.active_playlist) {
-					DrawString(tr, GetString(STR_PLAYLIST_TRACK_NAME, song.tracknr, 2, song.songname));
+				auto [first, last] = this->vscroll_right->GetVisibleRangeIterators(_music.active_playlist);
+				for (auto it = first; it != last; ++it) {
+					DrawString(tr, GetString(STR_PLAYLIST_TRACK_NAME, it->tracknr, 3, it->songname));
 					tr.top += GetCharacterHeight(FS_SMALL);
 				}
 				break;
@@ -581,13 +604,13 @@ struct MusicTrackSelectionWindow : public Window {
 	{
 		switch (widget) {
 			case WID_MTS_LIST_LEFT: { // add to playlist
-				int y = this->GetRowFromWidget(pt.y, widget, WidgetDimensions::scaled.framerect.top, GetCharacterHeight(FS_SMALL));
+				size_t y = this->vscroll_left->GetScrolledRowFromWidget(pt.y, this, widget, WidgetDimensions::scaled.framerect.top, GetCharacterHeight(FS_SMALL));
 				_music.PlaylistAdd(y);
 				break;
 			}
 
 			case WID_MTS_LIST_RIGHT: { // remove from playlist
-				int y = this->GetRowFromWidget(pt.y, widget, WidgetDimensions::scaled.framerect.top, GetCharacterHeight(FS_SMALL));
+				size_t y = this->vscroll_right->GetScrolledRowFromWidget(pt.y, this, widget, WidgetDimensions::scaled.framerect.top, GetCharacterHeight(FS_SMALL));
 				_music.PlaylistRemove(y);
 				break;
 			}
@@ -632,7 +655,10 @@ static constexpr std::initializer_list<NWidgetPart> _nested_music_track_selectio
 			/* Left panel. */
 			NWidget(NWID_VERTICAL),
 				NWidget(WWT_LABEL, INVALID_COLOUR), SetFill(1, 0), SetStringTip(STR_PLAYLIST_TRACK_INDEX),
-				NWidget(WWT_PANEL, COLOUR_GREY, WID_MTS_LIST_LEFT), SetFill(1, 1), SetMinimalSize(180, 194), SetToolTip(STR_PLAYLIST_TOOLTIP_CLICK_TO_ADD_TRACK), EndContainer(),
+				NWidget(NWID_HORIZONTAL),
+					NWidget(WWT_PANEL, COLOUR_GREY, WID_MTS_LIST_LEFT), SetFill(1, 1), SetMinimalSize(180, 194), SetToolTip(STR_PLAYLIST_TOOLTIP_CLICK_TO_ADD_TRACK), SetScrollbar(WID_MTS_SCROLL_LEFT), EndContainer(),
+					NWidget(NWID_VSCROLLBAR, COLOUR_GREY, WID_MTS_SCROLL_LEFT),
+				EndContainer(),
 				NWidget(NWID_SPACER), SetFill(1, 0), SetMinimalSize(0, 2),
 			EndContainer(),
 			/* Middle buttons. */
@@ -651,7 +677,10 @@ static constexpr std::initializer_list<NWidgetPart> _nested_music_track_selectio
 			/* Right panel. */
 			NWidget(NWID_VERTICAL),
 				NWidget(WWT_LABEL, INVALID_COLOUR, WID_MTS_PLAYLIST), SetFill(1, 0),
-				NWidget(WWT_PANEL, COLOUR_GREY, WID_MTS_LIST_RIGHT), SetFill(1, 1), SetMinimalSize(180, 194), SetToolTip(STR_PLAYLIST_TOOLTIP_CLICK_TO_REMOVE_TRACK), EndContainer(),
+				NWidget(NWID_HORIZONTAL),
+					NWidget(WWT_PANEL, COLOUR_GREY, WID_MTS_LIST_RIGHT), SetFill(1, 1), SetMinimalSize(180, 194), SetToolTip(STR_PLAYLIST_TOOLTIP_CLICK_TO_REMOVE_TRACK), SetScrollbar(WID_MTS_SCROLL_RIGHT), EndContainer(),
+					NWidget(NWID_VSCROLLBAR, COLOUR_GREY, WID_MTS_SCROLL_RIGHT),
+				EndContainer(),
 				NWidget(NWID_SPACER), SetFill(1, 0), SetMinimalSize(0, 2),
 			EndContainer(),
 		EndContainer(),
@@ -710,7 +739,7 @@ struct MusicWindow : public Window {
 
 			case WID_M_TRACK_NR: {
 				Dimension d = GetStringBoundingBox(STR_MUSIC_TRACK_NONE);
-				d = maxdim(d, GetStringBoundingBox(GetString(STR_MUSIC_TRACK_DIGIT, GetParamMaxDigits(2, FS_SMALL), 2)));
+				d = maxdim(d, GetStringBoundingBox(GetString(STR_MUSIC_TRACK_DIGIT, GetParamMaxDigits(3, FS_SMALL), 3)));
 				d.width += padding.width;
 				d.height += padding.height + WidgetDimensions::scaled.fullbevel.bottom;
 				size = maxdim(size, d);
@@ -746,7 +775,7 @@ struct MusicWindow : public Window {
 				}
 				Rect ir = r.Shrink(WidgetDimensions::scaled.framerect);
 				if (_music.IsPlaying()) {
-					DrawString(ir, GetString(STR_MUSIC_TRACK_DIGIT, _music.GetCurrentSong().tracknr, 2), TC_FROMSTRING, SA_HOR_CENTER);
+					DrawString(ir, GetString(STR_MUSIC_TRACK_DIGIT, _music.GetCurrentSong().tracknr, 3), TC_FROMSTRING, SA_HOR_CENTER);
 				} else {
 					DrawString(ir, STR_MUSIC_TRACK_NONE, TC_FROMSTRING, SA_HOR_CENTER);
 				}

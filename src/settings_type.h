@@ -284,8 +284,8 @@ struct MusicSettings {
 	uint8_t playlist;     ///< The playlist (number) to play
 	uint8_t music_vol;    ///< The requested music volume
 	uint8_t effect_vol;   ///< The requested effects volume
-	uint8_t custom_1[33]; ///< The order of the first custom playlist
-	uint8_t custom_2[33]; ///< The order of the second custom playlist
+	uint16_t custom_1[129]; ///< The order of the first custom playlist
+	uint16_t custom_2[129]; ///< The order of the second custom playlist
 	bool playing;      ///< Whether music is playing
 	bool shuffle;      ///< Whether to shuffle the music
 };

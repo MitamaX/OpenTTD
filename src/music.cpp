@@ -68,19 +68,27 @@ std::optional<std::vector<uint8_t>> GetMusicCatEntryData(const std::string &file
 }
 
 /** Names corresponding to the music set's files */
-static const std::string_view _music_file_names[] = {
-	"theme",
-	"old_0", "old_1", "old_2", "old_3", "old_4", "old_5", "old_6", "old_7", "old_8", "old_9",
-	"new_0", "new_1", "new_2", "new_3", "new_4", "new_5", "new_6", "new_7", "new_8", "new_9",
-	"ezy_0", "ezy_1", "ezy_2", "ezy_3", "ezy_4", "ezy_5", "ezy_6", "ezy_7", "ezy_8", "ezy_9",
-};
-/** Make sure we aren't messing things up. */
-static_assert(lengthof(_music_file_names) == NUM_SONGS_AVAILABLE);
+static const std::vector<std::string> &GetMusicFileNames()
+{
+	static const std::vector<std::string> names = []() {
+		std::vector<std::string> result;
+		result.reserve(NUM_SONGS_AVAILABLE);
+		result.emplace_back("theme");
+		for (std::string_view cls : {"old", "new", "ezy"}) {
+			for (uint i = 0; i < NUM_SONGS_CLASS; i++) {
+				result.emplace_back(fmt::format("{}_{}", cls, i));
+			}
+		}
+		return result;
+	}();
+	return names;
+}
 
 template <>
 /* static */ std::span<const std::string_view> BaseSet<MusicSet>::GetFilenames()
 {
-	return _music_file_names;
+	static const std::vector<std::string_view> views(GetMusicFileNames().begin(), GetMusicFileNames().end());
+	return views;
 }
 
 template <>
@@ -130,7 +138,7 @@ bool MusicSet::FillSetDetails(const IniFile &ini, const std::string &path, const
 
 			this->songinfo[i].filename = filename; // non-owned pointer
 
-			const IniItem *item = catindex != nullptr ? catindex->GetItem(_music_file_names[i]) : nullptr;
+			const IniItem *item = catindex != nullptr ? catindex->GetItem(GetMusicFileNames()[i]) : nullptr;
 			if (item != nullptr && item->value.has_value() && !item->value->empty()) {
 				/* Song has a CAT file index, assume it's MPS MIDI format */
 				this->songinfo[i].filetype = MTT_MPSMIDI;
