@@ -99,6 +99,22 @@ static void DrawDiamondGlyph(const Rect &b, PixelColour ink)
 	DrawTriangleGlyph({b.left, cy, b.right, b.bottom}, 0, 1, ink);
 }
 
+static void DrawPenGlyph(const Rect &b, PixelColour ink, int stroke)
+{
+	int q = std::max(2, b.Width() / 3);
+	GfxDrawLine(b.left + q, b.bottom - q, b.right, b.top, ink, stroke + 1);
+	DrawTriangleGlyph({b.left, b.bottom - q, b.left + q, b.bottom}, -1, 0, ink);
+}
+
+static void DrawCrosshairGlyph(const Rect &b, PixelColour ink, int stroke)
+{
+	int cx = (b.left + b.right) / 2;
+	int cy = (b.top + b.bottom) / 2;
+	GfxDrawLine(cx, b.top, cx, b.bottom, ink, stroke);
+	GfxDrawLine(b.left, cy, b.right, cy, ink, stroke);
+	DrawDiscGlyph(b.Shrink(b.Width() / 4), false, ink, stroke);
+}
+
 bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite)
 {
 	if (!MiniUiActive()) return false;
@@ -126,8 +142,22 @@ bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite)
 			return true;
 		}
 		case SPR_BLOT: DrawDiscGlyph(b, true, GetColourGradient(colour, SHADE_NORMAL), stroke); return true;
+		case SPR_RENAME: DrawPenGlyph(b, ink, stroke); return true;
+		case SPR_GOTO_LOCATION: DrawCrosshairGlyph(b, ink, stroke); return true;
 		default: return false;
 	}
+}
+
+bool MiniUiDrawCoverageGlyph(const Rect &r, Colours colour)
+{
+	if (!MiniUiActive()) return false;
+
+	const PixelColour ink = GlyphInk(colour);
+	const int stroke = std::max(1, ScaleGUITrad(1));
+	const Rect b = GlyphBox(r, ScaleGUITrad(3));
+	DrawDiscGlyph(b, false, ink, stroke);
+	DrawDiscGlyph(b.Shrink(std::max(2, b.Width() * 3 / 8)), true, ink, stroke);
+	return true;
 }
 
 bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour)

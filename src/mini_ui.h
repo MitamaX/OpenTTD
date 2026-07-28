@@ -30,6 +30,7 @@ void MiniUiScrollTo(int x, int y);
 
 bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);
 bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour);
+bool MiniUiDrawCoverageGlyph(const Rect &r, Colours colour);
 bool MiniUiDrawResizeGlyph(const Rect &r, Colours colour, bool at_left);
 
 struct Vehicle;
