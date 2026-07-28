@@ -167,10 +167,8 @@ static bool _drag_remove = false;
 static double _drag_ax, _drag_ay;
 
 static VehicleID _sel_vehicle = VehicleID::Invalid();
+static StationID _sel_station = StationID::Invalid();
 static bool _follow = false;
-
-static void OpenVehWin(VehicleID id);
-static void OpenStationWin(StationID id);
 
 static bool _prev_left = false;
 
@@ -1534,6 +1532,7 @@ static bool TryAppendOrder(int sx, int sy)
  * describes the whole vehicle. */
 static const Vehicle *SelectVehicleAt(int sx, int sy)
 {
+	_sel_station = StationID::Invalid();
 	const Vehicle *best = nullptr;
 	int best_d2 = 15 * 15;
 	for (const Vehicle *v : Vehicle::Iterate()) {
@@ -1552,7 +1551,6 @@ static const Vehicle *SelectVehicleAt(int sx, int sy)
 		return nullptr;
 	}
 	_sel_vehicle = best->First()->index;
-	OpenVehWin(_sel_vehicle);
 	return best->First();
 }
 
@@ -1686,7 +1684,9 @@ static bool HandleLabelClick(int x, int y)
 {
 	for (const auto &[r, id] : _station_label_hits) {
 		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			OpenStationWin(id);
+			_sel_station = id;
+			_sel_vehicle = VehicleID::Invalid();
+			_follow = false;
 			return true;
 		}
 	}
@@ -3156,28 +3156,13 @@ static bool HandleStatusClick(int x, int y)
 	return false;
 }
 
-/* Mini windows: draggable chrome-style windows with a title bar and a
- * close box. Entity screens live in them; several can be open at once and
- * the last one in the list is topmost. */
-enum class MiniWndKind : uint8_t {
-	Vehicle,
-	Station,
-};
-
-struct MiniWnd {
-	MiniWndKind kind = MiniWndKind::Vehicle;
-	VehicleID veh = VehicleID::Invalid();
-	StationID st = StationID::Invalid();
-	int x = 0, y = 0, w = 0, h = 0;
-	std::vector<std::pair<Rect, int>> btn_hits;
-	std::vector<std::pair<Rect, int>> row_hits;
-};
-
-static std::vector<MiniWnd> _wins;
-static int _win_drag = -1;
-static int _win_drag_dx, _win_drag_dy;
-
-static const int MW_BTN_CLOSE = 100;
+/* Right-edge vehicle screen like the reference side screens: info rows, the
+ * order list and command tiles for the selected vehicle. Map clicks only
+ * select; the window tile still opens the native vehicle window. */
+static std::vector<std::pair<Rect, int>> _veh_btn_hits;
+static std::vector<std::pair<Rect, int>> _veh_order_hits;
+static Rect _veh_panel_rect;
+static bool _veh_panel_shown = false;
 
 enum {
 	VEH_BTN_STARTSTOP,
@@ -3185,79 +3170,6 @@ enum {
 	VEH_BTN_FOLLOW,
 	VEH_BTN_NATIVE,
 };
-
-static void RaiseMiniWin(size_t i)
-{
-	std::rotate(_wins.begin() + (ptrdiff_t)i, _wins.begin() + (ptrdiff_t)i + 1, _wins.end());
-}
-
-static void CloseMiniWin(size_t i)
-{
-	if (_wins[i].kind == MiniWndKind::Vehicle && _sel_vehicle == _wins[i].veh) {
-		_sel_vehicle = VehicleID::Invalid();
-		_follow = false;
-	}
-	_wins.erase(_wins.begin() + (ptrdiff_t)i);
-	_win_drag = -1;
-}
-
-static void OpenMiniWin(MiniWnd &&mw)
-{
-	for (size_t i = 0; i < _wins.size(); i++) {
-		if (_wins[i].kind == mw.kind && _wins[i].veh == mw.veh && _wins[i].st == mw.st) {
-			RaiseMiniWin(i);
-			return;
-		}
-	}
-	int s = _ms.hud_scale;
-	int step = (int)(_wins.size() % 4);
-	mw.w = 110 * s;
-	mw.x = _fbw - mw.w - 6 * s - step * 10 * s;
-	mw.y = _win_bar_bottom + 6 * s + step * 12 * s;
-	_wins.push_back(std::move(mw));
-}
-
-static void OpenVehWin(VehicleID id)
-{
-	MiniWnd mw;
-	mw.veh = id;
-	OpenMiniWin(std::move(mw));
-}
-
-static void OpenStationWin(StationID id)
-{
-	MiniWnd mw;
-	mw.kind = MiniWndKind::Station;
-	mw.st = id;
-	OpenMiniWin(std::move(mw));
-}
-
-/* Panel background, title row with the close box and the accent rule;
- * returns the y where content starts. Needs mw.h set beforehand. */
-static int DrawMiniWinFrame(MiniWnd &mw, const std::string &title)
-{
-	int s = _ms.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int pad = 5 * s;
-	ChromePanel(mw.x, mw.y, mw.x + mw.w - 1, mw.y + mw.h - 1);
-
-	int g = std::max(2, lh / 3);
-	int ccx = mw.x + mw.w - pad - g;
-	int ccy = mw.y + pad + lh / 2;
-	Rect cr = {ccx - g - 2 * s, ccy - g - 2 * s, ccx + g + 2 * s, ccy + g + 2 * s};
-	uint32_t gc = (_cursor.in_window && InRect(cr, _cursor.pos.x, _cursor.pos.y)) ? COL_CH_ACCENT : COL_CH_DIM;
-	for (int j = -g; j <= g; j++) {
-		ScreenFillRect(ccx + j, ccy + j, ccx + j + std::max(1, s) - 1, ccy + j, gc);
-		ScreenFillRect(ccx + j, ccy - j, ccx + j + std::max(1, s) - 1, ccy - j, gc);
-	}
-	mw.btn_hits.push_back({cr, MW_BTN_CLOSE});
-
-	int y = mw.y + pad;
-	DrawScreenText(mw.x + pad, y, TruncateText(title, cr.left - mw.x - pad - 2 * s));
-	y += lh + s;
-	ScreenFillRect(mw.x + pad, y, mw.x + mw.w - 1 - pad, y + s - 1, COL_CH_ACCENT);
-	return y + 2 * s;
-}
 
 static std::string VehOrderLabel(const Order &o)
 {
@@ -3270,10 +3182,14 @@ static std::string VehOrderLabel(const Order &o)
 	}
 }
 
-static bool DrawVehWin(MiniWnd &mw)
+static void DrawVehPanel()
 {
-	const Vehicle *v = Vehicle::GetIfValid(mw.veh);
-	if (v == nullptr || !v->IsPrimaryVehicle()) return false;
+	_veh_btn_hits.clear();
+	_veh_order_hits.clear();
+	_veh_panel_shown = false;
+
+	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
+	if (v == nullptr || !v->IsPrimaryVehicle()) return;
 
 	int s = _ms.hud_scale;
 	int lh = GetCharacterHeight(FS_NORMAL);
@@ -3326,8 +3242,9 @@ static bool DrawVehWin(MiniWnd &mw)
 	}
 
 	int bw = 12 * s, bh = 10 * s;
-	int x0 = mw.x;
-	int y0 = mw.y;
+	int x1 = _fbw - 1 - 6 * s;
+	int x0 = x1 - w + 1;
+	int y0 = _win_bar_bottom + 6 * s;
 
 	int fixed = pad + lh + 3 * s + (int)rows.size() * row_h + 3 * s + (orders.empty() ? 0 : lh + gap) + 4 * s + bh + pad;
 	int limit = _fbh - MenuTileSide() - 18 * s;
@@ -3336,9 +3253,15 @@ static bool DrawVehWin(MiniWnd &mw)
 	int shown = more ? std::max(0, max_orders - 1) : (int)orders.size();
 
 	int h = fixed + (shown + (more ? 1 : 0)) * row_h;
-	mw.w = w;
-	mw.h = h;
-	int y = DrawMiniWinFrame(mw, title);
+	ChromePanel(x0, y0, x0 + w - 1, y0 + h - 1);
+	_veh_panel_rect = {x0, y0, x0 + w - 1, y0 + h - 1};
+	_veh_panel_shown = true;
+
+	int y = y0 + pad;
+	DrawScreenText(x0 + pad, y, TruncateText(title, maxw));
+	y += lh + s;
+	ScreenFillRect(x0 + pad, y, x0 + w - 1 - pad, y + s - 1, COL_CH_ACCENT);
+	y += 2 * s;
 
 	for (const auto &[text, tint, dot] : rows) {
 		int tx = x0 + pad;
@@ -3362,7 +3285,7 @@ static bool DrawVehWin(MiniWnd &mw)
 			if (cur) ScreenFillRect(r.left, r.top, r.left + 2 * s - 1, r.bottom, COL_CH_ACCENT);
 			std::string line = fmt::format("{}. {}", idx + 1, label);
 			if (const MiniTextEntry *e = TextTexture(TruncateText(line, maxw - 4 * s)); e != nullptr) RlwCmdTexQuad(e->tex, r.left + 4 * s, y, cur ? COL_CH_ACCENT : COL_CH_TEXT);
-			mw.row_hits.push_back({r, idx});
+			_veh_order_hits.push_back({r, idx});
 			y += row_h;
 		}
 		if (more) {
@@ -3373,12 +3296,11 @@ static bool DrawVehWin(MiniWnd &mw)
 	y += 4 * s;
 
 	bool stopped = v->vehstatus.Test(VehState::Stopped);
-	bool following = _follow && _sel_vehicle == mw.veh;
 	for (int i = 0; i < 4; i++) {
 		int bx = x0 + pad + i * (bw + gap);
 		Rect r = {bx, y, bx + bw - 1, y + bh - 1};
-		ChromeTile(r, i == VEH_BTN_FOLLOW && following);
-		uint32_t gc = (i == VEH_BTN_FOLLOW && following) ? COL_CH_ACCENT : COL_CH_TEXT;
+		ChromeTile(r, i == VEH_BTN_FOLLOW && _follow);
+		uint32_t gc = (i == VEH_BTN_FOLLOW && _follow) ? COL_CH_ACCENT : COL_CH_TEXT;
 		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
 		int gh = std::max(2, (bh - 4 * s) / 2);
 		switch (i) {
@@ -3407,22 +3329,65 @@ static bool DrawVehWin(MiniWnd &mw)
 				ScreenFillRect(gcx - gh, gcy + gh - std::max(1, s) + 1, gcx + gh, gcy + gh, gc);
 				break;
 		}
-		mw.btn_hits.push_back({r, i});
+		_veh_btn_hits.push_back({r, i});
+	}
+}
+
+static bool HandleVehPanelClick(int x, int y)
+{
+	if (!_veh_panel_shown || !InRect(_veh_panel_rect, x, y)) return false;
+	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
+	if (v == nullptr) return true;
+
+	for (const auto &[r, i] : _veh_btn_hits) {
+		if (!InRect(r, x, y)) continue;
+		switch (i) {
+			case VEH_BTN_STARTSTOP:
+				Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, v->index, false);
+				break;
+			case VEH_BTN_DEPOT:
+				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg(v), v->index, _ctrl_pressed ? DepotCommandFlag::Service : DepotCommandFlags{}, {});
+				break;
+			case VEH_BTN_FOLLOW:
+				_follow = !_follow;
+				if (_follow) {
+					_glide = false;
+					_zoom_anchored = false;
+					_dest_ppt = MAX_PPT;
+				}
+				break;
+			case VEH_BTN_NATIVE:
+				ShowVehicleViewWindow(v);
+				break;
+		}
+		return true;
+	}
+	for (const auto &[r, idx] : _veh_order_hits) {
+		if (!InRect(r, x, y)) continue;
+		Command<CMD_SKIP_TO_ORDER>::Post(STR_ERROR_CAN_T_SKIP_TO_ORDER, v->tile, v->index, (VehicleOrderID)idx);
+		return true;
 	}
 	return true;
 }
 
-/* Station screen: waiting cargo with ratings, accepted cargo dots and
- * command tiles. */
+/* Right-edge station screen for the station selected via its plate: waiting
+ * cargo with ratings, accepted cargo dots and command tiles. */
+static std::vector<std::pair<Rect, int>> _st_btn_hits;
+static Rect _st_panel_rect;
+static bool _st_panel_shown = false;
+
 enum {
 	ST_BTN_GOTO,
 	ST_BTN_NATIVE,
 };
 
-static bool DrawStationWin(MiniWnd &mw)
+static void DrawStationPanel()
 {
-	const Station *st = Station::GetIfValid(mw.st);
-	if (st == nullptr) return false;
+	_st_btn_hits.clear();
+	_st_panel_shown = false;
+
+	const Station *st = Station::GetIfValid(_sel_station);
+	if (st == nullptr) return;
 
 	int s = _ms.hud_scale;
 	int lh = GetCharacterHeight(FS_NORMAL);
@@ -3464,8 +3429,9 @@ static bool DrawStationWin(MiniWnd &mw)
 	int accept_rows = ((int)accepts.size() + dots_per_row - 1) / dots_per_row;
 
 	int bw = 12 * s, bh = 10 * s;
-	int x0 = mw.x;
-	int y0 = mw.y;
+	int x1 = _fbw - 1 - 6 * s;
+	int x0 = x1 - w + 1;
+	int y0 = _win_bar_bottom + 6 * s;
 
 	int town_rows = st->town != nullptr ? 1 : 0;
 	int fixed = pad + lh + 3 * s + town_rows * row_h + (facil.empty() ? 0 : row_h) + 3 * s
@@ -3476,9 +3442,15 @@ static bool DrawStationWin(MiniWnd &mw)
 	int shown = more ? std::max(0, max_cargo - 1) : (int)cargo.size();
 
 	int h = fixed + (shown + (more ? 1 : 0)) * row_h;
-	mw.w = w;
-	mw.h = h;
-	int y = DrawMiniWinFrame(mw, title);
+	ChromePanel(x0, y0, x0 + w - 1, y0 + h - 1);
+	_st_panel_rect = {x0, y0, x0 + w - 1, y0 + h - 1};
+	_st_panel_shown = true;
+
+	int y = y0 + pad;
+	DrawScreenText(x0 + pad, y, TruncateText(title, maxw));
+	y += lh + s;
+	ScreenFillRect(x0 + pad, y, x0 + w - 1 - pad, y + s - 1, COL_CH_ACCENT);
+	y += 2 * s;
 
 	if (st->town != nullptr) {
 		if (const MiniTextEntry *e = TextTexture(TruncateText(StrMakeValid(GetString(STR_TOWN_NAME, st->town->index), {}), maxw)); e != nullptr) RlwCmdTexQuad(e->tex, x0 + pad, y, COL_CH_DIM);
@@ -3541,59 +3513,19 @@ static bool DrawStationWin(MiniWnd &mw)
 				ScreenFillRect(gcx - gh, gcy + gh - std::max(1, s) + 1, gcx + gh, gcy + gh, gc);
 				break;
 		}
-		mw.btn_hits.push_back({r, i});
-	}
-	return true;
-}
-
-static void DrawMiniWins()
-{
-	for (size_t i = 0; i < _wins.size(); ) {
-		MiniWnd &mw = _wins[i];
-		mw.btn_hits.clear();
-		mw.row_hits.clear();
-		mw.x = Clamp(mw.x, 20 - mw.w, _fbw - 20);
-		mw.y = Clamp(mw.y, 0, _fbh - 20);
-		bool ok = mw.kind == MiniWndKind::Vehicle ? DrawVehWin(mw) : DrawStationWin(mw);
-		if (!ok) {
-			CloseMiniWin(i);
-		} else {
-			i++;
-		}
+		_st_btn_hits.push_back({r, i});
 	}
 }
 
-static bool MiniWinBtnClick(MiniWnd &mw, int btn)
+static bool HandleStPanelClick(int x, int y)
 {
-	if (mw.kind == MiniWndKind::Vehicle) {
-		const Vehicle *v = Vehicle::GetIfValid(mw.veh);
-		if (v == nullptr) return true;
-		switch (btn) {
-			case VEH_BTN_STARTSTOP:
-				Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, v->index, false);
-				break;
-			case VEH_BTN_DEPOT:
-				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg(v), v->index, _ctrl_pressed ? DepotCommandFlag::Service : DepotCommandFlags{}, {});
-				break;
-			case VEH_BTN_FOLLOW:
-				if (_follow && _sel_vehicle == mw.veh) {
-					_follow = false;
-				} else {
-					_sel_vehicle = mw.veh;
-					_follow = true;
-					_glide = false;
-					_zoom_anchored = false;
-					_dest_ppt = MAX_PPT;
-				}
-				break;
-			case VEH_BTN_NATIVE:
-				ShowVehicleViewWindow(v);
-				break;
-		}
-	} else {
-		const Station *st = Station::GetIfValid(mw.st);
-		if (st == nullptr) return true;
-		switch (btn) {
+	if (!_st_panel_shown || !InRect(_st_panel_rect, x, y)) return false;
+	const Station *st = Station::GetIfValid(_sel_station);
+	if (st == nullptr) return true;
+
+	for (const auto &[r, i] : _st_btn_hits) {
+		if (!InRect(r, x, y)) continue;
+		switch (i) {
 			case ST_BTN_GOTO:
 				MiniUiScrollTo(TileX(st->xy) * (int)TILE_SIZE, TileY(st->xy) * (int)TILE_SIZE);
 				break;
@@ -3601,43 +3533,9 @@ static bool MiniWinBtnClick(MiniWnd &mw, int btn)
 				ShowStationViewWindow(st->index);
 				break;
 		}
-	}
-	return true;
-}
-
-static bool HandleMiniWinClick(int x, int y)
-{
-	int s = _ms.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	for (int i = (int)_wins.size() - 1; i >= 0; i--) {
-		const MiniWnd &probe = _wins[i];
-		if (!InRect({probe.x, probe.y, probe.x + probe.w - 1, probe.y + probe.h - 1}, x, y)) continue;
-		RaiseMiniWin((size_t)i);
-		MiniWnd &mw = _wins.back();
-		for (const auto &[r, btn] : mw.btn_hits) {
-			if (!InRect(r, x, y)) continue;
-			if (btn == MW_BTN_CLOSE) {
-				CloseMiniWin(_wins.size() - 1);
-				return true;
-			}
-			return MiniWinBtnClick(mw, btn);
-		}
-		for (const auto &[r, idx] : mw.row_hits) {
-			if (!InRect(r, x, y)) continue;
-			if (mw.kind == MiniWndKind::Vehicle) {
-				const Vehicle *v = Vehicle::GetIfValid(mw.veh);
-				if (v != nullptr) Command<CMD_SKIP_TO_ORDER>::Post(STR_ERROR_CAN_T_SKIP_TO_ORDER, v->tile, v->index, (VehicleOrderID)idx);
-			}
-			return true;
-		}
-		if (y <= mw.y + 5 * s + lh) {
-			_win_drag = (int)_wins.size() - 1;
-			_win_drag_dx = x - mw.x;
-			_win_drag_dy = y - mw.y;
-		}
 		return true;
 	}
-	return false;
+	return true;
 }
 
 static void DrawHud()
@@ -3698,7 +3596,8 @@ static void Present()
 	DrawBuildMenu();
 	DrawCmdBar();
 	DrawWinBar();
-	DrawMiniWins();
+	DrawVehPanel();
+	DrawStationPanel();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -3735,9 +3634,10 @@ static void Deactivate()
 	_zoom_anchored = false;
 	_glide = false;
 	_sel_vehicle = VehicleID::Invalid();
+	_sel_station = StationID::Invalid();
 	_follow = false;
-	_wins.clear();
-	_win_drag = -1;
+	_veh_panel_shown = false;
+	_st_panel_shown = false;
 	_veh_snap.clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
@@ -3788,6 +3688,8 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	if (!_mini_active) return false;
 
 	int right = std::max(0, _screen.width - width);
+	if (_veh_panel_shown) right = std::max(0, _veh_panel_rect.left - width);
+	if (_st_panel_shown) right = std::max(0, _st_panel_rect.left - width);
 	int y0 = _win_bar_bottom + 1;
 	for (int x = right; x >= 0; x -= width) {
 		int y = y0;
@@ -3798,12 +3700,6 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 				if (MiniUiHidesWindow(w->window_class)) continue;
 				if (x < w->left + w->width && w->left < x + width && y < w->top + w->height && w->top < y + height) {
 					y = w->top + w->height;
-					moved = true;
-				}
-			}
-			for (const MiniWnd &mw : _wins) {
-				if (x < mw.x + mw.w && mw.x < x + width && y < mw.y + mw.h && mw.y < y + height) {
-					y = mw.y + mw.h;
 					moved = true;
 				}
 			}
@@ -3842,19 +3738,10 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 {
 	if (!_mini_active) return false;
 
-	if (!_dragging && !_middle_button_down && _win_drag < 0) {
+	if (!_dragging && !_middle_button_down) {
 		if (native_capture) return false;
 		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
 		if (w != nullptr && !MiniUiHidesWindow(w->window_class)) return false;
-	}
-
-	if (_win_drag >= 0) {
-		if (_left_button_down && _win_drag < (int)_wins.size()) {
-			_wins[_win_drag].x = Clamp(_cursor.pos.x - _win_drag_dx, 20 - _wins[_win_drag].w, _fbw - 20);
-			_wins[_win_drag].y = Clamp(_cursor.pos.y - _win_drag_dy, 0, _fbh - 20);
-		} else {
-			_win_drag = -1;
-		}
 	}
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
@@ -3879,7 +3766,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y) && !HandleMiniWinClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y) && !HandleVehPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleStPanelClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
 					SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
@@ -3957,10 +3844,9 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			} else if (_menu_open >= 0 || _win_open >= 0) {
 				_menu_open = -1;
 				_win_open = -1;
-			} else if (!_wins.empty()) {
-				CloseMiniWin(_wins.size() - 1);
-			} else if (_sel_vehicle != VehicleID::Invalid()) {
+			} else if (_sel_vehicle != VehicleID::Invalid() || _sel_station != StationID::Invalid()) {
 				_sel_vehicle = VehicleID::Invalid();
+				_sel_station = StationID::Invalid();
 				_follow = false;
 			}
 			break;
