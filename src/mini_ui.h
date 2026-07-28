@@ -14,6 +14,7 @@
 
 #include "core/geometry_type.hpp"
 #include "gfx_type.h"
+#include "station_type.h"
 #include "video/raylib_wrap.h"
 #include "window_type.h"
 
@@ -33,5 +34,6 @@ bool MiniUiDrawResizeGlyph(const Rect &r, Colours colour, bool at_left);
 
 struct Vehicle;
 bool ShowMiniVehicleWindow(const Vehicle *v);
+bool ShowMiniStationWindow(StationID station);
 
 #endif /* MINI_UI_H */

@@ -22,6 +22,7 @@
 #include "viewport_func.h"
 #include "dropdown_type.h"
 #include "dropdown_func.h"
+#include "mini_ui.h"
 #include "station_base.h"
 #include "waypoint_base.h"
 #include "tilehighlight_func.h"
@@ -2173,6 +2174,7 @@ static WindowDesc _station_view_desc(
  */
 void ShowStationViewWindow(StationID station)
 {
+	if (ShowMiniStationWindow(station)) return;
 	AllocateWindowDescFront<StationViewWindow>(_station_view_desc, station);
 }
 

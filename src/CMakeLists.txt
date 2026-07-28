@@ -262,6 +262,7 @@ add_files(
     map_type.h
     mini_atlas.cpp
     mini_atlas.h
+    mini_station_gui.cpp
     mini_ui.cpp
     mini_ui.h
     mini_ui_skin.cpp
