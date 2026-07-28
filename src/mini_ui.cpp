@@ -171,6 +171,7 @@ static bool _follow = false;
 
 static void OpenVehWin(VehicleID id);
 static void OpenStationWin(StationID id);
+static void OpenTownWin(TownID id);
 
 static bool _prev_left = false;
 
@@ -1698,7 +1699,7 @@ static bool HandleLabelClick(int x, int y)
 	}
 	for (const auto &[r, id] : _town_label_hits) {
 		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			ShowTownViewWindow(id);
+			OpenTownWin(id);
 			return true;
 		}
 	}
@@ -3162,12 +3163,14 @@ static bool HandleStatusClick(int x, int y)
 enum class MiniWndKind : uint8_t {
 	Vehicle,
 	Station,
+	Town,
 };
 
 struct MiniWnd {
 	MiniWndKind kind = MiniWndKind::Vehicle;
 	VehicleID veh = VehicleID::Invalid();
 	StationID st = StationID::Invalid();
+	TownID town = TownID::Invalid();
 	int x = 0, y = 0, w = 0, h = 0;
 	std::vector<std::pair<Rect, int>> btn_hits;
 	std::vector<std::pair<Rect, int>> row_hits;
@@ -3204,7 +3207,7 @@ static void CloseMiniWin(size_t i)
 static void OpenMiniWin(MiniWnd &&mw)
 {
 	for (size_t i = 0; i < _wins.size(); i++) {
-		if (_wins[i].kind == mw.kind && _wins[i].veh == mw.veh && _wins[i].st == mw.st) {
+		if (_wins[i].kind == mw.kind && _wins[i].veh == mw.veh && _wins[i].st == mw.st && _wins[i].town == mw.town) {
 			RaiseMiniWin(i);
 			return;
 		}
@@ -3229,6 +3232,14 @@ static void OpenStationWin(StationID id)
 	MiniWnd mw;
 	mw.kind = MiniWndKind::Station;
 	mw.st = id;
+	OpenMiniWin(std::move(mw));
+}
+
+static void OpenTownWin(TownID id)
+{
+	MiniWnd mw;
+	mw.kind = MiniWndKind::Town;
+	mw.town = id;
 	OpenMiniWin(std::move(mw));
 }
 
@@ -3412,12 +3423,37 @@ static bool DrawVehWin(MiniWnd &mw)
 	return true;
 }
 
-/* Station screen: waiting cargo with ratings, accepted cargo dots and
- * command tiles. */
+/* Station and town screens share the place tiles: centre the camera and
+ * open the native window. */
 enum {
-	ST_BTN_GOTO,
-	ST_BTN_NATIVE,
+	MW_BTN_GOTO,
+	MW_BTN_OPEN,
 };
+
+static void DrawPlaceBtnTiles(MiniWnd &mw, int y)
+{
+	int s = _ms.hud_scale;
+	int gap = 2 * s;
+	int pad = 5 * s;
+	int bw = 12 * s, bh = 10 * s;
+	for (int i = 0; i < 2; i++) {
+		int bx = mw.x + pad + i * (bw + gap);
+		Rect r = {bx, y, bx + bw - 1, y + bh - 1};
+		ChromeTile(r, false);
+		uint32_t gc = COL_CH_TEXT;
+		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
+		int gh = std::max(2, (bh - 4 * s) / 2);
+		if (i == MW_BTN_GOTO) {
+			for (int j = -gh; j <= gh; j++) ScreenFillRect(gcx - (gh - abs(j)), gcy + j, gcx + (gh - abs(j)), gcy + j, gc);
+		} else {
+			ScreenFillRect(gcx - gh, gcy - gh, gcx + gh, gcy - gh + std::max(1, s), gc);
+			ScreenFillRect(gcx - gh, gcy - gh, gcx - gh + std::max(1, s) - 1, gcy + gh, gc);
+			ScreenFillRect(gcx + gh - std::max(1, s) + 1, gcy - gh, gcx + gh, gcy + gh, gc);
+			ScreenFillRect(gcx - gh, gcy + gh - std::max(1, s) + 1, gcx + gh, gcy + gh, gc);
+		}
+		mw.btn_hits.push_back({r, i});
+	}
+}
 
 static bool DrawStationWin(MiniWnd &mw)
 {
@@ -3463,7 +3499,7 @@ static bool DrawStationWin(MiniWnd &mw)
 	int dots_per_row = std::max(1, maxw / dot_step);
 	int accept_rows = ((int)accepts.size() + dots_per_row - 1) / dots_per_row;
 
-	int bw = 12 * s, bh = 10 * s;
+	int bh = 10 * s;
 	int x0 = mw.x;
 	int y0 = mw.y;
 
@@ -3523,26 +3559,72 @@ static bool DrawStationWin(MiniWnd &mw)
 	}
 	y += 4 * s;
 
-	for (int i = 0; i < 2; i++) {
-		int bx = x0 + pad + i * (bw + gap);
-		Rect r = {bx, y, bx + bw - 1, y + bh - 1};
-		ChromeTile(r, false);
-		uint32_t gc = COL_CH_TEXT;
-		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
-		int gh = std::max(2, (bh - 4 * s) / 2);
-		switch (i) {
-			case ST_BTN_GOTO:
-				for (int j = -gh; j <= gh; j++) ScreenFillRect(gcx - (gh - abs(j)), gcy + j, gcx + (gh - abs(j)), gcy + j, gc);
-				break;
-			case ST_BTN_NATIVE:
-				ScreenFillRect(gcx - gh, gcy - gh, gcx + gh, gcy - gh + std::max(1, s), gc);
-				ScreenFillRect(gcx - gh, gcy - gh, gcx - gh + std::max(1, s) - 1, gcy + gh, gc);
-				ScreenFillRect(gcx + gh - std::max(1, s) + 1, gcy - gh, gcx + gh, gcy + gh, gc);
-				ScreenFillRect(gcx - gh, gcy + gh - std::max(1, s) + 1, gcx + gh, gcy + gh, gc);
-				break;
-		}
-		mw.btn_hits.push_back({r, i});
+	DrawPlaceBtnTiles(mw, y);
+	return true;
+}
+
+/* Population, growth state and the local company rating. */
+static bool DrawTownWin(MiniWnd &mw)
+{
+	const Town *t = Town::GetIfValid(mw.town);
+	if (t == nullptr) return false;
+
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int pad = 5 * s;
+	int gap = 2 * s;
+	int w = 110 * s;
+	int maxw = w - 2 * pad;
+	int row_h = lh + gap;
+	int bh = 10 * s;
+
+	std::string title = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {});
+
+	static std::vector<std::pair<std::string, uint32_t>> rows;
+	rows.clear();
+	rows.emplace_back(StrMakeValid(GetString(STR_TOWN_VIEW_POPULATION_HOUSES, t->cache.population, t->cache.num_houses), {}), COL_CH_TEXT);
+	if (t->growth_rate == TOWN_GROWTH_RATE_NONE) {
+		rows.emplace_back("NO GROWTH", COL_CH_DIM);
+	} else if (t->flags.Test(TownFlag::IsGrowing)) {
+		rows.emplace_back("GROWING", COL_GO);
+	} else {
+		rows.emplace_back("GROWTH STALLED", 0xFFE0B64AU);
 	}
+	if (Company::IsValidID(_local_company) && t->have_ratings.Test(_local_company)) {
+		int rating = t->ratings[_local_company];
+		StringID sid;
+		if (rating > RATING_EXCELLENT) {
+			sid = STR_CARGO_RATING_OUTSTANDING;
+		} else if (rating > RATING_VERYGOOD) {
+			sid = STR_CARGO_RATING_EXCELLENT;
+		} else if (rating > RATING_GOOD) {
+			sid = STR_CARGO_RATING_VERY_GOOD;
+		} else if (rating > RATING_MEDIOCRE) {
+			sid = STR_CARGO_RATING_GOOD;
+		} else if (rating > RATING_POOR) {
+			sid = STR_CARGO_RATING_MEDIOCRE;
+		} else if (rating > RATING_VERYPOOR) {
+			sid = STR_CARGO_RATING_POOR;
+		} else if (rating > RATING_APPALLING) {
+			sid = STR_CARGO_RATING_VERY_POOR;
+		} else {
+			sid = STR_CARGO_RATING_APPALLING;
+		}
+		uint32_t tint = rating <= RATING_VERYPOOR ? 0xFFE05F4AU : (rating <= RATING_MEDIOCRE ? 0xFFE0B64AU : COL_CH_TEXT);
+		rows.emplace_back(fmt::format("{} {}", StrMakeValid(GetString(sid), {}), rating), tint);
+	}
+
+	mw.w = w;
+	mw.h = pad + lh + 3 * s + (int)rows.size() * row_h + 4 * s + bh + pad;
+	int y = DrawMiniWinFrame(mw, title);
+
+	for (const auto &[text, tint] : rows) {
+		if (const MiniTextEntry *e = TextTexture(TruncateText(text, maxw)); e != nullptr) RlwCmdTexQuad(e->tex, mw.x + pad, y, tint);
+		y += row_h;
+	}
+	y += 4 * s;
+
+	DrawPlaceBtnTiles(mw, y);
 	return true;
 }
 
@@ -3554,7 +3636,12 @@ static void DrawMiniWins()
 		mw.row_hits.clear();
 		mw.x = Clamp(mw.x, 20 - mw.w, _fbw - 20);
 		mw.y = Clamp(mw.y, 0, _fbh - 20);
-		bool ok = mw.kind == MiniWndKind::Vehicle ? DrawVehWin(mw) : DrawStationWin(mw);
+		bool ok;
+		switch (mw.kind) {
+			case MiniWndKind::Vehicle: ok = DrawVehWin(mw); break;
+			case MiniWndKind::Station: ok = DrawStationWin(mw); break;
+			default: ok = DrawTownWin(mw); break;
+		}
 		if (!ok) {
 			CloseMiniWin(i);
 		} else {
@@ -3590,15 +3677,26 @@ static bool MiniWinBtnClick(MiniWnd &mw, int btn)
 				ShowVehicleViewWindow(v);
 				break;
 		}
-	} else {
+	} else if (mw.kind == MiniWndKind::Station) {
 		const Station *st = Station::GetIfValid(mw.st);
 		if (st == nullptr) return true;
 		switch (btn) {
-			case ST_BTN_GOTO:
+			case MW_BTN_GOTO:
 				MiniUiScrollTo(TileX(st->xy) * (int)TILE_SIZE, TileY(st->xy) * (int)TILE_SIZE);
 				break;
-			case ST_BTN_NATIVE:
+			case MW_BTN_OPEN:
 				ShowStationViewWindow(st->index);
+				break;
+		}
+	} else {
+		const Town *t = Town::GetIfValid(mw.town);
+		if (t == nullptr) return true;
+		switch (btn) {
+			case MW_BTN_GOTO:
+				MiniUiScrollTo(TileX(t->xy) * (int)TILE_SIZE, TileY(t->xy) * (int)TILE_SIZE);
+				break;
+			case MW_BTN_OPEN:
+				ShowTownViewWindow(t->index);
 				break;
 		}
 	}
