@@ -2985,25 +2985,17 @@ static std::string StatusLabel(int st)
 	}
 }
 
-/* Mirrors the order review behind the native advice news, minus the runway
- * case: void orders, a station the vehicle cannot use, a duplicate first and
- * last entry, or fewer than two stations. */
+/* A persistent row needs a hard error: void orders or a station the vehicle
+ * cannot use. The softer advice cases of the native order review, too few
+ * stations and a duplicate first and last entry, also flag valid schedules
+ * like waypoint loops, so they stay with the one-shot native news. */
 static bool HasBadOrders(const Vehicle *v)
 {
-	if (v->GetNumOrders() == 0) return false;
-	int n_st = 0;
 	for (const Order &order : v->Orders()) {
 		if (order.IsType(OT_DUMMY)) return true;
-		if (order.IsType(OT_GOTO_STATION)) {
-			n_st++;
-			if (!CanVehicleUseStation(v, Station::Get(order.GetDestination().ToStationID()))) return true;
-		}
+		if (order.IsType(OT_GOTO_STATION) && !CanVehicleUseStation(v, Station::Get(order.GetDestination().ToStationID()))) return true;
 	}
-	if (v->GetNumOrders() > 1) {
-		auto orders = v->Orders();
-		if (orders.front().Equals(orders.back())) return true;
-	}
-	return n_st < 2;
+	return false;
 }
 
 /* Waiting at a signal is normal traffic; a stuck train only becomes a status
@@ -3036,7 +3028,9 @@ static void ScanStatuses()
 		if (v->GetNumOrders() == 0 && !v->vehstatus.Test(VehState::Stopped)) _status_veh[(int)MiniStatus::NoOrders].push_back(v->index);
 		if (HasBadOrders(v)) _status_veh[(int)MiniStatus::BadOrders].push_back(v->index);
 		if (v->age > v->max_age) _status_veh[(int)MiniStatus::OldAge].push_back(v->index);
-		if (v->economy_age >= VEHICLE_PROFIT_MIN_AGE && v->GetDisplayProfitLastYear() < 0) _status_veh[(int)MiniStatus::Unprofitable].push_back(v->index);
+		/* Last year alone would pin the row until new year even after the route
+		 * was fixed; earning anything this year clears it. */
+		if (v->economy_age >= VEHICLE_PROFIT_MIN_AGE && v->GetDisplayProfitLastYear() < 0 && v->GetDisplayProfitThisYear() < 0) _status_veh[(int)MiniStatus::Unprofitable].push_back(v->index);
 	}
 	std::swap(_stuck_long, keep);
 }
