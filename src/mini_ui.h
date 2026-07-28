@@ -31,4 +31,7 @@ bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);
 bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour);
 bool MiniUiDrawResizeGlyph(const Rect &r, Colours colour, bool at_left);
 
+struct Vehicle;
+bool ShowMiniVehicleWindow(const Vehicle *v);
+
 #endif /* MINI_UI_H */

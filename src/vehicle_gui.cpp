@@ -44,6 +44,7 @@
 #include "train_cmd.h"
 #include "hotkeys.h"
 #include "group_cmd.h"
+#include "mini_ui.h"
 
 #include "table/strings.h"
 
@@ -3431,6 +3432,7 @@ static WindowDesc _train_view_desc(
 /** Shows the vehicle view window of the given vehicle. */
 void ShowVehicleViewWindow(const Vehicle *v)
 {
+	if (ShowMiniVehicleWindow(v)) return;
 	AllocateWindowDescFront<VehicleViewWindow>((v->type == VEH_TRAIN) ? _train_view_desc : _vehicle_view_desc, v->index);
 }
 
