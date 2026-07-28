@@ -3146,9 +3146,10 @@ static void DrawHud()
 
 /* Mini windows: ONI-structured chrome windows on the GPU layer. A window has
  * a title bar with a rename pen and a close box, a uniform-width tab strip,
- * label-value body rows and square icon commands at the bottom. The topmost
+ * label-value body rows and square icon commands at the bottom. Every
  * window may embed a live native viewport through a frameless carrier
- * window that is kept aligned with its slot. */
+ * window that is kept aligned with its slot; carriers under higher mini
+ * windows are clipped out of the native overlay. */
 
 static constexpr int MW_CARRIER_NUM_BASE = 0x40000;
 static const uint32_t COL_CH_RED = 0xFFE05F4AU;
@@ -3194,7 +3195,13 @@ struct MiniWndRowAct {
 	int skip_order = -1;
 };
 
-static std::vector<std::pair<Rect, int>> _wnd_hits;
+struct MiniWndHit {
+	size_t wnd;
+	Rect r;
+	int act;
+};
+
+static std::vector<MiniWndHit> _wnd_hits;
 static std::vector<MiniWndRowAct> _wnd_row_acts;
 
 static int WndW() { return std::min(250 * _ms.hud_scale, _fbw - 12 * _ms.hud_scale); }
@@ -3350,10 +3357,12 @@ static void CloseMiniWnd(size_t i)
 	_wnd_drag = -1;
 }
 
+/* The carrier rises with its window so native z-order keeps matching the
+ * mini window order where slots overlap. */
 static void RaiseMiniWnd(size_t i)
 {
-	if (i + 1 < _wnds.size()) CloseMiniCarrier(_wnds.back());
 	std::rotate(_wnds.begin() + (ptrdiff_t)i, _wnds.begin() + (ptrdiff_t)i + 1, _wnds.end());
+	BringWindowToFrontById(WC_EXTRA_VIEWPORT, MiniCarrierNum(_wnds.back()));
 }
 
 static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st)
@@ -3364,7 +3373,6 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st)
 			return;
 		}
 	}
-	if (!_wnds.empty()) CloseMiniCarrier(_wnds.back());
 	int s = _ms.hud_scale;
 	MiniWnd mw;
 	mw.kind = kind;
@@ -3389,7 +3397,8 @@ struct MiniWndBody {
 	int rh;
 	int scroll;
 	int row = 0;
-	bool top_wnd;
+	size_t wnd;
+	bool hot;
 
 	bool RowRect(Rect &out) const
 	{
@@ -3430,17 +3439,15 @@ struct MiniWndBody {
 	{
 		Rect r;
 		if (this->RowRect(r)) {
-			if (this->top_wnd && WndHover(r)) RlwCmdRect(r.left, r.top, r.right, r.bottom, COL_CH_TILE);
+			if (this->hot && WndHover(r)) RlwCmdRect(r.left, r.top, r.right, r.bottom, COL_CH_TILE);
 			int ind = 4 * _ms.hud_scale;
 			const MiniTextEntry *e = TextTexture(text);
 			if (e != nullptr) {
 				RlwCmdTexQuad(e->tex, r.left + ind, r.top + (this->rh - e->h) / 2, tint);
 				RlwCmdRect(r.left + ind, r.bottom - 1, r.left + ind + e->w - 1, r.bottom - 1, (tint & 0x00FFFFFFU) | 0x60000000U);
 			}
-			if (this->top_wnd) {
-				_wnd_hits.emplace_back(r, MWA_ROW_BASE + (int)_wnd_row_acts.size());
-				_wnd_row_acts.push_back(act);
-			}
+			_wnd_hits.push_back({this->wnd, r, MWA_ROW_BASE + (int)_wnd_row_acts.size()});
+			_wnd_row_acts.push_back(act);
 		}
 		this->row++;
 	}
@@ -3645,7 +3652,7 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 	}
 }
 
-static void DrawMiniWnd(MiniWnd &mw, bool top)
+static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 {
 	int s = _ms.hud_scale;
 	int w = WndW();
@@ -3671,18 +3678,15 @@ static void DrawMiniWnd(MiniWnd &mw, bool top)
 			(mw.kind == MiniWndKind::Station && st != nullptr && st->owner == _local_company);
 	Rect pen_r = WndIconTile(close_r.left - 2 * s - ts, fr.top + 2 * s, ts, false, own);
 	WndPenGlyph(pen_r, own ? (WndHover(pen_r) ? COL_CH_ACCENT : COL_CH_TEXT) : COL_CH_DIM);
-	if (top) {
-		_wnd_hits.emplace_back(close_r, MWA_CLOSE);
-		if (own) _wnd_hits.emplace_back(pen_r, MWA_RENAME);
-		if (top && WndHover(pen_r) && own) _wnd_tooltip = "이름 변경";
-	}
+	_wnd_hits.push_back({idx, close_r, MWA_CLOSE});
+	if (own) _wnd_hits.push_back({idx, pen_r, MWA_RENAME});
+	if (hot && WndHover(pen_r) && own) _wnd_tooltip = "이름 변경";
 	RlwCmdRect(fr.left + 1, fr.top + th + 2 * s, fr.right - 1, fr.top + th + 2 * s, COL_CH_EDGE);
 
 	/* Uniform-width tab strip. */
 	int tab_y = fr.top + th + 2 * s + 1;
 	int tabh = WndTabH();
 	static const std::string_view veh_tabs[] = {"상태", "", "주문"};
-	static const std::string_view st_tabs[] = {"상태", "", "", ""};
 	int ntab = mw.kind == MiniWndKind::Vehicle ? 3 : 4;
 	for (int t = 0; t < ntab; t++) {
 		std::string label;
@@ -3700,11 +3704,11 @@ static void DrawMiniWnd(MiniWnd &mw, bool top)
 		int x1 = fr.left + (t + 1) * (w - 2) / ntab;
 		Rect tr = {x0, tab_y, x1, tab_y + tabh - 1};
 		bool active = mw.tab == t;
-		bool hover = top && WndHover(tr);
+		bool hover = hot && WndHover(tr);
 		RlwCmdRect(tr.left, tr.top, tr.right, tr.bottom, active ? COL_CH_ACTIVE : (hover ? COL_CH_TILE : COL_CH_PANEL));
 		const MiniTextEntry *e = TextTexture(label);
 		if (e != nullptr) RlwCmdTexQuad(e->tex, (tr.left + tr.right - e->w) / 2, tr.top + (tabh - e->h) / 2, active ? COL_CH_ACCENT : COL_CH_TEXT);
-		if (top) _wnd_hits.emplace_back(tr, MWA_TAB_BASE + t);
+		_wnd_hits.push_back({idx, tr, MWA_TAB_BASE + t});
 	}
 	RlwCmdRect(fr.left + 1, tab_y + tabh, fr.right - 1, tab_y + tabh, COL_CH_EDGE);
 
@@ -3714,13 +3718,14 @@ static void DrawMiniWnd(MiniWnd &mw, bool top)
 	MiniWndBody bp;
 	bp.rh = WndRowH();
 	bp.scroll = mw.scroll;
-	bp.top_wnd = top;
+	bp.wnd = idx;
+	bp.hot = hot;
 	bp.area = body;
 
 	if (mw.tab == 0) {
 		Rect vs = {body.left, body.top, body.right, body.top + WndViewH() - 1};
 		RlwCmdRect(vs.left, vs.top, vs.right, vs.bottom, 0xFF101010U);
-		if (top && ((v != nullptr) || (st != nullptr))) {
+		if (v != nullptr || st != nullptr) {
 			EnsureMiniCarrier(mw, vs.left, vs.top, vs.right - vs.left + 1, vs.bottom - vs.top + 1);
 		}
 		bp.area.top = vs.bottom + 1 + pad;
@@ -3752,10 +3757,10 @@ static void DrawMiniWnd(MiniWnd &mw, bool top)
 		bool enabled = mw.kind == MiniWndKind::Station ? (st != nullptr && (c == 1 || own || st->owner == OWNER_NONE)) : own;
 		Rect cr = WndIconTile(cx, cmd_y, cs2, active, enabled);
 		bool alt = active || (mw.kind == MiniWndKind::Vehicle && c == 0 && v != nullptr && v->vehstatus.Test(VehState::Stopped));
-		uint32_t ic = enabled ? (top && WndHover(cr) ? COL_CH_ACCENT : COL_CH_TEXT) : COL_CH_DIM;
+		uint32_t ic = enabled ? (hot && WndHover(cr) ? COL_CH_ACCENT : COL_CH_TEXT) : COL_CH_DIM;
 		DrawWndCmdIcon(mw.kind, c, cr, ic, alt);
-		if (top && enabled) _wnd_hits.emplace_back(cr, MWA_CMD_BASE + c);
-		if (top && WndHover(cr)) {
+		if (enabled) _wnd_hits.push_back({idx, cr, MWA_CMD_BASE + c});
+		if (hot && WndHover(cr)) {
 			static const std::string_view veh_tips[] = {"", "차고로", "", "주문 창"};
 			if (mw.kind == MiniWndKind::Vehicle) {
 				switch (c) {
@@ -3784,8 +3789,15 @@ static void DrawMiniWnds()
 		if (!alive) CloseMiniWnd(i);
 	}
 
+	size_t hot = SIZE_MAX;
+	for (size_t i = _wnds.size(); i-- > 0;) {
+		if (InRect(WndFrameRect(_wnds[i]), _cursor.pos.x, _cursor.pos.y)) {
+			hot = i;
+			break;
+		}
+	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
-		DrawMiniWnd(_wnds[i], i + 1 == _wnds.size());
+		DrawMiniWnd(_wnds[i], i, i == hot);
 	}
 
 	if (!_wnd_tooltip.empty()) {
@@ -3799,13 +3811,12 @@ static bool HandleWndClick(int x, int y)
 	for (size_t i = _wnds.size(); i-- > 0;) {
 		Rect fr = WndFrameRect(_wnds[i]);
 		if (!InRect(fr, x, y)) continue;
-		if (i + 1 != _wnds.size()) {
-			RaiseMiniWnd(i);
-			return true;
-		}
+		if (i + 1 != _wnds.size()) RaiseMiniWnd(i);
 
-		for (const auto &[r, act] : _wnd_hits) {
-			if (!InRect(r, x, y)) continue;
+		/* Hit rects come from the last draw, keyed by pre-raise index, so
+		 * the first click on a background window both raises and acts. */
+		for (const auto &[owner, r, act] : _wnd_hits) {
+			if (owner != i || !InRect(r, x, y)) continue;
 			MiniWnd &mw = _wnds.back();
 			const Vehicle *v = mw.kind == MiniWndKind::Vehicle ? Vehicle::GetIfValid(mw.veh) : nullptr;
 			const Station *st = mw.kind == MiniWndKind::Station ? (Station::IsValidID(mw.st) ? Station::Get(mw.st) : nullptr) : nullptr;
@@ -3875,11 +3886,12 @@ static bool HandleWndClick(int x, int y)
 
 static bool HandleWndWheel(int x, int y, int dir)
 {
-	if (_wnds.empty()) return false;
-	MiniWnd &mw = _wnds.back();
-	if (!InRect(WndFrameRect(mw), x, y)) return false;
-	mw.scroll += dir;
-	return true;
+	for (size_t i = _wnds.size(); i-- > 0;) {
+		if (!InRect(WndFrameRect(_wnds[i]), x, y)) continue;
+		_wnds[i].scroll += dir;
+		return true;
+	}
+	return false;
 }
 
 bool ShowMiniVehicleWindow(const Vehicle *v)
@@ -4015,12 +4027,47 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	return true;
 }
 
+static size_t CarrierOwner(const Window *w)
+{
+	if (w->window_class != WC_EXTRA_VIEWPORT || w->window_number < MW_CARRIER_NUM_BASE) return SIZE_MAX;
+	for (size_t i = 0; i < _wnds.size(); i++) {
+		if (MiniCarrierNum(_wnds[i]) == w->window_number) return i;
+	}
+	return SIZE_MAX;
+}
+
+static void SubtractOverlayRect(const RlwRectI &p, const Rect &o, std::vector<RlwRectI> &out)
+{
+	int px1 = p.x + p.w, py1 = p.y + p.h;
+	int ox1 = o.right + 1, oy1 = o.bottom + 1;
+	if (o.left >= px1 || ox1 <= p.x || o.top >= py1 || oy1 <= p.y) {
+		out.push_back(p);
+		return;
+	}
+	if (o.top > p.y) out.push_back({p.x, p.y, p.w, o.top - p.y});
+	if (oy1 < py1) out.push_back({p.x, oy1, p.w, py1 - oy1});
+	int my0 = std::max(p.y, o.top), my1 = std::min(py1, oy1);
+	if (o.left > p.x) out.push_back({p.x, my0, o.left - p.x, my1 - my0});
+	if (ox1 < px1) out.push_back({ox1, my0, px1 - ox1, my1 - my0});
+}
+
 void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 {
 	if (!_mini_active) return;
 	for (const Window *w : Window::IterateFromBack()) {
 		if (MiniUiHidesWindow(w->window_class)) continue;
-		rects.push_back({w->left, w->top, w->width, w->height});
+		size_t owner = CarrierOwner(w);
+		if (owner == SIZE_MAX) {
+			rects.push_back({w->left, w->top, w->width, w->height});
+			continue;
+		}
+		std::vector<RlwRectI> parts{{w->left, w->top, w->width, w->height}};
+		for (size_t j = owner + 1; j < _wnds.size(); j++) {
+			std::vector<RlwRectI> next;
+			for (const RlwRectI &p : parts) SubtractOverlayRect(p, WndFrameRect(_wnds[j]), next);
+			parts = std::move(next);
+		}
+		rects.insert(rects.end(), parts.begin(), parts.end());
 	}
 }
 
@@ -4041,7 +4088,21 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (!_dragging && !_middle_button_down && _wnd_drag < 0) {
 		if (native_capture) return false;
 		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
-		if (w != nullptr && !MiniUiHidesWindow(w->window_class)) return false;
+		if (w != nullptr && !MiniUiHidesWindow(w->window_class)) {
+			/* A carrier under a higher mini window is visually covered
+			 * there, so the chrome takes the click instead. */
+			size_t owner = CarrierOwner(w);
+			bool covered = false;
+			if (owner != SIZE_MAX) {
+				for (size_t j = owner + 1; j < _wnds.size(); j++) {
+					if (InRect(WndFrameRect(_wnds[j]), _cursor.pos.x, _cursor.pos.y)) {
+						covered = true;
+						break;
+					}
+				}
+			}
+			if (!covered) return false;
+		}
 	}
 
 	if (_wnd_drag >= 0) {
