@@ -3277,16 +3277,22 @@ static WindowDesc _mini_carrier_desc(
  * it doubles as the query-string parent so renames land somewhere. */
 struct MiniCarrierWindow : Window {
 	MiniWndKind carry_kind;
+	TileIndex focus_tile = INVALID_TILE;
 
 	MiniCarrierWindow(WindowDesc &desc, WindowNumber num, MiniWndKind kind, std::variant<TileIndex, VehicleID> focus) : Window(desc), carry_kind(kind)
 	{
+		if (std::holds_alternative<TileIndex>(focus)) this->focus_tile = std::get<TileIndex>(focus);
 		this->InitNested(num);
 		this->GetWidget<NWidgetViewport>(0)->InitializeViewport(this, focus, ZoomLevel::Viewport);
 	}
 
+	/* The viewport scroll target is its top-left corner, so growing the
+	 * window from its minimal size would drift the view right and down. */
 	void OnResize() override
 	{
-		if (this->viewport != nullptr) this->GetWidget<NWidgetViewport>(0)->UpdateViewportCoordinates(this);
+		if (this->viewport == nullptr) return;
+		this->GetWidget<NWidgetViewport>(0)->UpdateViewportCoordinates(this);
+		if (this->focus_tile != INVALID_TILE) ScrollWindowToTile(this->focus_tile, this, true);
 	}
 
 	void OnQueryTextFinished(std::optional<std::string> str) override
@@ -3313,8 +3319,9 @@ static Window *EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
 			if (v == nullptr) return nullptr;
 			focus = v->index;
 		} else {
-			if (!Station::IsValidID(mw.st)) return nullptr;
-			focus = Station::Get(mw.st)->xy;
+			const Station *st = Station::GetIfValid(mw.st);
+			if (st == nullptr) return nullptr;
+			focus = st->rect.IsEmpty() ? st->xy : TileXY((st->rect.left + st->rect.right) / 2, (st->rect.top + st->rect.bottom) / 2);
 		}
 		cw = new MiniCarrierWindow(_mini_carrier_desc, MiniCarrierNum(mw), mw.kind, focus);
 	}
