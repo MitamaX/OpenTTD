@@ -3316,7 +3316,7 @@ static constexpr NWidgetPart _nested_mini_carrier_widgets[] = {
 };
 
 static WindowDesc _mini_carrier_desc(
-	WDP_MANUAL, nullptr, 0, 0,
+	WDP_MANUAL, {}, 0, 0,
 	WC_EXTRA_VIEWPORT, WC_NONE,
 	{},
 	_nested_mini_carrier_widgets
