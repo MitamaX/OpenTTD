@@ -172,7 +172,6 @@ static bool _follow = false;
 static void OpenVehWin(VehicleID id);
 static void OpenStationWin(StationID id);
 static void OpenTownWin(TownID id);
-static void OpenFinanceWin();
 
 static bool _prev_left = false;
 
@@ -2695,7 +2694,7 @@ static void OpenMiniWindow(MiniWin win)
 {
 	bool company = Company::IsValidID(_local_company);
 	switch (win) {
-		case MiniWin::Finances: if (company) OpenFinanceWin(); break;
+		case MiniWin::Finances: if (company) ShowCompanyFinances(_local_company); break;
 		case MiniWin::CompanyInfo: if (company) ShowCompany(_local_company); break;
 		case MiniWin::Goals: if (company) ShowGoalsList(_local_company); break;
 		case MiniWin::League: ShowPerformanceLeagueTable(); break;
@@ -3165,7 +3164,6 @@ enum class MiniWndKind : uint8_t {
 	Vehicle,
 	Station,
 	Town,
-	Finance,
 };
 
 struct MiniWnd {
@@ -3242,13 +3240,6 @@ static void OpenTownWin(TownID id)
 	MiniWnd mw;
 	mw.kind = MiniWndKind::Town;
 	mw.town = id;
-	OpenMiniWin(std::move(mw));
-}
-
-static void OpenFinanceWin()
-{
-	MiniWnd mw;
-	mw.kind = MiniWndKind::Finance;
 	OpenMiniWin(std::move(mw));
 }
 
@@ -3637,73 +3628,6 @@ static bool DrawTownWin(MiniWnd &mw)
 	return true;
 }
 
-/* Balance, loan and the quarter's flow, with borrow and repay tiles.
- * Control-click borrows or repays the maximum. */
-enum {
-	FIN_BTN_BORROW,
-	FIN_BTN_REPAY,
-	FIN_BTN_OPEN,
-};
-
-static bool DrawFinanceWin(MiniWnd &mw)
-{
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c == nullptr) return false;
-
-	int s = _ms.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int pad = 5 * s;
-	int gap = 2 * s;
-	int w = 110 * s;
-	int maxw = w - 2 * pad;
-	int row_h = lh + gap;
-	int bw = 12 * s, bh = 10 * s;
-
-	static std::vector<std::pair<std::string, uint32_t>> rows;
-	rows.clear();
-	rows.emplace_back(fmt::format("BAL {}", GetString(STR_JUST_CURRENCY_LONG, c->money)), c->money < 0 ? 0xFFE05F4AU : COL_CH_TEXT);
-	rows.emplace_back(fmt::format("LOAN {} / {}", GetString(STR_JUST_CURRENCY_LONG, c->current_loan), GetString(STR_JUST_CURRENCY_LONG, c->GetMaxLoan())), c->current_loan > 0 ? 0xFFE0B64AU : COL_CH_TEXT);
-	rows.emplace_back(fmt::format("INC {}", GetString(STR_JUST_CURRENCY_LONG, c->cur_economy.income)), COL_CH_TEXT);
-	rows.emplace_back(fmt::format("EXP {}", GetString(STR_JUST_CURRENCY_LONG, c->cur_economy.expenses)), COL_CH_TEXT);
-
-	mw.w = w;
-	mw.h = pad + lh + 3 * s + (int)rows.size() * row_h + 4 * s + bh + pad;
-	int y = DrawMiniWinFrame(mw, MenuLabel(INVALID_STRING_ID, "FINANCES"));
-
-	for (const auto &[text, tint] : rows) {
-		if (const MiniTextEntry *e = TextTexture(TruncateText(text, maxw)); e != nullptr) RlwCmdTexQuad(e->tex, mw.x + pad, y, tint);
-		y += row_h;
-	}
-	y += 4 * s;
-
-	for (int i = 0; i < 3; i++) {
-		int bx = mw.x + pad + i * (bw + gap);
-		Rect r = {bx, y, bx + bw - 1, y + bh - 1};
-		ChromeTile(r, false);
-		uint32_t gc = COL_CH_TEXT;
-		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
-		int gh = std::max(2, (bh - 4 * s) / 2);
-		int t = std::max(1, s);
-		switch (i) {
-			case FIN_BTN_BORROW:
-				ScreenFillRect(gcx - gh, gcy - t / 2, gcx + gh, gcy + t - 1 - t / 2, gc);
-				ScreenFillRect(gcx - t / 2, gcy - gh, gcx + t - 1 - t / 2, gcy + gh, gc);
-				break;
-			case FIN_BTN_REPAY:
-				ScreenFillRect(gcx - gh, gcy - t / 2, gcx + gh, gcy + t - 1 - t / 2, gc);
-				break;
-			case FIN_BTN_OPEN:
-				ScreenFillRect(gcx - gh, gcy - gh, gcx + gh, gcy - gh + t, gc);
-				ScreenFillRect(gcx - gh, gcy - gh, gcx - gh + t - 1, gcy + gh, gc);
-				ScreenFillRect(gcx + gh - t + 1, gcy - gh, gcx + gh, gcy + gh, gc);
-				ScreenFillRect(gcx - gh, gcy + gh - t + 1, gcx + gh, gcy + gh, gc);
-				break;
-		}
-		mw.btn_hits.push_back({r, i});
-	}
-	return true;
-}
-
 static void DrawMiniWins()
 {
 	for (size_t i = 0; i < _wins.size(); ) {
@@ -3716,8 +3640,7 @@ static void DrawMiniWins()
 		switch (mw.kind) {
 			case MiniWndKind::Vehicle: ok = DrawVehWin(mw); break;
 			case MiniWndKind::Station: ok = DrawStationWin(mw); break;
-			case MiniWndKind::Town: ok = DrawTownWin(mw); break;
-			default: ok = DrawFinanceWin(mw); break;
+			default: ok = DrawTownWin(mw); break;
 		}
 		if (!ok) {
 			CloseMiniWin(i);
@@ -3765,7 +3688,7 @@ static bool MiniWinBtnClick(MiniWnd &mw, int btn)
 				ShowStationViewWindow(st->index);
 				break;
 		}
-	} else if (mw.kind == MiniWndKind::Town) {
+	} else {
 		const Town *t = Town::GetIfValid(mw.town);
 		if (t == nullptr) return true;
 		switch (btn) {
@@ -3774,18 +3697,6 @@ static bool MiniWinBtnClick(MiniWnd &mw, int btn)
 				break;
 			case MW_BTN_OPEN:
 				ShowTownViewWindow(t->index);
-				break;
-		}
-	} else {
-		switch (btn) {
-			case FIN_BTN_BORROW:
-				Command<CMD_INCREASE_LOAN>::Post(STR_ERROR_CAN_T_BORROW_ANY_MORE_MONEY, _ctrl_pressed ? LoanCommand::Max : LoanCommand::Interval, 0);
-				break;
-			case FIN_BTN_REPAY:
-				Command<CMD_DECREASE_LOAN>::Post(STR_ERROR_CAN_T_REPAY_LOAN, _ctrl_pressed ? LoanCommand::Max : LoanCommand::Interval, 0);
-				break;
-			case FIN_BTN_OPEN:
-				ShowCompanyFinances(_local_company);
 				break;
 		}
 	}
