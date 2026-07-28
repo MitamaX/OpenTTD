@@ -1606,10 +1606,14 @@ static void DrawSelectionRing(int ppt)
 	FillRect(cx + r - 1, cy - r, cx + r, cy + r, COL_PAPER);
 }
 
-/* Town names always show for navigation; station names join at the
- * infrastructure zoom tier. Labels sit centred above their sign tile. */
+void ShowIndustryViewWindow(IndustryID industry);
+
+/* Town names always show for navigation; station and industry names join
+ * at the infrastructure zoom tier. Labels sit centred above their sign
+ * tile. */
 static std::vector<std::pair<Rect, TownID>> _town_label_hits;
 static std::vector<std::pair<Rect, StationID>> _station_label_hits;
+static std::vector<std::pair<Rect, IndustryID>> _industry_label_hits;
 
 static TextColour PlateTextColour(uint32_t c)
 {
@@ -1641,6 +1645,7 @@ static void DrawLabels()
 {
 	_town_label_hits.clear();
 	_station_label_hits.clear();
+	_industry_label_hits.clear();
 	int margin = 300;
 	int limit = GetCharacterHeight(FS_NORMAL) + 20;
 	for (const Town *t : Town::Iterate()) {
@@ -1653,6 +1658,17 @@ static void DrawLabels()
 		_town_label_hits.emplace_back(r, t->index);
 	}
 	if (!_zd.station_names) return;
+	/* Oil rigs already carry the plate of their neutral station. */
+	for (const Industry *ind : Industry::Iterate()) {
+		if (ind->neutral_station != nullptr) continue;
+		TileIndex tile = ind->location.GetCenterTile();
+		int cx = ScrX(TileY(tile) + 0.5);
+		int cy = ScrY(TileX(tile) + 0.5);
+		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
+		std::string str = GetString(STR_INDUSTRY_NAME, ind->index);
+		Rect r = DrawLabelPlate(cx, cy, str, COL_IND, false, PlateTextColour(COL_IND));
+		_industry_label_hits.emplace_back(r, ind->index);
+	}
 	for (const Station *st : Station::Iterate()) {
 		int cx = ScrX(TileY(st->xy) + 0.5);
 		int cy = ScrY(TileX(st->xy) + 0.5);
@@ -1671,6 +1687,12 @@ static bool HandleLabelClick(int x, int y)
 			_sel_station = id;
 			_sel_vehicle = VehicleID::Invalid();
 			_follow = false;
+			return true;
+		}
+	}
+	for (const auto &[r, id] : _industry_label_hits) {
+		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+			ShowIndustryViewWindow(id);
 			return true;
 		}
 	}
