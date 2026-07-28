@@ -16,6 +16,7 @@
 #include "order_base.h"
 #include "order_cmd.h"
 #include "strings_func.h"
+#include "textbuf_gui.h"
 #include "vehicle_base.h"
 #include "vehicle_cmd.h"
 #include "vehicle_func.h"
@@ -38,6 +39,7 @@ static constexpr WidgetID WID_MV_STOP = WID_VV_HONK_HORN + 5;
 static constexpr NWidgetPart _nested_mini_vehicle_widgets[] = {
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_CAPTION, COLOUR_GREY, WID_VV_CAPTION), SetStringTip(STR_JUST_STRING, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+		NWidget(WWT_PUSHIMGBTN, COLOUR_GREY, WID_VV_RENAME), SetAspect(WidgetDimensions::ASPECT_RENAME), SetSpriteTip(SPR_RENAME),
 		NWidget(WWT_CLOSEBOX, COLOUR_GREY),
 	EndContainer(),
 	NWidget(WWT_PANEL, COLOUR_GREY, WID_MV_DESC), SetMinimalSize(240, 0), SetMinimalTextLines(1, WidgetDimensions::unscaled.framerect.Vertical()), SetFill(1, 0), EndContainer(),
@@ -75,13 +77,13 @@ struct MiniVehicleWindow : Window {
 		const Vehicle *v = Vehicle::Get(this->window_number);
 		switch (widget) {
 			case WID_VV_CAPTION: return GetString(STR_VEHICLE_NAME, v->index);
-			case WID_MV_TAB_STATUS: return "STATUS";
-			case WID_MV_TAB_CARGO: return "CARGO";
-			case WID_MV_TAB_ORDERS: return "ORDERS";
-			case WID_MV_STOP: return v->vehstatus.Test(VehState::Stopped) ? "GO" : "STOP";
-			case WID_VV_GOTO_DEPOT: return "DEPOT";
-			case WID_VV_REFIT: return "REFIT";
-			case WID_VV_SHOW_ORDERS: return "ORDERS...";
+			case WID_MV_TAB_STATUS: return "상태";
+			case WID_MV_TAB_CARGO: return GetString(STR_VEHICLE_DETAIL_TAB_CARGO);
+			case WID_MV_TAB_ORDERS: return "주문";
+			case WID_MV_STOP: return GetString(v->vehstatus.Test(VehState::Stopped) ? STR_VEHICLE_COMMAND_STARTED : STR_VEHICLE_COMMAND_STOPPED);
+			case WID_VV_GOTO_DEPOT: return "차고로";
+			case WID_VV_REFIT: return GetString(STR_ORDER_REFIT);
+			case WID_VV_SHOW_ORDERS: return "주문 창";
 			default: return this->Window::GetWidgetString(widget, stringid);
 		}
 	}
@@ -100,17 +102,17 @@ struct MiniVehicleWindow : Window {
 		} else if (v->current_order.IsType(OT_GOTO_STATION)) {
 			DrawString(ir.left, ir.right, y, GetString(STR_STATION_NAME, v->current_order.GetDestination().ToStationID()), TC_LIGHT_BLUE);
 		} else if (v->current_order.IsType(OT_GOTO_DEPOT)) {
-			DrawString(ir.left, ir.right, y, "DEPOT", TC_LIGHT_BLUE);
+			DrawString(ir.left, ir.right, y, "차고로 이동 중", TC_LIGHT_BLUE);
 		} else {
 			DrawString(ir.left, ir.right, y, "-", TC_GREY);
 		}
 		y += lh;
 
-		DrawString(ir.left, ir.right, y, fmt::format("SPEED {} / {}", v->GetDisplaySpeed(), v->GetDisplayMaxSpeed()), TC_BLACK);
+		DrawString(ir.left, ir.right, y, fmt::format("속도  {} / {}", v->GetDisplaySpeed(), v->GetDisplayMaxSpeed()), TC_BLACK);
 		y += lh;
 		DrawString(ir.left, ir.right, y, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, v->reliability * 100 >> 16, v->breakdowns_since_last_service));
 		y += lh;
-		DrawString(ir.left, ir.right, y, fmt::format("AGE {}Y / {}Y", v->age.base() / 366, v->max_age.base() / 366), TC_BLACK);
+		DrawString(ir.left, ir.right, y, fmt::format("차령  {}년 / {}년", v->age.base() / 366, v->max_age.base() / 366), TC_BLACK);
 		y += lh;
 		DrawString(ir.left, ir.right, y, GetString(STR_VEHICLE_INFO_PROFIT_THIS_YEAR_LAST_YEAR, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()));
 	}
@@ -145,8 +147,8 @@ struct MiniVehicleWindow : Window {
 		switch (o.GetType()) {
 			case OT_GOTO_STATION: return GetString(STR_STATION_NAME, o.GetDestination().ToStationID());
 			case OT_GOTO_WAYPOINT: return GetString(STR_WAYPOINT_NAME, o.GetDestination().ToStationID());
-			case OT_GOTO_DEPOT: return "DEPOT";
-			case OT_CONDITIONAL: return fmt::format("IF > {}", o.GetConditionSkipToOrder() + 1);
+			case OT_GOTO_DEPOT: return "차고";
+			case OT_CONDITIONAL: return fmt::format("조건 {}번", o.GetConditionSkipToOrder() + 1);
 			default: return std::string();
 		}
 	}
@@ -210,6 +212,7 @@ struct MiniVehicleWindow : Window {
 		this->SetWidgetDisabledState(WID_MV_STOP, v->owner != _local_company);
 		this->SetWidgetDisabledState(WID_VV_GOTO_DEPOT, v->owner != _local_company);
 		this->SetWidgetDisabledState(WID_VV_REFIT, v->owner != _local_company);
+		this->SetWidgetDisabledState(WID_VV_RENAME, v->owner != _local_company);
 		this->DrawWidgets();
 	}
 
@@ -248,7 +251,18 @@ struct MiniVehicleWindow : Window {
 			case WID_VV_SHOW_ORDERS:
 				ShowOrdersWindow(v);
 				break;
+
+			case WID_VV_RENAME:
+				ShowQueryString(GetString(STR_VEHICLE_NAME, v->index), STR_QUERY_RENAME_TRAIN_CAPTION + v->type,
+						MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+				break;
 		}
+	}
+
+	void OnQueryTextFinished(std::optional<std::string> str) override
+	{
+		if (!str.has_value()) return;
+		Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + Vehicle::Get(this->window_number)->type, static_cast<VehicleID>(this->window_number), *str);
 	}
 };
 

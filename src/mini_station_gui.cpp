@@ -19,6 +19,7 @@
 #include "order_base.h"
 #include "station_base.h"
 #include "station_cmd.h"
+#include "station_func.h"
 #include "strings_func.h"
 #include "textbuf_gui.h"
 #include "timer/timer_game_calendar.h"
@@ -94,9 +95,9 @@ struct MiniStationWindow : Window {
 		switch (widget) {
 			case WID_SV_CAPTION: return GetString(STR_STATION_NAME, this->window_number);
 			case WID_MS_TAB_STATUS: return "상태";
-			case WID_MS_TAB_INFO: return "정보";
-			case WID_MS_TAB_INDUSTRY: return "산업";
-			case WID_MS_TAB_VEHICLES: return "차량";
+			case WID_MS_TAB_INFO: return GetString(STR_VEHICLE_DETAIL_TAB_INFORMATION);
+			case WID_MS_TAB_INDUSTRY: return GetString(STR_SMALLMAP_TYPE_INDUSTRIES);
+			case WID_MS_TAB_VEHICLES: return GetString(STR_SMALLMAP_TYPE_VEHICLES);
 			case WID_SV_CATCHMENT: return std::string();
 			default: return this->Window::GetWidgetString(widget, stringid);
 		}
@@ -115,7 +116,7 @@ struct MiniStationWindow : Window {
 			any = true;
 			uint pct = ToPercent8(ge.rating);
 			TextColour tc = pct < 25 ? TC_RED : pct < 50 ? TC_YELLOW : TC_BLACK;
-			DrawString(ir.left, ir.right, y, fmt::format("{}  대기 {} · 등급 {}%", GetString(cs->name), ge.TotalCount(), pct), tc);
+			DrawString(ir.left, ir.right, y, fmt::format("{}: {} · {} {}%", GetString(cs->name), ge.TotalCount(), GetString(STR_CARGO_RATING_APPALLING + (ge.rating >> 5)), pct), tc);
 			y += lh;
 		}
 		if (!any) DrawString(ir.left, ir.right, y, "대기 화물 없음", TC_GREY);
@@ -126,7 +127,7 @@ struct MiniStationWindow : Window {
 		int lh = GetCharacterHeight(FS_NORMAL);
 		int y = ir.top;
 
-		DrawString(ir.left, ir.right, y, fmt::format("설립  {}", GetString(STR_JUST_DATE_LONG, st->build_date)), TC_BLACK);
+		DrawString(ir.left, ir.right, y, GetString(STR_LAND_AREA_INFORMATION_BUILD_DATE, st->build_date));
 		y += lh;
 
 		if (st->facilities.Test(StationFacility::Train) && st->train_station.tile != INVALID_TILE) {
@@ -135,17 +136,11 @@ struct MiniStationWindow : Window {
 				if (!st->TileBelongsToRailStation(t)) continue;
 				longest = std::max(longest, st->GetPlatformLength(t));
 			}
-			DrawString(ir.left, ir.right, y, fmt::format("최대 승강장  {}칸", longest), TC_BLACK);
+			DrawString(ir.left, ir.right, y, fmt::format("{}  {}칸", GetString(STR_STATION_BUILD_PLATFORM_LENGTH), longest), TC_BLACK);
 			y += lh;
 		}
 
-		std::string accepts;
-		for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
-			if (!st->goods[cs->Index()].status.Test(GoodsEntry::State::Acceptance)) continue;
-			if (!accepts.empty()) accepts += ", ";
-			accepts += GetString(cs->name);
-		}
-		DrawString(ir.left, ir.right, y, accepts.empty() ? "수용 화물 없음" : fmt::format("수용  {}", accepts), accepts.empty() ? TC_GREY : TC_BLACK);
+		y = DrawStringMultiLine(ir.left, ir.right, y, ir.bottom, GetString(STR_STATION_VIEW_ACCEPTS_CARGO, GetAcceptanceMask(st)));
 	}
 
 	void DrawIndustryRows(const Rect &ir, const Station *st) const
