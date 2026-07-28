@@ -169,8 +169,7 @@ static bool _dragging = false;
 static bool _drag_remove = false;
 static double _drag_ax, _drag_ay;
 
-static VehicleID _sel_vehicle = VehicleID::Invalid();
-static bool _follow = false;
+static VehicleID _follow_vehicle = VehicleID::Invalid();
 
 static bool _prev_left = false;
 
@@ -1488,51 +1487,9 @@ static void BuyAtDepot(bool alt)
 	Command<CMD_BUILD_VEHICLE>::Post(STR_ERROR_CAN_T_BUY_TRAIN + vt, tile, eid, true, INVALID_CARGO, INVALID_CLIENT_ID);
 }
 
-/* Clicking a compatible station with a vehicle selected appends a go-to
- * order, mirroring the defaults of the order window's goto click. */
-static bool TryAppendOrder(int sx, int sy)
-{
-	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
-	if (v == nullptr || !v->IsPrimaryVehicle() || v->owner != _local_company) return false;
-
-	int tx = (int)std::floor(MapXAt(sy));
-	int ty = (int)std::floor(MapYAt(sx));
-	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return false;
-	TileIndex tile = TileXY(tx, ty);
-	if (!IsTileType(tile, MP_STATION)) return false;
-	switch (GetStationType(tile)) {
-		case StationType::RailWaypoint:
-		case StationType::RoadWaypoint:
-		case StationType::Buoy:
-			return false;
-		default:
-			break;
-	}
-	const Station *st = Station::GetByTile(tile);
-	if (st == nullptr || (st->owner != _local_company && st->owner != OWNER_NONE)) return false;
-
-	StationFacilities facil;
-	switch (v->type) {
-		case VEH_SHIP: facil = StationFacility::Dock; break;
-		case VEH_TRAIN: facil = StationFacility::Train; break;
-		case VEH_AIRCRAFT: facil = StationFacility::Airport; break;
-		case VEH_ROAD: facil = {StationFacility::BusStop, StationFacility::TruckStop}; break;
-		default: return false;
-	}
-	if (!st->facilities.Any(facil)) return false;
-
-	Order order;
-	order.MakeGoToStation(st->index);
-	if (_ctrl_pressed) order.SetLoadType(OrderLoadType::FullLoadAny);
-	if (_settings_client.gui.new_nonstop && v->IsGroundVehicle()) order.SetNonStopType(OrderNonStopFlag::NoIntermediate);
-	order.SetStopLocation(v->type == VEH_TRAIN ? (OrderStopLocation)(_settings_client.gui.stop_location) : OrderStopLocation::FarEnd);
-	Command<CMD_INSERT_ORDER>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
-	return true;
-}
-
-/* Any unit of a consist selects its head, so the info line always
+/* Any unit of a consist opens its head's window, so the window always
  * describes the whole vehicle. */
-static const Vehicle *SelectVehicleAt(int sx, int sy)
+static void OpenVehicleWndAt(int sx, int sy)
 {
 	const Vehicle *best = nullptr;
 	int best_d2 = 15 * 15;
@@ -1547,20 +1504,17 @@ static const Vehicle *SelectVehicleAt(int sx, int sy)
 			best = v;
 		}
 	}
-	if (best == nullptr) {
-		_sel_vehicle = VehicleID::Invalid();
-		return nullptr;
-	}
-	_sel_vehicle = best->First()->index;
-	ShowVehicleViewWindow(best->First());
-	return best->First();
+	if (best != nullptr) ShowVehicleViewWindow(best->First());
 }
 
-/* Route preview for the selected vehicle: stop-to-stop legs in blueprint
- * blue, the leg from the vehicle to its current destination highlighted. */
+static VehicleID FrontWndVehicle();
+
+/* Route preview for the front window's vehicle: stop-to-stop legs in
+ * blueprint blue, the leg from the vehicle to its current destination
+ * highlighted. */
 static void DrawOrderRoute()
 {
-	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
+	const Vehicle *v = Vehicle::GetIfValid(FrontWndVehicle());
 	if (v == nullptr || v->GetNumOrders() < 1) return;
 
 	std::vector<std::pair<int, int>> stops;
@@ -1594,9 +1548,9 @@ static void DrawOrderRoute()
 	}
 }
 
-static void DrawSelectionRing(int ppt)
+static void DrawVehicleRing(int ppt)
 {
-	const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle);
+	const Vehicle *v = Vehicle::GetIfValid(FrontWndVehicle());
 	if (v == nullptr) return;
 	auto [wx, wy] = LerpVehWorld(v);
 	int cx = ScrX(wy);
@@ -2832,7 +2786,7 @@ static bool HandleWinClick(int x, int y)
 
 /* Top-left status corner in the reference layout: a panel docked flush to
  * the corner carrying the year gauge, company identity, money and the time
- * controls, with the selected-vehicle readout hanging below it. */
+ * controls, with the status rows hanging below it. */
 static std::vector<std::pair<Rect, int>> _speed_hits;
 static int _colony_bottom = 0;
 static const uint32_t COL_CH_GAUGE = 0xFFE8B94DU;
@@ -3141,7 +3095,7 @@ static bool HandleStatusClick(int x, int y)
 			_status_cursor[st]++;
 			const Vehicle *v = Vehicle::GetIfValid(list[idx]);
 			if (v == nullptr) continue;
-			_sel_vehicle = v->index;
+			ShowVehicleViewWindow(v->First());
 			MiniUiScrollTo(v->x_pos, v->y_pos);
 			return true;
 		}
@@ -3189,13 +3143,10 @@ static void DrawHud()
 			DrawHudText(tx, ty, title);
 			DrawHudText(tx, ty + lh + 4, hint);
 		}
-	} else if (Vehicle::GetIfValid(_sel_vehicle) != nullptr) {
+	} else if (Vehicle::GetIfValid(_follow_vehicle) != nullptr) {
 		/* Transient state only: the reference keeps the centre of the screen
-		 * clear unless something is selected or being placed. */
-		std::string_view hint = _follow
-			? "FOLLOWING  CLICK STATION ORDER  O DROP ORDER  P START STOP  H UNFOLLOW  ESC DESELECT"
-			: "CLICK STATION ORDER / CTRL FULL LOAD  O DROP ORDER  P START STOP  H FOLLOW  ESC DESELECT";
-		DrawHudTextCentred(_fbw / 2, _fbh - MenuTileSide() - 12 * s - lh, hint);
+		 * clear unless the camera is chasing or a tool is placing. */
+		DrawHudTextCentred(_fbw / 2, _fbh - MenuTileSide() - 12 * s - lh, "FOLLOWING  H UNFOLLOW  ESC STOP");
 	}
 }
 
@@ -3228,6 +3179,12 @@ static std::vector<MiniWnd> _wnds;
 static int _wnd_drag = -1;
 static int _wnd_drag_dx = 0, _wnd_drag_dy = 0;
 static std::string _wnd_tooltip;
+
+static VehicleID FrontWndVehicle()
+{
+	if (_wnds.empty() || _wnds.back().kind != MiniWndKind::Vehicle) return VehicleID::Invalid();
+	return _wnds.back().veh;
+}
 
 enum {
 	MWA_CLOSE,
@@ -3960,7 +3917,7 @@ static void ClampCamera()
 static void ZoomAt(int sx, int sy, bool in)
 {
 	_dest_ppt = Clamp(_dest_ppt * (in ? _ms.zoom_step : 1.0 / _ms.zoom_step), MIN_PPT, MAX_PPT);
-	if (_follow) return;
+	if (_follow_vehicle != VehicleID::Invalid()) return;
 	_glide = false;
 	/* Anchor the world point under the cursor; the camera follows it every
 	 * frame while the scale animates, so the point never drifts. */
@@ -3984,8 +3941,7 @@ static void Deactivate()
 	_dragging = false;
 	_zoom_anchored = false;
 	_glide = false;
-	_sel_vehicle = VehicleID::Invalid();
-	_follow = false;
+	_follow_vehicle = VehicleID::Invalid();
 	_veh_snap.clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
@@ -4072,7 +4028,7 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 void MiniUiScrollTo(int x, int y)
 {
 	if (!_mini_active) return;
-	_follow = false;
+	_follow_vehicle = VehicleID::Invalid();
 	_zoom_anchored = false;
 	_glide = true;
 	_glide_x = x / (double)TILE_SIZE;
@@ -4102,7 +4058,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
 		_zoom_anchored = false;
-		_follow = false;
+		_follow_vehicle = VehicleID::Invalid();
 		_glide = false;
 		_pan_vx = 0.0;
 		_pan_vy = 0.0;
@@ -4126,8 +4082,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_left_button_clicked = true;
 		if (!HandleWndClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
-				if (!TryAppendOrder(_cursor.pos.x, _cursor.pos.y) && !HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
-					SelectVehicleAt(_cursor.pos.x, _cursor.pos.y);
+				if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
+					OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y);
 				}
 			} else if (IsPointTool(_tool)) {
 				_drag_remove = _ctrl_pressed;
@@ -4204,9 +4160,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			} else if (_menu_open >= 0 || _win_open >= 0) {
 				_menu_open = -1;
 				_win_open = -1;
-			} else if (_sel_vehicle != VehicleID::Invalid()) {
-				_sel_vehicle = VehicleID::Invalid();
-				_follow = false;
+			} else if (_follow_vehicle != VehicleID::Invalid()) {
+				_follow_vehicle = VehicleID::Invalid();
 			}
 			break;
 
@@ -4266,24 +4221,14 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			_tool = _tool == MiniTool::Terraform ? MiniTool::None : MiniTool::Terraform;
 			break;
 
-		case 'P':
-			if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr) {
-				Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, _sel_vehicle, false);
-			}
-			break;
-
 		case 'H':
-			_follow = !_follow && Vehicle::GetIfValid(_sel_vehicle) != nullptr;
-			if (_follow) {
+			if (_follow_vehicle != VehicleID::Invalid()) {
+				_follow_vehicle = VehicleID::Invalid();
+			} else if (Vehicle::GetIfValid(FrontWndVehicle()) != nullptr) {
+				_follow_vehicle = FrontWndVehicle();
 				_glide = false;
 				_zoom_anchored = false;
 				_dest_ppt = MAX_PPT;
-			}
-			break;
-
-		case 'O':
-			if (const Vehicle *v = Vehicle::GetIfValid(_sel_vehicle); v != nullptr && v->GetNumOrders() > 0) {
-				Command<CMD_DELETE_ORDER>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)(v->GetNumOrders() - 1));
 			}
 			break;
 
@@ -4325,8 +4270,7 @@ void MiniUiFrame(uint delta_ms)
 	if (native_follow != last_native_follow) {
 		last_native_follow = native_follow;
 		if (native_follow != VehicleID::Invalid()) {
-			_sel_vehicle = native_follow;
-			_follow = true;
+			_follow_vehicle = native_follow;
 			_glide = false;
 			_zoom_anchored = false;
 			_dest_ppt = MAX_PPT;
@@ -4349,9 +4293,9 @@ void MiniUiFrame(uint delta_ms)
 	 * the other axis coasting. */
 	if (_dirkeys != 0) {
 		_zoom_anchored = false;
-		_follow = false;
+		_follow_vehicle = VehicleID::Invalid();
 		_glide = false;
-	} else if (_follow || _glide || _zoom_anchored) {
+	} else if (_follow_vehicle != VehicleID::Invalid() || _glide || _zoom_anchored) {
 		_pan_vx = 0.0;
 		_pan_vy = 0.0;
 	}
@@ -4386,7 +4330,7 @@ void MiniUiFrame(uint delta_ms)
 		if (_cursor.pos.y >= _fbh - _ms.edge_margin) ey = px;
 		if (ex != 0.0 || ey != 0.0) {
 			_zoom_anchored = false;
-			_follow = false;
+			_follow_vehicle = VehicleID::Invalid();
 			_glide = false;
 			_cam_y += ex;
 			_cam_x += ey;
@@ -4394,10 +4338,10 @@ void MiniUiFrame(uint delta_ms)
 		}
 	}
 
-	if (_follow) {
-		const Vehicle *fv = Vehicle::GetIfValid(_sel_vehicle);
+	if (_follow_vehicle != VehicleID::Invalid()) {
+		const Vehicle *fv = Vehicle::GetIfValid(_follow_vehicle);
 		if (fv == nullptr) {
-			_follow = false;
+			_follow_vehicle = VehicleID::Invalid();
 		} else {
 			auto [wx, wy] = LerpVehWorld(fv);
 			_cam_x = wx;
@@ -4548,6 +4492,6 @@ void MiniUiFrame(uint delta_ms)
 
 	DrawOrderRoute();
 	DrawVehicles(ppt);
-	DrawSelectionRing(ppt);
+	DrawVehicleRing(ppt);
 	Present();
 }
