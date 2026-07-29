@@ -30,6 +30,7 @@
 #include "zoom_func.h"
 #include "error.h"
 #include "depot_cmd.h"
+#include "mini_ui.h"
 #include "train_cmd.h"
 #include "vehicle_cmd.h"
 #include "core/geometry_func.hpp"
@@ -1182,6 +1183,7 @@ static void DepotSellAllConfirmationCallback(Window *win, bool confirmed)
  */
 void ShowDepotWindow(TileIndex tile, VehicleType type)
 {
+	if (ShowMiniDepotWindow(tile, type)) return;
 	if (BringWindowToFrontById(WC_VEHICLE_DEPOT, tile) != nullptr) return;
 
 	switch (type) {

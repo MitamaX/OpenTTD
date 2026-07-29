@@ -16,7 +16,9 @@
 #include "gfx_type.h"
 #include "industry_type.h"
 #include "station_type.h"
+#include "tile_type.h"
 #include "town_type.h"
+#include "vehicle_type.h"
 #include "video/raylib_wrap.h"
 #include "window_type.h"
 
@@ -40,5 +42,6 @@ bool ShowMiniVehicleWindow(const Vehicle *v);
 bool ShowMiniStationWindow(StationID station);
 bool ShowMiniTownWindow(TownID town);
 bool ShowMiniIndustryWindow(IndustryID industry);
+bool ShowMiniDepotWindow(TileIndex tile, VehicleType type);
 
 #endif /* MINI_UI_H */

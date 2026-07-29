@@ -1,4 +1,4 @@
-﻿/*
+/*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
  * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -24,6 +24,11 @@
 #include "core/backup_type.hpp"
 #include "core/math_func.hpp"
 #include "core/utf8.hpp"
+#include "depot_base.h"
+#include "depot_cmd.h"
+#include "depot_func.h"
+#include "depot_map.h"
+#include "train_cmd.h"
 #include <unordered_map>
 #include <unordered_set>
 #include "fileio_func.h"
@@ -160,6 +165,27 @@ static MiniLayer ToolLayer(MiniTool t)
 static MiniTool _tool = MiniTool::None;
 
 static VehicleID _follow_veh = VehicleID::Invalid();
+
+/* Consist drafts for the fleet window, one per vehicle type. A draft is
+ * assembled in the window and produced whole at a depot. */
+static std::vector<EngineID> _fleet_draft[4];
+
+/* Deploy job: the draft is produced unit by unit and each new vehicle is
+ * attached to the job's own consist head by explicit id, so the result is
+ * one connected train regardless of what else sits in the depot. Commands
+ * are asynchronous under network play, hence the stepwise states. */
+struct FleetDeploy {
+	TileIndex depot = INVALID_TILE;
+	VehicleType vt = VEH_TRAIN;
+	std::vector<EngineID> units;
+	size_t next = 0;
+	uint8_t stage = 0;
+	VehicleID head = VehicleID::Invalid();
+	VehicleID fresh = VehicleID::Invalid();
+	std::vector<VehicleID> before;
+	int waited = 0;
+};
+static FleetDeploy _deploy;
 
 /* The screen has exactly one input mode: idle, building or following a
  * vehicle. Entering one drops the others. */
@@ -1457,7 +1483,7 @@ static void DrawVehicles(int ppt)
 
 /* Any unit of a consist opens its head's window, so the window always
  * describes the whole vehicle. */
-static void OpenVehicleWndAt(int sx, int sy)
+static bool OpenVehicleWndAt(int sx, int sy)
 {
 	const Vehicle *best = nullptr;
 	int best_d2 = 15 * 15;
@@ -1473,6 +1499,103 @@ static void OpenVehicleWndAt(int sx, int sy)
 		}
 	}
 	if (best != nullptr) ShowVehicleViewWindow(best->First());
+	return best != nullptr;
+}
+
+static bool OpenDepotWndAt(int sx, int sy)
+{
+	int tx = (int)std::floor(MapXAt(sy));
+	int ty = (int)std::floor(MapYAt(sx));
+	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return false;
+	TileIndex tile = TileXY(tx, ty);
+	if (!IsDepotTile(tile)) return false;
+	ShowDepotWindow(tile, GetDepotVehicleType(tile));
+	return true;
+}
+
+/* Stage 0 issues the next build, stage 1 spots the new vehicle among the
+ * depot's chains, stage 2 waits for its attach move to apply before the
+ * next unit goes out. Single player resolves each stage within a frame. */
+static void ProcessFleetDeploy()
+{
+	if (_deploy.depot == INVALID_TILE) return;
+	if (!IsDepotTile(_deploy.depot) || GetDepotVehicleType(_deploy.depot) != _deploy.vt) {
+		_deploy = FleetDeploy{};
+		return;
+	}
+
+	auto depot_ids = [&]() {
+		std::vector<VehicleID> ids;
+		for (const Vehicle *v : Vehicle::Iterate()) {
+			if (v->type == _deploy.vt && v->tile == _deploy.depot) ids.push_back(v->index);
+		}
+		return ids;
+	};
+
+	switch (_deploy.stage) {
+		case 0: {
+			if (_deploy.next >= _deploy.units.size()) {
+				_deploy = FleetDeploy{};
+				return;
+			}
+			const Engine *e = Engine::GetIfValid(_deploy.units[_deploy.next]);
+			if (e == nullptr) {
+				_deploy.next++;
+				return;
+			}
+			_deploy.before = depot_ids();
+			Command<CMD_BUILD_VEHICLE>::Post(GetCmdBuildVehMsg(_deploy.vt), _deploy.depot, e->index, true, INVALID_CARGO, INVALID_CLIENT_ID);
+			_deploy.stage = 1;
+			_deploy.waited = 0;
+			return;
+		}
+
+		case 1: {
+			for (VehicleID id : depot_ids()) {
+				if (std::find(_deploy.before.begin(), _deploy.before.end(), id) != _deploy.before.end()) continue;
+				const Vehicle *nv = Vehicle::GetIfValid(id);
+				if (nv == nullptr || nv->First() != nv) continue;
+				_deploy.fresh = id;
+				break;
+			}
+			if (_deploy.fresh == VehicleID::Invalid()) {
+				if (++_deploy.waited > 180) _deploy = FleetDeploy{};
+				return;
+			}
+			if (_deploy.vt != VEH_TRAIN || _deploy.head == VehicleID::Invalid()) {
+				_deploy.head = _deploy.fresh;
+				_deploy.fresh = VehicleID::Invalid();
+				_deploy.next++;
+				_deploy.stage = 0;
+				return;
+			}
+			const Vehicle *hv = Vehicle::GetIfValid(_deploy.head);
+			if (hv == nullptr) {
+				_deploy = FleetDeploy{};
+				return;
+			}
+			Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, _deploy.depot, _deploy.fresh, hv->Last()->index, false);
+			_deploy.stage = 2;
+			_deploy.waited = 0;
+			return;
+		}
+
+		case 2: {
+			const Vehicle *nv = Vehicle::GetIfValid(_deploy.fresh);
+			if (nv == nullptr) {
+				_deploy = FleetDeploy{};
+				return;
+			}
+			if (nv->First()->index == _deploy.head) {
+				_deploy.fresh = VehicleID::Invalid();
+				_deploy.next++;
+				_deploy.stage = 0;
+				return;
+			}
+			if (++_deploy.waited > 180) _deploy = FleetDeploy{};
+			return;
+		}
+	}
 }
 
 static VehicleID FrontWndVehicle();
@@ -2465,6 +2588,7 @@ enum class MiniWin : uint8_t {
 	Towns,
 	Industries,
 	Subsidies,
+	Buy,
 };
 
 struct MiniWinItem {
@@ -2489,6 +2613,7 @@ static const MiniWinItem _win_company_items[] = {
 };
 
 static const MiniWinItem _win_vehicle_items[] = {
+	{INVALID_STRING_ID, "DEPOT", MiniWin::Buy},
 	{INVALID_STRING_ID, "STATIONS", MiniWin::Stations},
 	{STR_REPLACE_VEHICLE_TRAIN, "TRAIN", MiniWin::Trains},
 	{STR_REPLACE_VEHICLE_ROAD_VEHICLE, "ROAD", MiniWin::RoadVehicles},
@@ -2596,6 +2721,10 @@ static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
 			ScreenFillCircle(cx + h - t, cy - h + t, t, COL_IND);
 			ScreenThickLine(cx - h + 2 * t, cy + h - 2 * t, cx + h - 2 * t, cy - h + 2 * t, std::max(2, t - 1), COL_PAPER);
 			break;
+		case MiniWin::Buy:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_DEPOT);
+			ScreenFillRect(cx - t, cy - h, cx + t, cy - h + t + 1, COL_PAPER);
+			break;
 	}
 }
 
@@ -2610,6 +2739,8 @@ static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, 
 		DrawTextQuad(e, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
 	}
 }
+
+static void OpenFleetMiniWnd(int vt);
 
 static void OpenMiniWindow(MiniWin win)
 {
@@ -2629,6 +2760,7 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Towns: ShowTownDirectory(); break;
 		case MiniWin::Industries: ShowIndustryDirectory(); break;
 		case MiniWin::Subsidies: ShowSubsidiesList(); break;
+		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
 	}
 }
 
@@ -3130,6 +3262,7 @@ enum class MiniWndKind : uint8_t {
 	Station,
 	Town,
 	Industry,
+	Fleet,
 };
 
 struct MiniWnd {
@@ -3138,6 +3271,7 @@ struct MiniWnd {
 	StationID st = StationID::Invalid();
 	TownID town = TownID::Invalid();
 	IndustryID ind = IndustryID::Invalid();
+	VehicleID sel = VehicleID::Invalid();
 	int x = 0, y = 0;
 	uint8_t tab = 0;
 	int scroll = 0;
@@ -3168,7 +3302,13 @@ struct MiniWndRowAct {
 	VehicleID open_veh = VehicleID::Invalid();
 	StationID open_st = StationID::Invalid();
 	TownID open_town = TownID::Invalid();
+	VehicleID mark = VehicleID::Invalid();
+	EngineID buy = EngineID::Invalid();
+	TileIndex deploy = INVALID_TILE;
+	int draft_del = -1;
 	int skip_order = -1;
+	bool attach = false;
+	bool detach = false;
 };
 
 struct MiniWndHit {
@@ -3251,6 +3391,7 @@ static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 		case MiniWndKind::Vehicle: id = (int)mw.veh.base(); break;
 		case MiniWndKind::Station: id = (int)mw.st.base(); break;
 		case MiniWndKind::Town: id = (int)mw.town.base(); break;
+		case MiniWndKind::Fleet: id = 0; break;
 		default: id = (int)mw.ind.base(); break;
 	}
 	return MW_CARRIER_NUM_BASE + (int)mw.kind * MW_CARRIER_KIND_STRIDE + id;
@@ -3391,6 +3532,15 @@ static void CloseAllMiniWnds()
 	for (const MiniWnd &mw : _wnds) CloseMiniCarrier(mw);
 	_wnds.clear();
 	_wnd_drag = -1;
+}
+
+static void OpenFleetMiniWnd(int vt)
+{
+	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), StationID::Invalid());
+	if (vt >= 0 && _wnds.back().tab != (uint8_t)vt) {
+		_wnds.back().tab = (uint8_t)vt;
+		_wnds.back().scroll = 0;
+	}
 }
 
 /* Body row painter: rows share one scroll window; clickable rows register a
@@ -3800,6 +3950,155 @@ static void DrawIndustryWndBody(const MiniWnd &mw, MiniWndBody &body, const Indu
 	}
 }
 
+/* Fleet window: one communal screen per vehicle type. A consist is drafted
+ * from the engine list, then produced whole by clicking a depot row; every
+ * depot lists its consists for reassembly and selling. */
+static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
+{
+	VehicleType vt = (VehicleType)mw.tab;
+	std::vector<EngineID> &draft = _fleet_draft[mw.tab];
+	std::erase_if(draft, [](EngineID eid) {
+		const Engine *e = Engine::GetIfValid(eid);
+		return e == nullptr || !e->IsEnabled();
+	});
+
+	const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
+	if (sv != nullptr && (sv->type != vt || !sv->First()->IsChainInDepot())) {
+		mw.sel = VehicleID::Invalid();
+		sv = nullptr;
+	}
+
+	body.Header("설계");
+	if (draft.empty()) {
+		body.Plain(vt == VEH_TRAIN ? "엔진 목록을 눌러 편성 구성" : "엔진 목록을 눌러 선택", COL_CH_DIM);
+	} else {
+		Money total = 0;
+		for (size_t i = 0; i < draft.size(); i++) {
+			const Engine *e = Engine::Get(draft[i]);
+			total += e->GetCost();
+			MiniWndRowAct act;
+			act.draft_del = (int)i;
+			body.Link(fmt::format("{}. {}", i + 1, StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {})), COL_CH_TEXT, act);
+		}
+		body.KV("합계", GetString(STR_JUST_CURRENCY_LONG, total), COL_CH_ACCENT);
+		body.Plain("차고 행 클릭으로 생산", COL_CH_DIM);
+	}
+	if (_deploy.depot != INVALID_TILE && _deploy.vt == vt) {
+		body.Plain(fmt::format("생산 중 {} / {}", std::min(_deploy.next + 1, _deploy.units.size()), _deploy.units.size()), COL_CH_ACCENT);
+	}
+
+	struct BuyRow {
+		EngineID eid;
+		std::string name;
+		Money cost;
+		int64_t score;
+	};
+	std::vector<BuyRow> locos, wags;
+	for (const Engine *e : Engine::IterateType(vt)) {
+		if (!e->IsEnabled() || !e->company_avail.Test(_local_company)) continue;
+		bool wagon = false;
+		int64_t score;
+		switch (vt) {
+			case VEH_TRAIN: {
+				const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+				wagon = rvi.railveh_type == RAILVEH_WAGON;
+				score = wagon ? e->GetDisplayDefaultCapacity() : e->GetPower();
+				break;
+			}
+			default:
+				score = (int64_t)e->GetDisplayDefaultCapacity() * 1000 + e->GetDisplayMaxSpeed();
+				break;
+		}
+		BuyRow r;
+		r.eid = e->index;
+		r.name = StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {});
+		r.cost = e->GetCost();
+		r.score = score;
+		(wagon ? wags : locos).push_back(std::move(r));
+	}
+	auto by_score = [](const BuyRow &a, const BuyRow &b) { return a.score > b.score; };
+	std::sort(locos.begin(), locos.end(), by_score);
+	std::sort(wags.begin(), wags.end(), by_score);
+	auto engine_rows = [&](const std::vector<BuyRow> &list) {
+		for (const BuyRow &r : list) {
+			MiniWndRowAct act;
+			act.buy = r.eid;
+			body.KVLink(r.name, GetString(STR_JUST_CURRENCY_LONG, r.cost), COL_CH_TEXT, act, COL_CH_TEXT);
+		}
+	};
+	if (vt == VEH_TRAIN) {
+		if (!locos.empty()) body.Header("기관차");
+		engine_rows(locos);
+		if (!wags.empty()) body.Header("화차");
+		engine_rows(wags);
+	} else {
+		body.Header("엔진");
+		engine_rows(locos);
+	}
+	if (locos.empty() && wags.empty()) body.Plain("구매 가능 엔진 없음", COL_CH_DIM);
+
+	body.Header("차고");
+	if (sv != nullptr && vt == VEH_TRAIN) {
+		body.Plain("표시 차량: 같은 차고 편성 클릭으로 연결", COL_CH_ACCENT);
+		if (sv->First() != sv) {
+			MiniWndRowAct act;
+			act.detach = true;
+			body.Link("새 편성으로 분리", COL_CH_ACCENT, act);
+		}
+	}
+	bool anydep = false;
+	auto chain_rows = [&](const Vehicle *head) {
+		int len = 1;
+		if (vt == VEH_TRAIN) {
+			len = 0;
+			for (const Train *u = Train::From(head); u != nullptr; u = u->GetNextUnit()) len++;
+		}
+		std::string label = head->IsPrimaryVehicle()
+				? StrMakeValid(GetString(STR_VEHICLE_NAME, head->index), {})
+				: StrMakeValid(GetString(STR_ENGINE_NAME, head->engine_type), {});
+		if (len > 1) label = fmt::format("{} · {}량", label, len);
+		label = fmt::format("{}{}", mw.sel == head->index ? "▶ " : "· ", label);
+		bool stopped = head->vehstatus.Test(VehState::Stopped);
+		MiniWndRowAct act;
+		act.mark = head->index;
+		act.attach = true;
+		body.Link(label, mw.sel == head->index ? COL_CH_ACCENT : (stopped ? COL_CH_TEXT : COL_CH_YELLOW), act);
+		if (vt == VEH_TRAIN && len > 1) {
+			for (const Train *u = Train::From(head); u != nullptr; u = u->GetNextUnit()) {
+				MiniWndRowAct ua;
+				ua.mark = u->index;
+				std::string ul = fmt::format("{}{}", mw.sel == u->index ? "  ▶ " : "  · ",
+						StrMakeValid(GetString(STR_ENGINE_NAME, u->engine_type), {}));
+				body.Link(ul, mw.sel == u->index ? COL_CH_ACCENT : COL_CH_DIM, ua);
+			}
+		}
+	};
+	auto depot_block = [&](TileIndex tile, uint dest) {
+		anydep = true;
+		VehicleList chains, wagons;
+		BuildDepotVehicleList(vt, tile, &chains, &wagons);
+		MiniWndRowAct act;
+		act.deploy = tile;
+		std::string dn = StrMakeValid(GetString(STR_DEPOT_NAME, vt, dest), {});
+		body.Link(draft.empty() ? dn : fmt::format("▶ {} 생산", dn), draft.empty() ? COL_CH_TEXT : COL_CH_ACCENT, act);
+		for (const Vehicle *head : chains) chain_rows(head);
+		for (const Vehicle *head : wagons) chain_rows(head);
+	};
+	if (vt == VEH_AIRCRAFT) {
+		for (const Station *st : Station::Iterate()) {
+			if (st->owner != _local_company || !st->facilities.Test(StationFacility::Airport) || !st->airport.HasHangar()) continue;
+			depot_block(st->airport.GetHangarTile(0), st->index.base());
+		}
+	} else {
+		for (const Depot *d : Depot::Iterate()) {
+			if (!IsDepotTile(d->xy) || GetDepotVehicleType(d->xy) != vt) continue;
+			if (GetTileOwner(d->xy) != _local_company) continue;
+			depot_block(d->xy, d->index.base());
+		}
+	}
+	if (!anydep) body.Plain("차고 없음", COL_CH_DIM);
+}
+
 static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c, bool alt)
 {
 	int cx = (r.left + r.right) / 2;
@@ -3814,6 +4113,11 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 				} else {
 					RlwCmdRect(cx - q, cy - q, cx + q, cy + q, c);
 				}
+				break;
+			case 4:
+				RlwCmdCircle(cx, cy, q + s, c);
+				RlwCmdCircle(cx, cy, q - s + 1, alt ? COL_CH_ACTIVE : COL_CH_TILE);
+				RlwCmdCircle(cx, cy, std::max(1, q / 3), c);
 				break;
 			case 1:
 				RlwCmdRect(cx - q, cy - q / 3, cx + q, cy + q, c);
@@ -3858,6 +4162,21 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 				RlwCmdCircle(cx, cy, q - 2 * s - 1, alt ? COL_CH_ACTIVE : COL_CH_TILE);
 				break;
 		}
+	} else if (kind == MiniWndKind::Fleet) {
+		switch (cmd) {
+			case 0:
+				RlwCmdLine(cx - q, cy - q, cx + q, cy + q, s, c);
+				RlwCmdLine(cx - q, cy + q, cx + q, cy - q, s, c);
+				RlwCmdLine(cx - q, cy + q + s, cx + q, cy + q + s, s, c);
+				break;
+			case 1:
+				RlwCmdRect(cx - q, cy - q, cx + q, cy - q + s, c);
+				RlwCmdRect(cx - q, cy + q - s, cx + q, cy + q, c);
+				RlwCmdRect(cx - q, cy - q, cx - q + s, cy + q, c);
+				RlwCmdRect(cx + q - s, cy - q, cx + q, cy + q, c);
+				RlwCmdLine(cx - q + 2 * s, cy + q - 2 * s, cx + q - 2 * s, cy - q + 2 * s, s, c);
+				break;
+		}
 	} else {
 		switch (cmd) {
 			case 0:
@@ -3897,6 +4216,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		case MiniWndKind::Vehicle: if (v != nullptr) title = StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}); break;
 		case MiniWndKind::Station: if (st != nullptr) title = StrMakeValid(GetString(STR_STATION_NAME, st->index), {}); break;
 		case MiniWndKind::Town: if (t != nullptr) title = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {}); break;
+		case MiniWndKind::Fleet: title = "차고"; break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); break;
 	}
 	WndText(fr.left + pad, fr.top + 2 * s, th, title, COL_CH_TEXT);
@@ -3906,21 +4226,32 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	WndCloseGlyph(close_r, WndHover(close_r) ? COL_CH_ACCENT : COL_CH_TEXT);
 	bool own = (mw.kind == MiniWndKind::Vehicle && v != nullptr && v->owner == _local_company) ||
 			(mw.kind == MiniWndKind::Station && st != nullptr && st->owner == _local_company) ||
-			(mw.kind == MiniWndKind::Town && t != nullptr);
-	Rect pen_r = WndIconTile(close_r.left - 2 * s - ts, fr.top + 2 * s, ts, false, own);
-	WndPenGlyph(pen_r, own ? (WndHover(pen_r) ? COL_CH_ACCENT : COL_CH_TEXT) : COL_CH_DIM);
+			(mw.kind == MiniWndKind::Town && t != nullptr) ||
+			(mw.kind == MiniWndKind::Fleet && Company::IsValidID(_local_company));
+	bool pen_ok = own && mw.kind != MiniWndKind::Fleet;
+	Rect pen_r = WndIconTile(close_r.left - 2 * s - ts, fr.top + 2 * s, ts, false, pen_ok);
+	WndPenGlyph(pen_r, pen_ok ? (WndHover(pen_r) ? COL_CH_ACCENT : COL_CH_TEXT) : COL_CH_DIM);
 	_wnd_hits.push_back({idx, close_r, MWA_CLOSE});
-	if (own) _wnd_hits.push_back({idx, pen_r, MWA_RENAME});
-	if (hot && WndHover(pen_r) && own) _wnd_tooltip = "이름 변경";
+	if (pen_ok) _wnd_hits.push_back({idx, pen_r, MWA_RENAME});
+	if (hot && WndHover(pen_r) && pen_ok) _wnd_tooltip = "이름 변경";
 	RlwCmdRect(fr.left + 1, fr.top + th + 2 * s, fr.right - 1, fr.top + th + 2 * s, COL_CH_EDGE);
 
 	/* Uniform-width tab strip. */
 	int tab_y = fr.top + th + 2 * s + 1;
 	int tabh = WndTabH();
-	int ntab = (mw.kind == MiniWndKind::Station || mw.kind == MiniWndKind::Vehicle) ? 4 : 3;
+	int ntab;
+	switch (mw.kind) {
+		case MiniWndKind::Station:
+		case MiniWndKind::Vehicle:
+		case MiniWndKind::Fleet: ntab = 4; break;
+		default: ntab = 3; break;
+	}
 	for (int ti = 0; ti < ntab; ti++) {
 		std::string label;
-		if (mw.kind == MiniWndKind::Vehicle) {
+		if (mw.kind == MiniWndKind::Fleet) {
+			static const StringID type_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
+			label = WndOfficial(type_strs[ti]);
+		} else if (mw.kind == MiniWndKind::Vehicle) {
 			switch (ti) {
 				case 0: label = "상태"; break;
 				case 1: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_CARGO); break;
@@ -3969,7 +4300,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	bp.hot = hot;
 	bp.area = body;
 
-	if (mw.tab == 0) {
+	if (mw.tab == 0 && mw.kind != MiniWndKind::Fleet) {
 		Rect vs = {body.left, body.top, body.right, body.top + WndViewH() - 1};
 		RlwCmdRect(vs.left, vs.top, vs.right, vs.bottom, 0xFF101010U);
 		if (v != nullptr || st != nullptr || t != nullptr || ind != nullptr) {
@@ -3982,6 +4313,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	if (st != nullptr) DrawStationWndBody(mw, bp, st);
 	if (t != nullptr) DrawTownWndBody(mw, bp, t);
 	if (ind != nullptr) DrawIndustryWndBody(mw, bp, ind);
+	if (mw.kind == MiniWndKind::Fleet) DrawFleetWndBody(mw, bp);
 
 	/* Scroll clamp and position mark. */
 	int vis_rows = (bp.area.bottom - bp.area.top + 1) / bp.rh;
@@ -3998,7 +4330,12 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	int cs2 = WndCmdS();
 	int cmd_y = fr.bottom - pad - cs2 + 1;
 	RlwCmdRect(fr.left + 1, cmd_y - pad / 2 - 1, fr.right - 1, cmd_y - pad / 2 - 1, COL_CH_EDGE);
-	int ncmd = mw.kind == MiniWndKind::Vehicle ? 5 : 2;
+	int ncmd;
+	switch (mw.kind) {
+		case MiniWndKind::Vehicle: ncmd = 5; break;
+		case MiniWndKind::Fleet: ncmd = 2; break;
+		default: ncmd = 2; break;
+	}
 	extern const Station *_viewport_highlight_station;
 	for (int c = 0; c < ncmd; c++) {
 		int cx = fr.left + pad + c * (cs2 + 2 * s);
@@ -4009,6 +4346,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 			case MiniWndKind::Station: enabled = st != nullptr && (c == 1 || own || st->owner == OWNER_NONE); break;
 			case MiniWndKind::Town: enabled = t != nullptr; break;
 			case MiniWndKind::Industry: enabled = ind != nullptr; break;
+			case MiniWndKind::Fleet: enabled = own && (c == 0 ? Vehicle::GetIfValid(mw.sel) != nullptr : !_fleet_draft[mw.tab].empty()); break;
 			default: enabled = v != nullptr && (c == 4 || own); break;
 		}
 		Rect cr = WndIconTile(cx, cmd_y, cs2, active, enabled);
@@ -4028,6 +4366,8 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_BUTTON_CATCHMENT) : WndOfficial(STR_STATION_VIEW_CENTER_TOOLTIP);
 			} else if (mw.kind == MiniWndKind::Town) {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_TOWN_VIEW_LOCAL_AUTHORITY_TOOLTIP) : WndOfficial(STR_TOWN_VIEW_CENTER_TOOLTIP);
+			} else if (mw.kind == MiniWndKind::Fleet) {
+				_wnd_tooltip = c == 0 ? "표시한 차량 매각" : "설계 비우기";
 			} else {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_INDUSTRY_DISPLAY_CHAIN) : WndOfficial(STR_INDUSTRY_VIEW_LOCATION_TOOLTIP);
 			}
@@ -4048,6 +4388,7 @@ static void DrawMiniWnds()
 			case MiniWndKind::Vehicle: alive = Vehicle::GetIfValid(_wnds[i].veh) != nullptr; break;
 			case MiniWndKind::Station: alive = Station::IsValidID(_wnds[i].st); break;
 			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
+			case MiniWndKind::Fleet: alive = true; break;
 			default: alive = Industry::IsValidID(_wnds[i].ind); break;
 		}
 		if (!alive) CloseMiniWnd(i);
@@ -4147,11 +4488,61 @@ static bool HandleWndClick(int x, int y)
 							break;
 						}
 					}
+				} else if (mw.kind == MiniWndKind::Fleet) {
+					if (c == 0) {
+						const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
+						if (sv != nullptr) {
+							bool chain = sv->type == VEH_TRAIN && sv->First() == sv;
+							Command<CMD_SELL_VEHICLE>::Post(GetCmdSellVehMsg(sv->type), sv->tile, sv->index, chain, true, INVALID_CLIENT_ID);
+							mw.sel = VehicleID::Invalid();
+						}
+					} else {
+						_fleet_draft[mw.tab].clear();
+					}
 				}
 			} else if (act >= MWA_ROW_BASE) {
 				const MiniWndRowAct &ra = _wnd_row_acts[act - MWA_ROW_BASE];
 				if (ra.skip_order >= 0 && v != nullptr && v->owner == _local_company) {
 					Command<CMD_SKIP_TO_ORDER>::Post(STR_ERROR_CAN_T_SKIP_TO_ORDER, v->tile, v->index, (VehicleOrderID)ra.skip_order);
+				} else if (ra.buy != EngineID::Invalid() && mw.kind == MiniWndKind::Fleet) {
+					if (mw.tab == VEH_TRAIN) {
+						_fleet_draft[mw.tab].push_back(ra.buy);
+					} else {
+						_fleet_draft[mw.tab].assign(1, ra.buy);
+					}
+				} else if (ra.draft_del >= 0 && mw.kind == MiniWndKind::Fleet) {
+					std::vector<EngineID> &draft = _fleet_draft[mw.tab];
+					if ((size_t)ra.draft_del < draft.size()) draft.erase(draft.begin() + ra.draft_del);
+				} else if (ra.deploy != INVALID_TILE && mw.kind == MiniWndKind::Fleet) {
+					std::vector<EngineID> &draft = _fleet_draft[mw.tab];
+					if (!IsDepotTile(ra.deploy)) {
+						/* stale row */
+					} else if (draft.empty()) {
+						MiniUiScrollTo(TileX(ra.deploy) * TILE_SIZE, TileY(ra.deploy) * TILE_SIZE);
+					} else if (_deploy.depot == INVALID_TILE) {
+						_deploy = FleetDeploy{};
+						_deploy.depot = ra.deploy;
+						_deploy.vt = (VehicleType)mw.tab;
+						_deploy.units = draft;
+					}
+				} else if (ra.detach && mw.kind == MiniWndKind::Fleet) {
+					const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
+					if (sv != nullptr && sv->type == VEH_TRAIN) {
+						Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, sv->tile, sv->index, VehicleID::Invalid(), false);
+						mw.sel = VehicleID::Invalid();
+					}
+				} else if (ra.mark != VehicleID::Invalid() && mw.kind == MiniWndKind::Fleet) {
+					const Vehicle *mv = Vehicle::GetIfValid(mw.sel);
+					const Vehicle *cv = Vehicle::GetIfValid(ra.mark);
+					if (cv == nullptr) {
+						mw.sel = VehicleID::Invalid();
+					} else if (ra.attach && mv != nullptr && mv->type == VEH_TRAIN && cv->type == VEH_TRAIN &&
+							mv->First() != cv->First() && mv->tile == cv->tile) {
+						Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, mv->tile, mv->index, cv->Last()->index, mv->First() == mv);
+						mw.sel = VehicleID::Invalid();
+					} else {
+						mw.sel = mw.sel == ra.mark ? VehicleID::Invalid() : ra.mark;
+					}
 				} else if (ra.open_veh != VehicleID::Invalid()) {
 					const Vehicle *ov = Vehicle::GetIfValid(ra.open_veh);
 					if (ov != nullptr) OpenMiniWnd(MiniWndKind::Vehicle, ov->First()->index, StationID::Invalid());
@@ -4211,6 +4602,13 @@ bool ShowMiniIndustryWindow(IndustryID industry)
 {
 	if (!_mini_active || !Industry::IsValidID(industry)) return false;
 	OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), industry);
+	return true;
+}
+
+bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
+{
+	if (!_mini_active || !IsDepotTile(tile)) return false;
+	OpenFleetMiniWnd((int)type);
 	return true;
 }
 
@@ -4450,8 +4848,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_left_button_clicked = true;
 		if (!HandleWndClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
-				if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y)) {
-					OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y);
+				if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y)) {
+					OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y);
 				}
 			} else if (IsPointTool(_tool)) {
 				_drag_remove = _ctrl_pressed;
@@ -4573,6 +4971,7 @@ void MiniUiFrame(uint delta_ms)
 	PruneTextCache();
 	MiniAtlasEnsure();
 	UpdateLerpClock(delta_ms);
+	ProcessFleetDeploy();
 	RlwCmdClear();
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space.
