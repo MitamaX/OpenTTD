@@ -166,6 +166,8 @@ static MiniTool _tool = MiniTool::None;
 
 static VehicleID _follow_veh = VehicleID::Invalid();
 
+static VehicleID _order_pick_veh = VehicleID::Invalid();
+
 /* Consist drafts for the fleet window, one per vehicle type. A draft is
  * assembled in the window and produced whole at a depot. */
 static std::vector<EngineID> _fleet_draft[4];
@@ -193,6 +195,7 @@ static void EnterIdleMode()
 {
 	_tool = MiniTool::None;
 	_follow_veh = VehicleID::Invalid();
+	_order_pick_veh = VehicleID::Invalid();
 }
 
 static void EnterBuildMode(MiniTool t)
@@ -205,6 +208,12 @@ static void EnterFollowMode(VehicleID v)
 {
 	EnterIdleMode();
 	_follow_veh = v;
+}
+
+static void EnterOrderPickMode(VehicleID v)
+{
+	EnterIdleMode();
+	_order_pick_veh = v;
 }
 
 /* ONI-style overlay: an explicit toggle that swaps the info layer without
@@ -1511,6 +1520,65 @@ static bool OpenDepotWndAt(int sx, int sy)
 	if (!IsDepotTile(tile)) return false;
 	ShowDepotWindow(tile, GetDepotVehicleType(tile));
 	return true;
+}
+
+/* Stock order-window map picking, trimmed to the plain cases: a click
+ * resolves to a depot, waypoint or station order for the picked vehicle. */
+static Order OrderFromTile(const Vehicle *v, TileIndex tile)
+{
+	Order order{};
+
+	if (IsDepotTypeTile(tile, (TransportType)(uint)v->type) && IsTileOwner(tile, _local_company)) {
+		order.MakeGoToDepot(GetDepotDestinationIndex(tile),
+				OrderDepotTypeFlag::PartOfOrders,
+				(_settings_client.gui.new_nonstop && v->IsGroundVehicle()) ? OrderNonStopFlag::NoIntermediate : OrderNonStopFlags{});
+		return order;
+	}
+
+	if ((IsRailWaypointTile(tile) && v->type == VEH_TRAIN && IsTileOwner(tile, _local_company)) ||
+			(IsRoadWaypointTile(tile) && v->type == VEH_ROAD && IsTileOwner(tile, _local_company)) ||
+			(IsBuoyTile(tile) && v->type == VEH_SHIP)) {
+		order.MakeGoToWaypoint(GetStationIndex(tile));
+		if (!IsBuoyTile(tile) && _settings_client.gui.new_nonstop) order.SetNonStopType({OrderNonStopFlag::NoIntermediate, OrderNonStopFlag::NoDestination});
+		return order;
+	}
+
+	if (IsTileType(tile, MP_STATION) || IsTileType(tile, MP_INDUSTRY)) {
+		const Station *st = IsTileType(tile, MP_STATION) ? Station::GetByTile(tile) : Industry::GetByTile(tile)->neutral_station;
+		if (st != nullptr && (st->owner == _local_company || st->owner == OWNER_NONE)) {
+			StationFacilities facil;
+			switch (v->type) {
+				case VEH_SHIP:     facil = StationFacility::Dock;    break;
+				case VEH_TRAIN:    facil = StationFacility::Train;   break;
+				case VEH_AIRCRAFT: facil = StationFacility::Airport; break;
+				default:           facil = {StationFacility::BusStop, StationFacility::TruckStop}; break;
+			}
+			if (st->facilities.Any(facil)) {
+				order.MakeGoToStation(st->index);
+				if (_settings_client.gui.new_nonstop && v->IsGroundVehicle()) order.SetNonStopType(OrderNonStopFlag::NoIntermediate);
+				order.SetStopLocation(v->type == VEH_TRAIN ? (OrderStopLocation)(_settings_client.gui.stop_location) : OrderStopLocation::FarEnd);
+				return order;
+			}
+		}
+	}
+
+	order.Free();
+	return order;
+}
+
+static void OrderPickClick(int sx, int sy)
+{
+	const Vehicle *v = Vehicle::GetIfValid(_order_pick_veh);
+	if (v == nullptr || v->owner != _local_company) {
+		EnterIdleMode();
+		return;
+	}
+	int tx = (int)std::floor(MapXAt(sy));
+	int ty = (int)std::floor(MapYAt(sx));
+	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return;
+	Order order = OrderFromTile(v, TileXY(tx, ty));
+	if (order.IsType(OT_NOTHING)) return;
+	Command<CMD_INSERT_ORDER>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
 }
 
 /* Stage 0 issues the next build, stage 1 spots the new vehicle among the
@@ -3272,6 +3340,7 @@ struct MiniWnd {
 	TownID town = TownID::Invalid();
 	IndustryID ind = IndustryID::Invalid();
 	VehicleID sel = VehicleID::Invalid();
+	int16_t sel_ord = -1;
 	int x = 0, y = 0;
 	uint8_t tab = 0;
 	int scroll = 0;
@@ -3309,6 +3378,12 @@ struct MiniWndRowAct {
 	int skip_order = -1;
 	bool attach = false;
 	bool detach = false;
+	int ord_sel = -1;
+	int ord_move = 0;
+	bool ord_del = false;
+	bool ord_load = false;
+	bool ord_unload = false;
+	bool ord_add = false;
 };
 
 struct MiniWndHit {
@@ -3626,7 +3701,27 @@ static std::string WndOfficial(StringID str)
 	return StrMakeValid(GetString(str), {});
 }
 
-static void DrawVehicleWndBody(const MiniWnd &mw, MiniWndBody &body, const Vehicle *v)
+static StringID OrderLoadStr(OrderLoadType t)
+{
+	switch (t) {
+		case OrderLoadType::FullLoad: return STR_ORDER_DROP_FULL_LOAD_ALL;
+		case OrderLoadType::FullLoadAny: return STR_ORDER_DROP_FULL_LOAD_ANY;
+		case OrderLoadType::NoLoad: return STR_ORDER_DROP_NO_LOADING;
+		default: return STR_ORDER_DROP_LOAD_IF_POSSIBLE;
+	}
+}
+
+static StringID OrderUnloadStr(OrderUnloadType t)
+{
+	switch (t) {
+		case OrderUnloadType::Unload: return STR_ORDER_DROP_UNLOAD;
+		case OrderUnloadType::Transfer: return STR_ORDER_DROP_TRANSFER;
+		case OrderUnloadType::NoUnload: return STR_ORDER_DROP_NO_UNLOADING;
+		default: return STR_ORDER_DROP_UNLOAD_IF_ACCEPTED;
+	}
+}
+
+static void DrawVehicleWndBody(MiniWnd &mw, MiniWndBody &body, const Vehicle *v)
 {
 	switch (mw.tab) {
 		case 0: {
@@ -3666,10 +3761,10 @@ static void DrawVehicleWndBody(const MiniWnd &mw, MiniWndBody &body, const Vehic
 		}
 
 		case 2: {
-			if (v->GetNumOrders() == 0) {
-				body.Plain("주문 없음", COL_CH_DIM);
-				break;
-			}
+			bool own = v->owner == _local_company;
+			int nord = v->GetNumOrders();
+			if (mw.sel_ord >= nord) mw.sel_ord = -1;
+			if (nord == 0) body.Plain("주문 없음", COL_CH_DIM);
 			int oi = 0;
 			for (const Order &o : v->Orders()) {
 				std::string label;
@@ -3681,12 +3776,61 @@ static void DrawVehicleWndBody(const MiniWnd &mw, MiniWndBody &body, const Vehic
 					default: break;
 				}
 				if (!label.empty()) {
+					if (o.IsType(OT_GOTO_STATION)) {
+						switch (o.GetLoadType()) {
+							case OrderLoadType::FullLoad:
+							case OrderLoadType::FullLoadAny: label += " · 만재"; break;
+							case OrderLoadType::NoLoad: label += " · 무적재"; break;
+							default: break;
+						}
+						switch (o.GetUnloadType()) {
+							case OrderUnloadType::Unload: label += " · 강제 하차"; break;
+							case OrderUnloadType::Transfer: label += " · 환승"; break;
+							case OrderUnloadType::NoUnload: label += " · 무하차"; break;
+							default: break;
+						}
+					}
 					bool cur = oi == v->cur_real_order_index;
 					MiniWndRowAct act;
-					act.skip_order = oi;
-					body.Link(fmt::format("{}{}. {}", cur ? "▶ " : "", oi + 1, label), cur ? COL_CH_ACCENT : COL_CH_TEXT, act);
+					act.ord_sel = oi;
+					body.Link(fmt::format("{}{}. {}", cur ? "▶ " : "", oi + 1, label), mw.sel_ord == oi ? COL_CH_ACCENT : (cur ? COL_CH_YELLOW : COL_CH_TEXT), act);
 				}
 				oi++;
+			}
+			if (own && mw.sel_ord >= 0) {
+				const Order *so = v->GetOrder((VehicleOrderID)mw.sel_ord);
+				if (so != nullptr) {
+					body.Header(fmt::format("{}번 주문", mw.sel_ord + 1));
+					MiniWndRowAct up;
+					up.ord_move = -1;
+					body.Link("위로", COL_CH_TEXT, up);
+					MiniWndRowAct dn;
+					dn.ord_move = 1;
+					body.Link("아래로", COL_CH_TEXT, dn);
+					MiniWndRowAct sk;
+					sk.skip_order = mw.sel_ord;
+					body.Link("여기로 건너뛰기", COL_CH_TEXT, sk);
+					if (so->IsType(OT_GOTO_STATION)) {
+						MiniWndRowAct ld;
+						ld.ord_load = true;
+						body.KVLink("적재", WndOfficial(OrderLoadStr(so->GetLoadType())), COL_CH_TEXT, ld);
+						MiniWndRowAct ul;
+						ul.ord_unload = true;
+						body.KVLink("하차", WndOfficial(OrderUnloadStr(so->GetUnloadType())), COL_CH_TEXT, ul);
+					}
+					MiniWndRowAct del;
+					del.ord_del = true;
+					body.Link("삭제", COL_CH_RED, del);
+				}
+			}
+			if (own) {
+				MiniWndRowAct add;
+				add.ord_add = true;
+				if (_order_pick_veh == v->index) {
+					body.Link("추가 중. 지도에서 목적지 클릭, ESC 종료", COL_CH_ACCENT, add);
+				} else {
+					body.Link("+ 목적지 추가", COL_CH_ACCENT, add);
+				}
 			}
 			break;
 		}
@@ -4504,6 +4648,42 @@ static bool HandleWndClick(int x, int y)
 				const MiniWndRowAct &ra = _wnd_row_acts[act - MWA_ROW_BASE];
 				if (ra.skip_order >= 0 && v != nullptr && v->owner == _local_company) {
 					Command<CMD_SKIP_TO_ORDER>::Post(STR_ERROR_CAN_T_SKIP_TO_ORDER, v->tile, v->index, (VehicleOrderID)ra.skip_order);
+				} else if (ra.ord_sel >= 0 && v != nullptr) {
+					mw.sel_ord = mw.sel_ord == ra.ord_sel ? -1 : (int16_t)ra.ord_sel;
+				} else if (ra.ord_move != 0 && v != nullptr && v->owner == _local_company && mw.sel_ord >= 0) {
+					int to = mw.sel_ord + ra.ord_move;
+					if (to >= 0 && to < v->GetNumOrders() &&
+							Command<CMD_MOVE_ORDER>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, (VehicleOrderID)to)) {
+						mw.sel_ord = (int16_t)to;
+					}
+				} else if (ra.ord_del && v != nullptr && v->owner == _local_company && mw.sel_ord >= 0) {
+					Command<CMD_DELETE_ORDER>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord);
+					mw.sel_ord = -1;
+				} else if ((ra.ord_load || ra.ord_unload) && v != nullptr && v->owner == _local_company && mw.sel_ord >= 0) {
+					const Order *so = v->GetOrder((VehicleOrderID)mw.sel_ord);
+					if (so != nullptr && so->IsType(OT_GOTO_STATION)) {
+						if (ra.ord_load) {
+							OrderLoadType next;
+							switch (so->GetLoadType()) {
+								case OrderLoadType::LoadIfPossible: next = OrderLoadType::FullLoad; break;
+								case OrderLoadType::FullLoad: next = OrderLoadType::FullLoadAny; break;
+								case OrderLoadType::FullLoadAny: next = OrderLoadType::NoLoad; break;
+								default: next = OrderLoadType::LoadIfPossible; break;
+							}
+							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_LOAD, to_underlying(next));
+						} else {
+							OrderUnloadType next;
+							switch (so->GetUnloadType()) {
+								case OrderUnloadType::UnloadIfPossible: next = OrderUnloadType::Unload; break;
+								case OrderUnloadType::Unload: next = OrderUnloadType::Transfer; break;
+								case OrderUnloadType::Transfer: next = OrderUnloadType::NoUnload; break;
+								default: next = OrderUnloadType::UnloadIfPossible; break;
+							}
+							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_UNLOAD, to_underlying(next));
+						}
+					}
+				} else if (ra.ord_add && v != nullptr && v->owner == _local_company) {
+					if (_order_pick_veh == v->index) EnterIdleMode(); else EnterOrderPickMode(v->index);
 				} else if (ra.buy != EngineID::Invalid() && mw.kind == MiniWndKind::Fleet) {
 					if (mw.tab == VEH_TRAIN) {
 						_fleet_draft[mw.tab].push_back(ra.buy);
@@ -4848,7 +5028,9 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_left_button_clicked = true;
 		if (!HandleWndClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
-				if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y)) {
+				if (_order_pick_veh != VehicleID::Invalid()) {
+					OrderPickClick(_cursor.pos.x, _cursor.pos.y);
+				} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y)) {
 					OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y);
 				}
 			} else if (IsPointTool(_tool)) {
@@ -4919,7 +5101,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			if (_dragging) {
 				_dragging = false;
 				ClearPlans();
-			} else if (_tool != MiniTool::None || _follow_veh != VehicleID::Invalid()) {
+			} else if (_tool != MiniTool::None || _follow_veh != VehicleID::Invalid() || _order_pick_veh != VehicleID::Invalid()) {
 				EnterIdleMode();
 			} else if (!_wnds.empty()) {
 				CloseMiniWnd(_wnds.size() - 1);
