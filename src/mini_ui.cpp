@@ -3598,7 +3598,7 @@ static void DrawStationWndBody(const MiniWnd &mw, MiniWndBody &body, const Stati
 			break;
 		}
 
-		case 1: {
+		case 3: {
 			body.Plain(StrMakeValid(GetString(STR_LAND_AREA_INFORMATION_BUILD_DATE, st->build_date), {}), COL_CH_TEXT);
 			if (st->facilities.Test(StationFacility::Train) && st->train_station.tile != INVALID_TILE) {
 				uint longest = 0;
@@ -3612,7 +3612,7 @@ static void DrawStationWndBody(const MiniWnd &mw, MiniWndBody &body, const Stati
 			break;
 		}
 
-		case 2: {
+		case 1: {
 			std::vector<const Industry *> supply;
 			for (const Industry *i : Industry::Iterate()) {
 				if (i->stations_near.find(const_cast<Station *>(st)) == i->stations_near.end()) continue;
@@ -3639,7 +3639,7 @@ static void DrawStationWndBody(const MiniWnd &mw, MiniWndBody &body, const Stati
 			break;
 		}
 
-		case 3: {
+		case 2: {
 			bool any = false;
 			for (VehicleType vt : {VEH_TRAIN, VEH_ROAD, VEH_SHIP, VEH_AIRCRAFT}) {
 				VehicleList list;
@@ -3688,7 +3688,7 @@ static void DrawTownWndBody(const MiniWnd &mw, MiniWndBody &body, const Town *t)
 			break;
 		}
 
-		case 1: {
+		case 2: {
 			StringID str_last = TimerGameEconomy::UsingWallclockUnits() ? STR_TOWN_VIEW_CARGO_LAST_MINUTE_MAX : STR_TOWN_VIEW_CARGO_LAST_MONTH_MAX;
 			for (auto tpe : {TPE_PASSENGERS, TPE_MAIL}) {
 				for (const CargoSpec *cs : CargoSpec::town_production_cargoes[tpe]) {
@@ -3721,7 +3721,7 @@ static void DrawTownWndBody(const MiniWnd &mw, MiniWndBody &body, const Town *t)
 			break;
 		}
 
-		case 2: {
+		case 1: {
 			bool any = false;
 			for (const Company *c : Company::Iterate()) {
 				if (!t->have_ratings.Test(c->index) && t->exclusivity != c->index) continue;
@@ -3758,7 +3758,7 @@ static void DrawIndustryWndBody(const MiniWnd &mw, MiniWndBody &body, const Indu
 			break;
 		}
 
-		case 1: {
+		case 2: {
 			body.Plain(StrMakeValid(GetString(STR_LAND_AREA_INFORMATION_BUILD_DATE, i->construction_date), {}), COL_CH_TEXT);
 			bool first = true;
 			for (const auto &a : i->accepted) {
@@ -3772,7 +3772,7 @@ static void DrawIndustryWndBody(const MiniWnd &mw, MiniWndBody &body, const Indu
 			break;
 		}
 
-		case 2: {
+		case 1: {
 			if (i->stations_near.empty()) {
 				body.Plain("주변 역 없음", COL_CH_DIM);
 				break;
@@ -3913,21 +3913,21 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		} else if (mw.kind == MiniWndKind::Station) {
 			switch (ti) {
 				case 0: label = "상태"; break;
-				case 1: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
-				case 2: label = WndOfficial(STR_SMALLMAP_TYPE_INDUSTRIES); break;
-				case 3: label = WndOfficial(STR_SMALLMAP_TYPE_VEHICLES); break;
+				case 1: label = WndOfficial(STR_SMALLMAP_TYPE_INDUSTRIES); break;
+				case 2: label = WndOfficial(STR_SMALLMAP_TYPE_VEHICLES); break;
+				case 3: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
 			}
 		} else if (mw.kind == MiniWndKind::Town) {
 			switch (ti) {
 				case 0: label = "상태"; break;
-				case 1: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
-				case 2: label = "평판"; break;
+				case 1: label = "평판"; break;
+				case 2: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
 			}
 		} else {
 			switch (ti) {
 				case 0: label = "상태"; break;
-				case 1: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
-				case 2: label = "역"; break;
+				case 1: label = "역"; break;
+				case 2: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
 			}
 		}
 		int x0 = fr.left + 1 + ti * (w - 2) / ntab;
