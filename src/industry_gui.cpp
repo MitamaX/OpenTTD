@@ -49,6 +49,7 @@
 #include "timer/timer_window.h"
 #include "hotkeys.h"
 #include "core/string_consumer.hpp"
+#include "mini_ui.h"
 
 #include "widgets/industry_widget.h"
 
@@ -83,7 +84,7 @@ struct CargoSuffix {
 };
 
 extern void GenerateIndustries();
-static void ShowIndustryCargoesWindow(IndustryType id);
+void ShowIndustryCargoesWindow(IndustryType id);
 
 /**
  * Gets the string to display after the cargo name (using callback 37)
@@ -1229,6 +1230,7 @@ static WindowDesc _industry_view_desc(
 
 void ShowIndustryViewWindow(IndustryID industry)
 {
+	if (_game_mode != GM_EDITOR && ShowMiniIndustryWindow(industry)) return;
 	AllocateWindowDescFront<IndustryViewWindow>(_industry_view_desc, industry);
 }
 
@@ -3169,7 +3171,7 @@ struct IndustryCargoesWindow : public Window {
  * Open the industry and cargoes window.
  * @param id Industry type to display, \c NUM_INDUSTRYTYPES selects a default industry type.
  */
-static void ShowIndustryCargoesWindow(IndustryType id)
+void ShowIndustryCargoesWindow(IndustryType id)
 {
 	if (id >= NUM_INDUSTRYTYPES) {
 		for (IndustryType ind : _sorted_industry_types) {

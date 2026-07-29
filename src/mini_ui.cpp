@@ -3181,6 +3181,7 @@ enum class MiniWndKind : uint8_t {
 	Vehicle,
 	Station,
 	Town,
+	Industry,
 };
 
 struct MiniWnd {
@@ -3188,6 +3189,7 @@ struct MiniWnd {
 	VehicleID veh = VehicleID::Invalid();
 	StationID st = StationID::Invalid();
 	TownID town = TownID::Invalid();
+	IndustryID ind = IndustryID::Invalid();
 	int x = 0, y = 0;
 	uint8_t tab = 0;
 	int scroll = 0;
@@ -3216,6 +3218,7 @@ enum {
 struct MiniWndRowAct {
 	TileIndex jump = INVALID_TILE;
 	VehicleID open_veh = VehicleID::Invalid();
+	StationID open_st = StationID::Invalid();
 	int skip_order = -1;
 };
 
@@ -3298,7 +3301,8 @@ static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 	switch (mw.kind) {
 		case MiniWndKind::Vehicle: id = (int)mw.veh.base(); break;
 		case MiniWndKind::Station: id = (int)mw.st.base(); break;
-		default: id = (int)mw.town.base(); break;
+		case MiniWndKind::Town: id = (int)mw.town.base(); break;
+		default: id = (int)mw.ind.base(); break;
 	}
 	return MW_CARRIER_NUM_BASE + (int)mw.kind * MW_CARRIER_KIND_STRIDE + id;
 }
@@ -3346,7 +3350,7 @@ struct MiniCarrierWindow : Window {
 		} else if (this->carry_kind == MiniWndKind::Station) {
 			StationID st = static_cast<StationID>(id);
 			if (Station::IsValidID(st)) Command<CMD_RENAME_STATION>::Post(STR_ERROR_CAN_T_RENAME_STATION, st, *str);
-		} else {
+		} else if (this->carry_kind == MiniWndKind::Town) {
 			TownID town = static_cast<TownID>(id);
 			if (Town::IsValidID(town)) Command<CMD_RENAME_TOWN>::Post(STR_ERROR_CAN_T_RENAME_TOWN, town, *str);
 		}
@@ -3366,10 +3370,14 @@ static Window *EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
 			const Station *st = Station::GetIfValid(mw.st);
 			if (st == nullptr) return nullptr;
 			focus = st->rect.IsEmpty() ? st->xy : TileXY((st->rect.left + st->rect.right) / 2, (st->rect.top + st->rect.bottom) / 2);
-		} else {
+		} else if (mw.kind == MiniWndKind::Town) {
 			const Town *t = Town::GetIfValid(mw.town);
 			if (t == nullptr) return nullptr;
 			focus = t->xy;
+		} else {
+			const Industry *i = Industry::GetIfValid(mw.ind);
+			if (i == nullptr) return nullptr;
+			focus = i->location.GetCenterTile();
 		}
 		cw = new MiniCarrierWindow(_mini_carrier_desc, MiniCarrierNum(mw), mw.kind, focus);
 	}
@@ -3409,10 +3417,10 @@ static void RaiseMiniWnd(size_t i)
 	BringWindowToFrontById(WC_EXTRA_VIEWPORT, MiniCarrierNum(_wnds.back()));
 }
 
-static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid())
+static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid())
 {
 	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town) {
+		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind) {
 			RaiseMiniWnd(i);
 			return;
 		}
@@ -3423,6 +3431,7 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	mw.veh = veh;
 	mw.st = st;
 	mw.town = town;
+	mw.ind = ind;
 	mw.x = Clamp(_fbw - 6 * s - WndW() - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW()));
 	mw.y = Clamp(_win_bar_bottom + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH()));
 	_wnds.push_back(mw);
@@ -3729,6 +3738,55 @@ static void DrawTownWndBody(const MiniWnd &mw, MiniWndBody &body, const Town *t)
 	}
 }
 
+static void DrawIndustryWndBody(const MiniWnd &mw, MiniWndBody &body, const Industry *i)
+{
+	switch (mw.tab) {
+		case 0: {
+			if (i->prod_level == PRODLEVEL_CLOSURE) body.Plain(WndOfficial(STR_INDUSTRY_VIEW_INDUSTRY_ANNOUNCED_CLOSURE), COL_CH_RED);
+			bool any = false;
+			for (const auto &p : i->produced) {
+				if (!IsValidCargoType(p.cargo)) continue;
+				any = true;
+				uint pct = ToPercent8(p.history[LAST_MONTH].PctTransported());
+				uint32_t tint = pct < 25 ? COL_CH_RED : pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT;
+				body.KV(WndOfficial(CargoSpec::Get(p.cargo)->name), fmt::format("{} · {}%", p.history[LAST_MONTH].production, pct), tint);
+			}
+			if (!any) body.Plain("생산 없음", COL_CH_DIM);
+			if (i->prod_level != PRODLEVEL_DEFAULT && i->prod_level != PRODLEVEL_CLOSURE) {
+				body.Plain(StrMakeValid(GetString(STR_INDUSTRY_VIEW_PRODUCTION_LEVEL, RoundDivSU(i->prod_level * 100, PRODLEVEL_DEFAULT)), {}), COL_CH_TEXT);
+			}
+			break;
+		}
+
+		case 1: {
+			body.Plain(StrMakeValid(GetString(STR_LAND_AREA_INFORMATION_BUILD_DATE, i->construction_date), {}), COL_CH_TEXT);
+			bool first = true;
+			for (const auto &a : i->accepted) {
+				if (!IsValidCargoType(a.cargo)) continue;
+				if (first) {
+					body.Header(WndOfficial(STR_INDUSTRY_VIEW_REQUIRES));
+					first = false;
+				}
+				body.KV(WndOfficial(CargoSpec::Get(a.cargo)->name), a.waiting > 0 ? fmt::format("{}", a.waiting) : std::string("-"), COL_CH_TEXT);
+			}
+			break;
+		}
+
+		case 2: {
+			if (i->stations_near.empty()) {
+				body.Plain("주변 역 없음", COL_CH_DIM);
+				break;
+			}
+			for (const Station *st : i->stations_near) {
+				MiniWndRowAct act;
+				act.open_st = st->index;
+				body.Link(StrMakeValid(GetString(STR_STATION_NAME, st->index), {}), COL_CH_TEXT, act);
+			}
+			break;
+		}
+	}
+}
+
 static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c, bool alt)
 {
 	int cx = (r.left + r.right) / 2;
@@ -3774,11 +3832,26 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 				RlwCmdCircle(cx, cy, q - 2 * s - 1, alt ? COL_CH_ACTIVE : COL_CH_TILE);
 				break;
 		}
-	} else {
+	} else if (kind == MiniWndKind::Town) {
 		switch (cmd) {
 			case 0:
 				RlwCmdLine(cx - q, cy - q - s, cx - q, cy + q + s, s, c);
 				DrawPlayTriangle(cx - q + s, cy - q / 2, 2 * q, q / 2 + s, c);
+				break;
+			case 1:
+				RlwCmdLine(cx, cy - q - s, cx, cy + q + s, s, c);
+				RlwCmdLine(cx - q - s, cy, cx + q + s, cy, s, c);
+				RlwCmdCircle(cx, cy, q - s, c);
+				RlwCmdCircle(cx, cy, q - 2 * s - 1, alt ? COL_CH_ACTIVE : COL_CH_TILE);
+				break;
+		}
+	} else {
+		switch (cmd) {
+			case 0:
+				RlwCmdLine(cx - q, cy, cx + q, cy, s, c);
+				RlwCmdCircle(cx - q, cy, q / 2 + s, c);
+				RlwCmdCircle(cx, cy, q / 2 + s, c);
+				RlwCmdCircle(cx + q, cy, q / 2 + s, c);
 				break;
 			case 1:
 				RlwCmdLine(cx, cy - q - s, cx, cy + q + s, s, c);
@@ -3800,6 +3873,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	const Vehicle *v = mw.kind == MiniWndKind::Vehicle ? Vehicle::GetIfValid(mw.veh) : nullptr;
 	const Station *st = mw.kind == MiniWndKind::Station ? (Station::IsValidID(mw.st) ? Station::Get(mw.st) : nullptr) : nullptr;
 	const Town *t = mw.kind == MiniWndKind::Town ? Town::GetIfValid(mw.town) : nullptr;
+	const Industry *ind = mw.kind == MiniWndKind::Industry ? Industry::GetIfValid(mw.ind) : nullptr;
 
 	ChromePanel(fr.left, fr.top, fr.right, fr.bottom);
 
@@ -3809,7 +3883,8 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	switch (mw.kind) {
 		case MiniWndKind::Vehicle: if (v != nullptr) title = StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}); break;
 		case MiniWndKind::Station: if (st != nullptr) title = StrMakeValid(GetString(STR_STATION_NAME, st->index), {}); break;
-		default: if (t != nullptr) title = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {}); break;
+		case MiniWndKind::Town: if (t != nullptr) title = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {}); break;
+		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); break;
 	}
 	WndText(fr.left + pad, fr.top + 2 * s, th, title, COL_CH_TEXT);
 
@@ -3842,11 +3917,17 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 				case 2: label = WndOfficial(STR_SMALLMAP_TYPE_INDUSTRIES); break;
 				case 3: label = WndOfficial(STR_SMALLMAP_TYPE_VEHICLES); break;
 			}
-		} else {
+		} else if (mw.kind == MiniWndKind::Town) {
 			switch (ti) {
 				case 0: label = "상태"; break;
 				case 1: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
 				case 2: label = "평판"; break;
+			}
+		} else {
+			switch (ti) {
+				case 0: label = "상태"; break;
+				case 1: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
+				case 2: label = "역"; break;
 			}
 		}
 		int x0 = fr.left + 1 + ti * (w - 2) / ntab;
@@ -3874,7 +3955,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	if (mw.tab == 0) {
 		Rect vs = {body.left, body.top, body.right, body.top + WndViewH() - 1};
 		RlwCmdRect(vs.left, vs.top, vs.right, vs.bottom, 0xFF101010U);
-		if (v != nullptr || st != nullptr || t != nullptr) {
+		if (v != nullptr || st != nullptr || t != nullptr || ind != nullptr) {
 			EnsureMiniCarrier(mw, vs.left, vs.top, vs.right - vs.left + 1, vs.bottom - vs.top + 1);
 		}
 		bp.area.top = vs.bottom + 1 + pad;
@@ -3883,6 +3964,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	if (v != nullptr) DrawVehicleWndBody(mw, bp, v);
 	if (st != nullptr) DrawStationWndBody(mw, bp, st);
 	if (t != nullptr) DrawTownWndBody(mw, bp, t);
+	if (ind != nullptr) DrawIndustryWndBody(mw, bp, ind);
 
 	/* Scroll clamp and position mark. */
 	int vis_rows = (bp.area.bottom - bp.area.top + 1) / bp.rh;
@@ -3908,6 +3990,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		switch (mw.kind) {
 			case MiniWndKind::Station: enabled = st != nullptr && (c == 1 || own || st->owner == OWNER_NONE); break;
 			case MiniWndKind::Town: enabled = t != nullptr; break;
+			case MiniWndKind::Industry: enabled = ind != nullptr; break;
 			default: enabled = own; break;
 		}
 		Rect cr = WndIconTile(cx, cmd_y, cs2, active, enabled);
@@ -3925,8 +4008,10 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 				}
 			} else if (mw.kind == MiniWndKind::Station) {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_BUTTON_CATCHMENT) : WndOfficial(STR_STATION_VIEW_CENTER_TOOLTIP);
-			} else {
+			} else if (mw.kind == MiniWndKind::Town) {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_TOWN_VIEW_LOCAL_AUTHORITY_TOOLTIP) : WndOfficial(STR_TOWN_VIEW_CENTER_TOOLTIP);
+			} else {
+				_wnd_tooltip = c == 0 ? WndOfficial(STR_INDUSTRY_DISPLAY_CHAIN) : WndOfficial(STR_INDUSTRY_VIEW_LOCATION_TOOLTIP);
 			}
 		}
 	}
@@ -3944,7 +4029,8 @@ static void DrawMiniWnds()
 		switch (_wnds[i].kind) {
 			case MiniWndKind::Vehicle: alive = Vehicle::GetIfValid(_wnds[i].veh) != nullptr; break;
 			case MiniWndKind::Station: alive = Station::IsValidID(_wnds[i].st); break;
-			default: alive = Town::IsValidID(_wnds[i].town); break;
+			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
+			default: alive = Industry::IsValidID(_wnds[i].ind); break;
 		}
 		if (!alive) CloseMiniWnd(i);
 	}
@@ -3981,6 +4067,7 @@ static bool HandleWndClick(int x, int y)
 			const Vehicle *v = mw.kind == MiniWndKind::Vehicle ? Vehicle::GetIfValid(mw.veh) : nullptr;
 			const Station *st = mw.kind == MiniWndKind::Station ? (Station::IsValidID(mw.st) ? Station::Get(mw.st) : nullptr) : nullptr;
 			const Town *t = mw.kind == MiniWndKind::Town ? Town::GetIfValid(mw.town) : nullptr;
+			const Industry *ind = mw.kind == MiniWndKind::Industry ? Industry::GetIfValid(mw.ind) : nullptr;
 
 			if (act == MWA_CLOSE) {
 				CloseMiniWnd(_wnds.size() - 1);
@@ -4029,6 +4116,16 @@ static bool HandleWndClick(int x, int y)
 						case 0: ShowTownAuthorityWindow(t->index.base()); break;
 						case 1: MiniUiScrollTo(TileX(t->xy) * TILE_SIZE, TileY(t->xy) * TILE_SIZE); break;
 					}
+				} else if (ind != nullptr) {
+					extern void ShowIndustryCargoesWindow(IndustryType id);
+					switch (c) {
+						case 0: ShowIndustryCargoesWindow(ind->type); break;
+						case 1: {
+							TileIndex ct = ind->location.GetCenterTile();
+							MiniUiScrollTo(TileX(ct) * TILE_SIZE, TileY(ct) * TILE_SIZE);
+							break;
+						}
+					}
 				}
 			} else if (act >= MWA_ROW_BASE) {
 				const MiniWndRowAct &ra = _wnd_row_acts[act - MWA_ROW_BASE];
@@ -4037,6 +4134,8 @@ static bool HandleWndClick(int x, int y)
 				} else if (ra.open_veh != VehicleID::Invalid()) {
 					const Vehicle *ov = Vehicle::GetIfValid(ra.open_veh);
 					if (ov != nullptr) OpenMiniWnd(MiniWndKind::Vehicle, ov->First()->index, StationID::Invalid());
+				} else if (ra.open_st != StationID::Invalid()) {
+					if (Station::IsValidID(ra.open_st)) OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), ra.open_st);
 				} else if (ra.jump != INVALID_TILE) {
 					MiniUiScrollTo(TileX(ra.jump) * TILE_SIZE, TileY(ra.jump) * TILE_SIZE);
 				}
@@ -4082,6 +4181,13 @@ bool ShowMiniTownWindow(TownID town)
 {
 	if (!_mini_active || !Town::IsValidID(town)) return false;
 	OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), town);
+	return true;
+}
+
+bool ShowMiniIndustryWindow(IndustryID industry)
+{
+	if (!_mini_active || !Industry::IsValidID(industry)) return false;
+	OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), industry);
 	return true;
 }
 

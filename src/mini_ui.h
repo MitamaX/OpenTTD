@@ -14,6 +14,7 @@
 
 #include "core/geometry_type.hpp"
 #include "gfx_type.h"
+#include "industry_type.h"
 #include "station_type.h"
 #include "town_type.h"
 #include "video/raylib_wrap.h"
@@ -38,5 +39,6 @@ struct Vehicle;
 bool ShowMiniVehicleWindow(const Vehicle *v);
 bool ShowMiniStationWindow(StationID station);
 bool ShowMiniTownWindow(TownID town);
+bool ShowMiniIndustryWindow(IndustryID industry);
 
 #endif /* MINI_UI_H */
