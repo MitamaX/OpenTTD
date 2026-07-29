@@ -5348,7 +5348,13 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		 * carriers sit below it, so ImGui gets those instead. */
 		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
 		if (w != nullptr && !MiniUiHidesWindow(w->window_class) && CarrierOwner(w) == SIZE_MAX) return false;
-		if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse) return true;
+		/* ImGui reads the wheel from the driver itself. Leaving the pending
+		 * notch here would zoom the map the moment the cursor leaves the
+		 * window and the map starts consuming events again. */
+		if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse) {
+			_cursor.wheel = 0;
+			return true;
+		}
 	}
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
