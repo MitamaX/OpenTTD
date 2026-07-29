@@ -1658,7 +1658,7 @@ static void ProcessFleetDeploy()
 				return;
 			}
 			const Vehicle *hv = Vehicle::GetIfValid(_deploy.head);
-			if (hv == nullptr) {
+			if (hv == nullptr || hv->tile != _deploy.depot) {
 				_deploy = FleetDeploy{};
 				return;
 			}
@@ -5415,6 +5415,20 @@ static void Deactivate()
 	_veh_snap.clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
+}
+
+/* A new or loaded world reuses pool IDs, so state naming entities from the old world must not survive the switch. */
+void MiniUiResetGameState()
+{
+	CloseAllMiniWnds();
+	EnterIdleMode();
+	_dragging = false;
+	ClearPlans();
+	_veh_snap.clear();
+	_stuck_long.clear();
+	for (auto &l : _status_veh) l.clear();
+	for (auto &d : _fleet_draft) d.clear();
+	_deploy = FleetDeploy{};
 }
 
 void MiniUiToggle()

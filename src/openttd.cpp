@@ -58,6 +58,7 @@
 #include "core/random_func.hpp"
 #include "rail_gui.h"
 #include "road_gui.h"
+#include "mini_ui.h"
 #include "core/backup_type.hpp"
 #include "hotkeys.h"
 #include "newgrf.h"
@@ -1048,6 +1049,9 @@ void SwitchToMode(SwitchMode new_mode)
 
 	/* Make sure all AI controllers are gone at quitting game */
 	if (new_mode != SM_SAVE_GAME) AI::KillAll();
+
+	/* Leaving the current game invalidates every pool ID the mini UI holds. */
+	if (new_mode != SM_SAVE_GAME) MiniUiResetGameState();
 
 	/* When we change mode, reset the autosave. */
 	if (new_mode != SM_SAVE_GAME) ChangeAutosaveFrequency(true);
