@@ -2464,7 +2464,7 @@ static void DrawPointToolPlan(int ppt)
 		BlendRect(x0, y0, fx1, fy1, c, 60);
 	} else if (_tool == MiniTool::Airport) {
 		const AirportSpec *as = AirportSpec::Get(PickAirportType());
-		BlendRect(x0, y0, ScrX(ty + as->size_y) - 1, ScrY(tx + as->size_x) - 1, c, 60);
+		if (as->IsAvailable()) BlendRect(x0, y0, ScrX(ty + as->size_y) - 1, ScrY(tx + as->size_x) - 1, c, 60);
 	} else if (IsDirPointTool(_tool)) {
 		int cx = (x0 + x1) / 2;
 		int cy = (y0 + y1) / 2;
@@ -3508,7 +3508,8 @@ static void DrawHud()
 		if (_cursor.in_window) {
 			std::string title = ToolLabel(_tool);
 			if (_tool == MiniTool::Airport) {
-				title += fmt::format("  {}", StrMakeValid(GetString(AirportSpec::Get(PickAirportType())->name), {}));
+				const AirportSpec *as = AirportSpec::Get(PickAirportType());
+				if (as->IsAvailable()) title += fmt::format("  {}", StrMakeValid(GetString(as->name), {}));
 			}
 			if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
 				title += fmt::format("  {}", StrMakeValid(GetString(GetRailTypeInfo(PickRailType())->strings.name), {}));
