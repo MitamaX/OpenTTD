@@ -15,6 +15,8 @@
 #include "bridge_map.h"
 #include "cargotype.h"
 #include "clear_map.h"
+#include "autoreplace_cmd.h"
+#include "autoreplace_func.h"
 #include "command_func.h"
 #include "company_base.h"
 #include "company_func.h"
@@ -35,6 +37,8 @@
 #include "gfx_func.h"
 #include "graph_gui.h"
 #include "ground_vehicle.hpp"
+#include "group.h"
+#include "group_cmd.h"
 #include "gui.h"
 #include "industry.h"
 #include "ini_type.h"
@@ -2658,6 +2662,7 @@ enum class MiniWin : uint8_t {
 	Industries,
 	Subsidies,
 	Buy,
+	Groups,
 };
 
 struct MiniWinItem {
@@ -2683,6 +2688,7 @@ static const MiniWinItem _win_company_items[] = {
 
 static const MiniWinItem _win_vehicle_items[] = {
 	{INVALID_STRING_ID, "DEPOT", MiniWin::Buy},
+	{INVALID_STRING_ID, "GROUPS", MiniWin::Groups},
 	{INVALID_STRING_ID, "STATIONS", MiniWin::Stations},
 	{STR_REPLACE_VEHICLE_TRAIN, "TRAIN", MiniWin::Trains},
 	{STR_REPLACE_VEHICLE_ROAD_VEHICLE, "ROAD", MiniWin::RoadVehicles},
@@ -2794,6 +2800,11 @@ static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
 			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_DEPOT);
 			ScreenFillRect(cx - t, cy - h, cx + t, cy - h + t + 1, COL_PAPER);
 			break;
+		case MiniWin::Groups:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy - h + t, cc);
+			ScreenFillRect(cx - h, cy - t / 2, cx + h, cy - t / 2 + t, cc);
+			ScreenFillRect(cx - h, cy + h - t, cx + h, cy + h, cc);
+			break;
 	}
 }
 
@@ -2811,6 +2822,7 @@ static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, 
 
 static void OpenFleetMiniWnd(int vt);
 static void OpenFinanceMiniWnd();
+static void OpenGroupMiniWnd();
 
 static void OpenMiniWindow(MiniWin win)
 {
@@ -2831,6 +2843,7 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Industries: ShowIndustryDirectory(); break;
 		case MiniWin::Subsidies: ShowSubsidiesList(); break;
 		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
+		case MiniWin::Groups: if (company) OpenGroupMiniWnd(); break;
 	}
 }
 
@@ -3334,6 +3347,7 @@ enum class MiniWndKind : uint8_t {
 	Industry,
 	Fleet,
 	Finance,
+	Group,
 };
 
 struct MiniWnd {
@@ -3343,6 +3357,8 @@ struct MiniWnd {
 	TownID town = TownID::Invalid();
 	IndustryID ind = IndustryID::Invalid();
 	VehicleID sel = VehicleID::Invalid();
+	GroupID sel_grp = ALL_GROUP;
+	EngineID sel_eng = EngineID::Invalid();
 	int16_t sel_ord = -1;
 	int x = 0, y = 0;
 	uint8_t tab = 0;
@@ -3388,6 +3404,12 @@ struct MiniWndRowAct {
 	bool ord_load = false;
 	bool ord_unload = false;
 	bool ord_add = false;
+	GroupID grp_sel = GroupID::Invalid();
+	VehicleID grp_add = VehicleID::Invalid();
+	VehicleID grp_rm = VehicleID::Invalid();
+	EngineID repl_from = EngineID::Invalid();
+	EngineID repl_to = EngineID::Invalid();
+	bool repl_clear = false;
 };
 
 struct MiniWndHit {
@@ -3472,6 +3494,7 @@ static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 		case MiniWndKind::Town: id = (int)mw.town.base(); break;
 		case MiniWndKind::Fleet: id = 0; break;
 		case MiniWndKind::Finance: id = 0; break;
+		case MiniWndKind::Group: id = 0; break;
 		default: id = (int)mw.ind.base(); break;
 	}
 	return MW_CARRIER_NUM_BASE + (int)mw.kind * MW_CARRIER_KIND_STRIDE + id;
@@ -3487,6 +3510,10 @@ static WindowDesc _mini_carrier_desc(
 	{},
 	_nested_mini_carrier_widgets
 );
+
+/* The group window has no per-window entity id, so the rename target rides
+ * in this side channel between the pen click and the query result. */
+static GroupID _mini_rename_grp = GroupID::Invalid();
 
 /* Frameless native viewport window aligned with a mini window's view slot;
  * it doubles as the query-string parent so renames land somewhere. */
@@ -3514,6 +3541,12 @@ struct MiniCarrierWindow : Window {
 	{
 		if (!str.has_value()) return;
 		int id = (this->window_number - MW_CARRIER_NUM_BASE) % MW_CARRIER_KIND_STRIDE;
+		if (this->carry_kind == MiniWndKind::Group) {
+			if (Group::IsValidID(_mini_rename_grp)) {
+				Command<CMD_ALTER_GROUP>::Post(STR_ERROR_GROUP_CAN_T_RENAME, AlterGroupMode::Rename, _mini_rename_grp, GroupID::Invalid(), *str);
+			}
+			return;
+		}
 		if (this->carry_kind == MiniWndKind::Vehicle) {
 			const Vehicle *v = Vehicle::GetIfValid(static_cast<VehicleID>(id));
 			if (v != nullptr) Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + v->type, v->index, *str);
@@ -3544,6 +3577,8 @@ static Window *EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
 			const Town *t = Town::GetIfValid(mw.town);
 			if (t == nullptr) return nullptr;
 			focus = t->xy;
+		} else if (mw.kind == MiniWndKind::Group) {
+			focus = TileXY(Map::SizeX() / 2, Map::SizeY() / 2);
 		} else {
 			const Industry *i = Industry::GetIfValid(mw.ind);
 			if (i == nullptr) return nullptr;
@@ -3626,6 +3661,11 @@ static void OpenFleetMiniWnd(int vt)
 static void OpenFinanceMiniWnd()
 {
 	OpenMiniWnd(MiniWndKind::Finance, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenGroupMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid());
 }
 
 /* Body row painter: rows share one scroll window; clickable rows register a
@@ -4332,6 +4372,116 @@ static void DrawFinanceWndBody(MiniWndBody &body, uint8_t tab)
 	body.KV("올해 손익", MiniPriceStr(total), total > 0 ? COL_CH_RED : COL_CH_ACCENT);
 }
 
+/* Group window: one communal screen per vehicle type. A selected group
+ * gates the membership lists and scopes the autoreplace rules, with the
+ * all-vehicles pseudo group as the default scope. */
+static void DrawGroupWndBody(MiniWnd &mw, MiniWndBody &body)
+{
+	if (!Company::IsValidID(_local_company)) return;
+	VehicleType vt = (VehicleType)mw.tab;
+
+	bool special = mw.sel_grp == ALL_GROUP || mw.sel_grp == DEFAULT_GROUP;
+	const Group *sg = special ? nullptr : Group::GetIfValid(mw.sel_grp);
+	if (!special && (sg == nullptr || sg->owner != _local_company || sg->vehicle_type != vt)) {
+		mw.sel_grp = ALL_GROUP;
+		sg = nullptr;
+		special = true;
+	}
+	const Engine *se = Engine::GetIfValid(mw.sel_eng);
+	if (se != nullptr && se->type != vt) {
+		mw.sel_eng = EngineID::Invalid();
+		se = nullptr;
+	}
+
+	body.Header("그룹");
+	auto group_row = [&](GroupID gid, std::string_view name, uint count) {
+		MiniWndRowAct act;
+		act.grp_sel = gid;
+		body.Link(fmt::format("{}{} · {}대", mw.sel_grp == gid ? "▶ " : "· ", name, count),
+				mw.sel_grp == gid ? COL_CH_ACCENT : COL_CH_TEXT, act);
+	};
+	group_row(ALL_GROUP, WndOfficial(STR_GROUP_ALL_TRAINS + vt), GetGroupNumVehicle(_local_company, ALL_GROUP, vt));
+	group_row(DEFAULT_GROUP, WndOfficial(STR_GROUP_DEFAULT_TRAINS + vt), GetGroupNumVehicle(_local_company, DEFAULT_GROUP, vt));
+	std::vector<const Group *> groups;
+	for (const Group *g : Group::Iterate()) {
+		if (g->owner != _local_company || g->vehicle_type != vt) continue;
+		groups.push_back(g);
+	}
+	std::sort(groups.begin(), groups.end(), [](const Group *a, const Group *b) { return a->number < b->number; });
+	for (const Group *g : groups) {
+		group_row(g->index, StrMakeValid(GetString(STR_GROUP_NAME, g->index), {}), GetGroupNumVehicle(_local_company, g->index, vt));
+	}
+
+	body.Header("자동 교체");
+	const Company *comp = Company::Get(_local_company);
+	bool any_used = false;
+	for (const Engine *e : Engine::IterateType(vt)) {
+		uint num = GetGroupNumEngines(_local_company, mw.sel_grp, e->index);
+		EngineID repl = EngineReplacementForCompany(comp, e->index, mw.sel_grp);
+		if (num == 0 && repl == EngineID::Invalid()) continue;
+		any_used = true;
+		std::string label = fmt::format("{}{} · {}대", mw.sel_eng == e->index ? "▶ " : "· ",
+				StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {}), num);
+		if (repl != EngineID::Invalid()) label += fmt::format(" → {}", StrMakeValid(GetString(STR_ENGINE_NAME, repl), {}));
+		MiniWndRowAct act;
+		act.repl_from = e->index;
+		body.Link(label, mw.sel_eng == e->index ? COL_CH_ACCENT : (repl != EngineID::Invalid() ? COL_CH_YELLOW : COL_CH_TEXT), act);
+	}
+	if (!any_used) body.Plain("보유 엔진 없음", COL_CH_DIM);
+	if (se != nullptr) {
+		EngineID repl = EngineReplacementForCompany(comp, mw.sel_eng, mw.sel_grp);
+		if (repl != EngineID::Invalid()) {
+			MiniWndRowAct act;
+			act.repl_clear = true;
+			body.Link("교체 해제", COL_CH_RED, act);
+		}
+		body.Plain("교체할 새 엔진 클릭", COL_CH_DIM);
+		for (const Engine *e : Engine::IterateType(vt)) {
+			if (e->index == mw.sel_eng) continue;
+			if (!CheckAutoreplaceValidity(mw.sel_eng, e->index, _local_company)) continue;
+			MiniWndRowAct act;
+			act.repl_to = e->index;
+			body.Link(fmt::format("· {}", StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {})),
+					e->index == repl ? COL_CH_ACCENT : COL_CH_TEXT, act);
+		}
+	}
+
+	if (special) {
+		body.Header("차량");
+		bool anyv = false;
+		for (const Vehicle *v : Vehicle::Iterate()) {
+			if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
+			if (mw.sel_grp == DEFAULT_GROUP && v->group_id != DEFAULT_GROUP) continue;
+			anyv = true;
+			MiniWndRowAct act;
+			act.open_veh = v->index;
+			body.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
+		}
+		if (!anyv) body.Plain("차량 없음", COL_CH_DIM);
+	} else {
+		body.Header("소속 차량. 클릭으로 제외");
+		bool anyin = false;
+		for (const Vehicle *v : Vehicle::Iterate()) {
+			if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id != mw.sel_grp) continue;
+			anyin = true;
+			MiniWndRowAct act;
+			act.grp_rm = v->index;
+			body.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
+		}
+		if (!anyin) body.Plain("소속 차량 없음", COL_CH_DIM);
+		body.Header("클릭으로 추가");
+		bool anyout = false;
+		for (const Vehicle *v : Vehicle::Iterate()) {
+			if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id == mw.sel_grp) continue;
+			anyout = true;
+			MiniWndRowAct act;
+			act.grp_add = v->index;
+			body.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
+		}
+		if (!anyout) body.Plain("없음", COL_CH_DIM);
+	}
+}
+
 static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c, bool alt)
 {
 	int cx = (r.left + r.right) / 2;
@@ -4405,6 +4555,18 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 				RlwCmdRect(cx - q, cy - s, cx + q, cy + s, c);
 				break;
 		}
+	} else if (kind == MiniWndKind::Group) {
+		switch (cmd) {
+			case 0:
+				RlwCmdRect(cx - q, cy - q, cx + q, cy - q + s, c);
+				RlwCmdRect(cx - q, cy - s / 2, cx + q, cy - s / 2 + s, c);
+				RlwCmdRect(cx - q, cy + q - s, cx + q, cy + q, c);
+				break;
+			case 1:
+				RlwCmdLine(cx - q, cy - q, cx + q, cy + q, s, c);
+				RlwCmdLine(cx - q, cy + q, cx + q, cy - q, s, c);
+				break;
+		}
 	} else if (kind == MiniWndKind::Fleet) {
 		switch (cmd) {
 			case 0:
@@ -4461,6 +4623,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		case MiniWndKind::Town: if (t != nullptr) title = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {}); break;
 		case MiniWndKind::Fleet: title = "차고"; break;
 		case MiniWndKind::Finance: title = "재정"; break;
+		case MiniWndKind::Group: title = "차량군"; break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); break;
 	}
 	WndText(fr.left + pad, fr.top + 2 * s, th, title, COL_CH_TEXT);
@@ -4472,8 +4635,15 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 			(mw.kind == MiniWndKind::Station && st != nullptr && st->owner == _local_company) ||
 			(mw.kind == MiniWndKind::Town && t != nullptr) ||
 			(mw.kind == MiniWndKind::Fleet && Company::IsValidID(_local_company)) ||
-			(mw.kind == MiniWndKind::Finance && Company::IsValidID(_local_company));
-	bool pen_ok = own && mw.kind != MiniWndKind::Fleet && mw.kind != MiniWndKind::Finance;
+			(mw.kind == MiniWndKind::Finance && Company::IsValidID(_local_company)) ||
+			(mw.kind == MiniWndKind::Group && Company::IsValidID(_local_company));
+	bool pen_ok;
+	switch (mw.kind) {
+		case MiniWndKind::Fleet:
+		case MiniWndKind::Finance: pen_ok = false; break;
+		case MiniWndKind::Group: pen_ok = own && Group::IsValidID(mw.sel_grp); break;
+		default: pen_ok = own; break;
+	}
 	Rect pen_r = WndIconTile(close_r.left - 2 * s - ts, fr.top + 2 * s, ts, false, pen_ok);
 	WndPenGlyph(pen_r, pen_ok ? (WndHover(pen_r) ? COL_CH_ACCENT : COL_CH_TEXT) : COL_CH_DIM);
 	_wnd_hits.push_back({idx, close_r, MWA_CLOSE});
@@ -4488,13 +4658,14 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	switch (mw.kind) {
 		case MiniWndKind::Station:
 		case MiniWndKind::Vehicle:
-		case MiniWndKind::Fleet: ntab = 4; break;
+		case MiniWndKind::Fleet:
+		case MiniWndKind::Group: ntab = 4; break;
 		case MiniWndKind::Finance: ntab = 2; break;
 		default: ntab = 3; break;
 	}
 	for (int ti = 0; ti < ntab; ti++) {
 		std::string label;
-		if (mw.kind == MiniWndKind::Fleet) {
+		if (mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group) {
 			static const StringID type_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
 			label = WndOfficial(type_strs[ti]);
 		} else if (mw.kind == MiniWndKind::Finance) {
@@ -4548,7 +4719,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	bp.hot = hot;
 	bp.area = body;
 
-	if (mw.tab == 0 && mw.kind != MiniWndKind::Fleet && mw.kind != MiniWndKind::Finance) {
+	if (mw.tab == 0 && mw.kind != MiniWndKind::Fleet && mw.kind != MiniWndKind::Finance && mw.kind != MiniWndKind::Group) {
 		Rect vs = {body.left, body.top, body.right, body.top + WndViewH() - 1};
 		RlwCmdRect(vs.left, vs.top, vs.right, vs.bottom, 0xFF101010U);
 		if (v != nullptr || st != nullptr || t != nullptr || ind != nullptr) {
@@ -4563,6 +4734,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	if (ind != nullptr) DrawIndustryWndBody(mw, bp, ind);
 	if (mw.kind == MiniWndKind::Fleet) DrawFleetWndBody(mw, bp);
 	if (mw.kind == MiniWndKind::Finance) DrawFinanceWndBody(bp, mw.tab);
+	if (mw.kind == MiniWndKind::Group) DrawGroupWndBody(mw, bp);
 
 	/* Scroll clamp and position mark. */
 	int vis_rows = (bp.area.bottom - bp.area.top + 1) / bp.rh;
@@ -4601,6 +4773,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 				enabled = fc != nullptr && (c == 0 ? fc->current_loan < fc->GetMaxLoan() : fc->current_loan > 0);
 				break;
 			}
+			case MiniWndKind::Group: enabled = own && (c == 0 || Group::IsValidID(mw.sel_grp)); break;
 			default: enabled = v != nullptr && (c == 4 || own); break;
 		}
 		Rect cr = WndIconTile(cx, cmd_y, cs2, active, enabled);
@@ -4624,6 +4797,8 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 				_wnd_tooltip = c == 0 ? "표시한 차량 매각" : "설계 비우기";
 			} else if (mw.kind == MiniWndKind::Finance) {
 				_wnd_tooltip = StrMakeValid(GetString(c == 0 ? STR_FINANCES_BORROW_BUTTON : STR_FINANCES_REPAY_BUTTON, LOAN_INTERVAL), {});
+			} else if (mw.kind == MiniWndKind::Group) {
+				_wnd_tooltip = c == 0 ? "새 그룹" : "선택한 그룹 삭제";
 			} else {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_INDUSTRY_DISPLAY_CHAIN) : WndOfficial(STR_INDUSTRY_VIEW_LOCATION_TOOLTIP);
 			}
@@ -4646,6 +4821,7 @@ static void DrawMiniWnds()
 			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
 			case MiniWndKind::Fleet: alive = true; break;
 			case MiniWndKind::Finance: alive = Company::IsValidID(_local_company); break;
+			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			default: alive = Industry::IsValidID(_wnds[i].ind); break;
 		}
 		if (!alive) CloseMiniWnd(i);
@@ -4699,6 +4875,10 @@ static bool HandleWndClick(int x, int y)
 					} else if (t != nullptr) {
 						ShowQueryString(GetString(STR_TOWN_NAME, t->index), STR_TOWN_VIEW_RENAME_TOWN_BUTTON,
 								MAX_LENGTH_TOWN_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+					} else if (mw.kind == MiniWndKind::Group && Group::IsValidID(mw.sel_grp)) {
+						_mini_rename_grp = mw.sel_grp;
+						ShowQueryString(GetString(STR_GROUP_NAME, mw.sel_grp), STR_GROUP_RENAME_CAPTION,
+								MAX_LENGTH_GROUP_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
 					}
 				}
 			} else if (act >= MWA_TAB_BASE && act < MWA_CMD_BASE) {
@@ -4762,6 +4942,13 @@ static bool HandleWndClick(int x, int y)
 					} else {
 						Command<CMD_DECREASE_LOAN>::Post(STR_ERROR_CAN_T_REPAY_LOAN, LoanCommand::Interval, 0);
 					}
+				} else if (mw.kind == MiniWndKind::Group) {
+					if (c == 0) {
+						Command<CMD_CREATE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_CREATE, (VehicleType)mw.tab, GroupID::Invalid());
+					} else if (Group::IsValidID(mw.sel_grp)) {
+						Command<CMD_DELETE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_DELETE, mw.sel_grp);
+						mw.sel_grp = ALL_GROUP;
+					}
 				}
 			} else if (act >= MWA_ROW_BASE) {
 				const MiniWndRowAct &ra = _wnd_row_acts[act - MWA_ROW_BASE];
@@ -4805,6 +4992,25 @@ static bool HandleWndClick(int x, int y)
 					Command<CMD_REFIT_VEHICLE>::Post(GetCmdRefitVehMsg(v->type), v->tile, v->index, ra.refit, 0, false, false, 0);
 				} else if (ra.ord_add && v != nullptr && v->owner == _local_company) {
 					if (_order_pick_veh == v->index) EnterIdleMode(); else EnterOrderPickMode(v->index);
+				} else if (ra.grp_sel != GroupID::Invalid() && mw.kind == MiniWndKind::Group) {
+					mw.sel_grp = ra.grp_sel;
+					mw.sel_eng = EngineID::Invalid();
+				} else if (ra.repl_from != EngineID::Invalid() && mw.kind == MiniWndKind::Group) {
+					mw.sel_eng = mw.sel_eng == ra.repl_from ? EngineID::Invalid() : ra.repl_from;
+				} else if (ra.repl_to != EngineID::Invalid() && mw.kind == MiniWndKind::Group) {
+					if (Engine::GetIfValid(mw.sel_eng) != nullptr) {
+						Command<CMD_SET_AUTOREPLACE>::Post(mw.sel_grp, mw.sel_eng, ra.repl_to, false);
+					}
+				} else if (ra.repl_clear && mw.kind == MiniWndKind::Group) {
+					if (Engine::GetIfValid(mw.sel_eng) != nullptr) {
+						Command<CMD_SET_AUTOREPLACE>::Post(mw.sel_grp, mw.sel_eng, EngineID::Invalid(), false);
+					}
+				} else if (ra.grp_add != VehicleID::Invalid() && mw.kind == MiniWndKind::Group) {
+					if (Group::IsValidID(mw.sel_grp)) {
+						Command<CMD_ADD_VEHICLE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_ADD_VEHICLE, mw.sel_grp, ra.grp_add, false, VehicleListIdentifier{});
+					}
+				} else if (ra.grp_rm != VehicleID::Invalid() && mw.kind == MiniWndKind::Group) {
+					Command<CMD_ADD_VEHICLE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_ADD_VEHICLE, DEFAULT_GROUP, ra.grp_rm, false, VehicleListIdentifier{});
 				} else if (ra.buy != EngineID::Invalid() && mw.kind == MiniWndKind::Fleet) {
 					if (mw.tab == VEH_TRAIN) {
 						_fleet_draft[mw.tab].push_back(ra.buy);
