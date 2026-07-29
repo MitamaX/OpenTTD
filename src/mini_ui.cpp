@@ -3941,29 +3941,57 @@ static ImU32 MiniImU32(uint32_t argb)
 	return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >> 24) & 0xFF);
 }
 
+/* Rows never widen the window: anything past the content edge wraps onto the
+ * next line, and key/value rows wrap the key against the value's column. */
+static float ImWndTextWidth(std::string_view text)
+{
+	return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+}
+
+static float ImWndTextHeight(std::string_view text, float wrap_w)
+{
+	return std::max(ImGui::CalcTextSize(text.data(), text.data() + text.size(), false, wrap_w).y, ImGui::GetFontSize());
+}
+
+static void ImWndDrawWrapped(ImDrawList *dl, ImVec2 pos, std::string_view text, uint32_t tint, float wrap_w)
+{
+	dl->AddText(nullptr, 0.0f, pos, MiniImU32(tint), text.data(), text.data() + text.size(), wrap_w);
+}
+
 static void ImWndText(std::string_view text, uint32_t tint)
 {
 	ImGui::PushStyleColor(ImGuiCol_Text, ImGuiCol32(tint));
+	ImGui::PushTextWrapPos(0.0f);
 	ImGui::TextUnformatted(text.data(), text.data() + text.size());
+	ImGui::PopTextWrapPos();
 	ImGui::PopStyleColor();
+}
+
+/* Splits the row into a wrapped key column and a value pinned to the right of
+ * the first line. */
+static float ImWndKeyColumn(float avail, std::string_view value)
+{
+	return std::max(avail - ImWndTextWidth(value) - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFontSize());
 }
 
 static void ImWndKV(std::string_view label, std::string_view value, uint32_t vtint)
 {
-	ImWndText(label, COL_CH_DIM);
-	ImGui::SameLine();
-	float vw = ImGui::CalcTextSize(value.data(), value.data() + value.size()).x;
-	float x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - vw;
-	if (x > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(x);
-	ImWndText(value, vtint);
+	float avail = ImGui::GetContentRegionAvail().x;
+	float lw = ImWndKeyColumn(avail, value);
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	ImWndDrawWrapped(dl, p, label, COL_CH_DIM, lw);
+	ImWndDrawWrapped(dl, ImVec2(p.x + avail - ImWndTextWidth(value), p.y), value, vtint, 0.0f);
+	ImGui::Dummy(ImVec2(avail, ImWndTextHeight(label, lw)));
 }
 
 static bool ImWndLink(std::string_view label, uint32_t tint)
 {
 	ImGui::PushID(_imrow++);
-	ImGui::PushStyleColor(ImGuiCol_Text, ImGuiCol32(tint));
-	bool clicked = ImGui::Selectable(std::string(label).c_str());
-	ImGui::PopStyleColor();
+	float avail = ImGui::GetContentRegionAvail().x;
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	bool clicked = ImGui::Selectable("##link", false, 0, ImVec2(0.0f, ImWndTextHeight(label, avail)));
+	ImWndDrawWrapped(ImGui::GetWindowDrawList(), p, label, tint, avail);
 	ImGui::PopID();
 	return clicked;
 }
@@ -3971,13 +3999,13 @@ static bool ImWndLink(std::string_view label, uint32_t tint)
 static bool ImWndKVLink(std::string_view label, std::string_view value, uint32_t ltint, uint32_t vtint)
 {
 	ImGui::PushID(_imrow++);
+	float avail = ImGui::GetContentRegionAvail().x;
+	float lw = ImWndKeyColumn(avail, value);
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float w = ImGui::GetContentRegionAvail().x;
-	bool clicked = ImGui::Selectable("##kv");
+	bool clicked = ImGui::Selectable("##kv", false, 0, ImVec2(0.0f, ImWndTextHeight(label, lw)));
 	ImDrawList *dl = ImGui::GetWindowDrawList();
-	dl->AddText(p, MiniImU32(ltint), label.data(), label.data() + label.size());
-	float vw = ImGui::CalcTextSize(value.data(), value.data() + value.size()).x;
-	dl->AddText(ImVec2(p.x + w - vw, p.y), MiniImU32(vtint), value.data(), value.data() + value.size());
+	ImWndDrawWrapped(dl, p, label, ltint, lw);
+	ImWndDrawWrapped(dl, ImVec2(p.x + avail - ImWndTextWidth(value), p.y), value, vtint, 0.0f);
 	ImGui::PopID();
 	return clicked;
 }
