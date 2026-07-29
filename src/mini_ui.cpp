@@ -4994,7 +4994,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	ImVec2 def_size((float)((wide ? 560 : 250) * s), (float)(270 * s));
 	ImGui::SetNextWindowPos(ImVec2((float)mw.x, (float)mw.y), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(def_size, ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSizeConstraints(ImVec2(def_size.x * 0.5f, def_size.y * 0.5f), ImVec2(FLT_MAX, FLT_MAX));
+	ImGui::SetNextWindowSizeConstraints(def_size, ImVec2(FLT_MAX, FLT_MAX));
 	if (mw.want_raise) {
 		ImGui::SetNextWindowFocus();
 		mw.want_raise = false;
