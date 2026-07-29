@@ -3167,6 +3167,7 @@ struct MiniWndRowAct {
 	TileIndex jump = INVALID_TILE;
 	VehicleID open_veh = VehicleID::Invalid();
 	StationID open_st = StationID::Invalid();
+	TownID open_town = TownID::Invalid();
 	int skip_order = -1;
 };
 
@@ -3427,6 +3428,21 @@ struct MiniWndBody {
 		this->row++;
 	}
 
+	void KVLink(std::string_view label, std::string_view value, uint32_t vtint, const MiniWndRowAct &act, uint32_t ltint = COL_CH_DIM)
+	{
+		Rect r;
+		if (this->RowRect(r)) {
+			if (this->hot && WndHover(r)) RlwCmdRect(r.left, r.top, r.right, r.bottom, COL_CH_TILE);
+			WndText(r.left, r.top, this->rh, label, ltint);
+			WndTextRight(r.right, r.top, this->rh, value, vtint);
+			const MiniTextEntry *e = TextTexture(value);
+			if (e != nullptr) RlwCmdRect(r.right - e->w + 1, r.bottom - 1, r.right, r.bottom - 1, (vtint & 0x00FFFFFFU) | 0x60000000U);
+			_wnd_hits.push_back({this->wnd, r, MWA_ROW_BASE + (int)_wnd_row_acts.size()});
+			_wnd_row_acts.push_back(act);
+		}
+		this->row++;
+	}
+
 	void Header(std::string_view text)
 	{
 		Rect r;
@@ -3476,9 +3492,7 @@ static void DrawVehicleWndBody(const MiniWnd &mw, MiniWndBody &body, const Vehic
 				body.Plain("-", COL_CH_DIM);
 			}
 			body.KV("속도", fmt::format("{} / {}", v->GetDisplaySpeed(), v->GetDisplayMaxSpeed()), COL_CH_TEXT);
-			body.KV("차령", fmt::format("{}년 / {}년", v->age.base() / 366, v->max_age.base() / 366), COL_CH_TEXT);
 			body.Plain(StrMakeValid(GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, v->reliability * 100 >> 16, v->breakdowns_since_last_service), {}), COL_CH_TEXT);
-			body.Plain(StrMakeValid(GetString(STR_VEHICLE_INFO_PROFIT_THIS_YEAR_LAST_YEAR, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()), {}), COL_CH_TEXT);
 			break;
 		}
 
@@ -3526,6 +3540,30 @@ static void DrawVehicleWndBody(const MiniWnd &mw, MiniWndBody &body, const Vehic
 			}
 			break;
 		}
+
+		case 3: {
+			body.KV("구매", fmt::format("{}년", v->build_year.base()), COL_CH_TEXT);
+			Money value = 0;
+			for (const Vehicle *u = v; u != nullptr; u = u->Next()) value += u->value;
+			body.KV("가치", GetString(STR_JUST_CURRENCY_LONG, value), COL_CH_TEXT);
+			body.KV("유지비", fmt::format("{}/년", GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayRunningCost())), COL_CH_TEXT);
+			body.KV("차령", fmt::format("{}년 / {}년", v->age.base() / 366, v->max_age.base() / 366), COL_CH_TEXT);
+			body.Plain(StrMakeValid(GetString(STR_VEHICLE_INFO_PROFIT_THIS_YEAR_LAST_YEAR, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()), {}), COL_CH_TEXT);
+			if (v->type == VEH_TRAIN) {
+				body.KV("총길이", fmt::format("{:.1f}타일", Train::From(v)->gcache.cached_total_length / (double)TILE_SIZE), COL_CH_TEXT);
+			}
+			if (v->type == VEH_TRAIN || (v->type == VEH_ROAD && _settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL)) {
+				const GroundVehicleCache *gc = v->GetGroundVehicleCache();
+				int64_t ms = PackVelocity(v->GetDisplayMaxSpeed(), v->type);
+				if (v->type == VEH_TRAIN && (_settings_game.vehicle.train_acceleration_model == AM_ORIGINAL ||
+						Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev)) {
+					body.Plain(StrMakeValid(GetString(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, gc->cached_weight, gc->cached_power, ms), {}), COL_CH_TEXT);
+				} else {
+					body.Plain(StrMakeValid(GetString(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED_MAX_TE, gc->cached_weight, gc->cached_power, ms, gc->cached_max_te), {}), COL_CH_TEXT);
+				}
+			}
+			break;
+		}
 	}
 }
 
@@ -3538,15 +3576,30 @@ static void DrawStationWndBody(const MiniWnd &mw, MiniWndBody &body, const Stati
 				const GoodsEntry &ge = st->goods[cs->Index()];
 				if (!ge.HasRating()) continue;
 				any = true;
-				uint pct = ToPercent8(ge.rating);
-				uint32_t tint = pct < 25 ? COL_CH_RED : pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT;
-				body.KV(WndOfficial(cs->name), fmt::format("{} · {} {}%", ge.TotalCount(), WndOfficial(STR_CARGO_RATING_APPALLING + (ge.rating >> 5)), pct), tint);
+				body.KV(WndOfficial(cs->name), fmt::format("{}", ge.TotalCount()), COL_CH_TEXT);
 			}
 			if (!any) body.Plain("대기 화물 없음", COL_CH_DIM);
 			break;
 		}
 
 		case 3: {
+			if (st->town != nullptr) {
+				MiniWndRowAct act;
+				act.open_town = st->town->index;
+				body.KVLink("도시", StrMakeValid(GetString(STR_TOWN_NAME, st->town->index), {}), COL_CH_TEXT, act);
+			}
+			if (Company::IsValidID(st->owner)) {
+				body.KV("소유", StrMakeValid(GetString(STR_COMPANY_NAME, st->owner), {}), COL_CH_TEXT);
+			}
+			std::string fac;
+			for (const auto &[f, name] : std::initializer_list<std::pair<StationFacility, std::string_view>>{
+					{StationFacility::Train, "철도"}, {StationFacility::BusStop, "버스"}, {StationFacility::TruckStop, "트럭"},
+					{StationFacility::Dock, "부두"}, {StationFacility::Airport, "공항"}}) {
+				if (!st->facilities.Test(f)) continue;
+				if (!fac.empty()) fac += " ";
+				fac += name;
+			}
+			if (!fac.empty()) body.KV("시설", fac, COL_CH_TEXT);
 			body.Plain(StrMakeValid(GetString(STR_LAND_AREA_INFORMATION_BUILD_DATE, st->build_date), {}), COL_CH_TEXT);
 			if (st->facilities.Test(StationFacility::Train) && st->train_station.tile != INVALID_TILE) {
 				uint longest = 0;
@@ -3557,6 +3610,18 @@ static void DrawStationWndBody(const MiniWnd &mw, MiniWndBody &body, const Stati
 				body.KV(WndOfficial(STR_STATION_BUILD_PLATFORM_LENGTH), fmt::format("{}칸", longest), COL_CH_TEXT);
 			}
 			body.Plain(StrMakeValid(GetString(STR_STATION_VIEW_ACCEPTS_CARGO, GetAcceptanceMask(st)), {}), COL_CH_TEXT);
+			bool rated = false;
+			for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+				const GoodsEntry &ge = st->goods[cs->Index()];
+				if (!ge.HasRating()) continue;
+				if (!rated) {
+					body.Header("화물 처리 평가");
+					rated = true;
+				}
+				uint pct = ToPercent8(ge.rating);
+				uint32_t tint = pct < 25 ? COL_CH_RED : pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT;
+				body.KV(WndOfficial(cs->name), fmt::format("{} {}%", WndOfficial(STR_CARGO_RATING_APPALLING + (ge.rating >> 5)), pct), tint);
+			}
 			break;
 		}
 
@@ -3852,12 +3917,16 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	/* Uniform-width tab strip. */
 	int tab_y = fr.top + th + 2 * s + 1;
 	int tabh = WndTabH();
-	static const std::string_view veh_tabs[] = {"상태", "", "주문"};
-	int ntab = mw.kind == MiniWndKind::Station ? 4 : 3;
+	int ntab = (mw.kind == MiniWndKind::Station || mw.kind == MiniWndKind::Vehicle) ? 4 : 3;
 	for (int ti = 0; ti < ntab; ti++) {
 		std::string label;
 		if (mw.kind == MiniWndKind::Vehicle) {
-			label = ti == 1 ? WndOfficial(STR_VEHICLE_DETAIL_TAB_CARGO) : std::string(veh_tabs[ti]);
+			switch (ti) {
+				case 0: label = "상태"; break;
+				case 1: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_CARGO); break;
+				case 2: label = "주문"; break;
+				case 3: label = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION); break;
+			}
 		} else if (mw.kind == MiniWndKind::Station) {
 			switch (ti) {
 				case 0: label = "상태"; break;
@@ -4088,6 +4157,8 @@ static bool HandleWndClick(int x, int y)
 					if (ov != nullptr) OpenMiniWnd(MiniWndKind::Vehicle, ov->First()->index, StationID::Invalid());
 				} else if (ra.open_st != StationID::Invalid()) {
 					if (Station::IsValidID(ra.open_st)) OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), ra.open_st);
+				} else if (ra.open_town != TownID::Invalid()) {
+					if (Town::IsValidID(ra.open_town)) OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), ra.open_town);
 				} else if (ra.jump != INVALID_TILE) {
 					MiniUiScrollTo(TileX(ra.jump) * TILE_SIZE, TileY(ra.jump) * TILE_SIZE);
 				}
