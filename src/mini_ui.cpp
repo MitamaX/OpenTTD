@@ -4021,7 +4021,7 @@ static void DrawVehicleWndBody(MiniWnd &mw, MiniWndBody &body, const Vehicle *v)
 					mask |= u->GetEngine()->info.refit_mask;
 				}
 				bool any_ref = false;
-				for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+				for (const CargoSpec *cs : _sorted_cargo_specs) {
 					if (!HasBit(mask, cs->Index())) continue;
 					if (!any_ref) {
 						body.Header("개조");
@@ -5233,7 +5233,8 @@ static bool HandleWndClick(int x, int y)
 						}
 					}
 				} else if (ra.refit != INVALID_CARGO && v != nullptr && v->owner == _local_company && v->IsStoppedInDepot()) {
-					Command<CMD_REFIT_VEHICLE>::Post(GetCmdRefitVehMsg(v->type), v->tile, v->index, ra.refit, 0, false, false, 0);
+					/* Subtype 0xFF keeps the closest matching subtype on each unit. */
+					Command<CMD_REFIT_VEHICLE>::Post(GetCmdRefitVehMsg(v->type), v->tile, v->index, ra.refit, 0xFF, false, false, 0);
 				} else if (ra.ord_add && v != nullptr && v->owner == _local_company) {
 					if (_order_pick_veh == v->index) EnterIdleMode(); else EnterOrderPickMode(v->index);
 				} else if (ra.grp_sel != GroupID::Invalid() && mw.kind == MiniWndKind::Group) {
