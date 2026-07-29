@@ -1433,80 +1433,6 @@ static void DrawVehicles(int ppt)
 	}
 }
 
-/* No engine list in the mini UI: the buy key auto-picks per depot type.
- * Locomotives go by power, everything else by capacity then speed; the
- * alternate mode buys wagons at rail depots and freight elsewhere. */
-static EngineID PickEngine(TileIndex depot, VehicleType vt, bool alt)
-{
-	EngineID best = EngineID::Invalid();
-	int64_t best_score = -1;
-	for (const Engine *e : Engine::IterateType(vt)) {
-		if (!e->IsEnabled() || !e->company_avail.Test(_local_company)) continue;
-		CargoType ct = e->GetDefaultCargoType();
-		bool pax = IsValidCargoType(ct) && IsCargoInClass(ct, CargoClass::Passengers);
-		int64_t score;
-		switch (vt) {
-			case VEH_TRAIN: {
-				const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
-				bool wagon = rvi.railveh_type == RAILVEH_WAGON;
-				if (wagon != alt) continue;
-				if (wagon) {
-					if (!IsCompatibleRail(rvi.railtypes, GetRailType(depot))) continue;
-					if (!pax) continue;
-					score = e->GetDisplayDefaultCapacity();
-				} else {
-					if (!HasPowerOnRail(rvi.railtypes, GetRailType(depot))) continue;
-					score = e->GetPower();
-				}
-				break;
-			}
-			case VEH_ROAD: {
-				const RoadVehicleInfo &rvi = e->VehInfo<RoadVehicleInfo>();
-				RoadType depot_rt = GetRoadTypeRoad(depot) != INVALID_ROADTYPE ? GetRoadTypeRoad(depot) : GetRoadTypeTram(depot);
-				if (!HasPowerOnRoad(rvi.roadtype, depot_rt)) continue;
-				if (pax == alt) continue;
-				score = (int64_t)e->GetDisplayDefaultCapacity() * 1000 + e->GetDisplayMaxSpeed();
-				break;
-			}
-			case VEH_SHIP:
-				if (pax == alt) continue;
-				score = (int64_t)e->GetDisplayDefaultCapacity() * 1000 + e->GetDisplayMaxSpeed();
-				break;
-			default:
-				continue;
-		}
-		if (score > best_score) {
-			best_score = score;
-			best = e->index;
-		}
-	}
-	return best;
-}
-
-static void BuyAtDepot(bool alt)
-{
-	int tx = (int)std::floor(MapXAt(_cursor.pos.y));
-	int ty = (int)std::floor(MapYAt(_cursor.pos.x));
-	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return;
-	TileIndex tile = TileXY(tx, ty);
-
-	VehicleType vt;
-	if (IsRailDepotTile(tile)) {
-		vt = VEH_TRAIN;
-	} else if (IsRoadDepotTile(tile)) {
-		vt = VEH_ROAD;
-	} else if (IsTileType(tile, MP_WATER) && IsShipDepot(tile)) {
-		vt = VEH_SHIP;
-	} else {
-		return;
-	}
-	if (GetTileOwner(tile) != _local_company) return;
-
-	EngineID eid = PickEngine(tile, vt, alt);
-	if (eid == EngineID::Invalid()) return;
-	Command<CMD_BUILD_VEHICLE>::Post(STR_ERROR_CAN_T_BUY_TRAIN + vt, tile, eid, true, INVALID_CARGO, INVALID_CLIENT_ID);
-}
-
 /* Any unit of a consist opens its head's window, so the window always
  * describes the whole vehicle. */
 static void OpenVehicleWndAt(int sx, int sy)
@@ -4504,68 +4430,14 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			}
 			break;
 
-		case 'R':
-			_tool = _tool == MiniTool::Rail ? MiniTool::None : MiniTool::Rail;
-			break;
-
+		/* Blueprint rotation is modal, not a global shortcut: it only lives
+		 * while a directional placement tool is in hand. */
 		case 'E':
-			if (IsDirPointTool(_tool)) {
-				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
-			} else {
-				_tool = _tool == MiniTool::Road ? MiniTool::None : MiniTool::Road;
-			}
+			if (IsDirPointTool(_tool)) _point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
 			break;
 
 		case 'Q':
 			if (IsDirPointTool(_tool)) _point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
-			break;
-
-		case 'T':
-			_tool = _tool == MiniTool::Station ? MiniTool::None : MiniTool::Station;
-			break;
-
-		case 'B':
-			_tool = _tool == MiniTool::BusStop ? MiniTool::None : MiniTool::BusStop;
-			break;
-
-		case 'G':
-			_tool = _tool == MiniTool::TruckStop ? MiniTool::None : MiniTool::TruckStop;
-			break;
-
-		case 'F':
-			_tool = _tool == MiniTool::TrainDepot ? MiniTool::None : MiniTool::TrainDepot;
-			break;
-
-		case 'V':
-			_tool = _tool == MiniTool::RoadDepot ? MiniTool::None : MiniTool::RoadDepot;
-			break;
-
-		case 'X':
-			_tool = _tool == MiniTool::Demolish ? MiniTool::None : MiniTool::Demolish;
-			break;
-
-		case 'L':
-			_tool = _tool == MiniTool::Signal ? MiniTool::None : MiniTool::Signal;
-			break;
-
-		case 'U':
-			_tool = _tool == MiniTool::RailTunnel ? MiniTool::None : MiniTool::RailTunnel;
-			break;
-
-		case 'I':
-			_tool = _tool == MiniTool::RoadTunnel ? MiniTool::None : MiniTool::RoadTunnel;
-			break;
-
-		case 'Z':
-			_tool = _tool == MiniTool::Terraform ? MiniTool::None : MiniTool::Terraform;
-			break;
-
-		case 'N':
-			BuyAtDepot(_ctrl_pressed);
-			break;
-
-		case WKC_SPACE:
-			Command<CMD_PAUSE>::Post(PauseMode::Normal, !_pause_mode.Test(PauseMode::Normal));
 			break;
 
 		default:
