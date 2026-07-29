@@ -3569,6 +3569,7 @@ struct MiniWnd {
 	int x = 0, y = 0;
 	uint8_t tab = 0;
 	int scroll = 0;
+	int scroll2 = 0;
 	int rows = 0;
 };
 
@@ -3627,19 +3628,34 @@ struct MiniWndHit {
 static std::vector<MiniWndHit> _wnd_hits;
 static std::vector<MiniWndRowAct> _wnd_row_acts;
 
-static int WndW() { return std::min(250 * _ms.hud_scale, _fbw - 12 * _ms.hud_scale); }
+/* The fleet window runs twice as wide with side-by-side columns; the other
+ * kinds keep the narrow single-column shape. */
+static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet; }
+static int WndW(const MiniWnd &mw) { return std::min((WndWide(mw) ? 560 : 250) * _ms.hud_scale, _fbw - 12 * _ms.hud_scale); }
 static int WndTitleH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
 static int WndTabH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
 static int WndRowH() { return GetCharacterHeight(FS_NORMAL) + 5 * _ms.hud_scale; }
 static int WndViewH() { return 100 * _ms.hud_scale; }
 static int WndCmdS() { return 26 * _ms.hud_scale; }
 static int WndPad() { return 6 * _ms.hud_scale; }
-static int WndBodyH() { return WndViewH() + WndPad() + 6 * WndRowH(); }
-static int WndH() { return WndTitleH() + WndTabH() + WndBodyH() + WndCmdS() + 3 * WndPad(); }
+static int WndBodyH(const MiniWnd &mw) { return WndViewH() + WndPad() + (WndWide(mw) ? 10 : 6) * WndRowH(); }
+static int WndH(const MiniWnd &mw) { return WndTitleH() + WndTabH() + WndBodyH(mw) + WndCmdS() + 3 * WndPad(); }
 
 static Rect WndFrameRect(const MiniWnd &mw)
 {
-	return {mw.x, mw.y, mw.x + WndW() - 1, mw.y + WndH() - 1};
+	return {mw.x, mw.y, mw.x + WndW(mw) - 1, mw.y + WndH(mw) - 1};
+}
+
+static Rect WndBodyRect(const MiniWnd &mw)
+{
+	Rect fr = WndFrameRect(mw);
+	int body_y = fr.top + WndTitleH() + 2 * _ms.hud_scale + 1 + WndTabH() + 1 + WndPad();
+	return {fr.left + WndPad(), body_y, fr.right - WndPad(), body_y + WndBodyH(mw) - 1};
+}
+
+static int FleetSplitX(const Rect &body)
+{
+	return body.left + (body.right - body.left + 1) * 9 / 20;
 }
 
 static void WndText(int x, int y, int rh, std::string_view text, uint32_t tint)
@@ -3843,8 +3859,8 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	mw.st = st;
 	mw.town = town;
 	mw.ind = ind;
-	mw.x = Clamp(_fbw - 6 * s - WndW() - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW()));
-	mw.y = Clamp(_win_bar_bottom + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH()));
+	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
+	mw.y = Clamp(_win_bar_bottom + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
 	_wnds.push_back(mw);
 }
 
@@ -3861,6 +3877,7 @@ static void OpenFleetMiniWnd(int vt)
 	if (vt >= 0 && _wnds.back().tab != (uint8_t)vt) {
 		_wnds.back().tab = (uint8_t)vt;
 		_wnds.back().scroll = 0;
+		_wnds.back().scroll2 = 0;
 	}
 }
 
@@ -3889,6 +3906,14 @@ struct MiniWndBody {
 		int y = this->area.top + (this->row - this->scroll) * this->rh;
 		if (this->row < this->scroll || y + this->rh - 1 > this->area.bottom) return false;
 		out = {this->area.left, y, this->area.right, y + this->rh - 1};
+		return true;
+	}
+
+	bool BandRect(int nrows, Rect &out) const
+	{
+		int y = this->area.top + (this->row - this->scroll) * this->rh;
+		if (this->row < this->scroll || y + nrows * this->rh - 1 > this->area.bottom) return false;
+		out = {this->area.left, y, this->area.right, y + nrows * this->rh - 1};
 		return true;
 	}
 
@@ -4376,6 +4401,58 @@ static void DrawIndustryWndBody(const MiniWnd &mw, MiniWndBody &body, const Indu
 /* Fleet window: one communal screen per vehicle type. A consist is drafted
  * from the engine list, then produced whole by clicking a depot row; every
  * depot lists its consists for reassembly and selling. */
+struct StripUnit {
+	int len8 = 8;
+	uint32_t fill = 0;
+	bool engine = false;
+	bool selected = false;
+	MiniWndRowAct act;
+};
+
+/* One consist as a horizontal band of unit blocks: engines carry the accent
+ * stripe, wagons wear their cargo's legend colour, width follows unit length. */
+static void DrawUnitStrip(MiniWndBody &body, const std::vector<StripUnit> &units)
+{
+	Rect band;
+	if (body.BandRect(2, band)) {
+		int s = _ms.hud_scale;
+		int x = band.left + 2 * s;
+		int y0 = band.top + 2 * s;
+		int y1 = band.bottom - 2 * s;
+		for (const StripUnit &u : units) {
+			int uw = std::max(4 * s, 3 * s * u.len8);
+			if (x + uw - 1 > band.right - 2 * s) {
+				WndText(band.right - 6 * s, y0, y1 - y0 + 1, "…", COL_CH_DIM);
+				break;
+			}
+			Rect br = {x, y0, x + uw - 1, y1};
+			if (u.selected) RlwCmdRect(br.left - s, br.top - s, br.right + s, br.bottom + s, COL_CH_ACCENT);
+			RlwCmdRect(br.left, br.top, br.right, br.bottom, u.fill);
+			if (u.engine) RlwCmdRect(br.left, br.bottom - 2 * s + 1, br.right, br.bottom, COL_CH_ACCENT);
+			if (body.hot && WndHover(br)) RlwCmdRect(br.left, br.top, br.right, br.bottom, 0x30FFFFFFU);
+			_wnd_hits.push_back({body.wnd, br, MWA_ROW_BASE + (int)_wnd_row_acts.size()});
+			_wnd_row_acts.push_back(u.act);
+			x += uw + s;
+		}
+	}
+	body.row += 2;
+}
+
+static void DrawTrainStrip(MiniWndBody &body, const Train *head, VehicleID sel)
+{
+	std::vector<StripUnit> units;
+	for (const Train *u = head; u != nullptr; u = u->GetNextUnit()) {
+		StripUnit su;
+		su.len8 = std::max<int>(1, u->gcache.cached_veh_length);
+		su.engine = u->GetEngine()->VehInfo<RailVehicleInfo>().railveh_type != RAILVEH_WAGON;
+		su.fill = u->cargo_cap > 0 && IsValidCargoType(u->cargo_type) ? CargoRgb(u->cargo_type) : COL_CH_TILE;
+		su.selected = sel == u->index;
+		su.act.mark = u->index;
+		units.push_back(su);
+	}
+	DrawUnitStrip(body, units);
+}
+
 static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 {
 	VehicleType vt = (VehicleType)mw.tab;
@@ -4391,23 +4468,57 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 		sv = nullptr;
 	}
 
-	body.Header("설계");
+	/* Side-by-side columns: the buy list left, design and depots right. */
+	Rect full = body.area;
+	int pad = WndPad();
+	int mid = FleetSplitX(full);
+	body.area.right = mid - pad;
+	MiniWndBody yard = body;
+	yard.area = {mid + 1, full.top, full.right, full.bottom};
+	yard.scroll = mw.scroll2;
+	RlwCmdRect(mid - pad / 2, full.top, mid - pad / 2, full.bottom, COL_CH_EDGE);
+
+	yard.Header("설계");
 	if (draft.empty()) {
-		body.Plain(vt == VEH_TRAIN ? "엔진 목록을 눌러 편성 구성" : "엔진 목록을 눌러 선택", COL_CH_DIM);
+		yard.Plain(vt == VEH_TRAIN ? "엔진 목록을 눌러 편성 구성" : "엔진 목록을 눌러 선택", COL_CH_DIM);
 	} else {
+		std::vector<StripUnit> units;
 		Money total = 0;
+		uint64_t power = 0, weight = 0;
+		uint16_t speed = 0;
+		uint cap = 0;
+		int len8 = 0;
 		for (size_t i = 0; i < draft.size(); i++) {
 			const Engine *e = Engine::Get(draft[i]);
 			total += e->GetCost();
-			MiniWndRowAct act;
-			act.draft_del = (int)i;
-			body.Link(fmt::format("{}. {}", i + 1, StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {})), COL_CH_TEXT, act);
+			power += e->GetPower();
+			weight += e->GetDisplayWeight();
+			uint16_t ms = e->GetDisplayMaxSpeed();
+			if (ms > 0) speed = speed == 0 ? ms : std::min(speed, ms);
+			cap += e->GetDisplayDefaultCapacity();
+			StripUnit su;
+			if (vt == VEH_TRAIN) {
+				const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+				su.engine = rvi.railveh_type != RAILVEH_WAGON;
+				su.len8 = 8 - rvi.shorten_factor;
+			}
+			len8 += su.len8;
+			CargoType dc = e->GetDefaultCargoType();
+			su.fill = e->GetDisplayDefaultCapacity() > 0 && IsValidCargoType(dc) ? CargoRgb(dc) : COL_CH_TILE;
+			su.act.draft_del = (int)i;
+			units.push_back(su);
 		}
-		body.KV("합계", GetString(STR_JUST_CURRENCY_LONG, total), COL_CH_ACCENT);
-		body.Plain("차고 행 클릭으로 생산", COL_CH_DIM);
+		DrawUnitStrip(yard, units);
+		yard.KV("합계", GetString(STR_JUST_CURRENCY_LONG, total), COL_CH_ACCENT);
+		if (vt == VEH_TRAIN) {
+			yard.Plain(StrMakeValid(GetString(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, weight, power, PackVelocity(speed, vt)), {}), COL_CH_TEXT);
+			yard.KV("길이", fmt::format("{:.1f}타일", len8 / 16.0), COL_CH_TEXT);
+		}
+		if (cap > 0) yard.KV("용량", fmt::format("{}", cap), COL_CH_TEXT);
+		yard.Plain("차고 행 클릭으로 생산 · 블록 클릭으로 제외", COL_CH_DIM);
 	}
 	if (_deploy.depot != INVALID_TILE && _deploy.vt == vt) {
-		body.Plain(fmt::format("생산 중 {} / {}", std::min(_deploy.next + 1, _deploy.units.size()), _deploy.units.size()), COL_CH_ACCENT);
+		yard.Plain(fmt::format("생산 중 {} / {}", std::min(_deploy.next + 1, _deploy.units.size()), _deploy.units.size()), COL_CH_ACCENT);
 	}
 
 	struct BuyRow {
@@ -4460,13 +4571,13 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 	}
 	if (locos.empty() && wags.empty()) body.Plain("구매 가능 엔진 없음", COL_CH_DIM);
 
-	body.Header("차고");
+	yard.Header("차고");
 	if (sv != nullptr && vt == VEH_TRAIN) {
-		body.Plain("표시 차량: 같은 차고 편성 클릭으로 연결", COL_CH_ACCENT);
+		yard.Plain("표시 차량: 같은 차고 편성 클릭으로 연결", COL_CH_ACCENT);
 		if (sv->First() != sv) {
 			MiniWndRowAct act;
 			act.detach = true;
-			body.Link("새 편성으로 분리", COL_CH_ACCENT, act);
+			yard.Link("새 편성으로 분리", COL_CH_ACCENT, act);
 		}
 	}
 	bool anydep = false;
@@ -4485,16 +4596,8 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 		MiniWndRowAct act;
 		act.mark = head->index;
 		act.attach = true;
-		body.Link(label, mw.sel == head->index ? COL_CH_ACCENT : (stopped ? COL_CH_TEXT : COL_CH_YELLOW), act);
-		if (vt == VEH_TRAIN && len > 1) {
-			for (const Train *u = Train::From(head); u != nullptr; u = u->GetNextUnit()) {
-				MiniWndRowAct ua;
-				ua.mark = u->index;
-				std::string ul = fmt::format("{}{}", mw.sel == u->index ? "  ▶ " : "  · ",
-						StrMakeValid(GetString(STR_ENGINE_NAME, u->engine_type), {}));
-				body.Link(ul, mw.sel == u->index ? COL_CH_ACCENT : COL_CH_DIM, ua);
-			}
-		}
+		yard.Link(label, mw.sel == head->index ? COL_CH_ACCENT : (stopped ? COL_CH_TEXT : COL_CH_YELLOW), act);
+		if (vt == VEH_TRAIN) DrawTrainStrip(yard, Train::From(head), mw.sel);
 	};
 	auto depot_block = [&](TileIndex tile, uint dest) {
 		anydep = true;
@@ -4503,7 +4606,7 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 		MiniWndRowAct act;
 		act.deploy = tile;
 		std::string dn = StrMakeValid(GetString(STR_DEPOT_NAME, vt, dest), {});
-		body.Link(draft.empty() ? dn : fmt::format("▶ {} 생산", dn), draft.empty() ? COL_CH_TEXT : COL_CH_ACCENT, act);
+		yard.Link(draft.empty() ? dn : fmt::format("▶ {} 생산", dn), draft.empty() ? COL_CH_TEXT : COL_CH_ACCENT, act);
 		for (const Vehicle *head : chains) chain_rows(head);
 		for (const Vehicle *head : wagons) chain_rows(head);
 	};
@@ -4519,7 +4622,23 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 			depot_block(d->xy, d->index.base());
 		}
 	}
-	if (!anydep) body.Plain("차고 없음", COL_CH_DIM);
+	if (!anydep) yard.Plain("차고 없음", COL_CH_DIM);
+
+	/* Per-column scroll clamps and marks. */
+	auto colbar = [&](MiniWndBody &b, int &scroll) {
+		int vis = (b.area.bottom - b.area.top + 1) / b.rh;
+		scroll = Clamp(scroll, 0, std::max(0, b.row - vis));
+		if (b.row > vis && vis > 0) {
+			int s = _ms.hud_scale;
+			int track_h = b.area.bottom - b.area.top + 1;
+			int ty0 = b.area.top + track_h * scroll / b.row;
+			int ty1 = b.area.top + track_h * std::min(b.row, scroll + vis) / b.row - 1;
+			RlwCmdRect(b.area.right + s, ty0, b.area.right + 2 * s - 1, ty1, COL_CH_DIM);
+		}
+	};
+	colbar(body, mw.scroll);
+	colbar(yard, mw.scroll2);
+	mw.rows = body.row;
 }
 
 /* Stock finance sign convention: positive table values are outgo, negative
@@ -4824,7 +4943,7 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 {
 	int s = _ms.hud_scale;
-	int w = WndW();
+	int w = WndW(mw);
 	int pad = WndPad();
 	Rect fr = WndFrameRect(mw);
 
@@ -4931,8 +5050,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	RlwCmdRect(fr.left + 1, tab_y + tabh, fr.right - 1, tab_y + tabh, COL_CH_EDGE);
 
 	/* Body: the status tab leads with the live viewport slot. */
-	int body_y = tab_y + tabh + 1 + pad;
-	Rect body = {fr.left + pad, body_y, fr.right - pad, body_y + WndBodyH() - 1};
+	Rect body = WndBodyRect(mw);
 	MiniWndBody bp;
 	bp.rh = WndRowH();
 	bp.scroll = mw.scroll;
@@ -4957,15 +5075,17 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	if (mw.kind == MiniWndKind::Finance) DrawFinanceWndBody(bp, mw.tab);
 	if (mw.kind == MiniWndKind::Group) DrawGroupWndBody(mw, bp);
 
-	/* Scroll clamp and position mark. */
-	int vis_rows = (bp.area.bottom - bp.area.top + 1) / bp.rh;
-	mw.rows = bp.row;
-	mw.scroll = Clamp(mw.scroll, 0, std::max(0, bp.row - vis_rows));
-	if (bp.row > vis_rows && vis_rows > 0) {
-		int track_h = bp.area.bottom - bp.area.top + 1;
-		int ty0 = bp.area.top + track_h * mw.scroll / bp.row;
-		int ty1 = bp.area.top + track_h * std::min(bp.row, mw.scroll + vis_rows) / bp.row - 1;
-		RlwCmdRect(fr.right - pad + 2 * s, ty0, fr.right - pad + 3 * s - 1, ty1, COL_CH_DIM);
+	/* Scroll clamp and position mark; the wide fleet body clamps its own columns. */
+	if (mw.kind != MiniWndKind::Fleet) {
+		int vis_rows = (bp.area.bottom - bp.area.top + 1) / bp.rh;
+		mw.rows = bp.row;
+		mw.scroll = Clamp(mw.scroll, 0, std::max(0, bp.row - vis_rows));
+		if (bp.row > vis_rows && vis_rows > 0) {
+			int track_h = bp.area.bottom - bp.area.top + 1;
+			int ty0 = bp.area.top + track_h * mw.scroll / bp.row;
+			int ty1 = bp.area.top + track_h * std::min(bp.row, mw.scroll + vis_rows) / bp.row - 1;
+			RlwCmdRect(fr.right - pad + 2 * s, ty0, fr.right - pad + 3 * s - 1, ty1, COL_CH_DIM);
+		}
 	}
 
 	/* Bottom command row: square icon tiles. */
@@ -5117,6 +5237,7 @@ static bool HandleWndClick(int x, int y)
 				if (mw.tab != act - MWA_TAB_BASE) {
 					mw.tab = (uint8_t)(act - MWA_TAB_BASE);
 					mw.scroll = 0;
+					mw.scroll2 = 0;
 					if (mw.tab != 0) CloseMiniCarrier(mw);
 				}
 			} else if (act >= MWA_CMD_BASE && act < MWA_ROW_BASE) {
@@ -5323,7 +5444,11 @@ static bool HandleWndWheel(int x, int y, int dir)
 {
 	for (size_t i = _wnds.size(); i-- > 0;) {
 		if (!InRect(WndFrameRect(_wnds[i]), x, y)) continue;
-		_wnds[i].scroll += dir;
+		if (WndWide(_wnds[i]) && x > FleetSplitX(WndBodyRect(_wnds[i]))) {
+			_wnds[i].scroll2 += dir * 3;
+		} else {
+			_wnds[i].scroll += dir * 3;
+		}
 		return true;
 	}
 	return false;
@@ -5582,7 +5707,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (_wnd_drag >= 0) {
 		if (_left_button_down && _wnd_drag < (int)_wnds.size()) {
 			MiniWnd &mw = _wnds[_wnd_drag];
-			mw.x = Clamp(_cursor.pos.x - _wnd_drag_dx, -WndW() / 2, _fbw - WndW() / 2);
+			mw.x = Clamp(_cursor.pos.x - _wnd_drag_dx, -WndW(mw) / 2, _fbw - WndW(mw) / 2);
 			mw.y = Clamp(_cursor.pos.y - _wnd_drag_dy, 0, _fbh - WndTitleH());
 		} else {
 			_wnd_drag = -1;
