@@ -3093,6 +3093,10 @@ static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, 
 static void OpenFleetMiniWnd(int vt);
 static void OpenFinanceMiniWnd();
 static void OpenGroupMiniWnd(int vt);
+static void OpenStationListMiniWnd();
+static void OpenTownListMiniWnd();
+static void OpenIndustryListMiniWnd();
+static void OpenNewsListMiniWnd();
 
 static void OpenMiniWindow(MiniWin win)
 {
@@ -3103,14 +3107,14 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Goals: if (company) ShowGoalsList(_local_company); break;
 		case MiniWin::League: ShowPerformanceLeagueTable(); break;
 		case MiniWin::Graph: ShowOperatingProfitGraph(); break;
-		case MiniWin::Stations: if (company) ShowCompanyStations(_local_company); break;
+		case MiniWin::Stations: if (company) OpenStationListMiniWnd(); break;
 		case MiniWin::Trains: if (company) OpenGroupMiniWnd(VEH_TRAIN); break;
 		case MiniWin::RoadVehicles: if (company) OpenGroupMiniWnd(VEH_ROAD); break;
 		case MiniWin::Ships: if (company) OpenGroupMiniWnd(VEH_SHIP); break;
 		case MiniWin::Aircraft: if (company) OpenGroupMiniWnd(VEH_AIRCRAFT); break;
-		case MiniWin::News: ShowMessageHistory(); break;
-		case MiniWin::Towns: ShowTownDirectory(); break;
-		case MiniWin::Industries: ShowIndustryDirectory(); break;
+		case MiniWin::News: OpenNewsListMiniWnd(); break;
+		case MiniWin::Towns: OpenTownListMiniWnd(); break;
+		case MiniWin::Industries: OpenIndustryListMiniWnd(); break;
 		case MiniWin::Subsidies: ShowSubsidiesList(); break;
 		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
 		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
@@ -3633,7 +3637,19 @@ enum class MiniWndKind : uint8_t {
 	Fleet,
 	Finance,
 	Group,
+	StationList,
+	TownList,
+	IndustryList,
+	NewsList,
 };
+
+/* Directory kinds carry no entity: they read the whole pool each frame and
+ * open the matching entity window on click. */
+static bool WndIsList(MiniWndKind kind)
+{
+	return kind == MiniWndKind::StationList || kind == MiniWndKind::TownList ||
+			kind == MiniWndKind::IndustryList || kind == MiniWndKind::NewsList;
+}
 
 struct MiniWnd {
 	MiniWndKind kind = MiniWndKind::Vehicle;
@@ -3690,10 +3706,8 @@ static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 		case MiniWndKind::Vehicle: id = (int)mw.veh.base(); break;
 		case MiniWndKind::Station: id = (int)mw.st.base(); break;
 		case MiniWndKind::Town: id = (int)mw.town.base(); break;
-		case MiniWndKind::Fleet: id = 0; break;
-		case MiniWndKind::Finance: id = 0; break;
-		case MiniWndKind::Group: id = 0; break;
-		default: id = (int)mw.ind.base(); break;
+		case MiniWndKind::Industry: id = (int)mw.ind.base(); break;
+		default: id = 0; break;
 	}
 	return MW_CARRIER_NUM_BASE + (int)mw.kind * MW_CARRIER_KIND_STRIDE + id;
 }
@@ -3854,6 +3868,26 @@ static void OpenGroupMiniWnd(int vt)
 {
 	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid());
 	if (vt >= 0) _wnds.back().tab = (uint8_t)vt;
+}
+
+static void OpenStationListMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::StationList, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenTownListMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::TownList, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenIndustryListMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::IndustryList, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenNewsListMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::NewsList, VehicleID::Invalid(), StationID::Invalid());
 }
 
 static std::string WndOfficial(StringID str)
@@ -4878,6 +4912,192 @@ static void ImGroupBody(MiniWnd &mw)
 	ImGui::EndChild();
 }
 
+static uint32_t RatingTint(int rating)
+{
+	if (rating < 0) return COL_CH_DIM;
+	if (rating <= RATING_VERYPOOR) return COL_CH_RED;
+	if (rating <= RATING_MEDIOCRE) return COL_CH_YELLOW;
+	return COL_CH_TEXT;
+}
+
+static void ImStationListBody(MiniWnd &mw)
+{
+	if (!Company::IsValidID(_local_company)) {
+		ImWndText("회사 없음", COL_CH_DIM);
+		return;
+	}
+
+	struct Row {
+		StationID id;
+		std::string name;
+		uint waiting;
+		int rating;
+	};
+	std::vector<Row> rows;
+	for (const Station *st : Station::Iterate()) {
+		if (st->owner != _local_company) continue;
+		Row r{st->index, StrMakeValid(GetString(STR_STATION_NAME, st->index), {}), 0, -1};
+		int sum = 0, n = 0;
+		for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+			const GoodsEntry &ge = st->goods[cs->Index()];
+			r.waiting += ge.TotalCount();
+			if (!ge.HasRating()) continue;
+			sum += ge.rating;
+			n++;
+		}
+		if (n > 0) r.rating = sum / n;
+		rows.push_back(std::move(r));
+	}
+	if (rows.empty()) {
+		ImWndText("역 없음", COL_CH_DIM);
+		return;
+	}
+
+	switch (mw.tab) {
+		case 1: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.waiting > b.waiting; }); break;
+		case 2: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.rating < b.rating; }); break;
+		default: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.name < b.name; }); break;
+	}
+
+	for (const Row &r : rows) {
+		std::string value;
+		uint32_t tint = COL_CH_TEXT;
+		if (mw.tab == 2) {
+			value = r.rating < 0 ? std::string("-") : fmt::format("{}%", ToPercent8(r.rating));
+			tint = RatingTint(r.rating);
+		} else {
+			value = fmt::format("{}", r.waiting);
+		}
+		if (ImWndKVLink(r.name, value, COL_CH_TEXT, tint)) OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), r.id);
+	}
+}
+
+static void ImTownListBody(MiniWnd &mw)
+{
+	struct Row {
+		TownID id;
+		std::string name;
+		uint pop;
+		int rating;
+	};
+	std::vector<Row> rows;
+	bool company = Company::IsValidID(_local_company);
+	for (const Town *t : Town::Iterate()) {
+		Row r{t->index, StrMakeValid(GetString(STR_TOWN_NAME, t->index), {}), t->cache.population, -1};
+		if (company && t->have_ratings.Test(_local_company)) r.rating = t->ratings[_local_company];
+		rows.push_back(std::move(r));
+	}
+	if (rows.empty()) {
+		ImWndText("도시 없음", COL_CH_DIM);
+		return;
+	}
+
+	switch (mw.tab) {
+		case 1: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.pop > b.pop; }); break;
+		case 2: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.rating < b.rating; }); break;
+		default: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.name < b.name; }); break;
+	}
+
+	for (const Row &r : rows) {
+		std::string value;
+		uint32_t tint = COL_CH_TEXT;
+		if (mw.tab == 2) {
+			value = r.rating < 0 ? std::string("-") : WndOfficial(TownRatingString(r.rating));
+			tint = RatingTint(r.rating);
+		} else {
+			value = fmt::format("{}", r.pop);
+		}
+		if (ImWndKVLink(r.name, value, COL_CH_TEXT, tint)) {
+			OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), r.id);
+		}
+	}
+}
+
+static void ImIndustryListBody(MiniWnd &mw)
+{
+	struct Row {
+		IndustryID id;
+		std::string name;
+		uint64_t prod;
+		uint pct;
+		bool closing;
+	};
+	std::vector<Row> rows;
+	for (const Industry *i : Industry::Iterate()) {
+		Row r{i->index, StrMakeValid(GetString(STR_INDUSTRY_NAME, i->index), {}), 0, 0, i->prod_level == PRODLEVEL_CLOSURE};
+		uint64_t weighted = 0;
+		for (const auto &p : i->produced) {
+			if (!IsValidCargoType(p.cargo)) continue;
+			uint amount = p.history[LAST_MONTH].production;
+			r.prod += amount;
+			weighted += (uint64_t)amount * ToPercent8(p.history[LAST_MONTH].PctTransported());
+		}
+		if (r.prod > 0) r.pct = (uint)(weighted / r.prod);
+		rows.push_back(std::move(r));
+	}
+	if (rows.empty()) {
+		ImWndText("산업 없음", COL_CH_DIM);
+		return;
+	}
+
+	switch (mw.tab) {
+		case 1: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.prod > b.prod; }); break;
+		case 2: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.pct < b.pct; }); break;
+		default: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.name < b.name; }); break;
+	}
+
+	for (const Row &r : rows) {
+		std::string value = mw.tab == 2 ? fmt::format("{}%", r.pct) : fmt::format("{}", r.prod);
+		uint32_t tint = mw.tab == 2 ? (r.pct < 25 ? COL_CH_RED : r.pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT) : COL_CH_TEXT;
+		if (ImWndKVLink(r.name, value, r.closing ? COL_CH_RED : COL_CH_TEXT, tint)) {
+			OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), r.id);
+		}
+	}
+}
+
+/* News rows jump to whatever the item references, so a click lands on the
+ * vehicle or place the message is about rather than reopening the paper. */
+static void NewsRefFollow(const NewsReference &ref)
+{
+	struct visitor {
+		void operator()(const std::monostate &) {}
+		void operator()(const EngineID) {}
+		void operator()(const TileIndex t) { MiniUiScrollTo(TileX(t) * TILE_SIZE, TileY(t) * TILE_SIZE); }
+		void operator()(const VehicleID v)
+		{
+			const Vehicle *veh = Vehicle::GetIfValid(v);
+			if (veh != nullptr) OpenMiniWnd(MiniWndKind::Vehicle, veh->First()->index, StationID::Invalid());
+		}
+		void operator()(const StationID s)
+		{
+			if (Station::IsValidID(s)) OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), s);
+		}
+		void operator()(const IndustryID i)
+		{
+			if (Industry::IsValidID(i)) OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), i);
+		}
+		void operator()(const TownID t)
+		{
+			if (Town::IsValidID(t)) OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), t);
+		}
+	};
+	std::visit(visitor{}, ref);
+}
+
+static void ImNewsListBody(MiniWnd &mw)
+{
+	bool any = false;
+	for (const NewsItem &ni : GetNews()) {
+		if (mw.tab == 1 && ni.type != NewsType::Advice) continue;
+		any = true;
+		std::string date = StrMakeValid(GetString(STR_JUST_DATE_TINY, ni.date), {});
+		std::string text = StrMakeValid(ni.GetStatusText(), {});
+		uint32_t tint = ni.type == NewsType::Advice ? COL_CH_YELLOW : COL_CH_TEXT;
+		if (ImWndLink(fmt::format("{}  {}", date, text), tint)) NewsRefFollow(ni.ref1);
+	}
+	if (!any) ImWndText("소식 없음", COL_CH_DIM);
+}
+
 static bool ImWndButton(std::string_view label, bool enabled)
 {
 	ImGui::BeginDisabled(!enabled);
@@ -4988,6 +5208,12 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			}
 			break;
 		}
+
+		case MiniWndKind::StationList:
+		case MiniWndKind::TownList:
+		case MiniWndKind::IndustryList:
+		case MiniWndKind::NewsList:
+			break;
 	}
 	ImGui::NewLine();
 }
@@ -5081,6 +5307,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::Fleet: title = "차고"; break;
 		case MiniWndKind::Finance: title = "재정"; break;
 		case MiniWndKind::Group: title = "차량군"; break;
+		case MiniWndKind::StationList: title = "역 목록"; break;
+		case MiniWndKind::TownList: title = "도시 목록"; break;
+		case MiniWndKind::IndustryList: title = "산업 목록"; break;
+		case MiniWndKind::NewsList: title = "소식"; break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
 	}
 	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
@@ -5107,7 +5337,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 
 	_imrow = 0;
 	int ntab;
-	std::string tl[4];
+	std::string tl[6];
 	switch (mw.kind) {
 		case MiniWndKind::Fleet:
 		case MiniWndKind::Group: {
@@ -5141,6 +5371,29 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[1] = "평판";
 			tl[2] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
 			break;
+		case MiniWndKind::StationList:
+			ntab = 3;
+			tl[0] = "이름";
+			tl[1] = "화물";
+			tl[2] = "평가";
+			break;
+		case MiniWndKind::TownList:
+			ntab = 3;
+			tl[0] = "이름";
+			tl[1] = "인구";
+			tl[2] = "평판";
+			break;
+		case MiniWndKind::IndustryList:
+			ntab = 3;
+			tl[0] = "이름";
+			tl[1] = "생산";
+			tl[2] = "수송";
+			break;
+		case MiniWndKind::NewsList:
+			ntab = 2;
+			tl[0] = "전체";
+			tl[1] = "조언";
+			break;
 		default:
 			ntab = 3;
 			tl[0] = "상태";
@@ -5159,7 +5412,8 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					mw.tab = (uint8_t)ti;
 					if (ti != 0) CloseMiniCarrier(mw);
 				}
-				float cmd_h = ImGui::GetFrameHeightWithSpacing() + 4.0f * s;
+				bool has_cmds = !WndIsList(mw.kind);
+				float cmd_h = has_cmds ? ImGui::GetFrameHeightWithSpacing() + 4.0f * s : 0.0f;
 				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h));
 				if (ti == 0 && has_view && (v != nullptr || st != nullptr || t != nullptr || ind != nullptr)) {
 					ImWndViewSlot(mw);
@@ -5172,9 +5426,13 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::Fleet: ImFleetBody(mw); break;
 					case MiniWndKind::Finance: ImFinanceBody(mw.tab); break;
 					case MiniWndKind::Group: ImGroupBody(mw); break;
+					case MiniWndKind::StationList: ImStationListBody(mw); break;
+					case MiniWndKind::TownList: ImTownListBody(mw); break;
+					case MiniWndKind::IndustryList: ImIndustryListBody(mw); break;
+					case MiniWndKind::NewsList: ImNewsListBody(mw); break;
 				}
 				ImGui::EndChild();
-				ImWndCommands(mw, v, st, t, ind);
+				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
 				ImGui::EndTabItem();
 			}
 		}
@@ -5194,10 +5452,11 @@ static void DrawMiniWndsImGui()
 			case MiniWndKind::Vehicle: alive = Vehicle::GetIfValid(_wnds[i].veh) != nullptr; break;
 			case MiniWndKind::Station: alive = Station::IsValidID(_wnds[i].st); break;
 			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
-			case MiniWndKind::Fleet: alive = true; break;
+			case MiniWndKind::Industry: alive = Industry::IsValidID(_wnds[i].ind); break;
 			case MiniWndKind::Finance: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
-			default: alive = Industry::IsValidID(_wnds[i].ind); break;
+			case MiniWndKind::StationList: alive = Company::IsValidID(_local_company); break;
+			default: alive = true; break;
 		}
 		if (!alive) CloseMiniWnd(i);
 	}
