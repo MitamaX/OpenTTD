@@ -3818,8 +3818,26 @@ static void RaiseMiniWnd(size_t i)
 	_wnds.back().want_raise = true;
 }
 
+/* Rows open other windows from inside the draw loop; growing or reordering
+ * _wnds there would strand the reference the loop is drawing through, so the
+ * request waits until the loop is done. */
+struct MiniOpenReq {
+	MiniWndKind kind;
+	VehicleID veh;
+	StationID st;
+	TownID town;
+	IndustryID ind;
+};
+
+static std::vector<MiniOpenReq> _wnd_opens;
+static bool _wnds_drawing = false;
+
 static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid())
 {
+	if (_wnds_drawing) {
+		_wnd_opens.push_back({kind, veh, st, town, ind});
+		return;
+	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
 		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind) {
 			RaiseMiniWnd(i);
@@ -3842,6 +3860,7 @@ static void CloseAllMiniWnds()
 {
 	for (const MiniWnd &mw : _wnds) CloseMiniCarrier(mw);
 	_wnds.clear();
+	_wnd_opens.clear();
 }
 
 static void OpenFleetMiniWnd(int vt)
@@ -5086,11 +5105,33 @@ static void DrawMiniWndsImGui()
 		if (!alive) CloseMiniWnd(i);
 	}
 
-	for (size_t i = 0; i < _wnds.size();) {
-		if (DrawImGuiMiniWnd(_wnds[i])) {
-			i++;
-		} else {
-			CloseMiniWnd(i);
+	_wnds_drawing = true;
+	std::vector<size_t> closed;
+	for (size_t i = 0; i < _wnds.size(); i++) {
+		if (!DrawImGuiMiniWnd(_wnds[i])) closed.push_back(i);
+	}
+	_wnds_drawing = false;
+
+	for (size_t i = closed.size(); i-- > 0;) CloseMiniWnd(closed[i]);
+
+	std::vector<MiniOpenReq> opens;
+	opens.swap(_wnd_opens);
+	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind);
+}
+
+bool MiniUiShowError(std::string summary, std::string detail, bool warn)
+{
+	if (!_mini_active || summary.empty()) return false;
+
+	uint life = std::max<uint>(_settings_client.gui.errmsg_duration, 1) * 1000;
+	if (!_toasts.empty()) {
+		MiniToast &last = _toasts.back();
+		if (last.summary == summary && last.detail == detail) {
+			last.repeat++;
+			last.left_ms = life;
+			last.full_ms = life;
+			last.warn = last.warn || warn;
+			return true;
 		}
 	}
 }
