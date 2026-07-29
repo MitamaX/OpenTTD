@@ -4426,6 +4426,17 @@ static void ImStationBody(MiniWnd &mw, const Station *st)
 	}
 }
 
+static TownActions MiniEnabledTownActions()
+{
+	TownActions enabled{};
+	enabled.Set();
+	if (!_settings_game.economy.fund_roads) enabled.Reset(TownAction::RoadRebuild);
+	if (!_settings_game.economy.fund_buildings) enabled.Reset(TownAction::FundBuildings);
+	if (!_settings_game.economy.exclusive_rights) enabled.Reset(TownAction::BuyRights);
+	if (!_settings_game.economy.bribe) enabled.Reset(TownAction::Bribe);
+	return enabled;
+}
+
 static void ImTownBody(MiniWnd &mw, const Town *t)
 {
 	switch (mw.tab) {
@@ -4456,6 +4467,20 @@ static void ImTownBody(MiniWnd &mw, const Town *t)
 				ImWndKV(name, WndOfficial(TownRatingString(rating)), tint);
 			}
 			if (!any) ImWndText("회사 평가 없음", COL_CH_DIM);
+
+			ImWndHeader(WndOfficial(STR_LOCAL_AUTHORITY_ACTIONS_TITLE));
+			TownActions enabled = MiniEnabledTownActions();
+			TownActions avail = GetMaskOfTownActions(_local_company, t);
+			for (TownAction a = {}; a != TownAction::End; ++a) {
+				if (!enabled.Test(a)) continue;
+				Money price = _price[PR_TOWN_ACTION] * GetTownActionCost(a) >> 8;
+				bool can = avail.Test(a);
+				bool sel = mw.sel_ord == (int16_t)to_underlying(a);
+				uint32_t tint = sel ? COL_CH_ACCENT : can ? COL_CH_TEXT : COL_CH_DIM;
+				std::string label = WndOfficial(STR_LOCAL_AUTHORITY_ACTION_SMALL_ADVERTISING_CAMPAIGN + to_underlying(a));
+				std::string cost = StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, price), {});
+				if (ImWndKVLink(label, cost, tint, tint) && can) mw.sel_ord = sel ? -1 : (int16_t)to_underlying(a);
+			}
 			break;
 		}
 
@@ -5143,8 +5168,12 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 		}
 
 		case MiniWndKind::Town: {
-			extern void ShowTownAuthorityWindow(uint town);
-			if (ImWndButton("당국", t != nullptr)) ShowTownAuthorityWindow(t->index.base());
+			bool act = t != nullptr && mw.sel_ord >= 0 && mw.sel_ord < (int16_t)to_underlying(TownAction::End) &&
+					GetMaskOfTownActions(_local_company, t).Test((TownAction)mw.sel_ord);
+			if (ImWndButton("실행", act)) {
+				Command<CMD_DO_TOWN_ACTION>::Post(STR_ERROR_CAN_T_DO_THIS, t->xy, t->index, (TownAction)mw.sel_ord);
+				mw.sel_ord = -1;
+			}
 			if (ImWndButton("이동", t != nullptr)) MiniUiScrollTo(TileX(t->xy) * TILE_SIZE, TileY(t->xy) * TILE_SIZE);
 			break;
 		}
@@ -5368,7 +5397,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::Town:
 			ntab = 3;
 			tl[0] = "상태";
-			tl[1] = "평판";
+			tl[1] = "당국";
 			tl[2] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
 			break;
 		case MiniWndKind::StationList:
