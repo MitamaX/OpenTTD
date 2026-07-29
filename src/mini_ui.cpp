@@ -4726,6 +4726,17 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 				RlwCmdLine(cx - q, cy - q, cx + q, cy + q, s, c);
 				RlwCmdLine(cx - q, cy + q, cx + q, cy - q, s, c);
 				break;
+			case 2:
+				RlwCmdCircle(cx, cy, q, c);
+				RlwCmdCircle(cx, cy, std::max(1, q - s), alt ? COL_CH_ACTIVE : COL_CH_TILE);
+				break;
+			case 3:
+				RlwCmdRect(cx - q + s, cy - q + s, cx + q - s, cy + q - s, c);
+				break;
+			case 4:
+				RlwCmdRect(cx - q, cy - q / 3, cx + q, cy + q, c);
+				RlwCmdTriangle(cx, cy - q, q + s, c);
+				break;
 		}
 	} else if (kind == MiniWndKind::Fleet) {
 		switch (cmd) {
@@ -4740,6 +4751,10 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 				RlwCmdRect(cx - q, cy - q, cx - q + s, cy + q, c);
 				RlwCmdRect(cx + q - s, cy - q, cx + q, cy + q, c);
 				RlwCmdLine(cx - q + 2 * s, cy + q - 2 * s, cx + q - 2 * s, cy - q + 2 * s, s, c);
+				break;
+			case 2:
+				RlwCmdRect(cx - q, cy - q, cx + s, cy + s, c);
+				RlwCmdRect(cx - s, cy - s, cx + q, cy + q, c);
 				break;
 		}
 	} else {
@@ -4914,7 +4929,8 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	int ncmd;
 	switch (mw.kind) {
 		case MiniWndKind::Vehicle: ncmd = 5; break;
-		case MiniWndKind::Fleet: ncmd = 2; break;
+		case MiniWndKind::Fleet: ncmd = 3; break;
+		case MiniWndKind::Group: ncmd = 5; break;
 		default: ncmd = 2; break;
 	}
 	extern const Station *_viewport_highlight_station;
@@ -4927,13 +4943,13 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 			case MiniWndKind::Station: enabled = st != nullptr && (c == 1 || own || st->owner == OWNER_NONE); break;
 			case MiniWndKind::Town: enabled = t != nullptr; break;
 			case MiniWndKind::Industry: enabled = ind != nullptr; break;
-			case MiniWndKind::Fleet: enabled = own && (c == 0 ? Vehicle::GetIfValid(mw.sel) != nullptr : !_fleet_draft[mw.tab].empty()); break;
+			case MiniWndKind::Fleet: enabled = own && (c == 1 ? !_fleet_draft[mw.tab].empty() : Vehicle::GetIfValid(mw.sel) != nullptr); break;
 			case MiniWndKind::Finance: {
 				const Company *fc = Company::GetIfValid(_local_company);
 				enabled = fc != nullptr && (c == 0 ? fc->current_loan < fc->GetMaxLoan() : fc->current_loan > 0);
 				break;
 			}
-			case MiniWndKind::Group: enabled = own && (c == 0 || Group::IsValidID(mw.sel_grp)); break;
+			case MiniWndKind::Group: enabled = own && (c != 1 || Group::IsValidID(mw.sel_grp)); break;
 			default: enabled = v != nullptr && (c == 4 || own); break;
 		}
 		Rect cr = WndIconTile(cx, cmd_y, cs2, active, enabled);
@@ -4954,11 +4970,21 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 			} else if (mw.kind == MiniWndKind::Town) {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_TOWN_VIEW_LOCAL_AUTHORITY_TOOLTIP) : WndOfficial(STR_TOWN_VIEW_CENTER_TOOLTIP);
 			} else if (mw.kind == MiniWndKind::Fleet) {
-				_wnd_tooltip = c == 0 ? "표시한 차량 매각" : "설계 비우기";
+				switch (c) {
+					case 0: _wnd_tooltip = "표시한 차량 매각"; break;
+					case 1: _wnd_tooltip = "설계 비우기"; break;
+					case 2: _wnd_tooltip = "표시 편성 복제"; break;
+				}
 			} else if (mw.kind == MiniWndKind::Finance) {
 				_wnd_tooltip = StrMakeValid(GetString(c == 0 ? STR_FINANCES_BORROW_BUTTON : STR_FINANCES_REPAY_BUTTON, LOAN_INTERVAL), {});
 			} else if (mw.kind == MiniWndKind::Group) {
-				_wnd_tooltip = c == 0 ? "새 그룹" : "선택한 그룹 삭제";
+				switch (c) {
+					case 0: _wnd_tooltip = "새 그룹"; break;
+					case 1: _wnd_tooltip = "선택한 그룹 삭제"; break;
+					case 2: _wnd_tooltip = "범위 전체 출발"; break;
+					case 3: _wnd_tooltip = "범위 전체 정지"; break;
+					case 4: _wnd_tooltip = "범위 전체 차고로"; break;
+				}
 			} else {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_INDUSTRY_DISPLAY_CHAIN) : WndOfficial(STR_INDUSTRY_VIEW_LOCATION_TOOLTIP);
 			}
@@ -5093,8 +5119,13 @@ static bool HandleWndClick(int x, int y)
 							Command<CMD_SELL_VEHICLE>::Post(GetCmdSellVehMsg(sv->type), sv->tile, sv->index, chain, true, INVALID_CLIENT_ID);
 							mw.sel = VehicleID::Invalid();
 						}
-					} else {
+					} else if (c == 1) {
 						_fleet_draft[mw.tab].clear();
+					} else {
+						const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
+						if (sv != nullptr) {
+							Command<CMD_CLONE_VEHICLE>::Post(GetCmdBuildVehMsg(sv->type), sv->tile, sv->First()->index, false);
+						}
 					}
 				} else if (mw.kind == MiniWndKind::Finance) {
 					if (c == 0) {
@@ -5103,11 +5134,18 @@ static bool HandleWndClick(int x, int y)
 						Command<CMD_DECREASE_LOAN>::Post(STR_ERROR_CAN_T_REPAY_LOAN, LoanCommand::Interval, 0);
 					}
 				} else if (mw.kind == MiniWndKind::Group) {
+					VehicleListIdentifier vli(VL_GROUP_LIST, (VehicleType)mw.tab, _local_company, mw.sel_grp);
 					if (c == 0) {
 						Command<CMD_CREATE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_CREATE, (VehicleType)mw.tab, GroupID::Invalid());
-					} else if (Group::IsValidID(mw.sel_grp)) {
-						Command<CMD_DELETE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_DELETE, mw.sel_grp);
-						mw.sel_grp = ALL_GROUP;
+					} else if (c == 1) {
+						if (Group::IsValidID(mw.sel_grp)) {
+							Command<CMD_DELETE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_DELETE, mw.sel_grp);
+							mw.sel_grp = ALL_GROUP;
+						}
+					} else if (c == 2 || c == 3) {
+						Command<CMD_MASS_START_STOP>::Post(TileIndex{}, c == 2, true, vli);
+					} else {
+						Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg((VehicleType)mw.tab), VehicleID::Invalid(), DepotCommandFlag::MassSend, vli);
 					}
 				}
 			} else if (act >= MWA_ROW_BASE) {
