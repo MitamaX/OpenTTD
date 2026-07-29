@@ -3866,6 +3866,18 @@ static std::string WndOfficial(StringID str)
 	return StrMakeValid(GetString(str), {});
 }
 
+static StringID TownRatingString(int rating)
+{
+	if (rating > RATING_EXCELLENT) return STR_CARGO_RATING_OUTSTANDING;
+	if (rating > RATING_VERYGOOD)  return STR_CARGO_RATING_EXCELLENT;
+	if (rating > RATING_GOOD)      return STR_CARGO_RATING_VERY_GOOD;
+	if (rating > RATING_MEDIOCRE)  return STR_CARGO_RATING_GOOD;
+	if (rating > RATING_POOR)      return STR_CARGO_RATING_MEDIOCRE;
+	if (rating > RATING_VERYPOOR)  return STR_CARGO_RATING_POOR;
+	if (rating > RATING_APPALLING) return STR_CARGO_RATING_VERY_POOR;
+	return STR_CARGO_RATING_APPALLING;
+}
+
 static StringID OrderLoadStr(OrderLoadType t)
 {
 	switch (t) {
