@@ -10,6 +10,7 @@
 #ifndef MINI_UI_H
 #define MINI_UI_H
 
+#include <string>
 #include <vector>
 
 #include "core/geometry_type.hpp"
@@ -32,6 +33,7 @@ bool MiniUiHidesWindow(WindowClass wc);
 bool MiniUiWindowPlacement(int width, int height, Point &pt);
 void MiniUiOverlayRects(std::vector<RlwRectI> &rects);
 void MiniUiScrollTo(int x, int y);
+bool MiniUiShowError(std::string summary, std::string detail, bool warn);
 
 bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);
 bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour);

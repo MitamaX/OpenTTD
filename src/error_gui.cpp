@@ -12,6 +12,7 @@
 #include "landscape.h"
 #include "newgrf_text.h"
 #include "error.h"
+#include "mini_ui.h"
 #include "viewport_func.h"
 #include "gfx_func.h"
 #include "string_func.h"
@@ -333,6 +334,10 @@ void ShowErrorMessage(EncodedString &&summary_msg, EncodedString &&detailed_msg,
 
 	if (_game_mode == GM_BOOTSTRAP) return;
 	if (_settings_client.gui.errmsg_duration == 0 && !is_critical) return;
+
+	/* The mini UI shows non-critical failures as its own toast; critical ones
+	 * stay modal so they cannot be missed. */
+	if (!is_critical && MiniUiShowError(summary_msg.GetDecodedString(), detailed_msg.GetDecodedString(), wl != WL_INFO)) return;
 
 	ErrorMessageData data(std::move(summary_msg), std::move(detailed_msg), is_critical, x, y, std::move(extra_msg), company);
 

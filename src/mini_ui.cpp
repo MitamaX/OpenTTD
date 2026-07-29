@@ -3561,6 +3561,84 @@ static bool HandleStatusClick(int x, int y)
 	return false;
 }
 
+/* Command failures land here instead of the stock modal: a stack of cards
+ * above the command bar that ages out on its own. */
+struct MiniToast {
+	std::string summary;
+	std::string detail;
+	uint repeat = 1;
+	uint left_ms = 0;
+	uint full_ms = 0;
+	bool warn = false;
+};
+
+static std::vector<MiniToast> _toasts;
+static std::vector<Rect> _toast_rows;
+
+static constexpr size_t MINI_TOAST_MAX = 4;
+static constexpr uint MINI_TOAST_FADE_MS = 400;
+
+static void UpdateToasts(uint delta_ms)
+{
+	for (MiniToast &t : _toasts) t.left_ms = t.left_ms > delta_ms ? t.left_ms - delta_ms : 0;
+	std::erase_if(_toasts, [](const MiniToast &t) { return t.left_ms == 0; });
+}
+
+static void DrawToasts()
+{
+	_toast_rows.clear();
+	if (_toasts.empty()) return;
+
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int margin = 6 * s;
+	int pad = 5 * s;
+	int bar_w = 3 * s;
+	int card_w = std::min(340 * s, _fbw - 2 * margin);
+	int maxw = card_w - bar_w - 2 * pad;
+	int y = _fbh - margin - MenuTileSide() - 4 * s;
+
+	for (size_t i = _toasts.size(); i-- > 0;) {
+		const MiniToast &t = _toasts[i];
+		std::string head = t.repeat > 1 ? fmt::format("{} ×{}", t.summary, t.repeat) : t.summary;
+		std::string line0{TruncateText(head, maxw)};
+		std::string line1 = t.detail.empty() ? std::string{} : std::string{TruncateText(t.detail, maxw)};
+		int lines = line1.empty() ? 1 : 2;
+		int ch = lines * lh + (lines - 1) * 2 * s + 2 * pad;
+		int top = y - ch + 1;
+		if (top < 0) break;
+
+		uint a = t.left_ms >= MINI_TOAST_FADE_MS ? 255 : t.left_ms * 255 / MINI_TOAST_FADE_MS;
+		uint32_t am = a << 24;
+		uint32_t bar = (t.warn ? 0x00E05F4AU : 0x00E0B64AU) | am;
+		uint32_t bg = (t.warn ? 0x004A2320U : 0x00453A1EU) | am;
+		uint32_t tcol = (t.warn ? 0x00F2D9D2U : 0x00EBD9A8U) | am;
+
+		int x0 = (_fbw - card_w) / 2;
+		Rect r = {x0, top, x0 + card_w - 1, y};
+		ScreenFillRect(r.left, r.top, r.left + bar_w - 1, r.bottom, bar);
+		ScreenFillRect(r.left + bar_w, r.top, r.right, r.bottom, bg);
+		int tx = r.left + bar_w + pad;
+		if (const MiniTextEntry *e = TextTexture(line0); e != nullptr) DrawTextQuad(e, tx, top + pad, tcol);
+		if (!line1.empty()) {
+			if (const MiniTextEntry *e = TextTexture(line1); e != nullptr) DrawTextQuad(e, tx, top + pad + lh + 2 * s, (tcol & 0x00FFFFFFU) | ((a * 7 / 10) << 24));
+		}
+		_toast_rows.push_back(r);
+		y = top - 3 * s;
+	}
+}
+
+static bool HandleToastClick(int x, int y)
+{
+	for (size_t i = 0; i < _toast_rows.size(); i++) {
+		if (!InRect(_toast_rows[i], x, y)) continue;
+		size_t idx = _toasts.size() - 1 - i;
+		if (idx < _toasts.size()) _toasts.erase(_toasts.begin() + (ptrdiff_t)idx);
+		return true;
+	}
+	return false;
+}
+
 static void DrawHud()
 {
 	int s = _ms.hud_scale;
@@ -5519,6 +5597,16 @@ bool MiniUiShowError(std::string summary, std::string detail, bool warn)
 			return true;
 		}
 	}
+
+	MiniToast t;
+	t.summary = std::move(summary);
+	t.detail = std::move(detail);
+	t.left_ms = life;
+	t.full_ms = life;
+	t.warn = warn;
+	_toasts.push_back(std::move(t));
+	if (_toasts.size() > MINI_TOAST_MAX) _toasts.erase(_toasts.begin());
+	return true;
 }
 
 bool ShowMiniVehicleWindow(const Vehicle *v)
@@ -5562,6 +5650,7 @@ static void Present()
 	DrawHud();
 	DrawColonyPanel();
 	DrawStatusStream();
+	DrawToasts();
 	DrawBuildMenu();
 	DrawCmdBar();
 	DrawWinBar();
@@ -5621,6 +5710,8 @@ void MiniUiResetGameState()
 	for (auto &l : _status_veh) l.clear();
 	for (auto &d : _fleet_draft) d.clear();
 	_deploy = FleetDeploy{};
+	_toasts.clear();
+	_toast_rows.clear();
 }
 
 void MiniUiToggle()
@@ -5763,7 +5854,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleToastClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (_order_pick_veh != VehicleID::Invalid()) {
 					OrderPickClick(_cursor.pos.x, _cursor.pos.y);
@@ -5909,6 +6000,7 @@ void MiniUiFrame(uint delta_ms)
 	PruneTextCache();
 	MiniAtlasEnsure();
 	UpdateLerpClock(delta_ms);
+	UpdateToasts(delta_ms);
 	ProcessFleetDeploy();
 	RlwCmdClear();
 	MiniImGuiEnsureSetup();
