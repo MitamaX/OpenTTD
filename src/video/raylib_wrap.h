@@ -73,4 +73,11 @@ bool RlwLoadImageInto(const char *path, uint32_t *rgba, int w, int h);
 void RlwFreeTexture(int tex);
 void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRectI *overlays, size_t count);
 
+/* Dear ImGui rides on top of the command buffer: a frame opened during the
+ * game tick is composited by RlwPresentMini, or dropped if the native screen
+ * presents instead. */
+void RlwImGuiInit();
+void RlwImGuiShutdown();
+void RlwImGuiNewFrame();
+
 #endif /* VIDEO_RAYLIB_WRAP_H */

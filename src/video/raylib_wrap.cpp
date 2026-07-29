@@ -12,6 +12,8 @@
 #include <raylib.h>
 #include <unordered_map>
 #include <vector>
+#include "imgui.h"
+#include "../3rdparty/rlimgui/rlImGui.h"
 #include "raylib_wrap.h"
 
 #include "../safeguards.h"
@@ -58,8 +60,50 @@ bool RlwInit(int w, int h, const char *title)
 	return true;
 }
 
+static bool _rlw_imgui_ready = false;
+static bool _rlw_imgui_frame = false;
+
+void RlwImGuiInit()
+{
+	rlImGuiSetup(true);
+	ImGui::GetIO().IniFilename = nullptr;
+	_rlw_imgui_ready = true;
+}
+
+void RlwImGuiShutdown()
+{
+	if (!_rlw_imgui_ready) return;
+	if (_rlw_imgui_frame) ImGui::EndFrame();
+	_rlw_imgui_frame = false;
+	rlImGuiShutdown();
+	_rlw_imgui_ready = false;
+}
+
+void RlwImGuiNewFrame()
+{
+	if (!_rlw_imgui_ready) return;
+	if (_rlw_imgui_frame) ImGui::EndFrame();
+	rlImGuiBegin();
+	_rlw_imgui_frame = true;
+}
+
+static void RlwImGuiRender()
+{
+	if (!_rlw_imgui_frame) return;
+	rlImGuiEnd();
+	_rlw_imgui_frame = false;
+}
+
+static void RlwImGuiDropFrame()
+{
+	if (!_rlw_imgui_frame) return;
+	ImGui::EndFrame();
+	_rlw_imgui_frame = false;
+}
+
 void RlwClose()
 {
+	RlwImGuiShutdown();
 	if (_rlw_tex_ok) {
 		UnloadTexture(_rlw_tex);
 		_rlw_tex_ok = false;
@@ -205,6 +249,7 @@ static bool RlwEnsureScreenTexture(const uint32_t *rgba, int w, int h)
 
 void RlwPresent(const uint32_t *rgba, int w, int h)
 {
+	RlwImGuiDropFrame();
 	if (!RlwEnsureScreenTexture(rgba, w, h)) UpdateTexture(_rlw_tex, rgba);
 
 	BeginDrawing();
@@ -419,6 +464,7 @@ void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRect
 		if (r.w <= 0 || r.h <= 0) continue;
 		DrawTextureRec(_rlw_tex, {(float)r.x, (float)r.y, (float)r.w, (float)r.h}, {(float)r.x, (float)r.y}, WHITE);
 	}
+	RlwImGuiRender();
 	EndDrawing();
 }
 

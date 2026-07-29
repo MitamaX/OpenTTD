@@ -100,6 +100,8 @@
 
 #include "table/strings.h"
 
+#include "imgui.h"
+
 #include "safeguards.h"
 
 static bool _mini_active = false;
@@ -292,6 +294,7 @@ struct MiniSettings {
 	double drag_pan_multiplier = 2.0;
 	double jump_ppt = 32.0;
 	double glide_ms = 250.0;
+	int imgui_demo = 0;
 };
 
 static MiniSettings _ms;
@@ -355,6 +358,7 @@ static void LoadMiniSettings()
 	ReadIniNumber(group, "drag_pan_multiplier", _ms.drag_pan_multiplier);
 	ReadIniNumber(group, "jump_ppt", _ms.jump_ppt);
 	ReadIniNumber(group, "glide_ms", _ms.glide_ms);
+	ReadIniNumber(group, "imgui_demo", _ms.imgui_demo);
 
 	_ms.pan_speed = Clamp(_ms.pan_speed, 100.0, 10000.0);
 	_ms.pan_speed_fast = Clamp(_ms.pan_speed_fast, 100.0, 20000.0);
@@ -458,6 +462,82 @@ static const uint32_t _company_rgb[16] = {
 	0xFF3D6DCCU, 0xFFEFE5C0U, 0xFF9E8FA8U, 0xFF8E6FB8U,
 	0xFFF29C4AU, 0xFF8D6E63U, 0xFF9E9E9EU, 0xFFF5F5F5U,
 };
+
+static ImVec4 ImGuiCol32(uint32_t argb)
+{
+	return ImVec4(((argb >> 16) & 0xFF) / 255.0f, ((argb >> 8) & 0xFF) / 255.0f, (argb & 0xFF) / 255.0f, ((argb >> 24) & 0xFF) / 255.0f);
+}
+
+/* The 1.92 dynamic atlas pulls glyphs on demand, so one Korean-capable font
+ * covers every string without range tables. */
+static void MiniImGuiEnsureSetup()
+{
+	static bool done = false;
+	if (done) return;
+	done = true;
+
+	ImGuiIO &io = ImGui::GetIO();
+	const char *font_path = "C:\\Windows\\Fonts\\malgun.ttf";
+	if (FileExists(font_path)) {
+		ImFont *font = io.Fonts->AddFontFromFileTTF(font_path, (float)std::max(13, GetCharacterHeight(FS_NORMAL)));
+		if (font != nullptr) io.FontDefault = font;
+	}
+
+	ImGuiStyle &style = ImGui::GetStyle();
+	style.WindowRounding = 4.0f;
+	style.ChildRounding = 3.0f;
+	style.FrameRounding = 3.0f;
+	style.PopupRounding = 3.0f;
+	style.TabRounding = 3.0f;
+	style.ScrollbarRounding = 3.0f;
+	style.GrabRounding = 3.0f;
+	style.WindowBorderSize = 1.0f;
+
+	ImVec4 *c = style.Colors;
+	c[ImGuiCol_Text] = ImGuiCol32(COL_CH_TEXT);
+	c[ImGuiCol_TextDisabled] = ImGuiCol32(COL_CH_DIM);
+	c[ImGuiCol_WindowBg] = ImGuiCol32(COL_CH_PANEL);
+	c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
+	c[ImGuiCol_PopupBg] = ImGuiCol32(COL_CH_PANEL);
+	c[ImGuiCol_Border] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+	c[ImGuiCol_FrameBg] = ImGuiCol32(COL_CH_TILE);
+	c[ImGuiCol_FrameBgHovered] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_FrameBgActive] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_TitleBg] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_TitleBgActive] = ImGuiCol32(COL_CH_TILE);
+	c[ImGuiCol_TitleBgCollapsed] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_MenuBarBg] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_ScrollbarBg] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_ScrollbarGrab] = ImGuiCol32(COL_CH_DIM);
+	c[ImGuiCol_ScrollbarGrabHovered] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_ScrollbarGrabActive] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_CheckMark] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_SliderGrab] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_SliderGrabActive] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_Button] = ImGuiCol32(COL_CH_TILE);
+	c[ImGuiCol_ButtonHovered] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_ButtonActive] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_Header] = ImGuiCol32(COL_CH_TILE);
+	c[ImGuiCol_HeaderHovered] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_HeaderActive] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_Separator] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_SeparatorHovered] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_SeparatorActive] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_ResizeGrip] = ImGuiCol32(COL_CH_DIM);
+	c[ImGuiCol_ResizeGripHovered] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_ResizeGripActive] = ImGuiCol32(COL_CH_ACCENT);
+	c[ImGuiCol_Tab] = ImGuiCol32(COL_CH_TILE);
+	c[ImGuiCol_TabHovered] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_TabSelected] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_TabDimmed] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_TabDimmedSelected] = ImGuiCol32(COL_CH_TILE);
+	c[ImGuiCol_TableHeaderBg] = ImGuiCol32(COL_CH_TILE);
+	c[ImGuiCol_TableBorderStrong] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_TableBorderLight] = ImGuiCol32(COL_CH_EDGE);
+	c[ImGuiCol_TextSelectedBg] = ImGuiCol32(COL_CH_ACTIVE);
+	c[ImGuiCol_NavCursor] = ImGuiCol32(COL_CH_ACCENT);
+}
 
 bool MiniUiActive()
 {
@@ -5710,6 +5790,11 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 {
 	if (!_mini_active) return false;
 
+	if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse
+			&& !_dragging && !_middle_button_down && _wnd_drag < 0) {
+		return true;
+	}
+
 	if (!_dragging && !_middle_button_down && _wnd_drag < 0) {
 		if (native_capture) return false;
 		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
@@ -5907,6 +5992,9 @@ void MiniUiFrame(uint delta_ms)
 	UpdateLerpClock(delta_ms);
 	ProcessFleetDeploy();
 	RlwCmdClear();
+	MiniImGuiEnsureSetup();
+	RlwImGuiNewFrame();
+	if (_ms.imgui_demo != 0) ImGui::ShowDemoWindow();
 
 	/* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space.
 	 * A held axis takes its velocity directly so movement starts instantly; a
