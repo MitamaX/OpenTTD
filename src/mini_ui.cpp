@@ -3651,6 +3651,8 @@ struct MiniWnd {
 	int scroll = 0;
 	int scroll2 = 0;
 	int rows = 0;
+	bool want_raise = false;
+	int8_t want_tab = -1;
 };
 
 static std::vector<MiniWnd> _wnds;
@@ -3658,10 +3660,13 @@ static int _wnd_drag = -1;
 static int _wnd_drag_dx = 0, _wnd_drag_dy = 0;
 static std::string _wnd_tooltip;
 
+/* The last focused mini window decides whose order route shows; focus is
+ * tracked from the ImGui side each frame. */
+static VehicleID _front_wnd_veh = VehicleID::Invalid();
+
 static VehicleID FrontWndVehicle()
 {
-	if (_wnds.empty() || _wnds.back().kind != MiniWndKind::Vehicle) return VehicleID::Invalid();
-	return _wnds.back().veh;
+	return _front_wnd_veh;
 }
 
 enum {
@@ -3912,6 +3917,7 @@ static void CloseMiniCarrier(const MiniWnd &mw)
 static void CloseMiniWnd(size_t i)
 {
 	CloseMiniCarrier(_wnds[i]);
+	if (_wnds[i].kind == MiniWndKind::Vehicle && _wnds[i].veh == _front_wnd_veh) _front_wnd_veh = VehicleID::Invalid();
 	_wnds.erase(_wnds.begin() + (ptrdiff_t)i);
 	_wnd_drag = -1;
 }
@@ -3922,6 +3928,7 @@ static void RaiseMiniWnd(size_t i)
 {
 	std::rotate(_wnds.begin() + (ptrdiff_t)i, _wnds.begin() + (ptrdiff_t)i + 1, _wnds.end());
 	BringWindowToFrontById(WC_EXTRA_VIEWPORT, MiniCarrierNum(_wnds.back()));
+	_wnds.back().want_raise = true;
 }
 
 static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid())
@@ -5560,6 +5567,1187 @@ static bool HandleWndWheel(int x, int y, int dir)
 	return false;
 }
 
+/* ImGui mini windows: layout, clipping, scroll and input routing come from
+ * ImGui; rows execute their commands at the click site. */
+
+static int _imrow;
+
+static ImU32 MiniImU32(uint32_t argb)
+{
+	return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >> 24) & 0xFF);
+}
+
+static void ImWndText(std::string_view text, uint32_t tint)
+{
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGuiCol32(tint));
+	ImGui::TextUnformatted(text.data(), text.data() + text.size());
+	ImGui::PopStyleColor();
+}
+
+static void ImWndKV(std::string_view label, std::string_view value, uint32_t vtint)
+{
+	ImWndText(label, COL_CH_DIM);
+	ImGui::SameLine();
+	float vw = ImGui::CalcTextSize(value.data(), value.data() + value.size()).x;
+	float x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - vw;
+	if (x > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(x);
+	ImWndText(value, vtint);
+}
+
+static bool ImWndLink(std::string_view label, uint32_t tint)
+{
+	ImGui::PushID(_imrow++);
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGuiCol32(tint));
+	bool clicked = ImGui::Selectable(std::string(label).c_str());
+	ImGui::PopStyleColor();
+	ImGui::PopID();
+	return clicked;
+}
+
+static bool ImWndKVLink(std::string_view label, std::string_view value, uint32_t ltint, uint32_t vtint)
+{
+	ImGui::PushID(_imrow++);
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	float w = ImGui::GetContentRegionAvail().x;
+	bool clicked = ImGui::Selectable("##kv");
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	dl->AddText(p, MiniImU32(ltint), label.data(), label.data() + label.size());
+	float vw = ImGui::CalcTextSize(value.data(), value.data() + value.size()).x;
+	dl->AddText(ImVec2(p.x + w - vw, p.y), MiniImU32(vtint), value.data(), value.data() + value.size());
+	ImGui::PopID();
+	return clicked;
+}
+
+static void ImWndHeader(std::string_view text)
+{
+	ImGui::SeparatorText(std::string(text).c_str());
+}
+
+/* The carrier keeps painting into the CPU screen texture below the ImGui
+ * layer; the slot samples that region back as an image, so window z-order
+ * and clipping stay correct for free. */
+static void ImWndViewSlot(const MiniWnd &mw)
+{
+	float vh = (float)(100 * _ms.hud_scale);
+	ImVec2 pos = ImGui::GetCursorScreenPos();
+	float vw = ImGui::GetContentRegionAvail().x;
+	if (vw < 32.0f || _fbw <= 0 || _fbh <= 0) return;
+	EnsureMiniCarrier(mw, (int)pos.x, (int)pos.y, (int)vw, (int)vh);
+	uintptr_t tid = RlwScreenTexId();
+	if (tid != 0) {
+		ImVec2 uv0(pos.x / (float)_fbw, pos.y / (float)_fbh);
+		ImVec2 uv1((pos.x + vw) / (float)_fbw, (pos.y + vh) / (float)_fbh);
+		ImGui::Image((ImTextureID)tid, ImVec2(vw, vh), uv0, uv1);
+	} else {
+		ImGui::Dummy(ImVec2(vw, vh));
+	}
+}
+
+struct ImStripUnit {
+	int len8 = 8;
+	uint32_t fill = 0;
+	bool engine = false;
+	bool selected = false;
+};
+
+static int ImWndUnitStrip(const std::vector<ImStripUnit> &units)
+{
+	int s = _ms.hud_scale;
+	float bh = ImGui::GetTextLineHeight() * 1.6f;
+	float avail = ImGui::GetContentRegionAvail().x;
+	ImVec2 origin = ImGui::GetCursorScreenPos();
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	int clicked = -1;
+	float x = 0.0f;
+	ImGui::PushID(_imrow++);
+	for (size_t i = 0; i < units.size(); i++) {
+		const ImStripUnit &u = units[i];
+		float uw = (float)std::max(4 * s, 3 * s * u.len8 / 2);
+		if (x + uw > avail - 8.0f * s) {
+			dl->AddText(ImVec2(origin.x + x, origin.y), MiniImU32(COL_CH_DIM), "…");
+			break;
+		}
+		ImGui::SetCursorScreenPos(ImVec2(origin.x + x, origin.y));
+		ImGui::PushID((int)i);
+		if (ImGui::InvisibleButton("u", ImVec2(uw, bh))) clicked = (int)i;
+		ImVec2 p0 = ImGui::GetItemRectMin();
+		ImVec2 p1 = ImGui::GetItemRectMax();
+		dl->AddRectFilled(p0, p1, MiniImU32(u.fill));
+		if (u.engine) dl->AddRectFilled(ImVec2(p0.x, p1.y - 2.0f * s), p1, MiniImU32(COL_CH_ACCENT));
+		if (u.selected) dl->AddRect(p0, p1, MiniImU32(COL_CH_ACCENT), 0.0f, 0, (float)s);
+		if (ImGui::IsItemHovered()) dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 48));
+		ImGui::PopID();
+		x += uw + (float)s;
+	}
+	ImGui::PopID();
+	ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + bh + 2.0f * _ms.hud_scale));
+	ImGui::Dummy(ImVec2(0.0f, 0.0f));
+	return clicked;
+}
+
+static int ImTrainStrip(const Train *head, VehicleID sel, std::vector<VehicleID> &ids)
+{
+	std::vector<ImStripUnit> units;
+	for (const Train *u = head; u != nullptr; u = u->GetNextUnit()) {
+		ImStripUnit su;
+		su.len8 = std::max<int>(1, u->gcache.cached_veh_length);
+		su.engine = u->GetEngine()->VehInfo<RailVehicleInfo>().railveh_type != RAILVEH_WAGON;
+		su.fill = u->cargo_cap > 0 && IsValidCargoType(u->cargo_type) ? CargoRgb(u->cargo_type) : COL_CH_TILE;
+		su.selected = sel == u->index;
+		units.push_back(su);
+		ids.push_back(u->index);
+	}
+	return ImWndUnitStrip(units);
+}
+
+static void FleetMarkUnit(MiniWnd &mw, VehicleID target, bool attach)
+{
+	const Vehicle *mv = Vehicle::GetIfValid(mw.sel);
+	const Vehicle *cv = Vehicle::GetIfValid(target);
+	if (cv == nullptr) {
+		mw.sel = VehicleID::Invalid();
+	} else if (attach && mv != nullptr && mv->type == VEH_TRAIN && cv->type == VEH_TRAIN &&
+			mv->First() != cv->First() && mv->tile == cv->tile) {
+		Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, mv->tile, mv->index, cv->Last()->index, mv->First() == mv);
+		mw.sel = VehicleID::Invalid();
+	} else {
+		mw.sel = mw.sel == target ? VehicleID::Invalid() : target;
+	}
+}
+
+static void ImWndRename(MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t)
+{
+	Window *cw = EnsureMiniCarrier(mw, -10000, -10000, 64, 48);
+	if (cw == nullptr) return;
+	if (mw.kind == MiniWndKind::Vehicle && v != nullptr) {
+		ShowQueryString(GetString(STR_VEHICLE_NAME, v->index), STR_QUERY_RENAME_TRAIN_CAPTION + v->type,
+				MAX_LENGTH_VEHICLE_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+	} else if (st != nullptr) {
+		ShowQueryString(GetString(STR_STATION_NAME, st->index), STR_STATION_VIEW_EDIT_STATION_SIGN,
+				MAX_LENGTH_STATION_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+	} else if (t != nullptr) {
+		ShowQueryString(GetString(STR_TOWN_NAME, t->index), STR_TOWN_VIEW_RENAME_TOWN_BUTTON,
+				MAX_LENGTH_TOWN_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+	} else if (mw.kind == MiniWndKind::Group && Group::IsValidID(mw.sel_grp)) {
+		_mini_rename_grp = mw.sel_grp;
+		ShowQueryString(GetString(STR_GROUP_NAME, mw.sel_grp), STR_GROUP_RENAME_CAPTION,
+				MAX_LENGTH_GROUP_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+	}
+}
+
+static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
+{
+	bool own = v->owner == _local_company;
+	switch (mw.tab) {
+		case 0: {
+			if (v->vehstatus.Test(VehState::Crashed)) {
+				ImWndText(WndOfficial(STR_VEHICLE_STATUS_CRASHED), COL_CH_RED);
+			} else if (v->vehstatus.Test(VehState::Stopped)) {
+				ImWndText(WndOfficial(STR_VEHICLE_STATUS_STOPPED), COL_CH_RED);
+			} else if (v->current_order.IsType(OT_GOTO_STATION)) {
+				ImWndText(StrMakeValid(GetString(STR_STATION_NAME, v->current_order.GetDestination().ToStationID()), {}), COL_CH_ACCENT);
+			} else if (v->current_order.IsType(OT_GOTO_DEPOT)) {
+				ImWndText("차고로 이동 중", COL_CH_ACCENT);
+			} else {
+				ImWndText("-", COL_CH_DIM);
+			}
+			ImWndKV("속도", fmt::format("{} / {}", v->GetDisplaySpeed(), v->GetDisplayMaxSpeed()), COL_CH_TEXT);
+			ImWndText(StrMakeValid(GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, v->reliability * 100 >> 16, v->breakdowns_since_last_service), {}), COL_CH_TEXT);
+			break;
+		}
+
+		case 1: {
+			bool any = false;
+			static std::vector<std::tuple<CargoType, uint, uint>> cargo;
+			cargo.clear();
+			for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+				if (u->cargo_cap == 0 || !IsValidCargoType(u->cargo_type)) continue;
+				auto it = std::find_if(cargo.begin(), cargo.end(), [&](const auto &e) { return std::get<0>(e) == u->cargo_type; });
+				if (it == cargo.end()) it = cargo.emplace(cargo.end(), u->cargo_type, 0, 0);
+				std::get<1>(*it) += u->cargo_cap;
+				std::get<2>(*it) += u->cargo.StoredCount();
+			}
+			for (const auto &[ct, cap, stored] : cargo) {
+				any = true;
+				ImWndKV(WndOfficial(CargoSpec::Get(ct)->name), fmt::format("{} / {}", stored, cap), COL_CH_TEXT);
+			}
+			if (!any) ImWndText("적재 화물 없음", COL_CH_DIM);
+			if (own && v->IsStoppedInDepot()) {
+				CargoTypes mask = 0;
+				for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+					mask |= u->GetEngine()->info.refit_mask;
+				}
+				bool any_ref = false;
+				for (const CargoSpec *cs : _sorted_cargo_specs) {
+					if (!HasBit(mask, cs->Index())) continue;
+					if (!any_ref) {
+						ImWndHeader("개조");
+						any_ref = true;
+					}
+					bool cur = false;
+					for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+						if (u->cargo_cap > 0 && u->cargo_type == cs->Index()) cur = true;
+					}
+					if (ImWndLink(fmt::format("{}{}", cur ? "▶ " : "· ", WndOfficial(cs->name)), cur ? COL_CH_ACCENT : COL_CH_TEXT)) {
+						Command<CMD_REFIT_VEHICLE>::Post(GetCmdRefitVehMsg(v->type), v->tile, v->index, cs->Index(), 0xFF, false, false, 0);
+					}
+				}
+			}
+			break;
+		}
+
+		case 2: {
+			int nord = v->GetNumOrders();
+			if (mw.sel_ord >= nord) mw.sel_ord = -1;
+			if (nord == 0) ImWndText("주문 없음", COL_CH_DIM);
+			int oi = 0;
+			for (const Order &o : v->Orders()) {
+				std::string label;
+				switch (o.GetType()) {
+					case OT_GOTO_STATION: label = StrMakeValid(GetString(STR_STATION_NAME, o.GetDestination().ToStationID()), {}); break;
+					case OT_GOTO_WAYPOINT: label = StrMakeValid(GetString(STR_WAYPOINT_NAME, o.GetDestination().ToStationID()), {}); break;
+					case OT_GOTO_DEPOT: label = "차고"; break;
+					case OT_CONDITIONAL: label = fmt::format("조건 {}번", o.GetConditionSkipToOrder() + 1); break;
+					default: break;
+				}
+				if (!label.empty()) {
+					if (o.IsType(OT_GOTO_STATION)) {
+						switch (o.GetLoadType()) {
+							case OrderLoadType::FullLoad:
+							case OrderLoadType::FullLoadAny: label += " · 만재"; break;
+							case OrderLoadType::NoLoad: label += " · 무적재"; break;
+							default: break;
+						}
+						switch (o.GetUnloadType()) {
+							case OrderUnloadType::Unload: label += " · 강제 하차"; break;
+							case OrderUnloadType::Transfer: label += " · 환승"; break;
+							case OrderUnloadType::NoUnload: label += " · 무하차"; break;
+							default: break;
+						}
+					}
+					bool cur = oi == v->cur_real_order_index;
+					if (ImWndLink(fmt::format("{}{}. {}", cur ? "▶ " : "", oi + 1, label), mw.sel_ord == oi ? COL_CH_ACCENT : (cur ? COL_CH_YELLOW : COL_CH_TEXT))) {
+						mw.sel_ord = mw.sel_ord == oi ? -1 : (int16_t)oi;
+					}
+				}
+				oi++;
+			}
+			if (own && mw.sel_ord >= 0) {
+				const Order *so = v->GetOrder((VehicleOrderID)mw.sel_ord);
+				if (so != nullptr) {
+					ImWndHeader(fmt::format("{}번 주문", mw.sel_ord + 1));
+					if (ImWndLink("위로", COL_CH_TEXT)) {
+						int to = mw.sel_ord - 1;
+						if (to >= 0 && Command<CMD_MOVE_ORDER>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, (VehicleOrderID)to)) {
+							mw.sel_ord = (int16_t)to;
+						}
+					}
+					if (ImWndLink("아래로", COL_CH_TEXT)) {
+						int to = mw.sel_ord + 1;
+						if (to < v->GetNumOrders() && Command<CMD_MOVE_ORDER>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, (VehicleOrderID)to)) {
+							mw.sel_ord = (int16_t)to;
+						}
+					}
+					if (ImWndLink("여기로 건너뛰기", COL_CH_TEXT)) {
+						Command<CMD_SKIP_TO_ORDER>::Post(STR_ERROR_CAN_T_SKIP_TO_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord);
+					}
+					if (so->IsType(OT_GOTO_STATION)) {
+						if (ImWndKVLink("적재", WndOfficial(OrderLoadStr(so->GetLoadType())), COL_CH_DIM, COL_CH_TEXT)) {
+							OrderLoadType next;
+							switch (so->GetLoadType()) {
+								case OrderLoadType::LoadIfPossible: next = OrderLoadType::FullLoad; break;
+								case OrderLoadType::FullLoad: next = OrderLoadType::FullLoadAny; break;
+								case OrderLoadType::FullLoadAny: next = OrderLoadType::NoLoad; break;
+								default: next = OrderLoadType::LoadIfPossible; break;
+							}
+							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_LOAD, to_underlying(next));
+						}
+						if (ImWndKVLink("하차", WndOfficial(OrderUnloadStr(so->GetUnloadType())), COL_CH_DIM, COL_CH_TEXT)) {
+							OrderUnloadType next;
+							switch (so->GetUnloadType()) {
+								case OrderUnloadType::UnloadIfPossible: next = OrderUnloadType::Unload; break;
+								case OrderUnloadType::Unload: next = OrderUnloadType::Transfer; break;
+								case OrderUnloadType::Transfer: next = OrderUnloadType::NoUnload; break;
+								default: next = OrderUnloadType::UnloadIfPossible; break;
+							}
+							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_UNLOAD, to_underlying(next));
+						}
+					}
+					if (ImWndLink("삭제", COL_CH_RED)) {
+						Command<CMD_DELETE_ORDER>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord);
+						mw.sel_ord = -1;
+					}
+				}
+			}
+			if (own) {
+				bool picking = _order_pick_veh == v->index;
+				if (ImWndLink(picking ? "추가 중. 지도에서 목적지 클릭, ESC 종료" : "+ 목적지 추가", COL_CH_ACCENT)) {
+					if (picking) EnterIdleMode(); else EnterOrderPickMode(v->index);
+				}
+			}
+			break;
+		}
+
+		case 3: {
+			ImWndKV("구매", fmt::format("{}년", v->build_year.base()), COL_CH_TEXT);
+			Money value = 0;
+			for (const Vehicle *u = v; u != nullptr; u = u->Next()) value += u->value;
+			ImWndKV("가치", GetString(STR_JUST_CURRENCY_LONG, value), COL_CH_TEXT);
+			ImWndKV("유지비", fmt::format("{}/년", GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayRunningCost())), COL_CH_TEXT);
+			ImWndKV("차령", fmt::format("{}년 / {}년", v->age.base() / 366, v->max_age.base() / 366), COL_CH_TEXT);
+			ImWndText(StrMakeValid(GetString(STR_VEHICLE_INFO_PROFIT_THIS_YEAR_LAST_YEAR, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()), {}), COL_CH_TEXT);
+			if (v->type == VEH_TRAIN) {
+				ImWndKV("총길이", fmt::format("{:.1f}타일", Train::From(v)->gcache.cached_total_length / (double)TILE_SIZE), COL_CH_TEXT);
+			}
+			if (v->type == VEH_TRAIN || (v->type == VEH_ROAD && _settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL)) {
+				const GroundVehicleCache *gc = v->GetGroundVehicleCache();
+				int64_t ms = PackVelocity(v->GetDisplayMaxSpeed(), v->type);
+				if (v->type == VEH_TRAIN && (_settings_game.vehicle.train_acceleration_model == AM_ORIGINAL ||
+						Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev)) {
+					ImWndText(StrMakeValid(GetString(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, gc->cached_weight, gc->cached_power, ms), {}), COL_CH_TEXT);
+				} else {
+					ImWndText(StrMakeValid(GetString(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED_MAX_TE, gc->cached_weight, gc->cached_power, ms, gc->cached_max_te), {}), COL_CH_TEXT);
+				}
+			}
+			break;
+		}
+	}
+}
+
+static void ImStationBody(MiniWnd &mw, const Station *st)
+{
+	switch (mw.tab) {
+		case 0: {
+			bool any = false;
+			for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+				const GoodsEntry &ge = st->goods[cs->Index()];
+				if (!ge.HasRating()) continue;
+				any = true;
+				ImWndKV(WndOfficial(cs->name), fmt::format("{}", ge.TotalCount()), COL_CH_TEXT);
+			}
+			if (!any) ImWndText("대기 화물 없음", COL_CH_DIM);
+			break;
+		}
+
+		case 1: {
+			bool any = false;
+			std::vector<const Industry *> supply;
+			for (const Industry *i : Industry::Iterate()) {
+				if (i->stations_near.find(const_cast<Station *>(st)) == i->stations_near.end()) continue;
+				if (std::none_of(std::begin(i->produced), std::end(i->produced), [](const auto &p) { return IsValidCargoType(p.cargo); })) continue;
+				supply.push_back(i);
+			}
+			if (!supply.empty()) {
+				any = true;
+				ImWndHeader("공급처");
+				for (const Industry *i : supply) {
+					if (ImWndLink(StrMakeValid(GetString(STR_INDUSTRY_NAME, i->index), {}), COL_CH_TEXT)) {
+						MiniUiScrollTo(TileX(i->location.tile) * TILE_SIZE, TileY(i->location.tile) * TILE_SIZE);
+					}
+				}
+			}
+			if (!st->industries_near.empty()) {
+				any = true;
+				ImWndHeader("납품처");
+				for (const IndustryListEntry &e : st->industries_near) {
+					if (ImWndLink(StrMakeValid(GetString(STR_INDUSTRY_NAME, e.industry->index), {}), COL_CH_TEXT)) {
+						TileIndex jt = e.industry->location.tile;
+						MiniUiScrollTo(TileX(jt) * TILE_SIZE, TileY(jt) * TILE_SIZE);
+					}
+				}
+			}
+			if (!any) ImWndText("주변 산업 없음", COL_CH_DIM);
+			break;
+		}
+
+		case 2: {
+			bool any = false;
+			for (VehicleType vt : {VEH_TRAIN, VEH_ROAD, VEH_SHIP, VEH_AIRCRAFT}) {
+				VehicleList list;
+				if (!GenerateVehicleSortList(&list, VehicleListIdentifier(VL_STATION_LIST, vt, _local_company, st->index))) continue;
+				for (const Vehicle *lv : list) {
+					any = true;
+					bool here = lv->current_order.IsType(OT_GOTO_STATION) && lv->current_order.GetDestination().ToStationID() == st->index;
+					if (ImWndLink(StrMakeValid(GetString(STR_VEHICLE_NAME, lv->index), {}), here ? COL_CH_ACCENT : COL_CH_TEXT)) {
+						OpenMiniWnd(MiniWndKind::Vehicle, lv->First()->index, StationID::Invalid());
+					}
+				}
+			}
+			if (!any) ImWndText("이 역에 오는 차량 없음", COL_CH_DIM);
+			break;
+		}
+
+		case 3: {
+			if (st->town != nullptr) {
+				if (ImWndKVLink("도시", StrMakeValid(GetString(STR_TOWN_NAME, st->town->index), {}), COL_CH_DIM, COL_CH_TEXT)) {
+					OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), st->town->index);
+				}
+			}
+			if (Company::IsValidID(st->owner)) {
+				ImWndKV("소유", StrMakeValid(GetString(STR_COMPANY_NAME, st->owner), {}), COL_CH_TEXT);
+			}
+			std::string fac;
+			for (const auto &[f, name] : std::initializer_list<std::pair<StationFacility, std::string_view>>{
+					{StationFacility::Train, "철도"}, {StationFacility::BusStop, "버스"}, {StationFacility::TruckStop, "트럭"},
+					{StationFacility::Dock, "부두"}, {StationFacility::Airport, "공항"}}) {
+				if (!st->facilities.Test(f)) continue;
+				if (!fac.empty()) fac += " ";
+				fac += name;
+			}
+			if (!fac.empty()) ImWndKV("시설", fac, COL_CH_TEXT);
+			ImWndText(StrMakeValid(GetString(STR_LAND_AREA_INFORMATION_BUILD_DATE, st->build_date), {}), COL_CH_TEXT);
+			if (st->facilities.Test(StationFacility::Train) && st->train_station.tile != INVALID_TILE) {
+				uint longest = 0;
+				for (TileIndex ti : st->train_station) {
+					if (!st->TileBelongsToRailStation(ti)) continue;
+					longest = std::max(longest, st->GetPlatformLength(ti));
+				}
+				ImWndKV(WndOfficial(STR_STATION_BUILD_PLATFORM_LENGTH), fmt::format("{}칸", longest), COL_CH_TEXT);
+			}
+			ImWndText(StrMakeValid(GetString(STR_STATION_VIEW_ACCEPTS_CARGO, GetAcceptanceMask(st)), {}), COL_CH_TEXT);
+			bool rated = false;
+			for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+				const GoodsEntry &ge = st->goods[cs->Index()];
+				if (!ge.HasRating()) continue;
+				if (!rated) {
+					ImWndHeader("화물 처리 평가");
+					rated = true;
+				}
+				uint pct = ToPercent8(ge.rating);
+				uint32_t tint = pct < 25 ? COL_CH_RED : pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT;
+				ImWndKV(WndOfficial(cs->name), fmt::format("{} {}%", WndOfficial(STR_CARGO_RATING_APPALLING + (ge.rating >> 5)), pct), tint);
+			}
+			break;
+		}
+	}
+}
+
+static void ImTownBody(MiniWnd &mw, const Town *t)
+{
+	switch (mw.tab) {
+		case 0: {
+			ImWndText(StrMakeValid(GetString(STR_TOWN_VIEW_POPULATION_HOUSES, t->cache.population, t->cache.num_houses), {}), COL_CH_TEXT);
+			if (t->flags.Test(TownFlag::IsGrowing)) {
+				StringID str = t->fund_buildings_months == 0 ? STR_TOWN_VIEW_TOWN_GROWS_EVERY : STR_TOWN_VIEW_TOWN_GROWS_EVERY_FUNDED;
+				ImWndText(StrMakeValid(GetString(str, RoundDivSU(t->growth_rate + 1, Ticks::DAY_TICKS)), {}), COL_CH_TEXT);
+			} else {
+				ImWndText(WndOfficial(STR_TOWN_VIEW_TOWN_GROW_STOPPED), COL_CH_YELLOW);
+			}
+			if (t->larger_town) ImWndText("대도시", COL_CH_ACCENT);
+			if (_settings_game.economy.station_noise_level) {
+				ImWndText(StrMakeValid(GetString(STR_TOWN_VIEW_NOISE_IN_TOWN, t->noise_reached, t->MaxTownNoise()), {}), COL_CH_TEXT);
+			}
+			break;
+		}
+
+		case 1: {
+			bool any = false;
+			for (const Company *c : Company::Iterate()) {
+				if (!t->have_ratings.Test(c->index) && t->exclusivity != c->index) continue;
+				any = true;
+				int rating = t->ratings[c->index];
+				uint32_t tint = rating <= RATING_VERYPOOR ? COL_CH_RED : rating <= RATING_MEDIOCRE ? COL_CH_YELLOW : COL_CH_TEXT;
+				std::string name = StrMakeValid(GetString(STR_COMPANY_NAME, c->index), {});
+				if (t->exclusivity == c->index) name += " · 독점";
+				ImWndKV(name, WndOfficial(TownRatingString(rating)), tint);
+			}
+			if (!any) ImWndText("회사 평가 없음", COL_CH_DIM);
+			break;
+		}
+
+		case 2: {
+			StringID str_last = TimerGameEconomy::UsingWallclockUnits() ? STR_TOWN_VIEW_CARGO_LAST_MINUTE_MAX : STR_TOWN_VIEW_CARGO_LAST_MONTH_MAX;
+			for (auto tpe : {TPE_PASSENGERS, TPE_MAIL}) {
+				for (const CargoSpec *cs : CargoSpec::town_production_cargoes[tpe]) {
+					CargoType ct = cs->Index();
+					auto it = t->GetCargoSupplied(ct);
+					uint transported = it != std::end(t->supplied) ? it->history[LAST_MONTH].transported : 0;
+					uint production = it != std::end(t->supplied) ? it->history[LAST_MONTH].production : 0;
+					ImWndText(StrMakeValid(GetString(str_last, 1ULL << ct, transported, production), {}), COL_CH_TEXT);
+				}
+			}
+			bool first = true;
+			for (int i = TAE_BEGIN; i < TAE_END; i++) {
+				if (t->goal[i] == 0) continue;
+				if (t->goal[i] == TOWN_GROWTH_WINTER && (TileHeight(t->xy) < LowestSnowLine() || t->cache.population <= 90)) continue;
+				if (t->goal[i] == TOWN_GROWTH_DESERT && (GetTropicZone(t->xy) != TROPICZONE_DESERT || t->cache.population <= 60)) continue;
+				if (first) {
+					ImWndHeader(WndOfficial(STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH));
+					first = false;
+				}
+				const CargoSpec *cargo = FindFirstCargoWithTownAcceptanceEffect((TownAcceptanceEffect)i);
+				if (cargo == nullptr) continue;
+				if (t->goal[i] == TOWN_GROWTH_DESERT || t->goal[i] == TOWN_GROWTH_WINTER) {
+					bool done = t->received[i].old_act > 0;
+					ImWndKV(WndOfficial(cargo->name), done ? "공급됨" : "필요", done ? COL_CH_TEXT : COL_CH_YELLOW);
+				} else {
+					bool done = t->received[i].old_act >= t->goal[i];
+					ImWndKV(WndOfficial(cargo->name), fmt::format("{} / {}", t->received[i].old_act, t->goal[i]), done ? COL_CH_TEXT : COL_CH_YELLOW);
+				}
+			}
+			break;
+		}
+	}
+}
+
+static void ImIndustryBody(MiniWnd &mw, const Industry *i)
+{
+	switch (mw.tab) {
+		case 0: {
+			if (i->prod_level == PRODLEVEL_CLOSURE) ImWndText(WndOfficial(STR_INDUSTRY_VIEW_INDUSTRY_ANNOUNCED_CLOSURE), COL_CH_RED);
+			bool any = false;
+			for (const auto &p : i->produced) {
+				if (!IsValidCargoType(p.cargo)) continue;
+				any = true;
+				uint pct = ToPercent8(p.history[LAST_MONTH].PctTransported());
+				uint32_t tint = pct < 25 ? COL_CH_RED : pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT;
+				ImWndKV(WndOfficial(CargoSpec::Get(p.cargo)->name), fmt::format("{} · {}%", p.history[LAST_MONTH].production, pct), tint);
+			}
+			if (!any) ImWndText("생산 없음", COL_CH_DIM);
+			if (i->prod_level != PRODLEVEL_DEFAULT && i->prod_level != PRODLEVEL_CLOSURE) {
+				ImWndText(StrMakeValid(GetString(STR_INDUSTRY_VIEW_PRODUCTION_LEVEL, RoundDivSU(i->prod_level * 100, PRODLEVEL_DEFAULT)), {}), COL_CH_TEXT);
+			}
+			break;
+		}
+
+		case 1: {
+			if (i->stations_near.empty()) {
+				ImWndText("주변 역 없음", COL_CH_DIM);
+				break;
+			}
+			for (const Station *st : i->stations_near) {
+				if (ImWndLink(StrMakeValid(GetString(STR_STATION_NAME, st->index), {}), COL_CH_TEXT)) {
+					OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), st->index);
+				}
+			}
+			break;
+		}
+
+		case 2: {
+			ImWndText(StrMakeValid(GetString(STR_LAND_AREA_INFORMATION_BUILD_DATE, i->construction_date), {}), COL_CH_TEXT);
+			bool first = true;
+			for (const auto &a : i->accepted) {
+				if (!IsValidCargoType(a.cargo)) continue;
+				if (first) {
+					ImWndHeader(WndOfficial(STR_INDUSTRY_VIEW_REQUIRES));
+					first = false;
+				}
+				ImWndKV(WndOfficial(CargoSpec::Get(a.cargo)->name), a.waiting > 0 ? fmt::format("{}", a.waiting) : std::string("-"), COL_CH_TEXT);
+			}
+			break;
+		}
+	}
+}
+
+static void ImFleetBody(MiniWnd &mw)
+{
+	VehicleType vt = (VehicleType)mw.tab;
+	std::vector<EngineID> &draft = _fleet_draft[mw.tab];
+	std::erase_if(draft, [](EngineID eid) {
+		const Engine *e = Engine::GetIfValid(eid);
+		return e == nullptr || !e->IsEnabled();
+	});
+
+	const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
+	if (sv != nullptr && (sv->type != vt || !sv->First()->IsChainInDepot())) {
+		mw.sel = VehicleID::Invalid();
+		sv = nullptr;
+	}
+
+	float lw = ImGui::GetContentRegionAvail().x * 0.45f;
+	ImGui::BeginChild("buy", ImVec2(lw, 0.0f));
+	{
+		struct BuyRow {
+			EngineID eid;
+			std::string name;
+			Money cost;
+			int64_t score;
+		};
+		std::vector<BuyRow> locos, wags;
+		for (const Engine *e : Engine::IterateType(vt)) {
+			if (!e->IsEnabled() || !e->company_avail.Test(_local_company)) continue;
+			bool wagon = false;
+			int64_t score;
+			switch (vt) {
+				case VEH_TRAIN: {
+					const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+					wagon = rvi.railveh_type == RAILVEH_WAGON;
+					score = wagon ? e->GetDisplayDefaultCapacity() : e->GetPower();
+					break;
+				}
+				default:
+					score = (int64_t)e->GetDisplayDefaultCapacity() * 1000 + e->GetDisplayMaxSpeed();
+					break;
+			}
+			BuyRow r;
+			r.eid = e->index;
+			r.name = StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {});
+			r.cost = e->GetCost();
+			r.score = score;
+			(wagon ? wags : locos).push_back(std::move(r));
+		}
+		auto by_score = [](const BuyRow &a, const BuyRow &b) { return a.score > b.score; };
+		std::sort(locos.begin(), locos.end(), by_score);
+		std::sort(wags.begin(), wags.end(), by_score);
+		auto engine_rows = [&](const std::vector<BuyRow> &list) {
+			for (const BuyRow &r : list) {
+				if (ImWndKVLink(r.name, GetString(STR_JUST_CURRENCY_LONG, r.cost), COL_CH_TEXT, COL_CH_TEXT)) {
+					if (vt == VEH_TRAIN) {
+						draft.push_back(r.eid);
+					} else {
+						draft.assign(1, r.eid);
+					}
+				}
+			}
+		};
+		if (vt == VEH_TRAIN) {
+			if (!locos.empty()) ImWndHeader("기관차");
+			engine_rows(locos);
+			if (!wags.empty()) ImWndHeader("화차");
+			engine_rows(wags);
+		} else {
+			ImWndHeader("엔진");
+			engine_rows(locos);
+		}
+		if (locos.empty() && wags.empty()) ImWndText("구매 가능 엔진 없음", COL_CH_DIM);
+	}
+	ImGui::EndChild();
+	ImGui::SameLine();
+	ImGui::BeginChild("yard", ImVec2(0.0f, 0.0f));
+	{
+		ImWndHeader("설계");
+		if (draft.empty()) {
+			ImWndText(vt == VEH_TRAIN ? "엔진 목록을 눌러 편성 구성" : "엔진 목록을 눌러 선택", COL_CH_DIM);
+		} else {
+			std::vector<ImStripUnit> units;
+			Money total = 0;
+			uint64_t power = 0, weight = 0;
+			uint16_t speed = 0;
+			uint cap = 0;
+			int len8 = 0;
+			for (size_t i = 0; i < draft.size(); i++) {
+				const Engine *e = Engine::Get(draft[i]);
+				total += e->GetCost();
+				power += e->GetPower();
+				weight += e->GetDisplayWeight();
+				uint16_t espd = e->GetDisplayMaxSpeed();
+				if (espd > 0) speed = speed == 0 ? espd : std::min(speed, espd);
+				cap += e->GetDisplayDefaultCapacity();
+				ImStripUnit su;
+				if (vt == VEH_TRAIN) {
+					const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+					su.engine = rvi.railveh_type != RAILVEH_WAGON;
+					su.len8 = 8 - rvi.shorten_factor;
+				}
+				len8 += su.len8;
+				CargoType dc = e->GetDefaultCargoType();
+				su.fill = e->GetDisplayDefaultCapacity() > 0 && IsValidCargoType(dc) ? CargoRgb(dc) : COL_CH_TILE;
+				units.push_back(su);
+			}
+			int del = ImWndUnitStrip(units);
+			if (del >= 0 && (size_t)del < draft.size()) draft.erase(draft.begin() + del);
+			ImWndKV("합계", GetString(STR_JUST_CURRENCY_LONG, total), COL_CH_ACCENT);
+			if (vt == VEH_TRAIN) {
+				ImWndText(StrMakeValid(GetString(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, weight, power, PackVelocity(speed, vt)), {}), COL_CH_TEXT);
+				ImWndKV("길이", fmt::format("{:.1f}타일", len8 / 16.0), COL_CH_TEXT);
+			}
+			if (cap > 0) ImWndKV("용량", fmt::format("{}", cap), COL_CH_TEXT);
+			ImWndText("차고 행 클릭으로 생산 · 블록 클릭으로 제외", COL_CH_DIM);
+		}
+		if (_deploy.depot != INVALID_TILE && _deploy.vt == vt) {
+			ImWndText(fmt::format("생산 중 {} / {}", std::min(_deploy.next + 1, _deploy.units.size()), _deploy.units.size()), COL_CH_ACCENT);
+		}
+
+		ImWndHeader("차고");
+		if (sv != nullptr && vt == VEH_TRAIN) {
+			ImWndText("표시 차량: 같은 차고 편성 클릭으로 연결", COL_CH_ACCENT);
+			if (sv->First() != sv) {
+				if (ImWndLink("새 편성으로 분리", COL_CH_ACCENT)) {
+					Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, sv->tile, sv->index, VehicleID::Invalid(), false);
+					mw.sel = VehicleID::Invalid();
+				}
+			}
+		}
+		bool anydep = false;
+		auto chain_rows = [&](const Vehicle *head) {
+			int len = 1;
+			if (vt == VEH_TRAIN) {
+				len = 0;
+				for (const Train *u = Train::From(head); u != nullptr; u = u->GetNextUnit()) len++;
+			}
+			std::string label = head->IsPrimaryVehicle()
+					? StrMakeValid(GetString(STR_VEHICLE_NAME, head->index), {})
+					: StrMakeValid(GetString(STR_ENGINE_NAME, head->engine_type), {});
+			if (len > 1) label = fmt::format("{} · {}량", label, len);
+			label = fmt::format("{}{}", mw.sel == head->index ? "▶ " : "· ", label);
+			bool stopped = head->vehstatus.Test(VehState::Stopped);
+			if (ImWndLink(label, mw.sel == head->index ? COL_CH_ACCENT : (stopped ? COL_CH_TEXT : COL_CH_YELLOW))) {
+				FleetMarkUnit(mw, head->index, true);
+			}
+			if (vt == VEH_TRAIN) {
+				std::vector<VehicleID> ids;
+				int hit = ImTrainStrip(Train::From(head), mw.sel, ids);
+				if (hit >= 0 && (size_t)hit < ids.size()) FleetMarkUnit(mw, ids[hit], false);
+			}
+		};
+		auto depot_block = [&](TileIndex tile, uint dest) {
+			anydep = true;
+			VehicleList chains, wagons;
+			BuildDepotVehicleList(vt, tile, &chains, &wagons);
+			std::string dn = StrMakeValid(GetString(STR_DEPOT_NAME, vt, dest), {});
+			if (ImWndLink(draft.empty() ? dn : fmt::format("▶ {} 생산", dn), draft.empty() ? COL_CH_TEXT : COL_CH_ACCENT)) {
+				if (!IsDepotTile(tile)) {
+					/* stale row */
+				} else if (draft.empty()) {
+					MiniUiScrollTo(TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
+				} else if (_deploy.depot == INVALID_TILE) {
+					_deploy = FleetDeploy{};
+					_deploy.depot = tile;
+					_deploy.vt = vt;
+					_deploy.units = draft;
+				}
+			}
+			for (const Vehicle *head : chains) chain_rows(head);
+			for (const Vehicle *head : wagons) chain_rows(head);
+		};
+		if (vt == VEH_AIRCRAFT) {
+			for (const Station *st : Station::Iterate()) {
+				if (st->owner != _local_company || !st->facilities.Test(StationFacility::Airport) || !st->airport.HasHangar()) continue;
+				depot_block(st->airport.GetHangarTile(0), st->index.base());
+			}
+		} else {
+			for (const Depot *d : Depot::Iterate()) {
+				if (!IsDepotTile(d->xy) || GetDepotVehicleType(d->xy) != vt) continue;
+				if (GetTileOwner(d->xy) != _local_company) continue;
+				depot_block(d->xy, d->index.base());
+			}
+		}
+		if (!anydep) ImWndText("차고 없음", COL_CH_DIM);
+	}
+	ImGui::EndChild();
+}
+
+static void ImFinanceBody(uint8_t tab)
+{
+	const Company *c = Company::GetIfValid(_local_company);
+	if (c == nullptr) return;
+
+	if (tab == 0) {
+		ImWndKV(WndOfficial(STR_FINANCES_BANK_BALANCE_TITLE), StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->money), {}), COL_CH_ACCENT);
+		ImWndKV(WndOfficial(STR_FINANCES_OWN_FUNDS_TITLE), StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->money - c->current_loan), {}), COL_CH_TEXT);
+		ImWndKV(WndOfficial(STR_FINANCES_LOAN_TITLE), StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->current_loan), {}), c->current_loan > 0 ? COL_CH_YELLOW : COL_CH_TEXT);
+		ImWndText(StrMakeValid(GetString(STR_FINANCES_MAX_LOAN, c->GetMaxLoan()), {}), COL_CH_TEXT);
+		ImWndText(StrMakeValid(GetString(STR_FINANCES_INTEREST_RATE, _economy.interest_rate), {}), COL_CH_TEXT);
+		ImWndKV("회사 가치", StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, CalculateCompanyValue(c)), {}), COL_CH_TEXT);
+		return;
+	}
+
+	struct MiniExpCat {
+		StringID title;
+		std::initializer_list<ExpensesType> items;
+	};
+	static const MiniExpCat cats[] = {
+		{STR_FINANCES_REVENUE_TITLE, {EXPENSES_TRAIN_REVENUE, EXPENSES_ROADVEH_REVENUE, EXPENSES_AIRCRAFT_REVENUE, EXPENSES_SHIP_REVENUE}},
+		{STR_FINANCES_OPERATING_EXPENSES_TITLE, {EXPENSES_TRAIN_RUN, EXPENSES_ROADVEH_RUN, EXPENSES_AIRCRAFT_RUN, EXPENSES_SHIP_RUN, EXPENSES_PROPERTY, EXPENSES_LOAN_INTEREST}},
+		{STR_FINANCES_CAPITAL_EXPENSES_TITLE, {EXPENSES_CONSTRUCTION, EXPENSES_NEW_VEHICLES, EXPENSES_OTHER}},
+	};
+	const Expenses &tbl = c->yearly_expenses[0];
+	Money total = 0;
+	for (const MiniExpCat &cat : cats) {
+		ImWndHeader(WndOfficial(cat.title));
+		Money sum = 0;
+		for (ExpensesType et : cat.items) {
+			Money cost = tbl[et];
+			sum += cost;
+			if (cost == 0) continue;
+			ImWndKV(WndOfficial(STR_FINANCES_SECTION_CONSTRUCTION + et), MiniPriceStr(cost), cost > 0 ? COL_CH_RED : COL_CH_TEXT);
+		}
+		total += sum;
+		ImWndKV("합계", MiniPriceStr(sum), sum > 0 ? COL_CH_RED : COL_CH_TEXT);
+	}
+	ImWndHeader(WndOfficial(STR_FINANCES_TOTAL_CAPTION));
+	ImWndKV("올해 손익", MiniPriceStr(total), total > 0 ? COL_CH_RED : COL_CH_ACCENT);
+}
+
+static void ImGroupBody(MiniWnd &mw)
+{
+	if (!Company::IsValidID(_local_company)) return;
+	VehicleType vt = (VehicleType)mw.tab;
+
+	bool special = mw.sel_grp == ALL_GROUP || mw.sel_grp == DEFAULT_GROUP;
+	const Group *sg = special ? nullptr : Group::GetIfValid(mw.sel_grp);
+	if (!special && (sg == nullptr || sg->owner != _local_company || sg->vehicle_type != vt)) {
+		mw.sel_grp = ALL_GROUP;
+		special = true;
+	}
+	const Engine *se = Engine::GetIfValid(mw.sel_eng);
+	if (se != nullptr && se->type != vt) {
+		mw.sel_eng = EngineID::Invalid();
+		se = nullptr;
+	}
+
+	float lw = ImGui::GetContentRegionAvail().x * 0.45f;
+	ImGui::BeginChild("groups", ImVec2(lw, 0.0f));
+	{
+		ImWndHeader("그룹");
+		auto group_row = [&](GroupID gid, std::string_view name, uint count) {
+			if (ImWndLink(fmt::format("{}{} · {}대", mw.sel_grp == gid ? "▶ " : "· ", name, count),
+					mw.sel_grp == gid ? COL_CH_ACCENT : COL_CH_TEXT)) {
+				mw.sel_grp = gid;
+				mw.sel_eng = EngineID::Invalid();
+			}
+		};
+		group_row(ALL_GROUP, WndOfficial(STR_GROUP_ALL_TRAINS + vt), GetGroupNumVehicle(_local_company, ALL_GROUP, vt));
+		group_row(DEFAULT_GROUP, WndOfficial(STR_GROUP_DEFAULT_TRAINS + vt), GetGroupNumVehicle(_local_company, DEFAULT_GROUP, vt));
+		std::vector<const Group *> groups;
+		for (const Group *g : Group::Iterate()) {
+			if (g->owner != _local_company || g->vehicle_type != vt) continue;
+			groups.push_back(g);
+		}
+		std::sort(groups.begin(), groups.end(), [](const Group *a, const Group *b) { return a->number < b->number; });
+		for (const Group *g : groups) {
+			group_row(g->index, StrMakeValid(GetString(STR_GROUP_NAME, g->index), {}), GetGroupNumVehicle(_local_company, g->index, vt));
+		}
+
+		ImWndHeader("자동 교체");
+		const Company *comp = Company::Get(_local_company);
+		bool any_used = false;
+		for (const Engine *e : Engine::IterateType(vt)) {
+			uint num = GetGroupNumEngines(_local_company, mw.sel_grp, e->index);
+			EngineID repl = EngineReplacementForCompany(comp, e->index, mw.sel_grp);
+			if (num == 0 && repl == EngineID::Invalid()) continue;
+			any_used = true;
+			std::string label = fmt::format("{}{} · {}대", mw.sel_eng == e->index ? "▶ " : "· ",
+					StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {}), num);
+			if (repl != EngineID::Invalid()) label += fmt::format(" → {}", StrMakeValid(GetString(STR_ENGINE_NAME, repl), {}));
+			if (ImWndLink(label, mw.sel_eng == e->index ? COL_CH_ACCENT : (repl != EngineID::Invalid() ? COL_CH_YELLOW : COL_CH_TEXT))) {
+				mw.sel_eng = mw.sel_eng == e->index ? EngineID::Invalid() : e->index;
+			}
+		}
+		if (!any_used) ImWndText("보유 엔진 없음", COL_CH_DIM);
+		if (Engine::GetIfValid(mw.sel_eng) != nullptr) {
+			EngineID repl = EngineReplacementForCompany(comp, mw.sel_eng, mw.sel_grp);
+			if (repl != EngineID::Invalid()) {
+				if (ImWndLink("교체 해제", COL_CH_RED)) {
+					Command<CMD_SET_AUTOREPLACE>::Post(mw.sel_grp, mw.sel_eng, EngineID::Invalid(), false);
+				}
+			}
+			ImWndText("교체할 새 엔진 클릭", COL_CH_DIM);
+			for (const Engine *e : Engine::IterateType(vt)) {
+				if (e->index == mw.sel_eng) continue;
+				if (!CheckAutoreplaceValidity(mw.sel_eng, e->index, _local_company)) continue;
+				if (ImWndLink(fmt::format("· {}", StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {})),
+						e->index == repl ? COL_CH_ACCENT : COL_CH_TEXT)) {
+					Command<CMD_SET_AUTOREPLACE>::Post(mw.sel_grp, mw.sel_eng, e->index, false);
+				}
+			}
+		}
+	}
+	ImGui::EndChild();
+	ImGui::SameLine();
+	ImGui::BeginChild("vehicles", ImVec2(0.0f, 0.0f));
+	{
+		if (special) {
+			ImWndHeader("차량");
+			bool anyv = false;
+			for (const Vehicle *v : Vehicle::Iterate()) {
+				if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
+				if (mw.sel_grp == DEFAULT_GROUP && v->group_id != DEFAULT_GROUP) continue;
+				anyv = true;
+				if (ImWndLink(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT)) {
+					OpenMiniWnd(MiniWndKind::Vehicle, v->First()->index, StationID::Invalid());
+				}
+			}
+			if (!anyv) ImWndText("차량 없음", COL_CH_DIM);
+		} else {
+			ImWndHeader("소속 차량. 클릭으로 제외");
+			bool anyin = false;
+			for (const Vehicle *v : Vehicle::Iterate()) {
+				if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id != mw.sel_grp) continue;
+				anyin = true;
+				if (ImWndLink(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT)) {
+					Command<CMD_ADD_VEHICLE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_ADD_VEHICLE, DEFAULT_GROUP, v->index, false, VehicleListIdentifier{});
+				}
+			}
+			if (!anyin) ImWndText("소속 차량 없음", COL_CH_DIM);
+			ImWndHeader("클릭으로 추가");
+			bool anyout = false;
+			for (const Vehicle *v : Vehicle::Iterate()) {
+				if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id == mw.sel_grp) continue;
+				anyout = true;
+				if (ImWndLink(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT)) {
+					if (Group::IsValidID(mw.sel_grp)) {
+						Command<CMD_ADD_VEHICLE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_ADD_VEHICLE, mw.sel_grp, v->index, false, VehicleListIdentifier{});
+					}
+				}
+			}
+			if (!anyout) ImWndText("없음", COL_CH_DIM);
+		}
+	}
+	ImGui::EndChild();
+}
+
+static bool ImWndButton(std::string_view label, bool enabled)
+{
+	ImGui::BeginDisabled(!enabled);
+	bool clicked = ImGui::Button(std::string(label).c_str());
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	return clicked;
+}
+
+static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t, const Industry *ind)
+{
+	ImGui::Separator();
+	switch (mw.kind) {
+		case MiniWndKind::Vehicle: {
+			bool own = v != nullptr && v->owner == _local_company;
+			bool stopped = v != nullptr && v->vehstatus.Test(VehState::Stopped);
+			if (ImWndButton(stopped ? "출발" : "정지", own)) {
+				Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, v->index, false);
+			}
+			if (ImWndButton("차고로", own)) {
+				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg(v), v->index, _ctrl_pressed ? DepotCommandFlag::Service : DepotCommandFlags{}, {});
+			}
+			if (ImWndButton("개조", own)) mw.want_tab = 1;
+			if (ImWndButton("주문", own)) mw.want_tab = 2;
+			bool following = v != nullptr && _follow_veh == v->index;
+			if (ImWndButton(following ? "추적 해제" : "따라가기", v != nullptr)) {
+				if (following) EnterIdleMode(); else EnterFollowMode(v->index);
+			}
+			if (ImWndButton("이름", own)) ImWndRename(mw, v, nullptr, nullptr);
+			break;
+		}
+
+		case MiniWndKind::Station: {
+			bool own = st != nullptr && (st->owner == _local_company || st->owner == OWNER_NONE);
+			extern const Station *_viewport_highlight_station;
+			bool hl = st != nullptr && _viewport_highlight_station == st;
+			if (ImWndButton(hl ? "범위 끄기" : "범위", own)) {
+				SetViewportCatchmentStation(st, !hl);
+			}
+			if (ImWndButton("이동", st != nullptr)) {
+				MiniUiScrollTo(TileX(st->xy) * TILE_SIZE, TileY(st->xy) * TILE_SIZE);
+			}
+			if (ImWndButton("이름", st != nullptr && st->owner == _local_company)) ImWndRename(mw, nullptr, st, nullptr);
+			break;
+		}
+
+		case MiniWndKind::Town: {
+			extern void ShowTownAuthorityWindow(uint town);
+			if (ImWndButton("당국", t != nullptr)) ShowTownAuthorityWindow(t->index.base());
+			if (ImWndButton("이동", t != nullptr)) MiniUiScrollTo(TileX(t->xy) * TILE_SIZE, TileY(t->xy) * TILE_SIZE);
+			if (ImWndButton("이름", t != nullptr)) ImWndRename(mw, nullptr, nullptr, t);
+			break;
+		}
+
+		case MiniWndKind::Industry: {
+			extern void ShowIndustryCargoesWindow(IndustryType id);
+			if (ImWndButton("계통", ind != nullptr)) ShowIndustryCargoesWindow(ind->type);
+			if (ImWndButton("이동", ind != nullptr)) {
+				TileIndex ct = ind->location.GetCenterTile();
+				MiniUiScrollTo(TileX(ct) * TILE_SIZE, TileY(ct) * TILE_SIZE);
+			}
+			break;
+		}
+
+		case MiniWndKind::Fleet: {
+			bool own = Company::IsValidID(_local_company);
+			const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
+			if (ImWndButton("매각", own && sv != nullptr)) {
+				bool chain = sv->type == VEH_TRAIN && sv->First() == sv;
+				Command<CMD_SELL_VEHICLE>::Post(GetCmdSellVehMsg(sv->type), sv->tile, sv->index, chain, true, INVALID_CLIENT_ID);
+				mw.sel = VehicleID::Invalid();
+			}
+			if (ImWndButton("설계 비우기", own && !_fleet_draft[mw.tab].empty())) {
+				_fleet_draft[mw.tab].clear();
+			}
+			if (ImWndButton("복제", own && sv != nullptr)) {
+				Command<CMD_CLONE_VEHICLE>::Post(GetCmdBuildVehMsg(sv->type), sv->tile, sv->First()->index, false);
+			}
+			break;
+		}
+
+		case MiniWndKind::Finance: {
+			const Company *fc = Company::GetIfValid(_local_company);
+			if (ImWndButton("빌리기", fc != nullptr && fc->current_loan < fc->GetMaxLoan())) {
+				Command<CMD_INCREASE_LOAN>::Post(STR_ERROR_CAN_T_BORROW_ANY_MORE_MONEY, LoanCommand::Interval, 0);
+			}
+			if (ImWndButton("갚기", fc != nullptr && fc->current_loan > 0)) {
+				Command<CMD_DECREASE_LOAN>::Post(STR_ERROR_CAN_T_REPAY_LOAN, LoanCommand::Interval, 0);
+			}
+			break;
+		}
+
+		case MiniWndKind::Group: {
+			bool own = Company::IsValidID(_local_company);
+			VehicleListIdentifier vli(VL_GROUP_LIST, (VehicleType)mw.tab, _local_company, mw.sel_grp);
+			if (ImWndButton("새 그룹", own)) {
+				Command<CMD_CREATE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_CREATE, (VehicleType)mw.tab, GroupID::Invalid());
+			}
+			if (ImWndButton("그룹 삭제", own && Group::IsValidID(mw.sel_grp))) {
+				Command<CMD_DELETE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_DELETE, mw.sel_grp);
+				mw.sel_grp = ALL_GROUP;
+			}
+			if (ImWndButton("전체 출발", own)) {
+				Command<CMD_MASS_START_STOP>::Post(TileIndex{}, true, true, vli);
+			}
+			if (ImWndButton("전체 정지", own)) {
+				Command<CMD_MASS_START_STOP>::Post(TileIndex{}, false, true, vli);
+			}
+			if (ImWndButton("전체 차고로", own)) {
+				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg((VehicleType)mw.tab), VehicleID::Invalid(), DepotCommandFlag::MassSend, vli);
+			}
+			if (ImWndButton("이름", own && Group::IsValidID(mw.sel_grp))) ImWndRename(mw, nullptr, nullptr, nullptr);
+			break;
+		}
+	}
+	ImGui::NewLine();
+}
+
+static bool DrawImGuiMiniWnd(MiniWnd &mw)
+{
+	int s = _ms.hud_scale;
+	const Vehicle *v = mw.kind == MiniWndKind::Vehicle ? Vehicle::GetIfValid(mw.veh) : nullptr;
+	const Station *st = mw.kind == MiniWndKind::Station ? (Station::IsValidID(mw.st) ? Station::Get(mw.st) : nullptr) : nullptr;
+	const Town *t = mw.kind == MiniWndKind::Town ? Town::GetIfValid(mw.town) : nullptr;
+	const Industry *ind = mw.kind == MiniWndKind::Industry ? Industry::GetIfValid(mw.ind) : nullptr;
+
+	std::string title = "-";
+	uint32_t idnum = 0;
+	switch (mw.kind) {
+		case MiniWndKind::Vehicle: if (v != nullptr) title = StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}); idnum = mw.veh.base(); break;
+		case MiniWndKind::Station: if (st != nullptr) title = StrMakeValid(GetString(STR_STATION_NAME, st->index), {}); idnum = mw.st.base(); break;
+		case MiniWndKind::Town: if (t != nullptr) title = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {}); idnum = mw.town.base(); break;
+		case MiniWndKind::Fleet: title = "차고"; break;
+		case MiniWndKind::Finance: title = "재정"; break;
+		case MiniWndKind::Group: title = "차량군"; break;
+		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
+	}
+	std::string wid = fmt::format("{}###mw{}_{}", title, (int)mw.kind, idnum);
+
+	bool wide = WndWide(mw);
+	ImGui::SetNextWindowPos(ImVec2((float)mw.x, (float)mw.y), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2((float)((wide ? 560 : 250) * s), (float)(270 * s)), ImGuiCond_FirstUseEver);
+	if (mw.want_raise) {
+		ImGui::SetNextWindowFocus();
+		mw.want_raise = false;
+	}
+	bool open = true;
+	if (!ImGui::Begin(wid.c_str(), &open, ImGuiWindowFlags_NoCollapse)) {
+		ImGui::End();
+		return open;
+	}
+	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
+		_front_wnd_veh = mw.kind == MiniWndKind::Vehicle ? mw.veh : VehicleID::Invalid();
+	}
+
+	_imrow = 0;
+	int ntab;
+	std::string tl[4];
+	switch (mw.kind) {
+		case MiniWndKind::Fleet:
+		case MiniWndKind::Group: {
+			static const StringID type_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
+			ntab = 4;
+			for (int ti = 0; ti < 4; ti++) tl[ti] = WndOfficial(type_strs[ti]);
+			break;
+		}
+		case MiniWndKind::Finance:
+			ntab = 2;
+			tl[0] = "개요";
+			tl[1] = "손익";
+			break;
+		case MiniWndKind::Vehicle:
+			ntab = 4;
+			tl[0] = "상태";
+			tl[1] = WndOfficial(STR_VEHICLE_DETAIL_TAB_CARGO);
+			tl[2] = "주문";
+			tl[3] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
+			break;
+		case MiniWndKind::Station:
+			ntab = 4;
+			tl[0] = "상태";
+			tl[1] = WndOfficial(STR_SMALLMAP_TYPE_INDUSTRIES);
+			tl[2] = WndOfficial(STR_SMALLMAP_TYPE_VEHICLES);
+			tl[3] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
+			break;
+		case MiniWndKind::Town:
+			ntab = 3;
+			tl[0] = "상태";
+			tl[1] = "평판";
+			tl[2] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
+			break;
+		default:
+			ntab = 3;
+			tl[0] = "상태";
+			tl[1] = "역";
+			tl[2] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
+			break;
+	}
+
+	bool has_view = mw.kind == MiniWndKind::Vehicle || mw.kind == MiniWndKind::Station ||
+			mw.kind == MiniWndKind::Town || mw.kind == MiniWndKind::Industry;
+	if (ImGui::BeginTabBar("tabs")) {
+		for (int ti = 0; ti < ntab; ti++) {
+			ImGuiTabItemFlags fl = mw.want_tab == ti ? ImGuiTabItemFlags_SetSelected : 0;
+			if (ImGui::BeginTabItem(fmt::format("{}###t{}", tl[ti], ti).c_str(), nullptr, fl)) {
+				if (mw.tab != ti) {
+					mw.tab = (uint8_t)ti;
+					if (ti != 0) CloseMiniCarrier(mw);
+				}
+				float cmd_h = ImGui::GetFrameHeightWithSpacing() + 4.0f * s;
+				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h));
+				if (ti == 0 && has_view && (v != nullptr || st != nullptr || t != nullptr || ind != nullptr)) {
+					ImWndViewSlot(mw);
+				}
+				switch (mw.kind) {
+					case MiniWndKind::Vehicle: if (v != nullptr) ImVehicleBody(mw, v); break;
+					case MiniWndKind::Station: if (st != nullptr) ImStationBody(mw, st); break;
+					case MiniWndKind::Town: if (t != nullptr) ImTownBody(mw, t); break;
+					case MiniWndKind::Industry: if (ind != nullptr) ImIndustryBody(mw, ind); break;
+					case MiniWndKind::Fleet: ImFleetBody(mw); break;
+					case MiniWndKind::Finance: ImFinanceBody(mw.tab); break;
+					case MiniWndKind::Group: ImGroupBody(mw); break;
+				}
+				ImGui::EndChild();
+				ImWndCommands(mw, v, st, t, ind);
+				ImGui::EndTabItem();
+			}
+		}
+		ImGui::EndTabBar();
+	}
+	mw.want_tab = -1;
+
+	ImGui::End();
+	return open;
+}
+
+static void DrawMiniWndsImGui()
+{
+	for (size_t i = _wnds.size(); i-- > 0;) {
+		bool alive;
+		switch (_wnds[i].kind) {
+			case MiniWndKind::Vehicle: alive = Vehicle::GetIfValid(_wnds[i].veh) != nullptr; break;
+			case MiniWndKind::Station: alive = Station::IsValidID(_wnds[i].st); break;
+			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
+			case MiniWndKind::Fleet: alive = true; break;
+			case MiniWndKind::Finance: alive = Company::IsValidID(_local_company); break;
+			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
+			default: alive = Industry::IsValidID(_wnds[i].ind); break;
+		}
+		if (!alive) CloseMiniWnd(i);
+	}
+
+	for (size_t i = 0; i < _wnds.size();) {
+		if (DrawImGuiMiniWnd(_wnds[i])) {
+			i++;
+		} else {
+			CloseMiniWnd(i);
+		}
+	}
+}
+
 bool ShowMiniVehicleWindow(const Vehicle *v)
 {
 	if (!_mini_active) return false;
@@ -5604,7 +6792,7 @@ static void Present()
 	DrawBuildMenu();
 	DrawCmdBar();
 	DrawWinBar();
-	DrawMiniWnds();
+	DrawMiniWndsImGui();
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -5760,18 +6948,9 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 	if (!_mini_active) return;
 	for (const Window *w : Window::IterateFromBack()) {
 		if (MiniUiHidesWindow(w->window_class)) continue;
-		size_t owner = CarrierOwner(w);
-		if (owner == SIZE_MAX) {
-			rects.push_back({w->left, w->top, w->width, w->height});
-			continue;
-		}
-		std::vector<RlwRectI> parts{{w->left, w->top, w->width, w->height}};
-		for (size_t j = owner + 1; j < _wnds.size(); j++) {
-			std::vector<RlwRectI> next;
-			for (const RlwRectI &p : parts) SubtractOverlayRect(p, WndFrameRect(_wnds[j]), next);
-			parts = std::move(next);
-		}
-		rects.insert(rects.end(), parts.begin(), parts.end());
+		/* Carriers stay below the ImGui layer; their pixels surface through
+		 * the view-slot image, so window z-order needs no rect clipping. */
+		rects.push_back({w->left, w->top, w->width, w->height, CarrierOwner(w) != SIZE_MAX});
 	}
 }
 
@@ -5786,33 +6965,19 @@ void MiniUiScrollTo(int x, int y)
 	_dest_ppt = std::max(_dest_ppt, _ms.jump_ppt);
 }
 
+static size_t CarrierOwner(const Window *w);
+
 bool MiniUiHandleMouseEvents(bool native_capture)
 {
 	if (!_mini_active) return false;
 
-	if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse
-			&& !_dragging && !_middle_button_down && _wnd_drag < 0) {
-		return true;
-	}
-
 	if (!_dragging && !_middle_button_down && _wnd_drag < 0) {
 		if (native_capture) return false;
+		/* Native windows float above the ImGui layer and take the click;
+		 * carriers sit below it, so ImGui gets those instead. */
 		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
-		if (w != nullptr && !MiniUiHidesWindow(w->window_class)) {
-			/* A carrier under a higher mini window is visually covered
-			 * there, so the chrome takes the click instead. */
-			size_t owner = CarrierOwner(w);
-			bool covered = false;
-			if (owner != SIZE_MAX) {
-				for (size_t j = owner + 1; j < _wnds.size(); j++) {
-					if (InRect(WndFrameRect(_wnds[j]), _cursor.pos.x, _cursor.pos.y)) {
-						covered = true;
-						break;
-					}
-				}
-			}
-			if (!covered) return false;
-		}
+		if (w != nullptr && !MiniUiHidesWindow(w->window_class) && CarrierOwner(w) == SIZE_MAX) return false;
+		if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse) return true;
 	}
 
 	if (_wnd_drag >= 0) {
@@ -5836,9 +7001,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	}
 
 	if (_cursor.wheel != 0) {
-		if (HandleWndWheel(_cursor.pos.x, _cursor.pos.y, _cursor.wheel > 0 ? 1 : -1)) {
-			/* consumed by a mini window body */
-		} else if (_menu_open >= 0 && InRect(_menu_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
+		if (_menu_open >= 0 && InRect(_menu_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
 			_menu_scroll += _cursor.wheel > 0 ? 1 : -1;
 		} else {
 			ZoomAt(_cursor.pos.x, _cursor.pos.y, _cursor.wheel < 0);
@@ -5848,7 +7011,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleWndClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (_order_pick_veh != VehicleID::Invalid()) {
 					OrderPickClick(_cursor.pos.x, _cursor.pos.y);

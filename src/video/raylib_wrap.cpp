@@ -101,6 +101,11 @@ static void RlwImGuiDropFrame()
 	_rlw_imgui_frame = false;
 }
 
+uintptr_t RlwScreenTexId()
+{
+	return _rlw_tex_ok ? _rlw_tex.id : 0;
+}
+
 void RlwClose()
 {
 	RlwImGuiShutdown();
@@ -455,16 +460,21 @@ void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRect
 	BeginDrawing();
 	ClearBackground(BLACK);
 	RlwReplayCommands();
-	for (size_t i = 0; i < count; i++) {
-		RlwRectI r = overlays[i];
-		if (r.x < 0) { r.w += r.x; r.x = 0; }
-		if (r.y < 0) { r.h += r.y; r.y = 0; }
-		if (r.x + r.w > w) r.w = w - r.x;
-		if (r.y + r.h > h) r.h = h - r.y;
-		if (r.w <= 0 || r.h <= 0) continue;
-		DrawTextureRec(_rlw_tex, {(float)r.x, (float)r.y, (float)r.w, (float)r.h}, {(float)r.x, (float)r.y}, WHITE);
+	/* Two passes around the ImGui layer: carrier viewports below it, every
+	 * other native window above it. */
+	for (int pass = 0; pass < 2; pass++) {
+		if (pass == 1) RlwImGuiRender();
+		for (size_t i = 0; i < count; i++) {
+			RlwRectI r = overlays[i];
+			if (r.under != (pass == 0)) continue;
+			if (r.x < 0) { r.w += r.x; r.x = 0; }
+			if (r.y < 0) { r.h += r.y; r.y = 0; }
+			if (r.x + r.w > w) r.w = w - r.x;
+			if (r.y + r.h > h) r.h = h - r.y;
+			if (r.w <= 0 || r.h <= 0) continue;
+			DrawTextureRec(_rlw_tex, {(float)r.x, (float)r.y, (float)r.w, (float)r.h}, {(float)r.x, (float)r.y}, WHITE);
+		}
 	}
-	RlwImGuiRender();
 	EndDrawing();
 }
 

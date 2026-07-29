@@ -41,6 +41,9 @@ struct RlwInput {
 
 struct RlwRectI {
 	int x, y, w, h;
+	/* Overlays normally draw above the ImGui layer; carrier viewports draw
+	 * below it and reach the screen through an ImGui image instead. */
+	bool under = false;
 };
 
 bool RlwInit(int w, int h, const char *title);
@@ -79,5 +82,9 @@ void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRect
 void RlwImGuiInit();
 void RlwImGuiShutdown();
 void RlwImGuiNewFrame();
+
+/* GL handle of the CPU screen texture, for sampling native-window regions
+ * inside ImGui images. 0 while the texture does not exist yet. */
+uintptr_t RlwScreenTexId();
 
 #endif /* VIDEO_RAYLIB_WRAP_H */
