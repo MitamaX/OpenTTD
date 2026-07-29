@@ -127,6 +127,8 @@ enum class MiniTool : uint8_t {
 	ShipDepot,
 	Dock,
 	Buoy,
+	Canal,
+	Lock,
 	Airport,
 	Demolish,
 	Signal,
@@ -137,12 +139,12 @@ enum class MiniTool : uint8_t {
 
 static bool IsRectTool(MiniTool t)
 {
-	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform;
+	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform || t == MiniTool::Canal;
 }
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -2220,6 +2222,17 @@ static void CommitDemolishPlan()
 	ClearPlans();
 }
 
+static void CommitCanalPlan()
+{
+	if (!_rect_plan.valid) return;
+	if (_drag_remove) {
+		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
+	} else {
+		Command<CMD_BUILD_CANAL>::Post(STR_ERROR_CAN_T_BUILD_CANALS, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), WaterClass::Canal, false);
+	}
+	ClearPlans();
+}
+
 /* Levelling copies the anchor tile's height, so the anchor corner is passed
  * as the reference tile rather than the normalised rectangle origin. */
 static void CommitTerraformPlan()
@@ -2352,6 +2365,14 @@ static void CommitPointTool()
 			}
 			break;
 
+		case MiniTool::Lock:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+			} else {
+				Command<CMD_BUILD_LOCK>::Post(STR_ERROR_CAN_T_BUILD_LOCKS, tile);
+			}
+			break;
+
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel: {
 			bool rail = _tool == MiniTool::RailTunnel;
@@ -2399,7 +2420,7 @@ static void DrawPointToolPlan(int ppt)
 		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
 	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop || _tool == MiniTool::RailWaypoint) {
 		DrawAxisBand(DiagDirToAxis(_point_dir), x0, y0, x1, y1, std::max(2, ppt / 3), c);
-	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel || _tool == MiniTool::Dock) {
+	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel || _tool == MiniTool::Dock || _tool == MiniTool::Lock) {
 		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
 		if (d != INVALID_DIAGDIR) {
 			int cx = (x0 + x1) / 2;
@@ -2490,6 +2511,8 @@ static const MiniMenuItem _menu_water_items[] = {
 	{STR_LAI_STATION_DESCRIPTION_SHIP_DOCK, "DOCK", MiniTool::Dock},
 	{STR_LAI_WATER_DESCRIPTION_SHIP_DEPOT, "DEPOT", MiniTool::ShipDepot},
 	{STR_LAI_STATION_DESCRIPTION_BUOY, "BUOY", MiniTool::Buoy},
+	{STR_LAI_WATER_DESCRIPTION_CANAL, "CANAL", MiniTool::Canal},
+	{STR_LAI_WATER_DESCRIPTION_LOCK, "LOCK", MiniTool::Lock},
 };
 
 static const MiniMenuItem _menu_air_items[] = {
@@ -2623,6 +2646,15 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_AIR_B);
 			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_AIR);
 			ScreenFillRect(cx - h + 2, cy - 1, cx + h - 2, cy + 1, COL_PAPER);
+			break;
+		case MiniTool::Canal:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_BRIDGE);
+			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_WATER);
+			break;
+		case MiniTool::Lock:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
+			ScreenFillRect(cx - is / 4 - 1, cy - h, cx - is / 4 + 1, cy + h, COL_PAPER);
+			ScreenFillRect(cx + is / 4 - 1, cy - h, cx + is / 4 + 1, cy + h, COL_PAPER);
 			break;
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel:
@@ -3429,6 +3461,8 @@ static void DrawHud()
 			case MiniTool::Dock: hint = "CLICK SHORE SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Buoy: hint = "CLICK WATER / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Airport: hint = "Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Canal: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Lock: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
 			case MiniTool::Signal: hint = "CLICK BUILD OR CYCLE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailTunnel:
@@ -5513,6 +5547,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		if (_tool == MiniTool::Station) CommitStationPlan();
 		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
 		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
+		if (_tool == MiniTool::Canal) CommitCanalPlan();
 	}
 	_prev_left = _left_button_down;
 
