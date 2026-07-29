@@ -14,6 +14,7 @@
 #include <vector>
 #include "imgui.h"
 #include "../3rdparty/rlimgui/rlImGui.h"
+#include "../3rdparty/rlimgui/imgui_impl_raylib.h"
 #include "raylib_wrap.h"
 
 #include "../safeguards.h"
@@ -62,6 +63,7 @@ bool RlwInit(int w, int h, const char *title)
 
 static bool _rlw_imgui_ready = false;
 static bool _rlw_imgui_frame = false;
+static bool _rlw_imgui_drawn = false;
 
 void RlwImGuiInit()
 {
@@ -75,6 +77,7 @@ void RlwImGuiShutdown()
 	if (!_rlw_imgui_ready) return;
 	if (_rlw_imgui_frame) ImGui::EndFrame();
 	_rlw_imgui_frame = false;
+	_rlw_imgui_drawn = false;
 	rlImGuiShutdown();
 	_rlw_imgui_ready = false;
 }
@@ -87,11 +90,21 @@ void RlwImGuiNewFrame()
 	_rlw_imgui_frame = true;
 }
 
+/* A present can arrive without a fresh ImGui frame, e.g. while a mode switch
+ * suppresses window updates; re-submitting the last draw data keeps the layer
+ * from blinking out on those frames. */
 static void RlwImGuiRender()
 {
-	if (!_rlw_imgui_frame) return;
-	rlImGuiEnd();
-	_rlw_imgui_frame = false;
+	if (!_rlw_imgui_ready) return;
+	if (_rlw_imgui_frame) {
+		ImGui::Render();
+		_rlw_imgui_frame = false;
+		_rlw_imgui_drawn = true;
+	}
+	if (!_rlw_imgui_drawn) return;
+	ImDrawData *dd = ImGui::GetDrawData();
+	if (dd == nullptr) return;
+	ImGui_ImplRaylib_RenderDrawData(dd);
 }
 
 static void RlwImGuiDropFrame()
