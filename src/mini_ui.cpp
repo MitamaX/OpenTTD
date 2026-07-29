@@ -15,6 +15,7 @@
 #include "bridge_map.h"
 #include "cargotype.h"
 #include "clear_map.h"
+#include "airport.h"
 #include "autoreplace_cmd.h"
 #include "autoreplace_func.h"
 #include "command_func.h"
@@ -50,6 +51,7 @@
 #include "misc_cmd.h"
 #include "network/network.h"
 #include "network/network_type.h"
+#include "newgrf_airport.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "news_gui.h"
@@ -125,6 +127,7 @@ enum class MiniTool : uint8_t {
 	ShipDepot,
 	Dock,
 	Buoy,
+	Airport,
 	Demolish,
 	Signal,
 	RailTunnel,
@@ -139,7 +142,7 @@ static bool IsRectTool(MiniTool t)
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -2246,6 +2249,31 @@ static Track PickSignalTrack(TileIndex tile, double wx, double wy)
 	return FindFirstTrack(trackbits);
 }
 
+/* No airport picker window: Q/E walk the available airport types and the
+ * blueprint previews the footprint, so the choice lives in the tool. */
+static uint8_t _airport_type = 0;
+
+static uint8_t PickAirportType()
+{
+	if (AirportSpec::Get(_airport_type)->IsAvailable()) return _airport_type;
+	for (uint8_t i = 0; i < NUM_AIRPORTS; i++) {
+		if (AirportSpec::Get(i)->IsAvailable()) return i;
+	}
+	return _airport_type;
+}
+
+static void CycleAirportType(int dir)
+{
+	for (int i = 1; i <= NUM_AIRPORTS; i++) {
+		int t = ((int)PickAirportType() + dir * i) % NUM_AIRPORTS;
+		if (t < 0) t += NUM_AIRPORTS;
+		if (AirportSpec::Get((uint8_t)t)->IsAvailable()) {
+			_airport_type = (uint8_t)t;
+			return;
+		}
+	}
+}
+
 /* Point tools place on click: the blueprint floats on the hover tile and
  * Q/E spin _point_dir, so no drag gesture is involved. */
 static void CommitPointTool()
@@ -2316,6 +2344,14 @@ static void CommitPointTool()
 			}
 			break;
 
+		case MiniTool::Airport:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+			} else {
+				Command<CMD_BUILD_AIRPORT>::Post(STR_ERROR_CAN_T_BUILD_AIRPORT_HERE, tile, PickAirportType(), 0, StationID::Invalid(), false);
+			}
+			break;
+
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel: {
 			bool rail = _tool == MiniTool::RailTunnel;
@@ -2376,6 +2412,9 @@ static void DrawPointToolPlan(int ppt)
 		int fx1 = a == AXIS_Y ? ScrX(ty + 2) - 1 : x1;
 		int fy1 = a == AXIS_X ? ScrY(tx + 2) - 1 : y1;
 		BlendRect(x0, y0, fx1, fy1, c, 60);
+	} else if (_tool == MiniTool::Airport) {
+		const AirportSpec *as = AirportSpec::Get(PickAirportType());
+		BlendRect(x0, y0, ScrX(ty + as->size_y) - 1, ScrY(tx + as->size_x) - 1, c, 60);
 	} else if (IsDirPointTool(_tool)) {
 		int cx = (x0 + x1) / 2;
 		int cy = (y0 + y1) / 2;
@@ -2453,6 +2492,10 @@ static const MiniMenuItem _menu_water_items[] = {
 	{STR_LAI_STATION_DESCRIPTION_BUOY, "BUOY", MiniTool::Buoy},
 };
 
+static const MiniMenuItem _menu_air_items[] = {
+	{STR_LAI_STATION_DESCRIPTION_AIRPORT, "AIRPORT", MiniTool::Airport},
+};
+
 /* Area-command tools live apart from construction: the bottom-right corner
  * is the command corner in the reference layout. */
 static const MiniMenuItem _cmd_items[] = {
@@ -2464,6 +2507,7 @@ static const MiniMenuCategory _menu_cats[] = {
 	{STR_RAIL_NAME_RAILROAD, "RAIL", MiniTool::Rail, _menu_rail_items},
 	{STR_ROAD_NAME_ROAD, "ROAD", MiniTool::Road, _menu_road_items},
 	{STR_LAI_WATER_DESCRIPTION_WATER, "WATER", MiniTool::Dock, _menu_water_items},
+	{STR_REPLACE_VEHICLE_AIRCRAFT, "AIR", MiniTool::Airport, _menu_air_items},
 };
 
 static int _menu_open = -1;
@@ -2574,6 +2618,11 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 		case MiniTool::Buoy:
 			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
 			ScreenFillCircle(cx, cy, t + 1, COL_STOP);
+			break;
+		case MiniTool::Airport:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_AIR_B);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_AIR);
+			ScreenFillRect(cx - h + 2, cy - 1, cx + h - 2, cy + 1, COL_PAPER);
 			break;
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel:
@@ -3379,6 +3428,7 @@ static void DrawHud()
 			case MiniTool::ShipDepot: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Dock: hint = "CLICK SHORE SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Buoy: hint = "CLICK WATER / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Airport: hint = "Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
 			case MiniTool::Signal: hint = "CLICK BUILD OR CYCLE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailTunnel:
@@ -3388,6 +3438,9 @@ static void DrawHud()
 		}
 		if (_cursor.in_window) {
 			std::string title = ToolLabel(_tool);
+			if (_tool == MiniTool::Airport) {
+				title += fmt::format("  {}", StrMakeValid(GetString(AirportSpec::Get(PickAirportType())->name), {}));
+			}
 			if (_dragging) {
 				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
 				if (_tool == MiniTool::Road && !_road_plan.tiles.empty()) title += fmt::format("  {}", _road_plan.tiles.size());
@@ -5512,13 +5565,22 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			break;
 
 		/* Blueprint rotation is modal, not a global shortcut: it only lives
-		 * while a directional placement tool is in hand. */
+		 * while a directional placement tool is in hand. The airport tool
+		 * reuses the pair to walk the available airport types. */
 		case 'E':
-			if (IsDirPointTool(_tool)) _point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
+			if (_tool == MiniTool::Airport) {
+				CycleAirportType(1);
+			} else if (IsDirPointTool(_tool)) {
+				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
+			}
 			break;
 
 		case 'Q':
-			if (IsDirPointTool(_tool)) _point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
+			if (_tool == MiniTool::Airport) {
+				CycleAirportType(-1);
+			} else if (IsDirPointTool(_tool)) {
+				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
+			}
 			break;
 
 		default:
