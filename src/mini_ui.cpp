@@ -88,6 +88,7 @@
 #include "vehicle_cmd.h"
 #include "water_cmd.h"
 #include "waypoint_cmd.h"
+#include "waypoint_func.h"
 #include "vehicle_func.h"
 #include "vehicle_gui.h"
 #include "vehiclelist.h"
@@ -150,7 +151,7 @@ static bool IsPointTool(MiniTool t)
 
 static bool IsDirPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::ShipDepot;
 }
 
 enum class MiniLayer : uint8_t {
@@ -2342,7 +2343,10 @@ static void CommitPointTool()
 			if (_drag_remove) {
 				Command<CMD_REMOVE_FROM_RAIL_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_RAIL_WAYPOINT, tile, tile, true);
 			} else {
-				Command<CMD_BUILD_RAIL_WAYPOINT>::Post(STR_ERROR_CAN_T_BUILD_RAIL_WAYPOINT, tile, DiagDirToAxis(_point_dir), 1, 1, STAT_CLASS_WAYP, 0, StationID::Invalid(), false);
+				/* The waypoint must follow the track under it, so the axis comes
+				 * from the tile rather than the tool rotation. */
+				Axis axis = GetAxisForNewRailWaypoint(tile);
+				Command<CMD_BUILD_RAIL_WAYPOINT>::Post(STR_ERROR_CAN_T_BUILD_RAIL_WAYPOINT, tile, IsValidAxis(axis) ? axis : AXIS_X, 1, 1, STAT_CLASS_WAYP, 0, StationID::Invalid(), false);
 			}
 			break;
 
@@ -2447,8 +2451,11 @@ static void DrawPointToolPlan(int ppt)
 	if (_tool == MiniTool::Signal) {
 		Track track = PickSignalTrack(TileXY(tx, ty), wx, wy);
 		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
-	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop || _tool == MiniTool::RailWaypoint) {
+	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
 		DrawAxisBand(DiagDirToAxis(_point_dir), x0, y0, x1, y1, std::max(2, ppt / 3), c);
+	} else if (_tool == MiniTool::RailWaypoint) {
+		Axis axis = GetAxisForNewRailWaypoint(TileXY(tx, ty));
+		if (IsValidAxis(axis)) DrawAxisBand(axis, x0, y0, x1, y1, std::max(2, ppt / 3), c);
 	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel || _tool == MiniTool::Dock || _tool == MiniTool::Lock) {
 		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
 		if (d != INVALID_DIAGDIR) {
@@ -3489,7 +3496,7 @@ static void DrawHud()
 			case MiniTool::Station: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::BusStop:
 			case MiniTool::TruckStop:
-			case MiniTool::RailWaypoint: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RailWaypoint: hint = "CLICK TRACK / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::TrainDepot:
 			case MiniTool::RoadDepot: hint = "Q E ROTATE EXIT / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::ShipDepot: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
