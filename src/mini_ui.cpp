@@ -5603,7 +5603,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				CommitPointTool();
 			} else {
 				_dragging = true;
-				_drag_remove = _ctrl_pressed;
+				_drag_remove = _ctrl_pressed && _tool != MiniTool::Convert;
 				_drag_ax = MapXAt(_cursor.pos.y);
 				_drag_ay = MapYAt(_cursor.pos.x);
 				if (_tool == MiniTool::Rail) {
