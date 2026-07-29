@@ -74,7 +74,6 @@
 #include "strings_func.h"
 #include "station_map.h"
 #include "terraform_cmd.h"
-#include "textbuf_gui.h"
 #include "town.h"
 #include "town_cmd.h"
 #include "tile_map.h"
@@ -3650,6 +3649,10 @@ struct MiniWnd {
 	uint8_t tab = 0;
 	bool want_raise = false;
 	int8_t want_tab = -1;
+	bool renaming = false;
+	bool focus_name = false;
+	GroupID rename_grp = GroupID::Invalid();
+	char name_buf[128] = {};
 };
 
 static std::vector<MiniWnd> _wnds;
@@ -3706,17 +3709,11 @@ static WindowDesc _mini_carrier_desc(
 	_nested_mini_carrier_widgets
 );
 
-/* The group window has no per-window entity id, so the rename target rides
- * in this side channel between the pen click and the query result. */
-static GroupID _mini_rename_grp = GroupID::Invalid();
-
-/* Frameless native viewport window aligned with a mini window's view slot;
- * it doubles as the query-string parent so renames land somewhere. */
+/* Frameless native viewport window aligned with a mini window's view slot. */
 struct MiniCarrierWindow : Window {
-	MiniWndKind carry_kind;
 	TileIndex focus_tile = INVALID_TILE;
 
-	MiniCarrierWindow(WindowDesc &desc, WindowNumber num, MiniWndKind kind, std::variant<TileIndex, VehicleID> focus) : Window(desc), carry_kind(kind)
+	MiniCarrierWindow(WindowDesc &desc, WindowNumber num, std::variant<TileIndex, VehicleID> focus) : Window(desc)
 	{
 		if (std::holds_alternative<TileIndex>(focus)) this->focus_tile = std::get<TileIndex>(focus);
 		this->InitNested(num);
@@ -3732,27 +3729,6 @@ struct MiniCarrierWindow : Window {
 		if (this->focus_tile != INVALID_TILE) ScrollWindowToTile(this->focus_tile, this, true);
 	}
 
-	void OnQueryTextFinished(std::optional<std::string> str) override
-	{
-		if (!str.has_value()) return;
-		int id = (this->window_number - MW_CARRIER_NUM_BASE) % MW_CARRIER_KIND_STRIDE;
-		if (this->carry_kind == MiniWndKind::Group) {
-			if (Group::IsValidID(_mini_rename_grp)) {
-				Command<CMD_ALTER_GROUP>::Post(STR_ERROR_GROUP_CAN_T_RENAME, AlterGroupMode::Rename, _mini_rename_grp, GroupID::Invalid(), *str);
-			}
-			return;
-		}
-		if (this->carry_kind == MiniWndKind::Vehicle) {
-			const Vehicle *v = Vehicle::GetIfValid(static_cast<VehicleID>(id));
-			if (v != nullptr) Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + v->type, v->index, *str);
-		} else if (this->carry_kind == MiniWndKind::Station) {
-			StationID st = static_cast<StationID>(id);
-			if (Station::IsValidID(st)) Command<CMD_RENAME_STATION>::Post(STR_ERROR_CAN_T_RENAME_STATION, st, *str);
-		} else if (this->carry_kind == MiniWndKind::Town) {
-			TownID town = static_cast<TownID>(id);
-			if (Town::IsValidID(town)) Command<CMD_RENAME_TOWN>::Post(STR_ERROR_CAN_T_RENAME_TOWN, town, *str);
-		}
-	}
 };
 
 static Window *EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
@@ -3779,7 +3755,7 @@ static Window *EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
 			if (i == nullptr) return nullptr;
 			focus = i->location.GetCenterTile();
 		}
-		cw = new MiniCarrierWindow(_mini_carrier_desc, MiniCarrierNum(mw), mw.kind, focus);
+		cw = new MiniCarrierWindow(_mini_carrier_desc, MiniCarrierNum(mw), focus);
 	}
 	if (cw->width != w || cw->height != h) ResizeWindow(cw, w - cw->width, h - cw->height, false);
 	if (cw->left != x || cw->top != y) {
@@ -4107,24 +4083,26 @@ static void FleetMarkUnit(MiniWnd &mw, VehicleID target, bool attach)
 	}
 }
 
-static void ImWndRename(MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t)
+/* Names are edited where they are shown: the label swaps for a text field in
+ * place, Enter commits and anything else leaves the name alone. */
+static void ImWndNameEditBegin(MiniWnd &mw, std::string_view name)
 {
-	Window *cw = EnsureMiniCarrier(mw, -10000, -10000, 64, 48);
-	if (cw == nullptr) return;
-	if (mw.kind == MiniWndKind::Vehicle && v != nullptr) {
-		ShowQueryString(GetString(STR_VEHICLE_NAME, v->index), STR_QUERY_RENAME_TRAIN_CAPTION + v->type,
-				MAX_LENGTH_VEHICLE_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
-	} else if (st != nullptr) {
-		ShowQueryString(GetString(STR_STATION_NAME, st->index), STR_STATION_VIEW_EDIT_STATION_SIGN,
-				MAX_LENGTH_STATION_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
-	} else if (t != nullptr) {
-		ShowQueryString(GetString(STR_TOWN_NAME, t->index), STR_TOWN_VIEW_RENAME_TOWN_BUTTON,
-				MAX_LENGTH_TOWN_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
-	} else if (mw.kind == MiniWndKind::Group && Group::IsValidID(mw.sel_grp)) {
-		_mini_rename_grp = mw.sel_grp;
-		ShowQueryString(GetString(STR_GROUP_NAME, mw.sel_grp), STR_GROUP_RENAME_CAPTION,
-				MAX_LENGTH_GROUP_NAME_CHARS, cw, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+	size_t n = std::min(name.size(), sizeof(mw.name_buf) - 1);
+	std::char_traits<char>::copy(mw.name_buf, name.data(), n);
+	mw.name_buf[n] = '\0';
+	mw.focus_name = true;
+}
+
+/* Returns 1 once the name is committed, -1 once the edit is abandoned. */
+static int ImWndNameEdit(MiniWnd &mw, float width)
+{
+	ImGui::SetNextItemWidth(width);
+	if (mw.focus_name) {
+		ImGui::SetKeyboardFocusHere();
+		mw.focus_name = false;
 	}
+	if (ImGui::InputText("##edit", mw.name_buf, sizeof(mw.name_buf), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) return 1;
+	return ImGui::IsItemDeactivated() ? -1 : 0;
 }
 
 static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
@@ -4778,15 +4756,36 @@ static void ImGroupBody(MiniWnd &mw)
 		se = nullptr;
 	}
 
+	/* A rename left open on a group this tab no longer lists would edit a row
+	 * that is never drawn. */
+	const Group *rg = Group::GetIfValid(mw.rename_grp);
+	if (rg != nullptr && (rg->owner != _local_company || rg->vehicle_type != vt)) rg = nullptr;
+	if (rg == nullptr) mw.rename_grp = GroupID::Invalid();
+
 	float lw = ImGui::GetContentRegionAvail().x * 0.45f;
 	ImGui::BeginChild("groups", ImVec2(lw, 0.0f));
 	{
 		ImWndHeader("그룹");
 		auto group_row = [&](GroupID gid, std::string_view name, uint count) {
+			if (mw.rename_grp == gid) {
+				ImGui::PushID((int)gid.base());
+				int r = ImWndNameEdit(mw, ImGui::GetContentRegionAvail().x);
+				ImGui::PopID();
+				if (r == 1 && mw.name_buf[0] != '\0') {
+					Command<CMD_ALTER_GROUP>::Post(STR_ERROR_GROUP_CAN_T_RENAME, AlterGroupMode::Rename, gid, GroupID::Invalid(), mw.name_buf);
+				}
+				if (r != 0) mw.rename_grp = GroupID::Invalid();
+				return;
+			}
 			if (ImWndLink(fmt::format("{}{} · {}대", mw.sel_grp == gid ? "▶ " : "· ", name, count),
 					mw.sel_grp == gid ? COL_CH_ACCENT : COL_CH_TEXT)) {
 				mw.sel_grp = gid;
 				mw.sel_eng = EngineID::Invalid();
+			}
+			if (Group::IsValidID(gid) && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+				ImWndNameEditBegin(mw, name);
+				mw.rename_grp = gid;
+				mw.renaming = false;
 			}
 		};
 		group_row(ALL_GROUP, WndOfficial(STR_GROUP_ALL_TRAINS + vt), GetGroupNumVehicle(_local_company, ALL_GROUP, vt));
@@ -4907,7 +4906,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			if (ImWndButton(following ? "추적 해제" : "따라가기", v != nullptr)) {
 				if (following) EnterIdleMode(); else EnterFollowMode(v->index);
 			}
-			if (ImWndButton("이름", own)) ImWndRename(mw, v, nullptr, nullptr);
 			break;
 		}
 
@@ -4921,7 +4919,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			if (ImWndButton("이동", st != nullptr)) {
 				MiniUiScrollTo(TileX(st->xy) * TILE_SIZE, TileY(st->xy) * TILE_SIZE);
 			}
-			if (ImWndButton("이름", st != nullptr && st->owner == _local_company)) ImWndRename(mw, nullptr, st, nullptr);
 			break;
 		}
 
@@ -4929,7 +4926,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			extern void ShowTownAuthorityWindow(uint town);
 			if (ImWndButton("당국", t != nullptr)) ShowTownAuthorityWindow(t->index.base());
 			if (ImWndButton("이동", t != nullptr)) MiniUiScrollTo(TileX(t->xy) * TILE_SIZE, TileY(t->xy) * TILE_SIZE);
-			if (ImWndButton("이름", t != nullptr)) ImWndRename(mw, nullptr, nullptr, t);
 			break;
 		}
 
@@ -4990,11 +4986,82 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			if (ImWndButton("전체 차고로", own)) {
 				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg((VehicleType)mw.tab), VehicleID::Invalid(), DepotCommandFlag::MassSend, vli);
 			}
-			if (ImWndButton("이름", own && Group::IsValidID(mw.sel_grp))) ImWndRename(mw, nullptr, nullptr, nullptr);
 			break;
 		}
 	}
 	ImGui::NewLine();
+}
+
+static bool WndRenamable(const MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t)
+{
+	switch (mw.kind) {
+		case MiniWndKind::Vehicle: return v != nullptr && v->owner == _local_company;
+		case MiniWndKind::Station: return st != nullptr && st->owner == _local_company;
+		case MiniWndKind::Town: return t != nullptr;
+		default: return false;
+	}
+}
+
+static void WndPostRename(const MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t, std::string name)
+{
+	if (name.empty()) return;
+	switch (mw.kind) {
+		case MiniWndKind::Vehicle:
+			if (v != nullptr) Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + v->type, v->index, std::move(name));
+			break;
+		case MiniWndKind::Station:
+			if (st != nullptr) Command<CMD_RENAME_STATION>::Post(STR_ERROR_CAN_T_RENAME_STATION, st->index, std::move(name));
+			break;
+		case MiniWndKind::Town:
+			if (t != nullptr) Command<CMD_RENAME_TOWN>::Post(STR_ERROR_CAN_T_RENAME_TOWN, t->index, std::move(name));
+			break;
+		default: break;
+	}
+}
+
+/* The caption doubles as the rename field: a double click swaps the label for
+ * an input, Enter commits, anything else leaves the name alone. */
+static void ImWndTitle(MiniWnd &mw, const std::string &title, bool renamable, bool &open,
+		const Vehicle *v, const Station *st, const Town *t)
+{
+	if (mw.renaming && !renamable) mw.renaming = false;
+
+	float bw = ImGui::GetFrameHeight();
+	float right = ImGui::GetContentRegionMax().x - bw;
+
+	/* The window carries no native title bar, so the caption row paints its
+	 * own band to stay readable as a drag handle. */
+	ImVec2 wp = ImGui::GetWindowPos();
+	ImVec2 cp = ImGui::GetCursorScreenPos();
+	float pad = ImGui::GetStyle().WindowPadding.y;
+	ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(wp.x + 1.0f, cp.y - pad),
+			ImVec2(wp.x + ImGui::GetWindowWidth() - 1.0f, cp.y + bw), MiniImU32(COL_CH_TILE),
+			ImGui::GetStyle().WindowRounding, ImDrawFlags_RoundCornersTop);
+
+	if (mw.renaming) {
+		ImGui::PushID("title");
+		int r = ImWndNameEdit(mw, std::max(right - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x, 32.0f));
+		ImGui::PopID();
+		if (r == 1) WndPostRename(mw, v, st, t, mw.name_buf);
+		if (r != 0) mw.renaming = false;
+	} else {
+		ImGui::AlignTextToFramePadding();
+		ImWndText(title, COL_CH_ACCENT);
+		if (renamable && ImGui::IsItemHovered()) {
+			ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
+			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+				ImWndNameEditBegin(mw, title);
+				mw.renaming = true;
+				mw.rename_grp = GroupID::Invalid();
+			}
+		}
+	}
+
+	ImGui::SameLine(right);
+	ImGui::PushID("close");
+	if (ImGui::Button("×", ImVec2(bw, bw))) open = false;
+	ImGui::PopID();
+	ImGui::Separator();
 }
 
 static bool DrawImGuiMiniWnd(MiniWnd &mw)
@@ -5016,7 +5083,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::Group: title = "차량군"; break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
 	}
-	std::string wid = fmt::format("{}###mw{}_{}", title, (int)mw.kind, idnum);
+	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
 
 	bool wide = WndWide(mw);
 	ImVec2 def_size((float)((wide ? 560 : 250) * s), (float)(270 * s));
@@ -5028,13 +5095,15 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		mw.want_raise = false;
 	}
 	bool open = true;
-	if (!ImGui::Begin(wid.c_str(), &open, ImGuiWindowFlags_NoCollapse)) {
+	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse)) {
 		ImGui::End();
 		return open;
 	}
 	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
 		_front_wnd_veh = mw.kind == MiniWndKind::Vehicle ? mw.veh : VehicleID::Invalid();
 	}
+
+	ImWndTitle(mw, title, WndRenamable(mw, v, st, t), open, v, st, t);
 
 	_imrow = 0;
 	int ntab;
@@ -5472,6 +5541,10 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 		}
 		return false;
 	}
+
+	/* An open rename field owns the keyboard; letting the shortcuts through
+	 * would rotate blueprints while typing a name. */
+	if (kc != WKC_F9 && ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput) return true;
 
 	switch (kc) {
 		case WKC_F9:
