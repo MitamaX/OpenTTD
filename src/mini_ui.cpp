@@ -84,6 +84,7 @@
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
 #include "vehicle_cmd.h"
+#include "water_cmd.h"
 #include "waypoint_cmd.h"
 #include "vehicle_func.h"
 #include "vehicle_gui.h"
@@ -121,6 +122,9 @@ enum class MiniTool : uint8_t {
 	TruckStop,
 	TrainDepot,
 	RoadDepot,
+	ShipDepot,
+	Dock,
+	Buoy,
 	Demolish,
 	Signal,
 	RailTunnel,
@@ -135,12 +139,12 @@ static bool IsRectTool(MiniTool t)
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy;
 }
 
 static bool IsDirPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::RailWaypoint;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot;
 }
 
 enum class MiniLayer : uint8_t {
@@ -2288,6 +2292,30 @@ static void CommitPointTool()
 			}
 			break;
 
+		case MiniTool::ShipDepot:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+			} else {
+				Command<CMD_BUILD_SHIP_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_SHIP_DEPOT, tile, DiagDirToAxis(_point_dir));
+			}
+			break;
+
+		case MiniTool::Dock:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+			} else {
+				Command<CMD_BUILD_DOCK>::Post(STR_ERROR_CAN_T_BUILD_DOCK_HERE, tile, StationID::Invalid(), false);
+			}
+			break;
+
+		case MiniTool::Buoy:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+			} else {
+				Command<CMD_BUILD_BUOY>::Post(STR_ERROR_CAN_T_POSITION_BUOY_HERE, tile);
+			}
+			break;
+
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel: {
 			bool rail = _tool == MiniTool::RailTunnel;
@@ -2335,13 +2363,19 @@ static void DrawPointToolPlan(int ppt)
 		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
 	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop || _tool == MiniTool::RailWaypoint) {
 		DrawAxisBand(DiagDirToAxis(_point_dir), x0, y0, x1, y1, std::max(2, ppt / 3), c);
-	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel) {
+	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel || _tool == MiniTool::Dock) {
 		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
 		if (d != INVALID_DIAGDIR) {
 			int cx = (x0 + x1) / 2;
 			int cy = (y0 + y1) / 2;
 			ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 5), c);
 		}
+	} else if (_tool == MiniTool::ShipDepot) {
+		/* The depot spans two tiles along its axis; show the real footprint. */
+		Axis a = DiagDirToAxis(_point_dir);
+		int fx1 = a == AXIS_Y ? ScrX(ty + 2) - 1 : x1;
+		int fy1 = a == AXIS_X ? ScrY(tx + 2) - 1 : y1;
+		BlendRect(x0, y0, fx1, fy1, c, 60);
 	} else if (IsDirPointTool(_tool)) {
 		int cx = (x0 + x1) / 2;
 		int cy = (y0 + y1) / 2;
@@ -2413,6 +2447,12 @@ static const MiniMenuItem _menu_road_items[] = {
 	{STR_LAI_TUNNEL_DESCRIPTION_ROAD, "TUNNEL", MiniTool::RoadTunnel},
 };
 
+static const MiniMenuItem _menu_water_items[] = {
+	{STR_LAI_STATION_DESCRIPTION_SHIP_DOCK, "DOCK", MiniTool::Dock},
+	{STR_LAI_WATER_DESCRIPTION_SHIP_DEPOT, "DEPOT", MiniTool::ShipDepot},
+	{STR_LAI_STATION_DESCRIPTION_BUOY, "BUOY", MiniTool::Buoy},
+};
+
 /* Area-command tools live apart from construction: the bottom-right corner
  * is the command corner in the reference layout. */
 static const MiniMenuItem _cmd_items[] = {
@@ -2423,6 +2463,7 @@ static const MiniMenuItem _cmd_items[] = {
 static const MiniMenuCategory _menu_cats[] = {
 	{STR_RAIL_NAME_RAILROAD, "RAIL", MiniTool::Rail, _menu_rail_items},
 	{STR_ROAD_NAME_ROAD, "ROAD", MiniTool::Road, _menu_road_items},
+	{STR_LAI_WATER_DESCRIPTION_WATER, "WATER", MiniTool::Dock, _menu_water_items},
 };
 
 static int _menu_open = -1;
@@ -2521,6 +2562,18 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 		case MiniTool::Signal:
 			ScreenFillCircle(cx - is / 4, cy + is / 4, t, COL_STOP);
 			ScreenFillCircle(cx + is / 4, cy - is / 4, t, COL_GO);
+			break;
+		case MiniTool::ShipDepot:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
+			ScreenFillRect(cx + h - 2, cy - is / 4, cx + h, cy + is / 4, COL_PAPER);
+			break;
+		case MiniTool::Dock:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
+			ScreenFillRect(cx - t, cy - h, cx + t, cy + h, COL_BRIDGE);
+			break;
+		case MiniTool::Buoy:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
+			ScreenFillCircle(cx, cy, t + 1, COL_STOP);
 			break;
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel:
@@ -3323,6 +3376,9 @@ static void DrawHud()
 			case MiniTool::RailWaypoint: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::TrainDepot:
 			case MiniTool::RoadDepot: hint = "Q E ROTATE EXIT / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::ShipDepot: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Dock: hint = "CLICK SHORE SLOPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Buoy: hint = "CLICK WATER / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
 			case MiniTool::Signal: hint = "CLICK BUILD OR CYCLE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailTunnel:
