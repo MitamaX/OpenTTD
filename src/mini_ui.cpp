@@ -117,6 +117,7 @@ static double _dest_ppt = 16.0;
 enum class MiniTool : uint8_t {
 	None,
 	Rail,
+	Convert,
 	Road,
 	Station,
 	RailWaypoint,
@@ -139,7 +140,7 @@ enum class MiniTool : uint8_t {
 
 static bool IsRectTool(MiniTool t)
 {
-	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform || t == MiniTool::Canal;
+	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform || t == MiniTool::Canal || t == MiniTool::Convert;
 }
 
 static bool IsPointTool(MiniTool t)
@@ -162,6 +163,7 @@ static MiniLayer ToolLayer(MiniTool t)
 {
 	switch (t) {
 		case MiniTool::Rail:
+		case MiniTool::Convert:
 		case MiniTool::Station:
 		case MiniTool::RailWaypoint:
 		case MiniTool::TrainDepot:
@@ -1975,15 +1977,35 @@ static void DrawRailPlan(int ppt)
 	}
 }
 
+static RailType _rail_type_sel = INVALID_RAILTYPE;
+
 static RailType PickRailType()
 {
 	const Company *c = Company::GetIfValid(_local_company);
-	if (c != nullptr) {
-		for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
-			if (c->avail_railtypes.Test(rt)) return rt;
-		}
+	if (c == nullptr) return RAILTYPE_RAIL;
+	if (_rail_type_sel != INVALID_RAILTYPE && c->avail_railtypes.Test(_rail_type_sel)) return _rail_type_sel;
+	/* Electric rail runs everything plain rail does, so once it exists it is
+	 * the better default; mono and maglev stay an explicit choice. */
+	if (c->avail_railtypes.Test(RAILTYPE_ELECTRIC)) return RAILTYPE_ELECTRIC;
+	for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
+		if (c->avail_railtypes.Test(rt)) return rt;
 	}
 	return RAILTYPE_RAIL;
+}
+
+static void CycleRailType(int dir)
+{
+	const Company *c = Company::GetIfValid(_local_company);
+	if (c == nullptr) return;
+	RailType cur = PickRailType();
+	for (int i = 1; i <= (int)RAILTYPE_END; i++) {
+		int t = ((int)cur + dir * i) % (int)RAILTYPE_END;
+		if (t < 0) t += (int)RAILTYPE_END;
+		if (c->avail_railtypes.Test((RailType)t)) {
+			_rail_type_sel = (RailType)t;
+			return;
+		}
+	}
 }
 
 static void ClearPlans()
@@ -2219,6 +2241,13 @@ static void CommitDemolishPlan()
 {
 	if (!_rect_plan.valid) return;
 	Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
+	ClearPlans();
+}
+
+static void CommitConvertPlan()
+{
+	if (!_rect_plan.valid) return;
+	Command<CMD_CONVERT_RAIL>::Post(STR_ERROR_CAN_T_CONVERT_RAIL, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), PickRailType(), false);
 	ClearPlans();
 }
 
@@ -2497,6 +2526,7 @@ static const MiniMenuItem _menu_rail_items[] = {
 	{STR_COMPANY_INFRASTRUCTURE_VIEW_SIGNALS, "SIGNAL", MiniTool::Signal},
 	{STR_LAI_RAIL_DESCRIPTION_TRAIN_DEPOT, "DEPOT", MiniTool::TrainDepot},
 	{STR_LAI_TUNNEL_DESCRIPTION_RAILROAD, "TUNNEL", MiniTool::RailTunnel},
+	{INVALID_STRING_ID, "CONVERT", MiniTool::Convert},
 };
 
 static const MiniMenuItem _menu_road_items[] = {
@@ -2598,6 +2628,10 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 	switch (tool) {
 		case MiniTool::Rail:
 			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_PAPER);
+			break;
+		case MiniTool::Convert:
+			ScreenThickLine(cx - h, cy + h - 2, cx + h, cy - 2, t, COL_BRIDGE);
+			ScreenThickLine(cx - h, cy + 2, cx + h, cy - h + 2, t, COL_GO);
 			break;
 		case MiniTool::Road:
 			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_ROAD);
@@ -3449,7 +3483,8 @@ static void DrawHud()
 		 * top, action and rotation hints below, live size while dragging. */
 		std::string_view hint;
 		switch (_tool) {
-			case MiniTool::Rail: hint = "DRAG PATH / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Rail: hint = "DRAG PATH / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Convert: hint = "DRAG AREA / Q E TYPE / RMB CANCEL"; break;
 			case MiniTool::Road: hint = "DRAG LINE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Station: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::BusStop:
@@ -3474,6 +3509,9 @@ static void DrawHud()
 			std::string title = ToolLabel(_tool);
 			if (_tool == MiniTool::Airport) {
 				title += fmt::format("  {}", StrMakeValid(GetString(AirportSpec::Get(PickAirportType())->name), {}));
+			}
+			if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
+				title += fmt::format("  {}", StrMakeValid(GetString(GetRailTypeInfo(PickRailType())->strings.name), {}));
 			}
 			if (_dragging) {
 				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
@@ -5586,6 +5624,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
 		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
 		if (_tool == MiniTool::Canal) CommitCanalPlan();
+		if (_tool == MiniTool::Convert) CommitConvertPlan();
 	}
 	_prev_left = _left_button_down;
 
@@ -5643,6 +5682,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 		case 'E':
 			if (_tool == MiniTool::Airport) {
 				CycleAirportType(1);
+			} else if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
+				CycleRailType(1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
 			}
@@ -5651,6 +5692,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 		case 'Q':
 			if (_tool == MiniTool::Airport) {
 				CycleAirportType(-1);
+			} else if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
+				CycleRailType(-1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
 			}
