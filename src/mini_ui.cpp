@@ -3628,9 +3628,9 @@ struct MiniWndHit {
 static std::vector<MiniWndHit> _wnd_hits;
 static std::vector<MiniWndRowAct> _wnd_row_acts;
 
-/* The fleet window runs twice as wide with side-by-side columns; the other
- * kinds keep the narrow single-column shape. */
-static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet; }
+/* The fleet and group windows run twice as wide with side-by-side columns;
+ * the other kinds keep the narrow single-column shape. */
+static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group; }
 static int WndW(const MiniWnd &mw) { return std::min((WndWide(mw) ? 560 : 250) * _ms.hud_scale, _fbw - 12 * _ms.hud_scale); }
 static int WndTitleH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
 static int WndTabH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
@@ -3653,7 +3653,7 @@ static Rect WndBodyRect(const MiniWnd &mw)
 	return {fr.left + WndPad(), body_y, fr.right - WndPad(), body_y + WndBodyH(mw) - 1};
 }
 
-static int FleetSplitX(const Rect &body)
+static int WndSplitX(const Rect &body)
 {
 	return body.left + (body.right - body.left + 1) * 9 / 20;
 }
@@ -3976,6 +3976,34 @@ struct MiniWndBody {
 		this->row++;
 	}
 };
+
+/* Wide windows clamp and mark each column's scroll on their own; the bar sits
+ * in the gap right of the column. */
+static void WndColumnScroll(MiniWndBody &b, int &scroll)
+{
+	int vis = (b.area.bottom - b.area.top + 1) / b.rh;
+	scroll = Clamp(scroll, 0, std::max(0, b.row - vis));
+	if (b.row > vis && vis > 0) {
+		int s = _ms.hud_scale;
+		int track_h = b.area.bottom - b.area.top + 1;
+		int ty0 = b.area.top + track_h * scroll / b.row;
+		int ty1 = b.area.top + track_h * std::min(b.row, scroll + vis) / b.row - 1;
+		RlwCmdRect(b.area.right + s, ty0, b.area.right + 2 * s - 1, ty1, COL_CH_DIM);
+	}
+}
+
+/* Column split shared by draw and wheel routing so both agree on ownership. */
+static void WndSplitColumns(MiniWnd &mw, MiniWndBody &left, MiniWndBody &right)
+{
+	Rect full = left.area;
+	int pad = WndPad();
+	int mid = WndSplitX(full);
+	left.area.right = mid - pad;
+	right = left;
+	right.area = {mid + 1, full.top, full.right, full.bottom};
+	right.scroll = mw.scroll2;
+	RlwCmdRect(mid - pad / 2, full.top, mid - pad / 2, full.bottom, COL_CH_EDGE);
+}
 
 static std::string WndOfficial(StringID str)
 {
@@ -4469,14 +4497,8 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 	}
 
 	/* Side-by-side columns: the buy list left, design and depots right. */
-	Rect full = body.area;
-	int pad = WndPad();
-	int mid = FleetSplitX(full);
-	body.area.right = mid - pad;
-	MiniWndBody yard = body;
-	yard.area = {mid + 1, full.top, full.right, full.bottom};
-	yard.scroll = mw.scroll2;
-	RlwCmdRect(mid - pad / 2, full.top, mid - pad / 2, full.bottom, COL_CH_EDGE);
+	MiniWndBody yard;
+	WndSplitColumns(mw, body, yard);
 
 	yard.Header("설계");
 	if (draft.empty()) {
@@ -4624,20 +4646,8 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 	}
 	if (!anydep) yard.Plain("차고 없음", COL_CH_DIM);
 
-	/* Per-column scroll clamps and marks. */
-	auto colbar = [&](MiniWndBody &b, int &scroll) {
-		int vis = (b.area.bottom - b.area.top + 1) / b.rh;
-		scroll = Clamp(scroll, 0, std::max(0, b.row - vis));
-		if (b.row > vis && vis > 0) {
-			int s = _ms.hud_scale;
-			int track_h = b.area.bottom - b.area.top + 1;
-			int ty0 = b.area.top + track_h * scroll / b.row;
-			int ty1 = b.area.top + track_h * std::min(b.row, scroll + vis) / b.row - 1;
-			RlwCmdRect(b.area.right + s, ty0, b.area.right + 2 * s - 1, ty1, COL_CH_DIM);
-		}
-	};
-	colbar(body, mw.scroll);
-	colbar(yard, mw.scroll2);
+	WndColumnScroll(body, mw.scroll);
+	WndColumnScroll(yard, mw.scroll2);
 	mw.rows = body.row;
 }
 
@@ -4718,6 +4728,10 @@ static void DrawGroupWndBody(MiniWnd &mw, MiniWndBody &body)
 		se = nullptr;
 	}
 
+	/* Side-by-side columns: groups and autoreplace left, vehicles right. */
+	MiniWndBody veh;
+	WndSplitColumns(mw, body, veh);
+
 	body.Header("그룹");
 	auto group_row = [&](GroupID gid, std::string_view name, uint count) {
 		MiniWndRowAct act;
@@ -4772,7 +4786,7 @@ static void DrawGroupWndBody(MiniWnd &mw, MiniWndBody &body)
 	}
 
 	if (special) {
-		body.Header("차량");
+		veh.Header("차량");
 		bool anyv = false;
 		for (const Vehicle *v : Vehicle::Iterate()) {
 			if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
@@ -4780,31 +4794,35 @@ static void DrawGroupWndBody(MiniWnd &mw, MiniWndBody &body)
 			anyv = true;
 			MiniWndRowAct act;
 			act.open_veh = v->index;
-			body.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
+			veh.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
 		}
-		if (!anyv) body.Plain("차량 없음", COL_CH_DIM);
+		if (!anyv) veh.Plain("차량 없음", COL_CH_DIM);
 	} else {
-		body.Header("소속 차량. 클릭으로 제외");
+		veh.Header("소속 차량. 클릭으로 제외");
 		bool anyin = false;
 		for (const Vehicle *v : Vehicle::Iterate()) {
 			if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id != mw.sel_grp) continue;
 			anyin = true;
 			MiniWndRowAct act;
 			act.grp_rm = v->index;
-			body.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
+			veh.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
 		}
-		if (!anyin) body.Plain("소속 차량 없음", COL_CH_DIM);
-		body.Header("클릭으로 추가");
+		if (!anyin) veh.Plain("소속 차량 없음", COL_CH_DIM);
+		veh.Header("클릭으로 추가");
 		bool anyout = false;
 		for (const Vehicle *v : Vehicle::Iterate()) {
 			if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id == mw.sel_grp) continue;
 			anyout = true;
 			MiniWndRowAct act;
 			act.grp_add = v->index;
-			body.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
+			veh.Link(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT, act);
 		}
-		if (!anyout) body.Plain("없음", COL_CH_DIM);
+		if (!anyout) veh.Plain("없음", COL_CH_DIM);
 	}
+
+	WndColumnScroll(body, mw.scroll);
+	WndColumnScroll(veh, mw.scroll2);
+	mw.rows = body.row;
 }
 
 static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c, bool alt)
@@ -5075,8 +5093,8 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	if (mw.kind == MiniWndKind::Finance) DrawFinanceWndBody(bp, mw.tab);
 	if (mw.kind == MiniWndKind::Group) DrawGroupWndBody(mw, bp);
 
-	/* Scroll clamp and position mark; the wide fleet body clamps its own columns. */
-	if (mw.kind != MiniWndKind::Fleet) {
+	/* Scroll clamp and position mark; wide bodies clamp their own columns. */
+	if (!WndWide(mw)) {
 		int vis_rows = (bp.area.bottom - bp.area.top + 1) / bp.rh;
 		mw.rows = bp.row;
 		mw.scroll = Clamp(mw.scroll, 0, std::max(0, bp.row - vis_rows));
@@ -5444,7 +5462,7 @@ static bool HandleWndWheel(int x, int y, int dir)
 {
 	for (size_t i = _wnds.size(); i-- > 0;) {
 		if (!InRect(WndFrameRect(_wnds[i]), x, y)) continue;
-		if (WndWide(_wnds[i]) && x > FleetSplitX(WndBodyRect(_wnds[i]))) {
+		if (WndWide(_wnds[i]) && x > WndSplitX(WndBodyRect(_wnds[i]))) {
 			_wnds[i].scroll2 += dir * 3;
 		} else {
 			_wnds[i].scroll += dir * 3;
