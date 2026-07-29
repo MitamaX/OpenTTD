@@ -3284,9 +3284,14 @@ static void WndCloseGlyph(const Rect &r, uint32_t c)
 	RlwCmdLine(b.left, b.bottom, b.right, b.top, 2 * _ms.hud_scale, c);
 }
 
+/* Kinds get separate number ranges; a vehicle and a station sharing one id
+ * must not resolve to the same carrier window. */
+static constexpr int MW_CARRIER_KIND_STRIDE = 0x1000000;
+
 static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 {
-	return MW_CARRIER_NUM_BASE + (int)(mw.kind == MiniWndKind::Vehicle ? mw.veh.base() : mw.st.base());
+	int id = (int)(mw.kind == MiniWndKind::Vehicle ? mw.veh.base() : mw.st.base());
+	return MW_CARRIER_NUM_BASE + (int)mw.kind * MW_CARRIER_KIND_STRIDE + id;
 }
 
 static constexpr NWidgetPart _nested_mini_carrier_widgets[] = {
@@ -3325,7 +3330,7 @@ struct MiniCarrierWindow : Window {
 	void OnQueryTextFinished(std::optional<std::string> str) override
 	{
 		if (!str.has_value()) return;
-		int id = this->window_number - MW_CARRIER_NUM_BASE;
+		int id = (this->window_number - MW_CARRIER_NUM_BASE) % MW_CARRIER_KIND_STRIDE;
 		if (this->carry_kind == MiniWndKind::Vehicle) {
 			const Vehicle *v = Vehicle::GetIfValid(static_cast<VehicleID>(id));
 			if (v != nullptr) Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + v->type, v->index, *str);
