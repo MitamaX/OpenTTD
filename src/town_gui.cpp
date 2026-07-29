@@ -41,6 +41,7 @@
 #include "dropdown_func.h"
 #include "town_kdtree.h"
 #include "town_cmd.h"
+#include "mini_ui.h"
 #include "timer/timer.h"
 #include "timer/timer_game_calendar.h"
 #include "timer/timer_window.h"
@@ -337,7 +338,7 @@ static WindowDesc _town_authority_desc(
 	_nested_town_authority_widgets
 );
 
-static void ShowTownAuthorityWindow(uint town)
+void ShowTownAuthorityWindow(uint town)
 {
 	AllocateWindowDescFront<TownAuthorityWindow>(_town_authority_desc, town);
 }
@@ -679,6 +680,7 @@ static WindowDesc _town_editor_view_desc(
 
 void ShowTownViewWindow(TownID town)
 {
+	if (_game_mode != GM_EDITOR && ShowMiniTownWindow(town)) return;
 	if (_game_mode == GM_EDITOR) {
 		AllocateWindowDescFront<TownViewWindow>(_town_editor_view_desc, town);
 	} else {
