@@ -42,6 +42,7 @@
 #include "landscape_cmd.h"
 #include "league_gui.h"
 #include "mini_atlas.h"
+#include "economy_func.h"
 #include "misc_cmd.h"
 #include "network/network.h"
 #include "network/network_type.h"
@@ -2809,12 +2810,13 @@ static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, 
 }
 
 static void OpenFleetMiniWnd(int vt);
+static void OpenFinanceMiniWnd();
 
 static void OpenMiniWindow(MiniWin win)
 {
 	bool company = Company::IsValidID(_local_company);
 	switch (win) {
-		case MiniWin::Finances: if (company) ShowCompanyFinances(_local_company); break;
+		case MiniWin::Finances: if (company) OpenFinanceMiniWnd(); break;
 		case MiniWin::CompanyInfo: if (company) ShowCompany(_local_company); break;
 		case MiniWin::Goals: if (company) ShowGoalsList(_local_company); break;
 		case MiniWin::League: ShowPerformanceLeagueTable(); break;
@@ -3331,6 +3333,7 @@ enum class MiniWndKind : uint8_t {
 	Town,
 	Industry,
 	Fleet,
+	Finance,
 };
 
 struct MiniWnd {
@@ -3467,6 +3470,7 @@ static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 		case MiniWndKind::Station: id = (int)mw.st.base(); break;
 		case MiniWndKind::Town: id = (int)mw.town.base(); break;
 		case MiniWndKind::Fleet: id = 0; break;
+		case MiniWndKind::Finance: id = 0; break;
 		default: id = (int)mw.ind.base(); break;
 	}
 	return MW_CARRIER_NUM_BASE + (int)mw.kind * MW_CARRIER_KIND_STRIDE + id;
@@ -3616,6 +3620,11 @@ static void OpenFleetMiniWnd(int vt)
 		_wnds.back().tab = (uint8_t)vt;
 		_wnds.back().scroll = 0;
 	}
+}
+
+static void OpenFinanceMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::Finance, VehicleID::Invalid(), StationID::Invalid());
 }
 
 /* Body row painter: rows share one scroll window; clickable rows register a
@@ -4243,6 +4252,62 @@ static void DrawFleetWndBody(MiniWnd &mw, MiniWndBody &body)
 	if (!anydep) body.Plain("차고 없음", COL_CH_DIM);
 }
 
+/* Stock finance sign convention: positive table values are outgo, negative
+ * are income and show with a plus sign. */
+static std::string MiniPriceStr(Money amount)
+{
+	StringID str = STR_FINANCES_NEGATIVE_INCOME;
+	if (amount == 0) {
+		str = STR_FINANCES_ZERO_INCOME;
+	} else if (amount < 0) {
+		amount = -amount;
+		str = STR_FINANCES_POSITIVE_INCOME;
+	}
+	return StrMakeValid(GetString(str, amount), {});
+}
+
+static void DrawFinanceWndBody(MiniWndBody &body, uint8_t tab)
+{
+	const Company *c = Company::GetIfValid(_local_company);
+	if (c == nullptr) return;
+
+	if (tab == 0) {
+		body.KV(WndOfficial(STR_FINANCES_BANK_BALANCE_TITLE), StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->money), {}), COL_CH_ACCENT);
+		body.KV(WndOfficial(STR_FINANCES_OWN_FUNDS_TITLE), StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->money - c->current_loan), {}), COL_CH_TEXT);
+		body.KV(WndOfficial(STR_FINANCES_LOAN_TITLE), StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->current_loan), {}), c->current_loan > 0 ? COL_CH_YELLOW : COL_CH_TEXT);
+		body.Plain(StrMakeValid(GetString(STR_FINANCES_MAX_LOAN, c->GetMaxLoan()), {}), COL_CH_TEXT);
+		body.Plain(StrMakeValid(GetString(STR_FINANCES_INTEREST_RATE, _economy.interest_rate), {}), COL_CH_TEXT);
+		body.KV("회사 가치", StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, CalculateCompanyValue(c)), {}), COL_CH_TEXT);
+		return;
+	}
+
+	struct MiniExpCat {
+		StringID title;
+		std::initializer_list<ExpensesType> items;
+	};
+	static const MiniExpCat cats[] = {
+		{STR_FINANCES_REVENUE_TITLE, {EXPENSES_TRAIN_REVENUE, EXPENSES_ROADVEH_REVENUE, EXPENSES_AIRCRAFT_REVENUE, EXPENSES_SHIP_REVENUE}},
+		{STR_FINANCES_OPERATING_EXPENSES_TITLE, {EXPENSES_TRAIN_RUN, EXPENSES_ROADVEH_RUN, EXPENSES_AIRCRAFT_RUN, EXPENSES_SHIP_RUN, EXPENSES_PROPERTY, EXPENSES_LOAN_INTEREST}},
+		{STR_FINANCES_CAPITAL_EXPENSES_TITLE, {EXPENSES_CONSTRUCTION, EXPENSES_NEW_VEHICLES, EXPENSES_OTHER}},
+	};
+	const Expenses &tbl = c->yearly_expenses[0];
+	Money total = 0;
+	for (const MiniExpCat &cat : cats) {
+		body.Header(WndOfficial(cat.title));
+		Money sum = 0;
+		for (ExpensesType et : cat.items) {
+			Money cost = tbl[et];
+			sum += cost;
+			if (cost == 0) continue;
+			body.KV(WndOfficial(STR_FINANCES_SECTION_CONSTRUCTION + et), MiniPriceStr(cost), cost > 0 ? COL_CH_RED : COL_CH_TEXT);
+		}
+		total += sum;
+		body.KV("합계", MiniPriceStr(sum), sum > 0 ? COL_CH_RED : COL_CH_TEXT);
+	}
+	body.Header(WndOfficial(STR_FINANCES_TOTAL_CAPTION));
+	body.KV("올해 손익", MiniPriceStr(total), total > 0 ? COL_CH_RED : COL_CH_ACCENT);
+}
+
 static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c, bool alt)
 {
 	int cx = (r.left + r.right) / 2;
@@ -4306,6 +4371,16 @@ static void DrawWndCmdIcon(MiniWndKind kind, int cmd, const Rect &r, uint32_t c,
 				RlwCmdCircle(cx, cy, q - 2 * s - 1, alt ? COL_CH_ACTIVE : COL_CH_TILE);
 				break;
 		}
+	} else if (kind == MiniWndKind::Finance) {
+		switch (cmd) {
+			case 0:
+				RlwCmdRect(cx - q, cy - s, cx + q, cy + s, c);
+				RlwCmdRect(cx - s, cy - q, cx + s, cy + q, c);
+				break;
+			case 1:
+				RlwCmdRect(cx - q, cy - s, cx + q, cy + s, c);
+				break;
+		}
 	} else if (kind == MiniWndKind::Fleet) {
 		switch (cmd) {
 			case 0:
@@ -4361,6 +4436,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		case MiniWndKind::Station: if (st != nullptr) title = StrMakeValid(GetString(STR_STATION_NAME, st->index), {}); break;
 		case MiniWndKind::Town: if (t != nullptr) title = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {}); break;
 		case MiniWndKind::Fleet: title = "차고"; break;
+		case MiniWndKind::Finance: title = "재정"; break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); break;
 	}
 	WndText(fr.left + pad, fr.top + 2 * s, th, title, COL_CH_TEXT);
@@ -4371,8 +4447,9 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	bool own = (mw.kind == MiniWndKind::Vehicle && v != nullptr && v->owner == _local_company) ||
 			(mw.kind == MiniWndKind::Station && st != nullptr && st->owner == _local_company) ||
 			(mw.kind == MiniWndKind::Town && t != nullptr) ||
-			(mw.kind == MiniWndKind::Fleet && Company::IsValidID(_local_company));
-	bool pen_ok = own && mw.kind != MiniWndKind::Fleet;
+			(mw.kind == MiniWndKind::Fleet && Company::IsValidID(_local_company)) ||
+			(mw.kind == MiniWndKind::Finance && Company::IsValidID(_local_company));
+	bool pen_ok = own && mw.kind != MiniWndKind::Fleet && mw.kind != MiniWndKind::Finance;
 	Rect pen_r = WndIconTile(close_r.left - 2 * s - ts, fr.top + 2 * s, ts, false, pen_ok);
 	WndPenGlyph(pen_r, pen_ok ? (WndHover(pen_r) ? COL_CH_ACCENT : COL_CH_TEXT) : COL_CH_DIM);
 	_wnd_hits.push_back({idx, close_r, MWA_CLOSE});
@@ -4388,6 +4465,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		case MiniWndKind::Station:
 		case MiniWndKind::Vehicle:
 		case MiniWndKind::Fleet: ntab = 4; break;
+		case MiniWndKind::Finance: ntab = 2; break;
 		default: ntab = 3; break;
 	}
 	for (int ti = 0; ti < ntab; ti++) {
@@ -4395,6 +4473,8 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		if (mw.kind == MiniWndKind::Fleet) {
 			static const StringID type_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
 			label = WndOfficial(type_strs[ti]);
+		} else if (mw.kind == MiniWndKind::Finance) {
+			label = ti == 0 ? "개요" : "손익";
 		} else if (mw.kind == MiniWndKind::Vehicle) {
 			switch (ti) {
 				case 0: label = "상태"; break;
@@ -4444,7 +4524,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	bp.hot = hot;
 	bp.area = body;
 
-	if (mw.tab == 0 && mw.kind != MiniWndKind::Fleet) {
+	if (mw.tab == 0 && mw.kind != MiniWndKind::Fleet && mw.kind != MiniWndKind::Finance) {
 		Rect vs = {body.left, body.top, body.right, body.top + WndViewH() - 1};
 		RlwCmdRect(vs.left, vs.top, vs.right, vs.bottom, 0xFF101010U);
 		if (v != nullptr || st != nullptr || t != nullptr || ind != nullptr) {
@@ -4458,6 +4538,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	if (t != nullptr) DrawTownWndBody(mw, bp, t);
 	if (ind != nullptr) DrawIndustryWndBody(mw, bp, ind);
 	if (mw.kind == MiniWndKind::Fleet) DrawFleetWndBody(mw, bp);
+	if (mw.kind == MiniWndKind::Finance) DrawFinanceWndBody(bp, mw.tab);
 
 	/* Scroll clamp and position mark. */
 	int vis_rows = (bp.area.bottom - bp.area.top + 1) / bp.rh;
@@ -4491,6 +4572,11 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 			case MiniWndKind::Town: enabled = t != nullptr; break;
 			case MiniWndKind::Industry: enabled = ind != nullptr; break;
 			case MiniWndKind::Fleet: enabled = own && (c == 0 ? Vehicle::GetIfValid(mw.sel) != nullptr : !_fleet_draft[mw.tab].empty()); break;
+			case MiniWndKind::Finance: {
+				const Company *fc = Company::GetIfValid(_local_company);
+				enabled = fc != nullptr && (c == 0 ? fc->current_loan < fc->GetMaxLoan() : fc->current_loan > 0);
+				break;
+			}
 			default: enabled = v != nullptr && (c == 4 || own); break;
 		}
 		Rect cr = WndIconTile(cx, cmd_y, cs2, active, enabled);
@@ -4512,6 +4598,8 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_TOWN_VIEW_LOCAL_AUTHORITY_TOOLTIP) : WndOfficial(STR_TOWN_VIEW_CENTER_TOOLTIP);
 			} else if (mw.kind == MiniWndKind::Fleet) {
 				_wnd_tooltip = c == 0 ? "표시한 차량 매각" : "설계 비우기";
+			} else if (mw.kind == MiniWndKind::Finance) {
+				_wnd_tooltip = StrMakeValid(GetString(c == 0 ? STR_FINANCES_BORROW_BUTTON : STR_FINANCES_REPAY_BUTTON, LOAN_INTERVAL), {});
 			} else {
 				_wnd_tooltip = c == 0 ? WndOfficial(STR_INDUSTRY_DISPLAY_CHAIN) : WndOfficial(STR_INDUSTRY_VIEW_LOCATION_TOOLTIP);
 			}
@@ -4533,6 +4621,7 @@ static void DrawMiniWnds()
 			case MiniWndKind::Station: alive = Station::IsValidID(_wnds[i].st); break;
 			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
 			case MiniWndKind::Fleet: alive = true; break;
+			case MiniWndKind::Finance: alive = Company::IsValidID(_local_company); break;
 			default: alive = Industry::IsValidID(_wnds[i].ind); break;
 		}
 		if (!alive) CloseMiniWnd(i);
@@ -4642,6 +4731,12 @@ static bool HandleWndClick(int x, int y)
 						}
 					} else {
 						_fleet_draft[mw.tab].clear();
+					}
+				} else if (mw.kind == MiniWndKind::Finance) {
+					if (c == 0) {
+						Command<CMD_INCREASE_LOAN>::Post(STR_ERROR_CAN_T_BORROW_ANY_MORE_MONEY, LoanCommand::Interval, 0);
+					} else {
+						Command<CMD_DECREASE_LOAN>::Post(STR_ERROR_CAN_T_REPAY_LOAN, LoanCommand::Interval, 0);
 					}
 				}
 			} else if (act >= MWA_ROW_BASE) {
