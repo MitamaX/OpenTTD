@@ -51,14 +51,23 @@ static Color RlwColour(uint32_t argb)
 	return { (uint8_t)(argb >> 16), (uint8_t)(argb >> 8), (uint8_t)argb, (uint8_t)(argb >> 24) };
 }
 
-bool RlwInit(int w, int h, const char *title)
+bool RlwInit(int w, int h, const char *title, bool vsync)
 {
 	SetTraceLogLevel(LOG_WARNING);
-	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+	SetConfigFlags(FLAG_WINDOW_RESIZABLE | (vsync ? FLAG_VSYNC_HINT : 0));
 	InitWindow(w, h, title);
 	if (!IsWindowReady()) return false;
 	SetExitKey(KEY_NULL);
 	return true;
+}
+
+void RlwSetVsync(bool on)
+{
+	if (on) {
+		SetWindowState(FLAG_VSYNC_HINT);
+	} else {
+		ClearWindowState(FLAG_VSYNC_HINT);
+	}
 }
 
 static bool _rlw_imgui_ready = false;

@@ -28,6 +28,8 @@ public:
 
 	bool ToggleFullscreen(bool fullscreen) override;
 
+	void ToggleVsync(bool vsync) override;
+
 	bool AfterBlitterChange() override;
 
 	bool UseSystemCursor() override { return true; }

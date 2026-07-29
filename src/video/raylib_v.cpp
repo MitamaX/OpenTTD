@@ -45,7 +45,7 @@ std::optional<std::string_view> VideoDriver_Raylib::Start(const StringList &para
 	this->UpdateAutoResolution();
 
 	std::string caption = VideoDriver::GetCaption();
-	if (!RlwInit(_cur_resolution.width, _cur_resolution.height, caption.c_str())) return "Failed to create raylib window";
+	if (!RlwInit(_cur_resolution.width, _cur_resolution.height, caption.c_str(), _video_vsync)) return "Failed to create raylib window";
 	RlwImGuiInit();
 
 	_resolutions.assign(std::begin(_raylib_default_resolutions), std::end(_raylib_default_resolutions));
@@ -98,6 +98,11 @@ bool VideoDriver_Raylib::ToggleFullscreen(bool fullscreen)
 	_fullscreen = fullscreen;
 	InvalidateWindowClassesData(WC_GAME_OPTIONS, 3);
 	return true;
+}
+
+void VideoDriver_Raylib::ToggleVsync(bool vsync)
+{
+	RlwSetVsync(vsync);
 }
 
 bool VideoDriver_Raylib::AfterBlitterChange()

@@ -46,13 +46,14 @@ struct RlwRectI {
 	bool under = false;
 };
 
-bool RlwInit(int w, int h, const char *title);
+bool RlwInit(int w, int h, const char *title, bool vsync);
 void RlwClose();
 void RlwPoll(RlwInput &in);
 uint32_t RlwNextKey(char32_t &character);
 char32_t RlwNextChar();
 void RlwPresent(const uint32_t *rgba, int w, int h);
 void RlwSetSize(int w, int h);
+void RlwSetVsync(bool on);
 void RlwWarpMouse(int x, int y);
 void RlwToggleBorderless();
 bool RlwMonitorSize(int &w, int &h);
