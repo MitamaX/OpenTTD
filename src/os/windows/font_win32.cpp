@@ -173,26 +173,39 @@ void Win32FontCache::ClearFontCache()
 	this->TrueTypeFontCache::ClearFontCache();
 }
 
+/* Anti-aliased glyphs render at 4x and box-filter down; GDI applies TrueType
+ * hinting to GGO_GRAY8_BITMAP output, which mangles CJK composites at small
+ * sizes, and supersampling shrinks those distortions below a pixel. */
+static const uint GLYPH_SS = 4;
+
 /* virtual */ const Sprite *Win32FontCache::InternalGetGlyph(GlyphID key, bool aa)
 {
 	GLYPHMETRICS gm;
 	MAT2 mat = { {0, 1}, {0, 0}, {0, 0}, {0, 1} };
+	MAT2 mat_ss = { {0, (short)GLYPH_SS}, {0, 0}, {0, 0}, {0, (short)GLYPH_SS} };
+	UINT format = GGO_GLYPH_INDEX | (aa ? GGO_GRAY8_BITMAP : GGO_BITMAP);
 
 	/* Call GetGlyphOutline with zero size initially to get required memory size. */
-	DWORD size = GetGlyphOutline(this->dc, key, GGO_GLYPH_INDEX | (aa ? GGO_GRAY8_BITMAP : GGO_BITMAP), &gm, 0, nullptr, &mat);
+	DWORD size = GetGlyphOutline(this->dc, key, format, &gm, 0, nullptr, aa ? &mat_ss : &mat);
 	if (size == GDI_ERROR) UserError("Unable to render font glyph");
+
+	uint ss = aa ? GLYPH_SS : 1;
+	uint bbx = ((uint)gm.gmBlackBoxX + ss - 1) / ss;
+	uint bby = ((uint)gm.gmBlackBoxY + ss - 1) / ss;
+	int origin_x = gm.gmptGlyphOrigin.x >= 0 ? gm.gmptGlyphOrigin.x / (int)ss : -((-gm.gmptGlyphOrigin.x + (int)ss - 1) / (int)ss);
+	int origin_y = gm.gmptGlyphOrigin.y >= 0 ? (gm.gmptGlyphOrigin.y + (int)ss - 1) / (int)ss : -(-gm.gmptGlyphOrigin.y / (int)ss);
 
 	/* Add 1 scaled pixel for the shadow on the medium font. Our sprite must be at least 1x1 pixel. */
 	uint shadow = (this->fs == FS_NORMAL) ? ScaleGUITrad(1) : 0;
-	uint width = std::max(1U, (uint)gm.gmBlackBoxX + shadow);
-	uint height = std::max(1U, (uint)gm.gmBlackBoxY + shadow);
+	uint width = std::max(1U, bbx + shadow);
+	uint height = std::max(1U, bby + shadow);
 
 	/* Limit glyph size to prevent overflows later on. */
 	if (width > MAX_GLYPH_DIM || height > MAX_GLYPH_DIM) UserError("Font glyph is too large");
 
 	/* Call GetGlyphOutline again with size to actually render the glyph. */
 	uint8_t *bmp = this->render_buffer.Allocate(size);
-	GetGlyphOutline(this->dc, key, GGO_GLYPH_INDEX | (aa ? GGO_GRAY8_BITMAP : GGO_BITMAP), &gm, size, bmp, &mat);
+	GetGlyphOutline(this->dc, key, format, &gm, size, bmp, aa ? &mat_ss : &mat);
 
 	/* GDI has rendered the glyph, now we allocate a sprite and copy the image into it. */
 	SpriteLoader::SpriteCollection spritecollection;
@@ -202,8 +215,8 @@ void Win32FontCache::ClearFontCache()
 	if (aa) sprite.colours.Set(SpriteComponent::Alpha);
 	sprite.width = width;
 	sprite.height = height;
-	sprite.x_offs = gm.gmptGlyphOrigin.x;
-	sprite.y_offs = this->ascender - gm.gmptGlyphOrigin.y;
+	sprite.x_offs = origin_x;
+	sprite.y_offs = this->ascender - origin_y;
 
 	if (size > 0) {
 		/* All pixel data returned by GDI is in the form of DWORD-aligned rows.
@@ -213,23 +226,40 @@ void Win32FontCache::ClearFontCache()
 		 * subtract one. */
 		uint pitch = Align(aa ? gm.gmBlackBoxX : std::max((gm.gmBlackBoxX + 7u) / 8u, 1u), 4);
 
+		/* Box-filtered sample of the supersampled grayscale bitmap, back in
+		 * GDI's 0..64 value range. */
+		auto sample = [&](uint x, uint y) -> uint {
+			uint total = 0;
+			for (uint sy = 0; sy < ss; sy++) {
+				uint yy = y * ss + sy;
+				if (yy >= (uint)gm.gmBlackBoxY) break;
+				for (uint sx = 0; sx < ss; sx++) {
+					uint xx = x * ss + sx;
+					if (xx >= (uint)gm.gmBlackBoxX) break;
+					total += bmp[xx + yy * pitch];
+				}
+			}
+			return total / (ss * ss);
+		};
+
 		/* Draw shadow for medium size. */
 		if (this->fs == FS_NORMAL && !aa) {
-			for (uint y = 0; y < gm.gmBlackBoxY; y++) {
-				for (uint x = 0; x < gm.gmBlackBoxX; x++) {
-					if (aa ? (bmp[x + y * pitch] > 0) : HasBit(bmp[(x / 8) + y * pitch], 7 - (x % 8))) {
+			for (uint y = 0; y < bby; y++) {
+				for (uint x = 0; x < bbx; x++) {
+					if (HasBit(bmp[(x / 8) + y * pitch], 7 - (x % 8))) {
 						sprite.data[shadow + x + (shadow + y) * sprite.width].m = SHADOW_COLOUR;
-						sprite.data[shadow + x + (shadow + y) * sprite.width].a = aa ? (bmp[x + y * pitch] << 2) - 1 : 0xFF;
+						sprite.data[shadow + x + (shadow + y) * sprite.width].a = 0xFF;
 					}
 				}
 			}
 		}
 
-		for (uint y = 0; y < gm.gmBlackBoxY; y++) {
-			for (uint x = 0; x < gm.gmBlackBoxX; x++) {
-				if (aa ? (bmp[x + y * pitch] > 0) : HasBit(bmp[(x / 8) + y * pitch], 7 - (x % 8))) {
+		for (uint y = 0; y < bby; y++) {
+			for (uint x = 0; x < bbx; x++) {
+				uint v = aa ? sample(x, y) : (HasBit(bmp[(x / 8) + y * pitch], 7 - (x % 8)) ? 64 : 0);
+				if (v > 0) {
 					sprite.data[x + y * sprite.width].m = FACE_COLOUR;
-					sprite.data[x + y * sprite.width].a = aa ? (bmp[x + y * pitch] << 2) - 1 : 0xFF;
+					sprite.data[x + y * sprite.width].a = ClampTo<uint8_t>((v << 2) - 1);
 				}
 			}
 		}
