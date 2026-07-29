@@ -3381,6 +3381,7 @@ struct MiniWndRowAct {
 	int skip_order = -1;
 	bool attach = false;
 	bool detach = false;
+	CargoType refit = INVALID_CARGO;
 	int ord_sel = -1;
 	int ord_move = 0;
 	bool ord_del = false;
@@ -3766,6 +3767,29 @@ static void DrawVehicleWndBody(MiniWnd &mw, MiniWndBody &body, const Vehicle *v)
 				body.KV(WndOfficial(CargoSpec::Get(ct)->name), fmt::format("{} / {}", stored, cap), COL_CH_TEXT);
 			}
 			if (!any) body.Plain("적재 화물 없음", COL_CH_DIM);
+			/* Refitting needs the whole consist parked in a depot, same as
+			 * the stock refit window. */
+			if (v->owner == _local_company && v->IsStoppedInDepot()) {
+				CargoTypes mask = 0;
+				for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+					mask |= u->GetEngine()->info.refit_mask;
+				}
+				bool any_ref = false;
+				for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+					if (!HasBit(mask, cs->Index())) continue;
+					if (!any_ref) {
+						body.Header("개조");
+						any_ref = true;
+					}
+					bool cur = false;
+					for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+						if (u->cargo_cap > 0 && u->cargo_type == cs->Index()) cur = true;
+					}
+					MiniWndRowAct act;
+					act.refit = cs->Index();
+					body.Link(fmt::format("{}{}", cur ? "▶ " : "· ", WndOfficial(cs->name)), cur ? COL_CH_ACCENT : COL_CH_TEXT, act);
+				}
+			}
 			break;
 		}
 
@@ -4777,6 +4801,8 @@ static bool HandleWndClick(int x, int y)
 							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_UNLOAD, to_underlying(next));
 						}
 					}
+				} else if (ra.refit != INVALID_CARGO && v != nullptr && v->owner == _local_company && v->IsStoppedInDepot()) {
+					Command<CMD_REFIT_VEHICLE>::Post(GetCmdRefitVehMsg(v->type), v->tile, v->index, ra.refit, 0, false, false, 0);
 				} else if (ra.ord_add && v != nullptr && v->owner == _local_company) {
 					if (_order_pick_veh == v->index) EnterIdleMode(); else EnterOrderPickMode(v->index);
 				} else if (ra.buy != EngineID::Invalid() && mw.kind == MiniWndKind::Fleet) {
