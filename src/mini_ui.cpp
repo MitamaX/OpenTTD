@@ -485,6 +485,7 @@ static void FillShapeRot(MiniSprite s, int cx, int cy, int r, int angle, uint32_
 struct MiniTextEntry {
 	int tex;
 	int w, h;
+	int pad;
 	uint64_t last_use;
 };
 
@@ -501,25 +502,30 @@ static const MiniTextEntry *TextTexture(std::string_view text)
 		int h = (int)dim.height;
 		if (w <= 0 || h <= 0) return nullptr;
 
-		std::vector<uint32_t> buf((size_t)w * h, 0xFF000000U);
+		/* TrueType glyph bitmaps can overhang the layout box; the padded
+		 * canvas keeps those pixels instead of clipping them away. */
+		int pad = GetCharacterHeight(FS_NORMAL) / 4 + 1;
+		int bw = w + 2 * pad;
+		int bh = h + 2 * pad;
+		std::vector<uint32_t> buf((size_t)bw * bh, 0xFF000000U);
 		DrawPixelInfo dpi;
 		dpi.dst_ptr = buf.data();
 		dpi.left = 0;
 		dpi.top = 0;
-		dpi.width = w;
-		dpi.height = h;
-		dpi.pitch = w;
+		dpi.width = bw;
+		dpi.height = bh;
+		dpi.pitch = bw;
 		dpi.zoom = ZoomLevel::Min;
 		{
 			AutoRestoreBackup dpi_backup(_cur_dpi, &dpi);
 			AutoRestoreBackup anim_backup(_screen_disable_anim, true);
-			DrawString(0, w - 1, 0, text, TC_WHITE, SA_LEFT | SA_FORCE);
+			DrawString(pad, pad + w - 1, pad, text, TC_WHITE, SA_LEFT | SA_FORCE);
 		}
 		for (uint32_t &px : buf) {
 			uint32_t a = std::max({(px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF});
 			px = (a << 24) | 0x00FFFFFFU;
 		}
-		it = _text_cache.emplace(std::string(text), MiniTextEntry{RlwCreateTexture(buf.data(), w, h), w, h, 0}).first;
+		it = _text_cache.emplace(std::string(text), MiniTextEntry{RlwCreateTexture(buf.data(), bw, bh), w, h, pad, 0}).first;
 	}
 	it->second.last_use = _mini_frame;
 	return &it->second;
@@ -543,10 +549,15 @@ static constexpr uint32_t TextTint(TextColour colour)
 	return colour == TC_BLACK ? 0xFF14181CU : 0xFFE6E1D3U;
 }
 
+static void DrawTextQuad(const MiniTextEntry *e, int x, int y, uint32_t tint)
+{
+	RlwCmdTexQuad(e->tex, x - e->pad, y - e->pad, tint);
+}
+
 static void DrawScreenText(int x, int y, std::string_view text, TextColour colour = TC_WHITE)
 {
 	const MiniTextEntry *e = TextTexture(text);
-	if (e != nullptr) RlwCmdTexQuad(e->tex, x, y, TextTint(colour));
+	if (e != nullptr) DrawTextQuad(e, x, y, TextTint(colour));
 }
 
 static void ScreenFillRect(int x0, int y0, int x1, int y1, uint32_t c)
@@ -1600,7 +1611,7 @@ static Rect DrawLabelPlate(int cx, int cy, std::string_view str, uint32_t fill, 
 		RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, pad, COL_CH_EDGE);
 		RlwCmdRoundRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, pad, fill);
 	}
-	if (e != nullptr) RlwCmdTexQuad(e->tex, r.left + pad, r.top + pad, TextTint(tc));
+	if (e != nullptr) DrawTextQuad(e, r.left + pad, r.top + pad, TextTint(tc));
 	return r;
 }
 
@@ -2376,7 +2387,7 @@ static void DrawMenuTile(const Rect &r, StringID str, std::string_view fallback,
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawToolIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
 	if (const MiniTextEntry *e = TextTexture(MenuLabel(str, fallback)); e != nullptr) {
-		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
+		DrawTextQuad(e, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
 	}
 }
 
@@ -2646,7 +2657,7 @@ static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, 
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawWinIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
 	if (const MiniTextEntry *e = TextTexture(MenuLabel(str, fallback)); e != nullptr) {
-		RlwCmdTexQuad(e->tex, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
+		DrawTextQuad(e, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
 	}
 }
 
@@ -3054,7 +3065,7 @@ static void DrawStatusStream()
 			hover = st;
 			hover_r = r;
 		}
-		if (const MiniTextEntry *e = TextTexture(t); e != nullptr) RlwCmdTexQuad(e->tex, r.left + bar_w + 4 * s, y + (ch - lh) / 2, tcol);
+		if (const MiniTextEntry *e = TextTexture(t); e != nullptr) DrawTextQuad(e, r.left + bar_w + 4 * s, y + (ch - lh) / 2, tcol);
 		_status_rows.push_back({r, st});
 		y += ch + 2 * s;
 	}
@@ -3231,13 +3242,13 @@ static Rect WndFrameRect(const MiniWnd &mw)
 static void WndText(int x, int y, int rh, std::string_view text, uint32_t tint)
 {
 	const MiniTextEntry *e = TextTexture(text);
-	if (e != nullptr) RlwCmdTexQuad(e->tex, x, y + (rh - e->h) / 2, tint);
+	if (e != nullptr) DrawTextQuad(e, x, y + (rh - e->h) / 2, tint);
 }
 
 static void WndTextRight(int x1, int y, int rh, std::string_view text, uint32_t tint)
 {
 	const MiniTextEntry *e = TextTexture(text);
-	if (e != nullptr) RlwCmdTexQuad(e->tex, x1 - e->w + 1, y + (rh - e->h) / 2, tint);
+	if (e != nullptr) DrawTextQuad(e, x1 - e->w + 1, y + (rh - e->h) / 2, tint);
 }
 
 static bool WndHover(const Rect &r)
@@ -3455,7 +3466,7 @@ struct MiniWndBody {
 			int ind = 4 * _ms.hud_scale;
 			const MiniTextEntry *e = TextTexture(text);
 			if (e != nullptr) {
-				RlwCmdTexQuad(e->tex, r.left + ind, r.top + (this->rh - e->h) / 2, tint);
+				DrawTextQuad(e, r.left + ind, r.top + (this->rh - e->h) / 2, tint);
 				RlwCmdRect(r.left + ind, r.bottom - 1, r.left + ind + e->w - 1, r.bottom - 1, (tint & 0x00FFFFFFU) | 0x60000000U);
 			}
 			_wnd_hits.push_back({this->wnd, r, MWA_ROW_BASE + (int)_wnd_row_acts.size()});
@@ -3719,7 +3730,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		bool hover = hot && WndHover(tr);
 		RlwCmdRect(tr.left, tr.top, tr.right, tr.bottom, active ? COL_CH_ACTIVE : (hover ? COL_CH_TILE : COL_CH_PANEL));
 		const MiniTextEntry *e = TextTexture(label);
-		if (e != nullptr) RlwCmdTexQuad(e->tex, (tr.left + tr.right - e->w) / 2, tr.top + (tabh - e->h) / 2, active ? COL_CH_ACCENT : COL_CH_TEXT);
+		if (e != nullptr) DrawTextQuad(e, (tr.left + tr.right - e->w) / 2, tr.top + (tabh - e->h) / 2, active ? COL_CH_ACCENT : COL_CH_TEXT);
 		_wnd_hits.push_back({idx, tr, MWA_TAB_BASE + t});
 	}
 	RlwCmdRect(fr.left + 1, tab_y + tabh, fr.right - 1, tab_y + tabh, COL_CH_EDGE);
