@@ -159,6 +159,28 @@ static MiniLayer ToolLayer(MiniTool t)
 
 static MiniTool _tool = MiniTool::None;
 
+static VehicleID _follow_veh = VehicleID::Invalid();
+
+/* The screen has exactly one input mode: idle, building or following a
+ * vehicle. Entering one drops the others. */
+static void EnterIdleMode()
+{
+	_tool = MiniTool::None;
+	_follow_veh = VehicleID::Invalid();
+}
+
+static void EnterBuildMode(MiniTool t)
+{
+	EnterIdleMode();
+	_tool = t;
+}
+
+static void EnterFollowMode(VehicleID v)
+{
+	EnterIdleMode();
+	_follow_veh = v;
+}
+
 /* ONI-style overlay: an explicit toggle that swaps the info layer without
  * leaving the screen. Picking a build tool auto-engages its layer; that
  * auto choice reverts when the tool is dropped, a manual toggle sticks. */
@@ -2385,7 +2407,7 @@ static bool HandleMenuClick(int x, int y)
 	}
 	for (const auto &[r, t] : _menu_item_hits) {
 		if (InRect(r, x, y)) {
-			_tool = _tool == t ? MiniTool::None : t;
+			if (_tool == t) EnterIdleMode(); else EnterBuildMode(t);
 			return true;
 		}
 	}
@@ -2419,7 +2441,7 @@ static bool HandleCmdClick(int x, int y)
 {
 	for (const auto &[r, t] : _cmd_hits) {
 		if (InRect(r, x, y)) {
-			_tool = _tool == t ? MiniTool::None : t;
+			if (_tool == t) EnterIdleMode(); else EnterBuildMode(t);
 			return true;
 		}
 	}
@@ -3907,17 +3929,18 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 	int cs2 = WndCmdS();
 	int cmd_y = fr.bottom - pad - cs2 + 1;
 	RlwCmdRect(fr.left + 1, cmd_y - pad / 2 - 1, fr.right - 1, cmd_y - pad / 2 - 1, COL_CH_EDGE);
-	int ncmd = mw.kind == MiniWndKind::Vehicle ? 4 : 2;
+	int ncmd = mw.kind == MiniWndKind::Vehicle ? 5 : 2;
 	extern const Station *_viewport_highlight_station;
 	for (int c = 0; c < ncmd; c++) {
 		int cx = fr.left + pad + c * (cs2 + 2 * s);
-		bool active = mw.kind == MiniWndKind::Station && c == 0 && st != nullptr && _viewport_highlight_station == st;
+		bool active = (mw.kind == MiniWndKind::Station && c == 0 && st != nullptr && _viewport_highlight_station == st) ||
+				(mw.kind == MiniWndKind::Vehicle && c == 4 && v != nullptr && _follow_veh == v->index);
 		bool enabled;
 		switch (mw.kind) {
 			case MiniWndKind::Station: enabled = st != nullptr && (c == 1 || own || st->owner == OWNER_NONE); break;
 			case MiniWndKind::Town: enabled = t != nullptr; break;
 			case MiniWndKind::Industry: enabled = ind != nullptr; break;
-			default: enabled = own; break;
+			default: enabled = v != nullptr && (c == 4 || own); break;
 		}
 		Rect cr = WndIconTile(cx, cmd_y, cs2, active, enabled);
 		bool alt = active || (mw.kind == MiniWndKind::Vehicle && c == 0 && v != nullptr && v->vehstatus.Test(VehState::Stopped));
@@ -3925,7 +3948,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		DrawWndCmdIcon(mw.kind, c, cr, ic, alt);
 		if (enabled) _wnd_hits.push_back({idx, cr, MWA_CMD_BASE + c});
 		if (hot && WndHover(cr)) {
-			static const std::string_view veh_tips[] = {"", "차고로", "", "주문 창"};
+			static const std::string_view veh_tips[] = {"", "차고로", "", "주문 창", "따라가기"};
 			if (mw.kind == MiniWndKind::Vehicle) {
 				switch (c) {
 					case 0: _wnd_tooltip = v != nullptr && v->vehstatus.Test(VehState::Stopped) ? WndOfficial(STR_VEHICLE_COMMAND_STARTED) : WndOfficial(STR_VEHICLE_COMMAND_STOPPED); break;
@@ -4029,6 +4052,9 @@ static bool HandleWndClick(int x, int y)
 							break;
 						}
 						case 3: ShowOrdersWindow(v); break;
+						case 4:
+							if (_follow_veh == v->index) EnterIdleMode(); else EnterFollowMode(v->index);
+							break;
 					}
 				} else if (st != nullptr) {
 					extern const Station *_viewport_highlight_station;
@@ -4140,6 +4166,9 @@ static void ZoomAt(int sx, int sy, bool in)
 {
 	_dest_ppt = Clamp(_dest_ppt * (in ? _ms.zoom_step : 1.0 / _ms.zoom_step), MIN_PPT, MAX_PPT);
 	_glide = false;
+	/* While following, zooming keeps the vehicle centred instead of
+	 * anchoring the cursor point. */
+	if (_follow_veh != VehicleID::Invalid()) return;
 	/* Anchor the world point under the cursor; the camera follows it every
 	 * frame while the scale animates, so the point never drifts. */
 	_zoom_sx = sx;
@@ -4153,7 +4182,7 @@ static void Deactivate()
 {
 	CloseAllMiniWnds();
 	_mini_active = false;
-	_tool = MiniTool::None;
+	EnterIdleMode();
 	_overlay = MiniLayer::None;
 	_overlay_auto = false;
 	_last_tool_layer = MiniLayer::None;
@@ -4282,6 +4311,7 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 
 void MiniUiScrollTo(int x, int y)
 {
+	_follow_veh = VehicleID::Invalid();
 	if (!_mini_active) return;
 	_zoom_anchored = false;
 	_glide = true;
@@ -4388,7 +4418,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 			_dragging = false;
 			ClearPlans();
 		} else {
-			_tool = MiniTool::None;
+			EnterIdleMode();
 		}
 	}
 
@@ -4420,8 +4450,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			if (_dragging) {
 				_dragging = false;
 				ClearPlans();
-			} else if (_tool != MiniTool::None) {
-				_tool = MiniTool::None;
+			} else if (_tool != MiniTool::None || _follow_veh != VehicleID::Invalid()) {
+				EnterIdleMode();
 			} else if (!_wnds.empty()) {
 				CloseMiniWnd(_wnds.size() - 1);
 			} else if (_menu_open >= 0 || _win_open >= 0) {
@@ -4519,6 +4549,20 @@ void MiniUiFrame(uint delta_ms)
 			_glide = false;
 			_cam_y += ex;
 			_cam_x += ey;
+			ClampCamera();
+		}
+	}
+
+	if (_follow_veh != VehicleID::Invalid()) {
+		const Vehicle *fv = Vehicle::GetIfValid(_follow_veh);
+		if (fv == nullptr || _dirkeys != 0 || _middle_button_down) {
+			_follow_veh = VehicleID::Invalid();
+		} else {
+			_glide = false;
+			auto [fx, fy] = LerpVehWorld(fv);
+			double f = 1.0 - std::exp(delta_ms / -_ms.glide_ms);
+			_cam_x += (fx - _cam_x) * f;
+			_cam_y += (fy - _cam_y) * f;
 			ClampCamera();
 		}
 	}
