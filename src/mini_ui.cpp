@@ -3013,7 +3013,7 @@ static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, 
 
 static void OpenFleetMiniWnd(int vt);
 static void OpenFinanceMiniWnd();
-static void OpenGroupMiniWnd();
+static void OpenGroupMiniWnd(int vt);
 
 static void OpenMiniWindow(MiniWin win)
 {
@@ -3025,16 +3025,16 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::League: ShowPerformanceLeagueTable(); break;
 		case MiniWin::Graph: ShowOperatingProfitGraph(); break;
 		case MiniWin::Stations: if (company) ShowCompanyStations(_local_company); break;
-		case MiniWin::Trains: if (company) ShowVehicleListWindow(_local_company, VEH_TRAIN); break;
-		case MiniWin::RoadVehicles: if (company) ShowVehicleListWindow(_local_company, VEH_ROAD); break;
-		case MiniWin::Ships: if (company) ShowVehicleListWindow(_local_company, VEH_SHIP); break;
-		case MiniWin::Aircraft: if (company) ShowVehicleListWindow(_local_company, VEH_AIRCRAFT); break;
+		case MiniWin::Trains: if (company) OpenGroupMiniWnd(VEH_TRAIN); break;
+		case MiniWin::RoadVehicles: if (company) OpenGroupMiniWnd(VEH_ROAD); break;
+		case MiniWin::Ships: if (company) OpenGroupMiniWnd(VEH_SHIP); break;
+		case MiniWin::Aircraft: if (company) OpenGroupMiniWnd(VEH_AIRCRAFT); break;
 		case MiniWin::News: ShowMessageHistory(); break;
 		case MiniWin::Towns: ShowTownDirectory(); break;
 		case MiniWin::Industries: ShowIndustryDirectory(); break;
 		case MiniWin::Subsidies: ShowSubsidiesList(); break;
 		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
-		case MiniWin::Groups: if (company) OpenGroupMiniWnd(); break;
+		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
 	}
 }
 
@@ -3886,9 +3886,14 @@ static void OpenFinanceMiniWnd()
 	OpenMiniWnd(MiniWndKind::Finance, VehicleID::Invalid(), StationID::Invalid());
 }
 
-static void OpenGroupMiniWnd()
+static void OpenGroupMiniWnd(int vt)
 {
 	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid());
+	if (vt >= 0 && _wnds.back().tab != (uint8_t)vt) {
+		_wnds.back().tab = (uint8_t)vt;
+		_wnds.back().scroll = 0;
+		_wnds.back().scroll2 = 0;
+	}
 }
 
 /* Body row painter: rows share one scroll window; clickable rows register a
@@ -5142,7 +5147,7 @@ static void DrawMiniWnd(MiniWnd &mw, size_t idx, bool hot)
 		DrawWndCmdIcon(mw.kind, c, cr, ic, alt);
 		if (enabled) _wnd_hits.push_back({idx, cr, MWA_CMD_BASE + c});
 		if (hot && WndHover(cr)) {
-			static const std::string_view veh_tips[] = {"", "차고로", "", "주문 창", "따라가기"};
+			static const std::string_view veh_tips[] = {"", "차고로", "", "주문", "따라가기"};
 			if (mw.kind == MiniWndKind::Vehicle) {
 				switch (c) {
 					case 0: _wnd_tooltip = v != nullptr && v->vehstatus.Test(VehState::Stopped) ? WndOfficial(STR_VEHICLE_COMMAND_STARTED) : WndOfficial(STR_VEHICLE_COMMAND_STOPPED); break;
@@ -5264,12 +5269,15 @@ static bool HandleWndClick(int x, int y)
 					switch (c) {
 						case 0: Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, v->index, false); break;
 						case 1: Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg(v), v->index, _ctrl_pressed ? DepotCommandFlag::Service : DepotCommandFlags{}, {}); break;
-						case 2: {
-							Window *cw = EnsureMiniCarrier(mw, -10000, -10000, 64, 48);
-							ShowVehicleRefitWindow(v, INVALID_VEH_ORDER_ID, cw);
+						case 2:
+						case 3:
+							if (mw.tab != (c == 2 ? 1 : 2)) {
+								mw.tab = c == 2 ? 1 : 2;
+								mw.scroll = 0;
+								mw.scroll2 = 0;
+								CloseMiniCarrier(mw);
+							}
 							break;
-						}
-						case 3: ShowOrdersWindow(v); break;
 						case 4:
 							if (_follow_veh == v->index) EnterIdleMode(); else EnterFollowMode(v->index);
 							break;
