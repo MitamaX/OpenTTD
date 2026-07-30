@@ -13,10 +13,10 @@
 #include <string>
 #include <vector>
 
-#include "core/geometry_type.hpp"
-#include "gfx_type.h"
 #include "company_type.h"
+#include "core/geometry_type.hpp"
 #include "engine_type.h"
+#include "gfx_type.h"
 #include "industry_type.h"
 #include "station_type.h"
 #include "tile_type.h"
