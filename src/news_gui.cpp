@@ -31,6 +31,7 @@
 #include "company_base.h"
 #include "settings_internal.h"
 #include "group_gui.h"
+#include "mini_ui.h"
 #include "zoom_func.h"
 #include "news_cmd.h"
 #include "news_func.h"
@@ -697,6 +698,8 @@ static void ShowNewspaper(const NewsItem *ni)
 {
 	SoundFx sound = _news_type_data[to_underlying(ni->type)].sound;
 	if (sound != 0 && _settings_client.sound.news_full) SndPlayFx(sound);
+
+	if (MiniUiShowNews(ni)) return;
 
 	new NewsWindow(GetNewsWindowLayout(ni->style), ni);
 }

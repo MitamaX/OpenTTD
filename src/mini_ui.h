@@ -35,6 +35,9 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects);
 void MiniUiScrollTo(int x, int y);
 bool MiniUiShowError(std::string summary, std::string detail, bool warn);
 
+struct NewsItem;
+bool MiniUiShowNews(const NewsItem *ni);
+
 bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);
 bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour);
 bool MiniUiDrawCoverageGlyph(const Rect &r, Colours colour);

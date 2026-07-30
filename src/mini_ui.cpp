@@ -3641,6 +3641,7 @@ struct MiniToast {
 	uint left_ms = 0;
 	uint full_ms = 0;
 	bool warn = false;
+	NewsReference ref{};
 };
 
 static std::vector<MiniToast> _toasts;
@@ -3699,12 +3700,17 @@ static void DrawToasts()
 	}
 }
 
+static void NewsRefFollow(const NewsReference &ref);
+
 static bool HandleToastClick(int x, int y)
 {
 	for (size_t i = 0; i < _toast_rows.size(); i++) {
 		if (!InRect(_toast_rows[i], x, y)) continue;
 		size_t idx = _toasts.size() - 1 - i;
-		if (idx < _toasts.size()) _toasts.erase(_toasts.begin() + (ptrdiff_t)idx);
+		if (idx >= _toasts.size()) return true;
+		NewsReference ref = _toasts[idx].ref;
+		_toasts.erase(_toasts.begin() + (ptrdiff_t)idx);
+		NewsRefFollow(ref);
 		return true;
 	}
 	return false;
@@ -6040,6 +6046,29 @@ bool MiniUiShowError(std::string summary, std::string detail, bool warn)
 	t.left_ms = life;
 	t.full_ms = life;
 	t.warn = warn;
+	_toasts.push_back(std::move(t));
+	if (_toasts.size() > MINI_TOAST_MAX) _toasts.erase(_toasts.begin());
+	return true;
+}
+
+/* The newspaper is replaced by a toast that keeps the item's reference, so a
+ * click lands on what the message is about. The item itself stays in the news
+ * history either way. */
+bool MiniUiShowNews(const NewsItem *ni)
+{
+	if (!_mini_active || ni == nullptr) return false;
+
+	std::string headline = StrMakeValid(ni->headline.GetDecodedString(), {});
+	if (headline.empty()) return true;
+
+	uint life = std::max<uint>(_settings_client.gui.errmsg_duration, 1) * 2000;
+	MiniToast t;
+	t.summary = std::move(headline);
+	t.detail = StrMakeValid(GetString(STR_JUST_DATE_TINY, ni->date), {});
+	t.left_ms = life;
+	t.full_ms = life;
+	t.warn = ni->type == NewsType::Advice;
+	t.ref = ni->ref1;
 	_toasts.push_back(std::move(t));
 	if (_toasts.size() > MINI_TOAST_MAX) _toasts.erase(_toasts.begin());
 	return true;
