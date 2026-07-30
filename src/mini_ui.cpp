@@ -6193,6 +6193,7 @@ enum class MiniMapMode : uint8_t {
 	Vehicles,
 	Industries,
 	Routes,
+	Vegetation,
 	Owner,
 };
 
@@ -6259,6 +6260,25 @@ static uint32_t MiniMapTileColour(TileIndex tile, MiniMapMode mode)
 				case MP_ROAD: return COL_CATENARY;
 				case MP_STATION: return MiniMapStationColour(tile);
 				case MP_TUNNELBRIDGE: return COL_BRIDGE;
+				default: return MiniMapFaded(MiniMapBaseColour(tile));
+			}
+
+		/* Which ground a tile carries decides what can be built on it, and in
+		 * the tropical climate the zone decides it outright, so the zone wins
+		 * over the ground colour there. */
+		case MiniMapMode::Vegetation:
+			switch (tt) {
+				case MP_WATER: return COL_WATER;
+				case MP_TREES: return Mix(COL_TREE, COL_PAPER, 60 - std::min(GetTreeCount(tile), 4U) * 15);
+				case MP_CLEAR:
+					if (_settings_game.game_creation.landscape == LandscapeType::Tropic) {
+						switch (GetTropicZone(tile)) {
+							case TROPICZONE_DESERT: return COL_DESERT;
+							case TROPICZONE_RAINFOREST: return Mix(COL_TREE, COL_PAPER, 40);
+							default: break;
+						}
+					}
+					return GroundColour(tile, TileHeight(tile));
 				default: return MiniMapFaded(MiniMapBaseColour(tile));
 			}
 
@@ -6962,12 +6982,13 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[4] = "지급률";
 			break;
 		case MiniWndKind::Map:
-			ntab = 5;
+			ntab = 6;
 			tl[0] = WndOfficial(STR_SMALLMAP_TYPE_CONTOURS);
 			tl[1] = WndOfficial(STR_SMALLMAP_TYPE_VEHICLES);
 			tl[2] = WndOfficial(STR_SMALLMAP_TYPE_INDUSTRIES);
 			tl[3] = WndOfficial(STR_SMALLMAP_TYPE_ROUTES);
-			tl[4] = WndOfficial(STR_SMALLMAP_TYPE_OWNERS);
+			tl[4] = WndOfficial(STR_SMALLMAP_TYPE_VEGETATION);
+			tl[5] = WndOfficial(STR_SMALLMAP_TYPE_OWNERS);
 			break;
 		default:
 			ntab = 3;
