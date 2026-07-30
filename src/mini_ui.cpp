@@ -142,6 +142,7 @@ enum class MiniTool : uint8_t {
 	Road,
 	Station,
 	RailWaypoint,
+	RoadWaypoint,
 	BusStop,
 	TruckStop,
 	TrainDepot,
@@ -174,7 +175,7 @@ static bool IsRectTool(MiniTool t)
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters || t == MiniTool::Industry;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::RoadWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters || t == MiniTool::Industry;
 }
 
 static bool IsBridgeTool(MiniTool t)
@@ -186,7 +187,7 @@ static bool IsRoadTool(MiniTool t)
 {
 	return t == MiniTool::Road || t == MiniTool::BusStop || t == MiniTool::TruckStop ||
 			t == MiniTool::RoadDepot || t == MiniTool::RoadTunnel || t == MiniTool::RoadBridge ||
-			t == MiniTool::RoadConvert;
+			t == MiniTool::RoadConvert || t == MiniTool::RoadWaypoint;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -219,6 +220,7 @@ static MiniLayer ToolLayer(MiniTool t)
 		case MiniTool::RoadTunnel:
 		case MiniTool::RoadBridge:
 		case MiniTool::RoadConvert:
+		case MiniTool::RoadWaypoint:
 			return MiniLayer::Road;
 		default:
 			return MiniLayer::None;
@@ -2775,6 +2777,15 @@ static void CommitPointTool()
 			}
 			break;
 
+		case MiniTool::RoadWaypoint:
+			if (_drag_remove) {
+				Command<CMD_REMOVE_FROM_ROAD_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_WAYPOINT, tile, tile);
+			} else {
+				Axis axis = GetAxisForNewRoadWaypoint(tile);
+				Command<CMD_BUILD_ROAD_WAYPOINT>::Post(STR_ERROR_CAN_T_BUILD_ROAD_WAYPOINT, tile, IsValidAxis(axis) ? axis : AXIS_X, 1, 1, ROADSTOP_CLASS_WAYP, 0, StationID::Invalid(), false);
+			}
+			break;
+
 		case MiniTool::TrainDepot:
 			if (_drag_remove) {
 				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
@@ -2900,6 +2911,9 @@ static void DrawPointToolPlan(int ppt)
 		}
 	} else if (_tool == MiniTool::RailWaypoint) {
 		Axis axis = GetAxisForNewRailWaypoint(TileXY(tx, ty));
+		if (IsValidAxis(axis)) DrawAxisBand(axis, x0, y0, x1, y1, std::max(2, ppt / 3), c);
+	} else if (_tool == MiniTool::RoadWaypoint) {
+		Axis axis = GetAxisForNewRoadWaypoint(TileXY(tx, ty));
 		if (IsValidAxis(axis)) DrawAxisBand(axis, x0, y0, x1, y1, std::max(2, ppt / 3), c);
 	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel || _tool == MiniTool::Dock || _tool == MiniTool::Lock) {
 		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
@@ -3104,6 +3118,7 @@ static const MiniMenuItem _menu_road_items[] = {
 	{STR_LAI_ROAD_DESCRIPTION_ROAD, "ROAD", MiniTool::Road},
 	{STR_LAI_STATION_DESCRIPTION_BUS_STATION, "BUS", MiniTool::BusStop},
 	{STR_LAI_STATION_DESCRIPTION_TRUCK_LOADING_AREA, "TRUCK", MiniTool::TruckStop},
+	{STR_LAI_STATION_DESCRIPTION_WAYPOINT, "WAYPOINT", MiniTool::RoadWaypoint},
 	{STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT, "DEPOT", MiniTool::RoadDepot},
 	{STR_LAI_TUNNEL_DESCRIPTION_ROAD, "TUNNEL", MiniTool::RoadTunnel},
 	{INVALID_STRING_ID, "BRIDGE", MiniTool::RoadBridge},
@@ -3229,6 +3244,10 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 		case MiniTool::RailWaypoint:
 			ScreenThickLine(cx - h, cy, cx + h, cy, t, COL_PAPER);
 			ScreenFillRect(cx - t, cy - h + 2, cx + t, cy + h - 2, COL_ST_RAIL);
+			break;
+		case MiniTool::RoadWaypoint:
+			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_ROAD);
+			ScreenFillRect(cx - t, cy - h + 2, cx + t, cy + h - 2, COL_ST_ROAD);
 			break;
 		case MiniTool::BusStop:
 			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_ROAD_B);
@@ -4213,6 +4232,7 @@ static void DrawHud()
 			case MiniTool::BusStop:
 			case MiniTool::TruckStop: hint = "CLICK ROAD / Q E SHAPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailWaypoint: hint = "CLICK TRACK / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RoadWaypoint: hint = "CLICK ROAD / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::TrainDepot:
 			case MiniTool::RoadDepot: hint = "Q E ROTATE EXIT / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::ShipDepot: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
