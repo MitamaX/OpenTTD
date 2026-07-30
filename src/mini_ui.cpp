@@ -4748,6 +4748,8 @@ static int ImWndNameEdit(MiniWnd &mw, float width)
 	return ImGui::IsItemDeactivated() ? -1 : 0;
 }
 
+static bool _order_clone_share = false;
+
 static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 {
 	bool own = v->owner == _local_company;
@@ -4910,6 +4912,34 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 				bool picking = _order_pick_veh == v->index;
 				if (ImWndLink(picking ? "추가 중. 지도에서 목적지 클릭, ESC 종료" : "+ 목적지 추가", COL_CH_ACCENT)) {
 					if (picking) EnterIdleMode(); else EnterOrderPickMode(v->index);
+				}
+
+				/* A fleet runs one route, so taking the list off a vehicle that
+				 * already has it beats typing the stops in again per vehicle. */
+				if (v->orders != nullptr && v->orders->GetNumVehicles() > 1) {
+					if (ImWndLink("주문 공유 해제", COL_CH_YELLOW)) {
+						Command<CMD_CLONE_ORDER>::Post(STR_ERROR_CAN_T_STOP_SHARING_ORDER_LIST, v->tile, CO_UNSHARE, v->index, VehicleID::Invalid());
+					}
+				}
+				std::vector<const Vehicle *> srcs;
+				for (const Vehicle *o : Vehicle::Iterate()) {
+					if (o->type != v->type || !o->IsPrimaryVehicle() || o->owner != _local_company) continue;
+					if (o->index == v->index || o->GetNumOrders() == 0) continue;
+					if (v->orders != nullptr && o->orders == v->orders) continue;
+					srcs.push_back(o);
+				}
+				if (!srcs.empty()) {
+					ImWndHeader("주문 가져오기");
+					if (ImWndKVLink("방식", _order_clone_share ? "공유" : "복사", COL_CH_DIM, COL_CH_ACCENT)) {
+						_order_clone_share = !_order_clone_share;
+					}
+					for (const Vehicle *o : srcs) {
+						std::string label = fmt::format("· {} · {}개", StrMakeValid(GetString(STR_VEHICLE_NAME, o->index), {}), o->GetNumOrders());
+						if (ImWndLink(label, COL_CH_TEXT)) {
+							Command<CMD_CLONE_ORDER>::Post(_order_clone_share ? STR_ERROR_CAN_T_SHARE_ORDER_LIST : STR_ERROR_CAN_T_COPY_ORDER_LIST,
+									v->tile, _order_clone_share ? CO_SHARE : CO_COPY, v->index, o->index);
+						}
+					}
 				}
 			}
 			break;
