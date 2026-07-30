@@ -1740,6 +1740,8 @@ static void OrderPickClick(int sx, int sy)
 /* Stage 0 issues the next build, stage 1 spots the new vehicle among the
  * depot's chains, stage 2 waits for its attach move to apply before the
  * next unit goes out. Single player resolves each stage within a frame. */
+static void OpenVehicleMiniWnd(VehicleID veh);
+
 static void ProcessFleetDeploy()
 {
 	if (_deploy.depot == INVALID_TILE) return;
@@ -1759,7 +1761,11 @@ static void ProcessFleetDeploy()
 	switch (_deploy.stage) {
 		case 0: {
 			if (_deploy.next >= _deploy.units.size()) {
+				/* The finished consist is the one thing the player wants next:
+				 * its window is where orders and the start command live. */
+				VehicleID built = _deploy.head;
 				_deploy = FleetDeploy{};
+				if (built != VehicleID::Invalid()) OpenVehicleMiniWnd(built);
 				return;
 			}
 			const Engine *e = Engine::GetIfValid(_deploy.units[_deploy.next]);
@@ -4426,6 +4432,11 @@ static void OpenFleetMiniWnd(int vt)
 	if (vt >= 0) _wnds.back().tab = (uint8_t)vt;
 }
 
+static void OpenVehicleMiniWnd(VehicleID veh)
+{
+	OpenMiniWnd(MiniWndKind::Vehicle, veh, StationID::Invalid());
+}
+
 static void OpenFinanceMiniWnd()
 {
 	OpenMiniWnd(MiniWndKind::Finance, VehicleID::Invalid(), StationID::Invalid());
@@ -5312,7 +5323,16 @@ static void ImFleetBody(MiniWnd &mw)
 			label = fmt::format("{}{}", mw.sel == head->index ? "▶ " : "· ", label);
 			bool stopped = head->vehstatus.Test(VehState::Stopped);
 			if (ImWndLink(label, mw.sel == head->index ? COL_CH_ACCENT : (stopped ? COL_CH_TEXT : COL_CH_YELLOW))) {
-				FleetMarkUnit(mw, head->index, true);
+				/* With a unit marked the row is a coupling target; otherwise it
+				 * is the only way from the yard to the consist's own window. */
+				const Vehicle *marked = Vehicle::GetIfValid(mw.sel);
+				bool couple = marked != nullptr && marked->type == VEH_TRAIN && head->type == VEH_TRAIN &&
+						marked->First() != head->First() && marked->tile == head->tile;
+				if (!couple && head->IsPrimaryVehicle()) {
+					OpenVehicleMiniWnd(head->index);
+				} else {
+					FleetMarkUnit(mw, head->index, true);
+				}
 			}
 			if (vt == VEH_TRAIN) {
 				std::vector<VehicleID> ids;
