@@ -2426,6 +2426,17 @@ static int RectPlanLimit()
 	return std::max<int>(Map::SizeX(), Map::SizeY());
 }
 
+/* A square drag leaves the platform direction ambiguous and a rectangle can
+ * still want the short side, so the axis is derived and Q/E flips it. */
+static bool _station_flip = false;
+
+static Axis StationPlanAxis()
+{
+	int w = _rect_plan.x1 - _rect_plan.x0 + 1;
+	int h = _rect_plan.y1 - _rect_plan.y0 + 1;
+	return (w >= h) != _station_flip ? AXIS_X : AXIS_Y;
+}
+
 static void DrawRectPlan(int ppt)
 {
 	if (!_rect_plan.valid) return;
@@ -2440,6 +2451,15 @@ static void DrawRectPlan(int ppt)
 	FillRect(px0, py1 - b + 1, px1, py1, c);
 	FillRect(px0, py0, px0 + b - 1, py1, c);
 	FillRect(px1 - b + 1, py0, px1, py1, c);
+
+	if (_tool != MiniTool::Station || _drag_remove) return;
+	Axis axis = StationPlanAxis();
+	int rail_w = std::max(1, ppt / 6);
+	for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
+		for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) {
+			DrawAxisBand(axis, ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, rail_w, c);
+		}
+	}
 }
 
 static void CommitStationPlan()
@@ -2451,7 +2471,7 @@ static void CommitStationPlan()
 	if (_drag_remove) {
 		Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, org, TileXY(_rect_plan.x1, _rect_plan.y1), true);
 	} else {
-		Axis axis = w >= h ? AXIS_X : AXIS_Y;
+		Axis axis = StationPlanAxis();
 		uint8_t plat_len = (uint8_t)(axis == AXIS_X ? w : h);
 		uint8_t numtracks = (uint8_t)(axis == AXIS_X ? h : w);
 		Command<CMD_BUILD_RAIL_STATION>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, org, PickRailType(), axis, numtracks, plat_len, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
@@ -4150,7 +4170,7 @@ static void DrawHud()
 			case MiniTool::Convert:
 			case MiniTool::RoadConvert: hint = "DRAG AREA / Q E TYPE / RMB CANCEL"; break;
 			case MiniTool::Road: hint = "DRAG LINE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Station: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Station: hint = "DRAG AREA / Q E TURN / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::BusStop:
 			case MiniTool::TruckStop:
 			case MiniTool::RailWaypoint: hint = "CLICK TRACK / CTRL REMOVE / RMB CANCEL"; break;
@@ -4206,6 +4226,12 @@ static void DrawHud()
 				if (IsBridgeTool(_tool)) title += fmt::format("  {}", BridgePlanLength());
 				if (_tool == MiniTool::Signal && !_sig_plan.tiles.empty()) title += fmt::format("  {}", _sig_plan.tiles.size());
 				if (IsRectTool(_tool) && _rect_plan.valid) title += fmt::format("  {}x{}", _rect_plan.x1 - _rect_plan.x0 + 1, _rect_plan.y1 - _rect_plan.y0 + 1);
+				if (_tool == MiniTool::Station && _rect_plan.valid && !_drag_remove) {
+					int w = _rect_plan.x1 - _rect_plan.x0 + 1;
+					int h = _rect_plan.y1 - _rect_plan.y0 + 1;
+					bool along_x = StationPlanAxis() == AXIS_X;
+					title += fmt::format("  {}선 {}칸", along_x ? h : w, along_x ? w : h);
+				}
 			}
 			int wmax = std::max<int>(GetStringBoundingBox(title).width, GetStringBoundingBox(hint).width);
 			int tx = std::min(_cursor.pos.x + 9 * s, _fbw - wmax - 4 * s);
@@ -7386,6 +7412,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleIndustryType(1);
 			} else if (IsBridgeTool(_tool)) {
 				CycleBridgeType(1);
+			} else if (_tool == MiniTool::Station) {
+				_station_flip = !_station_flip;
 			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
 				CycleRoadType(1);
 			} else if (IsDirPointTool(_tool)) {
@@ -7404,6 +7432,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleIndustryType(-1);
 			} else if (IsBridgeTool(_tool)) {
 				CycleBridgeType(-1);
+			} else if (_tool == MiniTool::Station) {
+				_station_flip = !_station_flip;
 			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
 				CycleRoadType(-1);
 			} else if (IsDirPointTool(_tool)) {
