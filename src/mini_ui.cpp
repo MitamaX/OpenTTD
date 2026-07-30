@@ -5063,6 +5063,10 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 							case OrderUnloadType::NoUnload: label += " · 무하차"; break;
 							default: break;
 						}
+					} else if (o.IsType(OT_GOTO_DEPOT)) {
+						if (o.GetDepotActionType().Test(OrderDepotActionFlag::Unbunch)) label += " · 간격 조정";
+						if (o.GetDepotActionType().Test(OrderDepotActionFlag::Halt)) label += " · 정지";
+						if (o.GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) label += " · 필요할 때만";
 					}
 					bool cur = oi == v->cur_real_order_index;
 					if (ImWndLink(fmt::format("{}{}. {}", cur ? "▶ " : "", oi + 1, label), mw.sel_ord == oi ? COL_CH_ACCENT : (cur ? COL_CH_YELLOW : COL_CH_TEXT))) {
@@ -5110,6 +5114,27 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 								default: next = OrderUnloadType::UnloadIfPossible; break;
 							}
 							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_UNLOAD, to_underlying(next));
+						}
+					}
+					/* Spacing a fleet out is what a depot order is normally for,
+					 * so the row cycles the depot action rather than hiding
+					 * unbunching behind a timetable. */
+					if (so->IsType(OT_GOTO_DEPOT)) {
+						OrderDepotActionFlags da = so->GetDepotActionType();
+						OrderDepotAction cur;
+						if (da.Test(OrderDepotActionFlag::Unbunch)) {
+							cur = OrderDepotAction::Unbunch;
+						} else if (da.Test(OrderDepotActionFlag::Halt)) {
+							cur = OrderDepotAction::Stop;
+						} else if (so->GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) {
+							cur = OrderDepotAction::Service;
+						} else {
+							cur = OrderDepotAction::AlwaysGo;
+						}
+						static const std::string_view da_names[] = {"항상 입고", "필요할 때만", "입고 후 정지", "입고 후 간격 조정"};
+						if (ImWndKVLink("차고 동작", da_names[(int)cur], COL_CH_DIM, COL_CH_TEXT)) {
+							OrderDepotAction next = (OrderDepotAction)(((int)cur + 1) % (int)OrderDepotAction::End);
+							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_DEPOT_ACTION, to_underlying(next));
 						}
 					}
 					if (ImWndLink("삭제", COL_CH_RED)) {
