@@ -2805,7 +2805,7 @@ static void CommitPointTool()
 		case MiniTool::Sign:
 			if (_drag_remove) {
 				for (const Sign *si : Sign::Iterate()) {
-					if (TileVirtXY(si->x, si->y) != tile) continue;
+					if (TileVirtXY((uint)si->x, (uint)si->y) != tile) continue;
 					Command<CMD_RENAME_SIGN>::Post(si->index, std::string{});
 					break;
 				}
