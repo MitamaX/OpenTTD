@@ -190,7 +190,7 @@ static bool IsRoadTool(MiniTool t)
 
 static bool IsDirPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::ShipDepot;
+	return t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::ShipDepot;
 }
 
 enum class MiniLayer : uint8_t {
@@ -2715,6 +2715,23 @@ static void CycleAirportType(int dir)
 	}
 }
 
+/* Road stops come in two shapes and the tool walks both: the first four steps
+ * are a bay entered from that side, the last two a drive-through along that
+ * axis. Drive-through along X stays the default. */
+static const int MINI_STOP_STATES = 6;
+static uint8_t _stop_state = 4;
+
+static bool StopIsThrough()
+{
+	return _stop_state >= 4;
+}
+
+static DiagDirection StopDiagDir()
+{
+	if (StopIsThrough()) return AxisToDiagDir(_stop_state == 4 ? AXIS_X : AXIS_Y);
+	return (DiagDirection)_stop_state;
+}
+
 /* Point tools place on click: the blueprint floats on the hover tile and
  * Q/E spin _point_dir, so no drag gesture is involved. */
 static void CommitPointTool()
@@ -2731,8 +2748,7 @@ static void CommitPointTool()
 			if (_drag_remove) {
 				Command<CMD_REMOVE_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_REMOVE_BUS_STATION : STR_ERROR_CAN_T_REMOVE_TRUCK_STATION, tile, 1, 1, st, false);
 			} else {
-				DiagDirection ddir = AxisToDiagDir(DiagDirToAxis(_point_dir));
-				Command<CMD_BUILD_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_BUILD_BUS_STATION : STR_ERROR_CAN_T_BUILD_TRUCK_STATION, tile, 1, 1, st, true, ddir, PickRoadType(), ROADSTOP_CLASS_DFLT, 0, StationID::Invalid(), false);
+				Command<CMD_BUILD_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_BUILD_BUS_STATION : STR_ERROR_CAN_T_BUILD_TRUCK_STATION, tile, 1, 1, st, StopIsThrough(), StopDiagDir(), PickRoadType(), ROADSTOP_CLASS_DFLT, 0, StationID::Invalid(), false);
 			}
 			break;
 		}
@@ -2863,7 +2879,14 @@ static void DrawPointToolPlan(int ppt)
 		Track track = PickSignalTrack(TileXY(tx, ty), wx, wy);
 		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
 	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-		DrawAxisBand(DiagDirToAxis(_point_dir), x0, y0, x1, y1, std::max(2, ppt / 3), c);
+		if (StopIsThrough()) {
+			DrawAxisBand(DiagDirToAxis(StopDiagDir()), x0, y0, x1, y1, std::max(2, ppt / 3), c);
+		} else {
+			int cx = (x0 + x1) / 2;
+			int cy = (y0 + y1) / 2;
+			DiagDirection d = StopDiagDir();
+			ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 3), c);
+		}
 	} else if (_tool == MiniTool::RailWaypoint) {
 		Axis axis = GetAxisForNewRailWaypoint(TileXY(tx, ty));
 		if (IsValidAxis(axis)) DrawAxisBand(axis, x0, y0, x1, y1, std::max(2, ppt / 3), c);
@@ -4172,7 +4195,7 @@ static void DrawHud()
 			case MiniTool::Road: hint = "DRAG LINE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Station: hint = "DRAG AREA / Q E TURN / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::BusStop:
-			case MiniTool::TruckStop:
+			case MiniTool::TruckStop: hint = "CLICK ROAD / Q E SHAPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailWaypoint: hint = "CLICK TRACK / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::TrainDepot:
 			case MiniTool::RoadDepot: hint = "Q E ROTATE EXIT / CTRL REMOVE / RMB CANCEL"; break;
@@ -4206,6 +4229,9 @@ static void DrawHud()
 			}
 			if (IsRoadTool(_tool)) {
 				title += fmt::format("  {}", StrMakeValid(GetString(GetRoadTypeInfo(PickRoadType())->strings.name), {}));
+			}
+			if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+				title += StopIsThrough() ? "  통과" : "  만입";
 			}
 			if (_tool == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(PickSignalType()));
 			if (IsBridgeTool(_tool)) {
@@ -7414,6 +7440,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleBridgeType(1);
 			} else if (_tool == MiniTool::Station) {
 				_station_flip = !_station_flip;
+			} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+				_stop_state = (uint8_t)((_stop_state + 1) % MINI_STOP_STATES);
 			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
 				CycleRoadType(1);
 			} else if (IsDirPointTool(_tool)) {
@@ -7434,6 +7462,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleBridgeType(-1);
 			} else if (_tool == MiniTool::Station) {
 				_station_flip = !_station_flip;
+			} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+				_stop_state = (uint8_t)((_stop_state + MINI_STOP_STATES - 1) % MINI_STOP_STATES);
 			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
 				CycleRoadType(-1);
 			} else if (IsDirPointTool(_tool)) {
