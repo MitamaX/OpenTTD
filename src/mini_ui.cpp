@@ -157,6 +157,7 @@ enum class MiniTool : uint8_t {
 	RoadTunnel,
 	RailBridge,
 	RoadBridge,
+	RoadConvert,
 	Terraform,
 	Headquarters,
 	Trees,
@@ -167,7 +168,7 @@ enum class MiniTool : uint8_t {
 static bool IsRectTool(MiniTool t)
 {
 	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform || t == MiniTool::Canal || t == MiniTool::Convert ||
-			t == MiniTool::Trees || t == MiniTool::BuyLand;
+			t == MiniTool::RoadConvert || t == MiniTool::Trees || t == MiniTool::BuyLand;
 }
 
 static bool IsPointTool(MiniTool t)
@@ -183,7 +184,8 @@ static bool IsBridgeTool(MiniTool t)
 static bool IsRoadTool(MiniTool t)
 {
 	return t == MiniTool::Road || t == MiniTool::BusStop || t == MiniTool::TruckStop ||
-			t == MiniTool::RoadDepot || t == MiniTool::RoadTunnel || t == MiniTool::RoadBridge;
+			t == MiniTool::RoadDepot || t == MiniTool::RoadTunnel || t == MiniTool::RoadBridge ||
+			t == MiniTool::RoadConvert;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -215,6 +217,7 @@ static MiniLayer ToolLayer(MiniTool t)
 		case MiniTool::RoadDepot:
 		case MiniTool::RoadTunnel:
 		case MiniTool::RoadBridge:
+		case MiniTool::RoadConvert:
 			return MiniLayer::Road;
 		default:
 			return MiniLayer::None;
@@ -2470,6 +2473,13 @@ static void CommitConvertPlan()
 	ClearPlans();
 }
 
+static void CommitRoadConvertPlan()
+{
+	if (!_rect_plan.valid) return;
+	Command<CMD_CONVERT_ROAD>::Post(STR_ERROR_CAN_T_CONVERT_ROAD, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), PickRoadType(), false);
+	ClearPlans();
+}
+
 static void CommitCanalPlan()
 {
 	if (!_rect_plan.valid) return;
@@ -3043,6 +3053,7 @@ static const MiniMenuItem _menu_road_items[] = {
 	{STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT, "DEPOT", MiniTool::RoadDepot},
 	{STR_LAI_TUNNEL_DESCRIPTION_ROAD, "TUNNEL", MiniTool::RoadTunnel},
 	{INVALID_STRING_ID, "BRIDGE", MiniTool::RoadBridge},
+	{INVALID_STRING_ID, "CONVERT", MiniTool::RoadConvert},
 };
 
 static const MiniMenuItem _menu_water_items[] = {
@@ -3148,6 +3159,10 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 		case MiniTool::Convert:
 			ScreenThickLine(cx - h, cy + h - 2, cx + h, cy - 2, t, COL_BRIDGE);
 			ScreenThickLine(cx - h, cy + 2, cx + h, cy - h + 2, t, COL_GO);
+			break;
+		case MiniTool::RoadConvert:
+			ScreenFillRect(cx - h, cy - is / 4 - 2, cx + h, cy - 2, COL_ROAD);
+			ScreenFillRect(cx - h, cy + 2, cx + h, cy + is / 4 + 2, COL_GO);
 			break;
 		case MiniTool::Road:
 			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_ROAD);
@@ -4132,7 +4147,8 @@ static void DrawHud()
 		std::string_view hint;
 		switch (_tool) {
 			case MiniTool::Rail: hint = "DRAG PATH / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Convert: hint = "DRAG AREA / Q E TYPE / RMB CANCEL"; break;
+			case MiniTool::Convert:
+			case MiniTool::RoadConvert: hint = "DRAG AREA / Q E TYPE / RMB CANCEL"; break;
 			case MiniTool::Road: hint = "DRAG LINE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Station: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::BusStop:
@@ -7274,7 +7290,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				}
 			} else {
 				_dragging = true;
-				_drag_remove = _ctrl_pressed && _tool != MiniTool::Convert && !IsBridgeTool(_tool);
+				_drag_remove = _ctrl_pressed && _tool != MiniTool::Convert && _tool != MiniTool::RoadConvert && !IsBridgeTool(_tool);
 				_drag_ax = MapXAt(_cursor.pos.y);
 				_drag_ay = MapYAt(_cursor.pos.x);
 				if (_tool == MiniTool::Rail) {
@@ -7298,6 +7314,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
 		if (_tool == MiniTool::Canal) CommitCanalPlan();
 		if (_tool == MiniTool::Convert) CommitConvertPlan();
+		if (_tool == MiniTool::RoadConvert) CommitRoadConvertPlan();
 		if (_tool == MiniTool::Trees) CommitTreePlan();
 		if (_tool == MiniTool::BuyLand) CommitBuyLandPlan();
 	}
@@ -7369,7 +7386,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleIndustryType(1);
 			} else if (IsBridgeTool(_tool)) {
 				CycleBridgeType(1);
-			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel) {
+			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
 				CycleRoadType(1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
@@ -7387,7 +7404,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleIndustryType(-1);
 			} else if (IsBridgeTool(_tool)) {
 				CycleBridgeType(-1);
-			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel) {
+			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
 				CycleRoadType(-1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
