@@ -6188,10 +6188,73 @@ static std::string GraphValueStr(int64_t v, uint8_t tab)
 	return StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, v), {});
 }
 
+/* What a haul is worth decides which route is worth building, so the plot
+ * runs the same sample the official rates graph does: ten units over twenty
+ * tiles, priced against the transit time. */
+static void ImPaymentRatesBody()
+{
+	static const int SAMPLES = 20;
+
+	struct Rate {
+		uint32_t colour;
+		std::string name;
+		std::vector<int64_t> vals;
+	};
+
+	std::vector<Rate> rates;
+	int64_t hi = 1;
+	for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
+		Rate r;
+		r.colour = CargoRgb(cs->Index());
+		r.name = WndOfficial(cs->name);
+		for (int j = 0; j < SAMPLES; j++) {
+			int64_t v = (int64_t)GetTransportedGoodsIncome(10, 20, (uint16_t)(j * 4 + 4), cs->Index());
+			hi = std::max(hi, v);
+			r.vals.push_back(v);
+		}
+		rates.push_back(std::move(r));
+	}
+	if (rates.empty()) {
+		ImWndText("화물 없음", COL_CH_DIM);
+		return;
+	}
+
+	float lh = ImGui::GetFontSize();
+	float legend_h = (float)rates.size() * ImGui::GetTextLineHeightWithSpacing();
+	float w = ImGui::GetContentRegionAvail().x;
+	float h = std::max(ImGui::GetContentRegionAvail().y - legend_h - lh * 2.0f, lh * 5.0f);
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	ImGui::Dummy(ImVec2(w, h));
+
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), MiniImU32(COL_CH_TILE));
+
+	float step = w / (float)(SAMPLES - 1);
+	for (const Rate &r : rates) {
+		for (int j = 1; j < SAMPLES; j++) {
+			float ya = p.y + h - (float)((double)r.vals[j - 1] / (double)hi * h);
+			float yb = p.y + h - (float)((double)r.vals[j] / (double)hi * h);
+			dl->AddLine(ImVec2(p.x + (float)(j - 1) * step, ya), ImVec2(p.x + (float)j * step, yb), MiniImU32(r.colour), 1.5f);
+		}
+	}
+
+	dl->AddText(ImVec2(p.x + 3.0f, p.y + 2.0f), MiniImU32(COL_CH_DIM), StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, hi), {}).c_str());
+	dl->AddText(ImVec2(p.x + 3.0f, p.y + h - lh - 2.0f), MiniImU32(COL_CH_DIM), fmt::format("수송 시간 4-{}", SAMPLES * 4).c_str());
+
+	for (const Rate &r : rates) {
+		ImWndKV(fmt::format("· {}", r.name), StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, r.vals.front()), {}), r.colour);
+	}
+}
+
 /* Quarters run oldest to newest from left to right; series shorter than the
  * widest one start further right so the newest quarter always lines up. */
 static void ImGraphBody(MiniWnd &mw)
 {
+	if (mw.tab == 4) {
+		ImPaymentRatesBody();
+		return;
+	}
+
 	struct Series {
 		uint32_t colour;
 		std::string name;
@@ -6660,11 +6723,12 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[0] = "상태";
 			break;
 		case MiniWndKind::Graph:
-			ntab = 4;
+			ntab = 5;
 			tl[0] = "수익";
 			tl[1] = "가치";
 			tl[2] = "성능";
 			tl[3] = "화물";
+			tl[4] = "지급률";
 			break;
 		case MiniWndKind::Map:
 			ntab = 5;
