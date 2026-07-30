@@ -180,6 +180,12 @@ static bool IsBridgeTool(MiniTool t)
 	return t == MiniTool::RailBridge || t == MiniTool::RoadBridge;
 }
 
+static bool IsRoadTool(MiniTool t)
+{
+	return t == MiniTool::Road || t == MiniTool::BusStop || t == MiniTool::TruckStop ||
+			t == MiniTool::RoadDepot || t == MiniTool::RoadTunnel || t == MiniTool::RoadBridge;
+}
+
 static bool IsDirPointTool(MiniTool t)
 {
 	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::ShipDepot;
@@ -2354,15 +2360,35 @@ static void DrawBridgePlan(int ppt)
 	}
 }
 
+/* Out of range until the player picks one, so the road tools default to the
+ * first plain road type and tram types stay opt-in. */
+static RoadType _road_type_sel = INVALID_ROADTYPE;
+
 static RoadType PickRoadType()
 {
 	const Company *c = Company::GetIfValid(_local_company);
 	if (c != nullptr) {
+		if (_road_type_sel < ROADTYPE_END && c->avail_roadtypes.Test(_road_type_sel)) return _road_type_sel;
 		for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
 			if (GetRoadTramType(rt) == RTT_ROAD && c->avail_roadtypes.Test(rt)) return rt;
 		}
 	}
 	return ROADTYPE_ROAD;
+}
+
+static void CycleRoadType(int dir)
+{
+	const Company *c = Company::GetIfValid(_local_company);
+	if (c == nullptr) return;
+	int at = (int)PickRoadType();
+	for (int i = 1; i <= (int)ROADTYPE_END; i++) {
+		int rt = (at + dir * i) % (int)ROADTYPE_END;
+		if (rt < 0) rt += (int)ROADTYPE_END;
+		if (c->avail_roadtypes.Test((RoadType)rt)) {
+			_road_type_sel = (RoadType)rt;
+			return;
+		}
+	}
 }
 
 /* Rectangle drag; the far corner truncates at the size limit so the
@@ -4107,7 +4133,7 @@ static void DrawHud()
 		switch (_tool) {
 			case MiniTool::Rail: hint = "DRAG PATH / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Convert: hint = "DRAG AREA / Q E TYPE / RMB CANCEL"; break;
-			case MiniTool::Road: hint = "DRAG LINE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Road: hint = "DRAG LINE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Station: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::BusStop:
 			case MiniTool::TruckStop:
@@ -4122,8 +4148,8 @@ static void DrawHud()
 			case MiniTool::Lock: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
 			case MiniTool::Signal: hint = "DRAG TRACK / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::RailTunnel:
-			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RailTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailBridge:
 			case MiniTool::RoadBridge: hint = "DRAG SPAN / Q E TYPE / RMB CANCEL"; break;
 			case MiniTool::Terraform: hint = "DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
@@ -4141,6 +4167,9 @@ static void DrawHud()
 			}
 			if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
 				title += fmt::format("  {}", StrMakeValid(GetString(GetRailTypeInfo(PickRailType())->strings.name), {}));
+			}
+			if (IsRoadTool(_tool)) {
+				title += fmt::format("  {}", StrMakeValid(GetString(GetRoadTypeInfo(PickRoadType())->strings.name), {}));
 			}
 			if (_tool == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(PickSignalType()));
 			if (IsBridgeTool(_tool)) {
@@ -7340,6 +7369,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleIndustryType(1);
 			} else if (IsBridgeTool(_tool)) {
 				CycleBridgeType(1);
+			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel) {
+				CycleRoadType(1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
 			}
@@ -7356,6 +7387,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleIndustryType(-1);
 			} else if (IsBridgeTool(_tool)) {
 				CycleBridgeType(-1);
+			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel) {
+				CycleRoadType(-1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
 			}
