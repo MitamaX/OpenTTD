@@ -15,6 +15,7 @@
 
 #include "core/geometry_type.hpp"
 #include "gfx_type.h"
+#include "company_type.h"
 #include "engine_type.h"
 #include "industry_type.h"
 #include "station_type.h"
@@ -51,5 +52,6 @@ bool ShowMiniTownWindow(TownID town);
 bool ShowMiniIndustryWindow(IndustryID industry);
 bool ShowMiniDepotWindow(TileIndex tile, VehicleType type);
 bool ShowMiniEnginePreview(EngineID engine);
+bool ShowMiniBuyCompany(CompanyID company, bool hostile_takeover);
 
 #endif /* MINI_UI_H */

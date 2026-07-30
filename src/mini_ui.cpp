@@ -51,6 +51,7 @@
 #include "landscape_cmd.h"
 #include "league_gui.h"
 #include "mini_atlas.h"
+#include "economy_cmd.h"
 #include "economy_func.h"
 #include "misc_cmd.h"
 #include "network/network.h"
@@ -3854,6 +3855,7 @@ enum class MiniWndKind : uint8_t {
 	League,
 	Graph,
 	Preview,
+	Takeover,
 };
 
 /* Directory kinds carry no entity: they read the whole pool each frame and
@@ -3873,6 +3875,8 @@ struct MiniWnd {
 	TownID town = TownID::Invalid();
 	IndustryID ind = IndustryID::Invalid();
 	EngineID eng = EngineID::Invalid();
+	CompanyID comp = CompanyID::Invalid();
+	bool hostile = false;
 	VehicleID sel = VehicleID::Invalid();
 	GroupID sel_grp = ALL_GROUP;
 	EngineID sel_eng = EngineID::Invalid();
@@ -4036,19 +4040,20 @@ struct MiniOpenReq {
 	TownID town;
 	IndustryID ind;
 	EngineID eng;
+	CompanyID comp;
 };
 
 static std::vector<MiniOpenReq> _wnd_opens;
 static bool _wnds_drawing = false;
 
-static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), EngineID eng = EngineID::Invalid())
+static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), EngineID eng = EngineID::Invalid(), CompanyID comp = CompanyID::Invalid())
 {
 	if (_wnds_drawing) {
-		_wnd_opens.push_back({kind, veh, st, town, ind, eng});
+		_wnd_opens.push_back({kind, veh, st, town, ind, eng, comp});
 		return;
 	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind && _wnds[i].eng == eng) {
+		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind && _wnds[i].eng == eng && _wnds[i].comp == comp) {
 			RaiseMiniWnd(i);
 			return;
 		}
@@ -4061,6 +4066,7 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	mw.town = town;
 	mw.ind = ind;
 	mw.eng = eng;
+	mw.comp = comp;
 	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
 	mw.y = Clamp(_win_bar_bottom + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
 	_wnds.push_back(mw);
@@ -5565,6 +5571,25 @@ static void ImPreviewBody(const MiniWnd &mw)
 	ImWndText(StrMakeValid(GetEngineInfoString(mw.eng), {}), COL_CH_TEXT);
 }
 
+static Money TakeoverPrice(const MiniWnd &mw)
+{
+	const Company *c = Company::GetIfValid(mw.comp);
+	if (c == nullptr) return 0;
+	return mw.hostile ? CalculateHostileTakeoverValue(c) : c->bankrupt_value;
+}
+
+static void ImTakeoverBody(const MiniWnd &mw)
+{
+	const Company *c = Company::GetIfValid(mw.comp);
+	if (c == nullptr) return;
+
+	StringID str = mw.hostile ? STR_BUY_COMPANY_HOSTILE_TAKEOVER : STR_BUY_COMPANY_MESSAGE;
+	ImWndText(StrMakeValid(GetString(str, c->index, TakeoverPrice(mw)), {}), COL_CH_TEXT);
+	ImWndKV("성능 지수", fmt::format("{}/1000", c->old_economy[0].performance_history), COL_CH_TEXT);
+	ImWndKV("보유 현금", StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->money), {}), COL_CH_TEXT);
+	ImWndKV("대출", StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->current_loan), {}), c->current_loan > 0 ? COL_CH_YELLOW : COL_CH_TEXT);
+}
+
 static int64_t GraphValue(const CompanyEconomyEntry &e, uint8_t tab)
 {
 	switch (tab) {
@@ -5746,6 +5771,18 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			break;
 		}
 
+		case MiniWndKind::Takeover: {
+			const Company *tc = Company::GetIfValid(mw.comp);
+			const Company *own = Company::GetIfValid(_local_company);
+			bool affordable = tc != nullptr && own != nullptr && own->money >= TakeoverPrice(mw);
+			if (ImWndButton("매수", affordable)) {
+				Command<CMD_BUY_COMPANY>::Post(STR_ERROR_CAN_T_BUY_COMPANY, mw.comp, mw.hostile);
+				mw.want_close = true;
+			}
+			if (ImWndButton("거절", true)) mw.want_close = true;
+			break;
+		}
+
 		case MiniWndKind::Preview:
 			if (ImWndButton("수락", Engine::GetIfValid(mw.eng) != nullptr)) {
 				Command<CMD_WANT_ENGINE_PREVIEW>::Post(mw.eng);
@@ -5901,6 +5938,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::League: title = "순위"; break;
 		case MiniWndKind::Graph: title = "그래프"; break;
 		case MiniWndKind::Preview: title = "신형 차량"; idnum = mw.eng.base(); break;
+		case MiniWndKind::Takeover:
+			if (Company::IsValidID(mw.comp)) title = StrMakeValid(GetString(STR_COMPANY_NAME, mw.comp), {});
+			idnum = mw.comp.base();
+			break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
 	}
 	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
@@ -6007,6 +6048,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			ntab = 1;
 			tl[0] = "제안";
 			break;
+		case MiniWndKind::Takeover:
+			ntab = 1;
+			tl[0] = "인수";
+			break;
 		case MiniWndKind::Graph:
 			ntab = 4;
 			tl[0] = "수익";
@@ -6056,6 +6101,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::League: ImLeagueBody(); break;
 					case MiniWndKind::Graph: ImGraphBody(mw); break;
 					case MiniWndKind::Preview: ImPreviewBody(mw); break;
+					case MiniWndKind::Takeover: ImTakeoverBody(mw); break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
@@ -6087,6 +6133,7 @@ static void DrawMiniWndsImGui()
 				alive = pe != nullptr && pe->preview_company == _local_company;
 				break;
 			}
+			case MiniWndKind::Takeover: alive = Company::IsValidID(_wnds[i].comp) && Company::IsValidID(_local_company); break;
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::StationList: alive = Company::IsValidID(_local_company); break;
 			default: alive = true; break;
@@ -6105,7 +6152,7 @@ static void DrawMiniWndsImGui()
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
-	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.eng);
+	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.eng, r.comp);
 }
 
 bool MiniUiShowError(std::string summary, std::string detail, bool warn)
@@ -6162,6 +6209,16 @@ bool ShowMiniEnginePreview(EngineID engine)
 {
 	if (!_mini_active) return false;
 	OpenMiniWnd(MiniWndKind::Preview, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), engine);
+	return true;
+}
+
+bool ShowMiniBuyCompany(CompanyID company, bool hostile_takeover)
+{
+	if (!_mini_active) return false;
+	OpenMiniWnd(MiniWndKind::Takeover, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), EngineID::Invalid(), company);
+	for (MiniWnd &mw : _wnds) {
+		if (mw.kind == MiniWndKind::Takeover && mw.comp == company) mw.hostile = hostile_takeover;
+	}
 	return true;
 }
 

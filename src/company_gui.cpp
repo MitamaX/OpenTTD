@@ -42,6 +42,7 @@
 #include "economy_cmd.h"
 #include "group_cmd.h"
 #include "group_gui.h"
+#include "mini_ui.h"
 #include "misc_cmd.h"
 #include "object_cmd.h"
 #include "timer/timer.h"
@@ -2438,6 +2439,8 @@ static WindowDesc _buy_company_desc(
  */
 void ShowBuyCompanyDialog(CompanyID company, bool hostile_takeover)
 {
+	if (ShowMiniBuyCompany(company, hostile_takeover)) return;
+
 	auto window = BringWindowToFrontById(WC_BUY_COMPANY, company);
 	if (window == nullptr) {
 		new BuyCompanyWindow(_buy_company_desc, company, hostile_takeover);
