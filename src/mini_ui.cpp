@@ -82,6 +82,8 @@
 #include "road_map.h"
 #include "roadveh_cmd.h"
 #include "settings_type.h"
+#include "signs_base.h"
+#include "signs_cmd.h"
 #include "slope_func.h"
 #include "station_base.h"
 #include "station_cmd.h"
@@ -166,6 +168,7 @@ enum class MiniTool : uint8_t {
 	Trees,
 	BuyLand,
 	Industry,
+	Sign,
 };
 
 static bool IsRectTool(MiniTool t)
@@ -176,7 +179,7 @@ static bool IsRectTool(MiniTool t)
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::RoadWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters || t == MiniTool::Industry;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::RoadWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters || t == MiniTool::Industry || t == MiniTool::Sign;
 }
 
 static bool IsBridgeTool(MiniTool t)
@@ -1915,6 +1918,7 @@ void ShowIndustryViewWindow(IndustryID industry);
 static std::vector<std::pair<Rect, TownID>> _town_label_hits;
 static std::vector<std::pair<Rect, StationID>> _station_label_hits;
 static std::vector<std::pair<Rect, IndustryID>> _industry_label_hits;
+static std::vector<std::pair<Rect, SignID>> _sign_label_hits;
 
 static TextColour PlateTextColour(uint32_t c)
 {
@@ -1947,8 +1951,18 @@ static void DrawLabels()
 	_town_label_hits.clear();
 	_station_label_hits.clear();
 	_industry_label_hits.clear();
+	_sign_label_hits.clear();
 	int margin = 300;
 	int limit = GetCharacterHeight(FS_NORMAL) + 20;
+	/* Signs are the player's own notes, so they show at every zoom tier. */
+	for (const Sign *si : Sign::Iterate()) {
+		if (si->name.empty()) continue;
+		int cx = ScrX(si->y / (double)TILE_SIZE);
+		int cy = ScrY(si->x / (double)TILE_SIZE);
+		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
+		Rect r = DrawLabelPlate(cx, cy, si->name, COL_ST_BUOY, false, PlateTextColour(COL_ST_BUOY));
+		_sign_label_hits.emplace_back(r, si->index);
+	}
 	for (const Town *t : Town::Iterate()) {
 		if (!_zd.all_town_names && !t->larger_town) continue;
 		int cx = ScrX(TileY(t->xy) + 0.5);
@@ -1981,8 +1995,16 @@ static void DrawLabels()
 	}
 }
 
+static void OpenSignListMiniWnd(SignID focus);
+
 static bool HandleLabelClick(int x, int y)
 {
+	for (const auto &[r, id] : _sign_label_hits) {
+		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+			OpenSignListMiniWnd(id);
+			return true;
+		}
+	}
 	for (const auto &[r, id] : _station_label_hits) {
 		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
 			ShowStationViewWindow(id);
@@ -2778,6 +2800,20 @@ static void CommitPointTool()
 			}
 			break;
 
+		/* A fresh sign carries a placeholder so it is visible at once; the sign
+		 * list is where it gets its real name. */
+		case MiniTool::Sign:
+			if (_drag_remove) {
+				for (const Sign *si : Sign::Iterate()) {
+					if (TileVirtXY(si->x, si->y) != tile) continue;
+					Command<CMD_RENAME_SIGN>::Post(si->index, std::string{});
+					break;
+				}
+			} else {
+				Command<CMD_PLACE_SIGN>::Post(STR_ERROR_CAN_T_PLACE_SIGN_HERE, tile, std::string("표지판"));
+			}
+			break;
+
 		case MiniTool::RoadWaypoint:
 			if (_drag_remove) {
 				Command<CMD_REMOVE_FROM_ROAD_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_WAYPOINT, tile, tile);
@@ -3143,6 +3179,7 @@ static const MiniMenuItem _menu_land_items[] = {
 	{STR_LAI_TREE_NAME_TREES, "TREES", MiniTool::Trees},
 	{STR_LAI_OBJECT_DESCRIPTION_COMPANY_OWNED_LAND, "LAND", MiniTool::BuyLand},
 	{INVALID_STRING_ID, "INDUSTRY", MiniTool::Industry},
+	{INVALID_STRING_ID, "SIGN", MiniTool::Sign},
 };
 
 /* Area-command tools live apart from construction: the bottom-right corner
@@ -3338,6 +3375,11 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 			ScreenFillRect(cx - h + 2, cy - is / 6 + 2, cx + h - 2, cy + h - 2, COL_IND);
 			ScreenFillRect(cx + h / 4, cy - h, cx + h / 4 + t, cy - is / 6, COL_IND_B);
 			break;
+		case MiniTool::Sign:
+			ScreenFillRect(cx - t / 2, cy - is / 6, cx + t / 2, cy + h, COL_ROAD);
+			ScreenFillRect(cx - h, cy - h, cx + h, cy - is / 6, COL_PAPER);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy - is / 6 - 2, COL_INK);
+			break;
 		default:
 			break;
 	}
@@ -3482,6 +3524,7 @@ enum class MiniWin : uint8_t {
 	Buy,
 	Groups,
 	Map,
+	Signs,
 };
 
 struct MiniWinItem {
@@ -3521,6 +3564,7 @@ static const MiniWinItem _win_world_items[] = {
 	{STR_TOWN_MENU_TOWN_DIRECTORY, "TOWNS", MiniWin::Towns},
 	{STR_INDUSTRY_MENU_INDUSTRY_DIRECTORY, "INDUSTRY", MiniWin::Industries},
 	{STR_SUBSIDIES_MENU_SUBSIDIES, "SUBSIDY", MiniWin::Subsidies},
+	{INVALID_STRING_ID, "SIGN", MiniWin::Signs},
 };
 
 static const MiniWinCategory _win_cats[] = {
@@ -3631,6 +3675,11 @@ static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
 			ScreenFillRect(cx - h, cy - h, cx + h, cy - h + 1, COL_INK);
 			ScreenFillRect(cx - h, cy + h - 1, cx + h, cy + h, COL_INK);
 			break;
+		case MiniWin::Signs:
+			ScreenFillRect(cx - t / 2, cy - is / 6, cx + t / 2, cy + h, COL_ROAD);
+			ScreenFillRect(cx - h, cy - h, cx + h, cy - is / 6, COL_ST_BUOY);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy - is / 6 - 2, COL_INK);
+			break;
 	}
 }
 
@@ -3681,6 +3730,7 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
 		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
 		case MiniWin::Map: OpenMapMiniWnd(); break;
+		case MiniWin::Signs: OpenSignListMiniWnd(SignID::Invalid()); break;
 	}
 }
 
@@ -4253,6 +4303,7 @@ static void DrawHud()
 			case MiniTool::Trees: hint = "DRAG AREA / CTRL CLEAR / RMB CANCEL"; break;
 			case MiniTool::BuyLand: hint = "DRAG AREA / CTRL SELL / RMB CANCEL"; break;
 			case MiniTool::Industry: hint = "CLICK SITE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Sign: hint = "CLICK SPOT / CTRL REMOVE / RMB CANCEL"; break;
 			default: break;
 		}
 		if (_cursor.in_window) {
@@ -4337,6 +4388,7 @@ enum class MiniWndKind : uint8_t {
 	Takeover,
 	Waypoint,
 	Map,
+	SignList,
 };
 
 /* Kinds that carry no entity and take no commands: they read the world each
@@ -4347,7 +4399,7 @@ static bool WndIsList(MiniWndKind kind)
 			kind == MiniWndKind::IndustryList || kind == MiniWndKind::NewsList ||
 			kind == MiniWndKind::SubsidyList || kind == MiniWndKind::GoalList ||
 			kind == MiniWndKind::League || kind == MiniWndKind::Graph ||
-			kind == MiniWndKind::Map;
+			kind == MiniWndKind::Map || kind == MiniWndKind::SignList;
 }
 
 struct MiniWnd {
@@ -4371,6 +4423,7 @@ struct MiniWnd {
 	bool focus_name = false;
 	GroupID rename_grp = GroupID::Invalid();
 	TileIndex rename_depot = INVALID_TILE;
+	SignID rename_sign = SignID::Invalid();
 	bool rename_pres = false;
 	bool want_close = false;
 	char name_buf[128] = {};
@@ -4634,6 +4687,7 @@ static void OpenMapMiniWnd()
 	OpenMiniWnd(MiniWndKind::Map, VehicleID::Invalid(), StationID::Invalid());
 }
 
+
 static std::string WndOfficial(StringID str)
 {
 	return StrMakeValid(GetString(str), {});
@@ -4881,6 +4935,21 @@ static int ImWndNameEdit(MiniWnd &mw, float width)
 	}
 	if (ImGui::InputText("##edit", mw.name_buf, sizeof(mw.name_buf), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) return 1;
 	return ImGui::IsItemDeactivated() ? -1 : 0;
+}
+
+/* Clicking a sign on the map opens the list already editing that sign, which
+ * is the only place a sign can be named. */
+static void OpenSignListMiniWnd(SignID focus)
+{
+	OpenMiniWnd(MiniWndKind::SignList, VehicleID::Invalid(), StationID::Invalid());
+	const Sign *si = Sign::GetIfValid(focus);
+	if (si == nullptr) return;
+	for (MiniWnd &mw : _wnds) {
+		if (mw.kind != MiniWndKind::SignList) continue;
+		ImWndNameEditBegin(mw, si->name);
+		mw.rename_sign = focus;
+		return;
+	}
 }
 
 static bool _order_clone_share = false;
@@ -5921,6 +5990,37 @@ static void ImStationListBody(MiniWnd &mw)
 	if (_order_pick_veh != VehicleID::Invalid()) ImWndText("행 클릭으로 목적지 추가", COL_CH_ACCENT);
 }
 
+static void ImSignListBody(MiniWnd &mw)
+{
+	std::vector<const Sign *> list;
+	for (const Sign *si : Sign::Iterate()) list.push_back(si);
+	if (list.empty()) {
+		ImWndText("표지판 없음. 토지 메뉴의 표지판 도구로 놓습니다", COL_CH_DIM);
+		return;
+	}
+	std::sort(list.begin(), list.end(), [](const Sign *a, const Sign *b) { return a->name < b->name; });
+
+	for (const Sign *si : list) {
+		if (mw.rename_sign == si->index) {
+			ImGui::PushID((int)si->index.base());
+			int r = ImWndNameEdit(mw, ImGui::GetContentRegionAvail().x);
+			ImGui::PopID();
+			/* An empty name removes the sign, the same way the stock editor
+			 * deletes one. */
+			if (r == 1) Command<CMD_RENAME_SIGN>::Post(si->index, mw.name_buf);
+			if (r != 0) mw.rename_sign = SignID::Invalid();
+			continue;
+		}
+		if (ImWndLink(fmt::format("· {}", si->name), COL_CH_TEXT)) MiniUiScrollTo(si->x, si->y);
+		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+			ImWndNameEditBegin(mw, si->name);
+			mw.rename_sign = si->index;
+			mw.renaming = false;
+		}
+	}
+	ImWndText("두 번 클릭으로 이름 변경. 빈 이름은 삭제", COL_CH_DIM);
+}
+
 static void ImTownListBody(MiniWnd &mw)
 {
 	struct Row {
@@ -6796,6 +6896,7 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 		case MiniWndKind::League:
 		case MiniWndKind::Graph:
 		case MiniWndKind::Map:
+		case MiniWndKind::SignList:
 			break;
 	}
 	ImGui::NewLine();
@@ -6911,6 +7012,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::League: title = "순위"; break;
 		case MiniWndKind::Graph: title = "그래프"; break;
 		case MiniWndKind::Map: title = "지도"; break;
+		case MiniWndKind::SignList: title = "표지판"; break;
 		case MiniWndKind::Preview: title = "신형 차량"; idnum = mw.eng.base(); break;
 		case MiniWndKind::Takeover:
 			if (Company::IsValidID(mw.comp)) title = StrMakeValid(GetString(STR_COMPANY_NAME, mw.comp), {});
@@ -7034,6 +7136,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			ntab = 1;
 			tl[0] = "상태";
 			break;
+		case MiniWndKind::SignList:
+			ntab = 1;
+			tl[0] = "목록";
+			break;
 		case MiniWndKind::Graph:
 			ntab = 5;
 			tl[0] = "수익";
@@ -7094,6 +7200,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::League: ImLeagueBody(); break;
 					case MiniWndKind::Graph: ImGraphBody(mw); break;
 					case MiniWndKind::Map: ImMapBody(mw); break;
+					case MiniWndKind::SignList: ImSignListBody(mw); break;
 					case MiniWndKind::Preview: ImPreviewBody(mw); break;
 					case MiniWndKind::Takeover: ImTakeoverBody(mw); break;
 					case MiniWndKind::Waypoint: ImWaypointBody(mw); break;
