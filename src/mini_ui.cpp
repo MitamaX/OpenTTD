@@ -4924,7 +4924,11 @@ static void ImStationBody(MiniWnd &mw, const Station *st)
 				const GoodsEntry &ge = st->goods[cs->Index()];
 				if (!ge.HasRating()) continue;
 				any = true;
-				ImWndKV(WndOfficial(cs->name), fmt::format("{}", ge.TotalCount()), COL_CH_TEXT);
+				/* The rating decides how much of what waits actually gets
+				 * picked up, so it belongs beside the count. */
+				uint pct = ToPercent8(ge.rating);
+				ImWndKV(WndOfficial(cs->name), fmt::format("{}  {}%", ge.TotalCount(), pct),
+						pct < 40 ? COL_CH_RED : (pct < 70 ? COL_CH_YELLOW : COL_CH_TEXT));
 			}
 			if (!any) ImWndText("대기 화물 없음", COL_CH_DIM);
 			break;
