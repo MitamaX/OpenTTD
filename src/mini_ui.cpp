@@ -1733,6 +1733,18 @@ static Order OrderFromTile(const Vehicle *v, TileIndex tile)
 	return order;
 }
 
+/* Returns false when the tile carries nothing the vehicle can be sent to, so
+ * a list row can fall back to opening its own window. */
+static bool OrderPickAppend(TileIndex tile)
+{
+	const Vehicle *v = Vehicle::GetIfValid(_order_pick_veh);
+	if (v == nullptr || v->owner != _local_company) return false;
+	Order order = OrderFromTile(v, tile);
+	if (order.IsType(OT_NOTHING)) return false;
+	Command<CMD_INSERT_ORDER>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
+	return true;
+}
+
 static void OrderPickClick(int sx, int sy)
 {
 	const Vehicle *v = Vehicle::GetIfValid(_order_pick_veh);
@@ -1743,9 +1755,7 @@ static void OrderPickClick(int sx, int sy)
 	int tx = (int)std::floor(MapXAt(sy));
 	int ty = (int)std::floor(MapYAt(sx));
 	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return;
-	Order order = OrderFromTile(v, TileXY(tx, ty));
-	if (order.IsType(OT_NOTHING)) return;
-	Command<CMD_INSERT_ORDER>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
+	OrderPickAppend(TileXY(tx, ty));
 }
 
 /* Stage 0 issues the next build, stage 1 spots the new vehicle among the
@@ -5838,8 +5848,15 @@ static void ImStationListBody(MiniWnd &mw)
 		} else {
 			value = fmt::format("{}", r.waiting);
 		}
-		if (ImWndKVLink(r.name, value, COL_CH_TEXT, tint)) OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), r.id);
+		/* While a vehicle is collecting destinations the directory doubles as
+		 * the stop picker, so a far station needs no map hunting. */
+		if (ImWndKVLink(r.name, value, COL_CH_TEXT, tint)) {
+			if (!Station::IsValidID(r.id) || !OrderPickAppend(Station::Get(r.id)->xy)) {
+				OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), r.id);
+			}
+		}
 	}
+	if (_order_pick_veh != VehicleID::Invalid()) ImWndText("행 클릭으로 목적지 추가", COL_CH_ACCENT);
 }
 
 static void ImTownListBody(MiniWnd &mw)
