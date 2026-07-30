@@ -3814,10 +3814,15 @@ static void DrawColonyPanel()
 	std::string name = c != nullptr ? StrMakeValid(GetString(STR_COMPANY_NAME, c->index), {}) : std::string();
 	std::string date = GetString(STR_JUST_DATE_LONG, TimerGameCalendar::date);
 	std::string funds;
+	/* Running out of money ends the game, so the panel says so rather than
+	 * leaving the balance to be read as just another number. */
+	TextColour funds_tc = TC_WHITE;
 	if (c != nullptr) {
 		uint veh = 0;
 		for (int t = 0; t < VEH_COMPANY_END; t++) veh += c->group_all[t].num_vehicle;
 		funds = fmt::format("{}   VEH {}", GetString(STR_JUST_CURRENCY_LONG, c->money), veh);
+		if (c->months_of_bankruptcy > 0) funds += fmt::format("   경고 {}", c->months_of_bankruptcy);
+		funds_tc = c->money < 0 ? TC_RED : (c->months_of_bankruptcy > 0 ? TC_YELLOW : TC_WHITE);
 	}
 
 	int bw = 12 * s, bh = 10 * s;
@@ -3856,7 +3861,7 @@ static void DrawColonyPanel()
 
 	if (!name.empty()) DrawScreenText(m + text_x, m + pad, name);
 	DrawScreenText(m + text_x, m + pad + lh + gap, date);
-	if (!funds.empty()) DrawScreenText(m + pad, m + funds_y, funds);
+	if (!funds.empty()) DrawScreenText(m + pad, m + funds_y, funds, funds_tc);
 
 	int active = _pause_mode.Any() ? 0 : (_game_speed == 100 ? 1 : 2);
 	for (int i = 0; i < 3; i++) {
