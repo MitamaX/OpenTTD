@@ -55,6 +55,7 @@
 #include "landscape.h"
 #include "landscape_cmd.h"
 #include "league_gui.h"
+#include "linkgraph/linkgraph.h"
 #include "mini_atlas.h"
 #include "economy_cmd.h"
 #include "economy_func.h"
@@ -6193,6 +6194,7 @@ enum class MiniMapMode : uint8_t {
 	Vehicles,
 	Industries,
 	Routes,
+	Flow,
 	Vegetation,
 	Owner,
 };
@@ -6296,6 +6298,7 @@ static uint32_t MiniMapTileColour(TileIndex tile, MiniMapMode mode)
 			}
 
 		case MiniMapMode::Vehicles:
+		case MiniMapMode::Flow:
 			return MiniMapFaded(MiniMapBaseColour(tile));
 
 		default:
@@ -6404,6 +6407,28 @@ static void ImMapBody(MiniWnd &mw)
 			float sy = p.y + (float)(v->x_pos / TILE_SIZE) * h / mx;
 			uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_PAPER;
 			dl->AddRectFilled(ImVec2(sx - 1.0f, sy - 1.0f), ImVec2(sx + 2.0f, sy + 2.0f), MiniImU32(c));
+		}
+	}
+
+	/* One line per link the company's stations carry, thickened by how much of
+	 * the link is in use, so a saturated leg reads at a glance. */
+	if (mode == MiniMapMode::Flow) {
+		for (const LinkGraph *lg : LinkGraph::Iterate()) {
+			if (!IsValidCargoType(lg->Cargo())) continue;
+			uint32_t col = CargoRgb(lg->Cargo());
+			for (NodeID i = 0; i < lg->Size(); i++) {
+				const LinkGraph::BaseNode &n = (*lg)[i];
+				if (!Station::IsValidID(n.station) || Station::Get(n.station)->owner != _local_company) continue;
+				for (const LinkGraph::BaseEdge &e : n.edges) {
+					if (e.capacity == 0 || e.dest_node >= lg->Size()) continue;
+					const LinkGraph::BaseNode &d = (*lg)[e.dest_node];
+					if (n.xy == INVALID_TILE || d.xy == INVALID_TILE) continue;
+					ImVec2 a(p.x + (float)TileY(n.xy) * w / my, p.y + (float)TileX(n.xy) * h / mx);
+					ImVec2 b(p.x + (float)TileY(d.xy) * w / my, p.y + (float)TileX(d.xy) * h / mx);
+					float load = std::min(1.0f, (float)e.usage / (float)e.capacity);
+					dl->AddLine(a, b, MiniImU32(col), 1.0f + 2.0f * load);
+				}
+			}
 		}
 	}
 
@@ -6885,7 +6910,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 
 	_imrow = 0;
 	int ntab;
-	std::string tl[6];
+	std::string tl[8];
 	switch (mw.kind) {
 		case MiniWndKind::Fleet:
 		case MiniWndKind::Group: {
@@ -6982,13 +7007,14 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[4] = "지급률";
 			break;
 		case MiniWndKind::Map:
-			ntab = 6;
+			ntab = 7;
 			tl[0] = WndOfficial(STR_SMALLMAP_TYPE_CONTOURS);
 			tl[1] = WndOfficial(STR_SMALLMAP_TYPE_VEHICLES);
 			tl[2] = WndOfficial(STR_SMALLMAP_TYPE_INDUSTRIES);
 			tl[3] = WndOfficial(STR_SMALLMAP_TYPE_ROUTES);
-			tl[4] = WndOfficial(STR_SMALLMAP_TYPE_VEGETATION);
-			tl[5] = WndOfficial(STR_SMALLMAP_TYPE_OWNERS);
+			tl[4] = WndOfficial(STR_SMALLMAP_TYPE_ROUTEMAP);
+			tl[5] = WndOfficial(STR_SMALLMAP_TYPE_VEGETATION);
+			tl[6] = WndOfficial(STR_SMALLMAP_TYPE_OWNERS);
 			break;
 		default:
 			ntab = 3;
