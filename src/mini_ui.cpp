@@ -154,6 +154,8 @@ enum class MiniTool : uint8_t {
 	Signal,
 	RailTunnel,
 	RoadTunnel,
+	RailBridge,
+	RoadBridge,
 	Terraform,
 	Headquarters,
 	Trees,
@@ -170,6 +172,11 @@ static bool IsRectTool(MiniTool t)
 static bool IsPointTool(MiniTool t)
 {
 	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters || t == MiniTool::Industry;
+}
+
+static bool IsBridgeTool(MiniTool t)
+{
+	return t == MiniTool::RailBridge || t == MiniTool::RoadBridge;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -193,12 +200,14 @@ static MiniLayer ToolLayer(MiniTool t)
 		case MiniTool::TrainDepot:
 		case MiniTool::Signal:
 		case MiniTool::RailTunnel:
+		case MiniTool::RailBridge:
 			return MiniLayer::Rail;
 		case MiniTool::Road:
 		case MiniTool::BusStop:
 		case MiniTool::TruckStop:
 		case MiniTool::RoadDepot:
 		case MiniTool::RoadTunnel:
+		case MiniTool::RoadBridge:
 			return MiniLayer::Road;
 		default:
 			return MiniLayer::None;
@@ -2136,7 +2145,11 @@ static void ClearPlans()
 	_rect_plan.valid = false;
 }
 
-static BridgeType PickBridgeType(uint len)
+/* Out of range until the player picks one, so spans keep taking the fastest
+ * bridge the year allows. */
+static BridgeType _bridge_sel = MAX_BRIDGES;
+
+static BridgeType FastestBridgeType(uint len)
 {
 	BridgeType best = 0;
 	uint best_speed = 0;
@@ -2148,6 +2161,25 @@ static BridgeType PickBridgeType(uint len)
 		}
 	}
 	return best;
+}
+
+static BridgeType PickBridgeType(uint len)
+{
+	if (_bridge_sel < MAX_BRIDGES && CheckBridgeAvailability(_bridge_sel, len).Succeeded()) return _bridge_sel;
+	return FastestBridgeType(len);
+}
+
+static void CycleBridgeType(int dir)
+{
+	int at = (int)PickBridgeType(1);
+	for (int i = 1; i <= (int)MAX_BRIDGES; i++) {
+		int bt = (at + dir * i) % (int)MAX_BRIDGES;
+		if (bt < 0) bt += (int)MAX_BRIDGES;
+		if (CheckBridgeAvailability((BridgeType)bt, 1).Succeeded()) {
+			_bridge_sel = (BridgeType)bt;
+			return;
+		}
+	}
 }
 
 /* A straight drag bridges water automatically: each water run becomes a
@@ -2277,6 +2309,30 @@ static void DrawRoadPlan(int ppt)
 		int tx = TileX(tile);
 		int ty = TileY(tile);
 		DrawAxisBand(_road_plan.axis, ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, w, c);
+	}
+}
+
+/* The span reuses the axis-locked line drag: the two end tiles become ramps
+ * and everything between them is the bridge itself. */
+static uint BridgePlanLength()
+{
+	return _road_plan.tiles.size() < 3 ? 0 : (uint)(_road_plan.tiles.size() - 2);
+}
+
+static void DrawBridgePlan(int ppt)
+{
+	uint32_t c = BridgePlanLength() > 0 ? COL_BP : COL_BP_RM;
+	int w = std::max(2, ppt / 2);
+	const std::vector<TileIndex> &ts = _road_plan.tiles;
+	for (size_t i = 0; i < ts.size(); i++) {
+		int tx = TileX(ts[i]);
+		int ty = TileY(ts[i]);
+		int x0 = ScrX(ty), y0 = ScrY(tx), x1 = ScrX(ty + 1) - 1, y1 = ScrY(tx + 1) - 1;
+		if (i == 0 || i + 1 == ts.size()) {
+			BlendRect(x0, y0, x1, y1, c, 110);
+		} else {
+			DrawAxisBand(_road_plan.axis, x0, y0, x1, y1, w, c);
+		}
 	}
 }
 
@@ -2751,6 +2807,22 @@ static void CommitRoadPlan()
 	ClearPlans();
 }
 
+static void CommitBridgePlan()
+{
+	uint len = BridgePlanLength();
+	if (len == 0) {
+		ClearPlans();
+		return;
+	}
+	const std::vector<TileIndex> &ts = _road_plan.tiles;
+	if (_tool == MiniTool::RailBridge) {
+		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, ts.back(), ts.front(), TRANSPORT_RAIL, PickBridgeType(len), (uint8_t)PickRailType());
+	} else {
+		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, ts.back(), ts.front(), TRANSPORT_ROAD, PickBridgeType(len), (uint8_t)PickRoadType());
+	}
+	ClearPlans();
+}
+
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
  * above it, three per row. Drawn in screen space after Present(), so hit
  * rects live in screen pixels. */
@@ -2781,6 +2853,7 @@ static const MiniMenuItem _menu_rail_items[] = {
 	{STR_COMPANY_INFRASTRUCTURE_VIEW_SIGNALS, "SIGNAL", MiniTool::Signal},
 	{STR_LAI_RAIL_DESCRIPTION_TRAIN_DEPOT, "DEPOT", MiniTool::TrainDepot},
 	{STR_LAI_TUNNEL_DESCRIPTION_RAILROAD, "TUNNEL", MiniTool::RailTunnel},
+	{INVALID_STRING_ID, "BRIDGE", MiniTool::RailBridge},
 	{INVALID_STRING_ID, "CONVERT", MiniTool::Convert},
 };
 
@@ -2790,6 +2863,7 @@ static const MiniMenuItem _menu_road_items[] = {
 	{STR_LAI_STATION_DESCRIPTION_TRUCK_LOADING_AREA, "TRUCK", MiniTool::TruckStop},
 	{STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT, "DEPOT", MiniTool::RoadDepot},
 	{STR_LAI_TUNNEL_DESCRIPTION_ROAD, "TUNNEL", MiniTool::RoadTunnel},
+	{INVALID_STRING_ID, "BRIDGE", MiniTool::RoadBridge},
 };
 
 static const MiniMenuItem _menu_water_items[] = {
@@ -2957,6 +3031,14 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 		case MiniTool::RoadTunnel:
 			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, tool == MiniTool::RailTunnel ? COL_PAPER : COL_BRIDGE);
 			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_TUNNEL);
+			break;
+		case MiniTool::RailBridge:
+		case MiniTool::RoadBridge:
+			ScreenFillRect(cx - h, cy + is / 5, cx + h, cy + h, COL_WATER);
+			ScreenFillRect(cx - h, cy - t, cx + h, cy, COL_BRIDGE);
+			ScreenFillRect(cx - h, cy, cx - h + t, cy + is / 5, COL_BRIDGE);
+			ScreenFillRect(cx + h - t, cy, cx + h, cy + is / 5, COL_BRIDGE);
+			ScreenFillRect(cx - h, cy - t - 2, cx + h, cy - t - 1, tool == MiniTool::RailBridge ? COL_PAPER : COL_CATENARY);
 			break;
 		case MiniTool::Terraform:
 			ScreenFillRect(cx - h, cy + is / 6, cx + h, cy + h, _height_ramp[3]);
@@ -3889,6 +3971,8 @@ static void DrawHud()
 			case MiniTool::Signal: hint = "CLICK TRACK / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailTunnel:
 			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RailBridge:
+			case MiniTool::RoadBridge: hint = "DRAG SPAN / Q E TYPE / RMB CANCEL"; break;
 			case MiniTool::Terraform: hint = "DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
 			case MiniTool::Headquarters: hint = "CLICK 2x2 SPOT / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Trees: hint = "DRAG AREA / CTRL CLEAR / RMB CANCEL"; break;
@@ -3906,6 +3990,10 @@ static void DrawHud()
 				title += fmt::format("  {}", StrMakeValid(GetString(GetRailTypeInfo(PickRailType())->strings.name), {}));
 			}
 			if (_tool == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(PickSignalType()));
+			if (IsBridgeTool(_tool)) {
+				uint len = std::max(BridgePlanLength(), 1U);
+				title += fmt::format("  {}", StrMakeValid(GetString(GetBridgeSpec(PickBridgeType(len))->material), {}));
+			}
 			if (_tool == MiniTool::Industry) {
 				IndustryType it = PickIndustryType();
 				if (it != IT_INVALID) {
@@ -3917,6 +4005,7 @@ static void DrawHud()
 			if (_dragging) {
 				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
 				if (_tool == MiniTool::Road && !_road_plan.tiles.empty()) title += fmt::format("  {}", _road_plan.tiles.size());
+				if (IsBridgeTool(_tool)) title += fmt::format("  {}", BridgePlanLength());
 				if (IsRectTool(_tool) && _rect_plan.valid) title += fmt::format("  {}x{}", _rect_plan.x1 - _rect_plan.x0 + 1, _rect_plan.y1 - _rect_plan.y0 + 1);
 			}
 			int wmax = std::max<int>(GetStringBoundingBox(title).width, GetStringBoundingBox(hint).width);
@@ -6871,14 +6960,14 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				CommitPointTool();
 			} else {
 				_dragging = true;
-				_drag_remove = _ctrl_pressed && _tool != MiniTool::Convert;
+				_drag_remove = _ctrl_pressed && _tool != MiniTool::Convert && !IsBridgeTool(_tool);
 				_drag_ax = MapXAt(_cursor.pos.y);
 				_drag_ay = MapYAt(_cursor.pos.x);
 				if (_tool == MiniTool::Rail) {
 					_plan.path.clear();
 					UpdateRailPlan(_drag_ax, _drag_ay);
 				}
-				if (_tool == MiniTool::Road) UpdateRoadPlan(_drag_ax, _drag_ay);
+				if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(_drag_ax, _drag_ay);
 				if (IsRectTool(_tool)) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
 			}
 		}
@@ -6888,6 +6977,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_dragging = false;
 		if (_tool == MiniTool::Rail) CommitRailPlan();
 		if (_tool == MiniTool::Road) CommitRoadPlan();
+		if (IsBridgeTool(_tool)) CommitBridgePlan();
 		if (_tool == MiniTool::Station) CommitStationPlan();
 		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
 		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
@@ -6962,6 +7052,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleSignalType(1);
 			} else if (_tool == MiniTool::Industry) {
 				CycleIndustryType(1);
+			} else if (IsBridgeTool(_tool)) {
+				CycleBridgeType(1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
 			}
@@ -6976,6 +7068,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleSignalType(-1);
 			} else if (_tool == MiniTool::Industry) {
 				CycleIndustryType(-1);
+			} else if (IsBridgeTool(_tool)) {
+				CycleBridgeType(-1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
 			}
@@ -7208,6 +7302,9 @@ void MiniUiFrame(uint delta_ms)
 		} else if (_tool == MiniTool::Road) {
 			UpdateRoadPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawRoadPlan(ppt);
+		} else if (IsBridgeTool(_tool)) {
+			UpdateRoadPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
+			DrawBridgePlan(ppt);
 		} else if (IsRectTool(_tool)) {
 			UpdateRectPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x), RectPlanLimit());
 			DrawRectPlan(ppt);
