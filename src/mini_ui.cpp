@@ -29,6 +29,7 @@
 #include "engine_gui.h"
 #include "core/backup_type.hpp"
 #include "core/math_func.hpp"
+#include "core/random_func.hpp"
 #include "core/utf8.hpp"
 #include "depot_base.h"
 #include "depot_cmd.h"
@@ -46,6 +47,9 @@
 #include "group_cmd.h"
 #include "gui.h"
 #include "industry.h"
+#include "industry_cmd.h"
+#include "industrytype.h"
+#include "newgrf_industries.h"
 #include "ini_type.h"
 #include "landscape.h"
 #include "landscape_cmd.h"
@@ -152,6 +156,7 @@ enum class MiniTool : uint8_t {
 	Headquarters,
 	Trees,
 	BuyLand,
+	Industry,
 };
 
 static bool IsRectTool(MiniTool t)
@@ -162,7 +167,7 @@ static bool IsRectTool(MiniTool t)
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters || t == MiniTool::Industry;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -2408,6 +2413,42 @@ static Track PickSignalTrack(TileIndex tile, double wx, double wy)
 	return FindFirstTrack(trackbits);
 }
 
+/* Funding an industry has no window either: Q/E walk the types the fund list
+ * would offer and the HUD names the type with its price. */
+static IndustryType _industry_type = 0;
+
+static bool MiniIndustryAvailable(IndustryType it)
+{
+	if (it >= NUM_INDUSTRYTYPES) return false;
+	const IndustrySpec *indsp = GetIndustrySpec(it);
+	if (!indsp->enabled) return false;
+	if (indsp->IsRawIndustry() && _settings_game.construction.raw_industry_construction == 0) return false;
+	return GetIndustryProbabilityCallback(it, IACT_USERCREATION, 1) > 0;
+}
+
+static IndustryType PickIndustryType()
+{
+	if (MiniIndustryAvailable(_industry_type)) return _industry_type;
+	for (IndustryType it = 0; it < NUM_INDUSTRYTYPES; it++) {
+		if (MiniIndustryAvailable(it)) return it;
+	}
+	return IT_INVALID;
+}
+
+static void CycleIndustryType(int dir)
+{
+	IndustryType at = PickIndustryType();
+	if (at == IT_INVALID) return;
+	for (int i = 1; i <= NUM_INDUSTRYTYPES; i++) {
+		int t = ((int)at + dir * i) % NUM_INDUSTRYTYPES;
+		if (t < 0) t += NUM_INDUSTRYTYPES;
+		if (MiniIndustryAvailable((IndustryType)t)) {
+			_industry_type = (IndustryType)t;
+			return;
+		}
+	}
+}
+
 /* Signal choice lives in the tool as well: the picker window is replaced by
  * Q/E over the types the signal GUI setting exposes. */
 static const SignalType _mini_signal_path[] = {SIGTYPE_PBS, SIGTYPE_PBS_ONEWAY};
@@ -2578,6 +2619,23 @@ static void CommitPointTool()
 			break;
 		}
 
+		case MiniTool::Industry: {
+			IndustryType it = PickIndustryType();
+			if (it == IT_INVALID) break;
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+				break;
+			}
+			const IndustrySpec *indsp = GetIndustrySpec(it);
+			/* Raw industries are prospected under the funding setting that hides
+			 * their location, so the click only pays for the search. */
+			bool prospect = _settings_game.construction.raw_industry_construction == 2 && indsp->IsRawIndustry();
+			uint32_t seed = InteractiveRandom();
+			uint32_t layout = InteractiveRandomRange((uint32_t)indsp->layouts.size());
+			Command<CMD_BUILD_INDUSTRY>::Post(STR_ERROR_CAN_T_CONSTRUCT_THIS_INDUSTRY, prospect ? TileIndex{} : tile, it, prospect ? 0 : layout, false, seed);
+			break;
+		}
+
 		case MiniTool::Headquarters:
 			if (_drag_remove) {
 				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
@@ -2731,6 +2789,7 @@ static const MiniMenuItem _menu_land_items[] = {
 	{STR_LAI_OBJECT_DESCRIPTION_COMPANY_HEADQUARTERS, "HQ", MiniTool::Headquarters},
 	{STR_LAI_TREE_NAME_TREES, "TREES", MiniTool::Trees},
 	{STR_LAI_OBJECT_DESCRIPTION_COMPANY_OWNED_LAND, "LAND", MiniTool::BuyLand},
+	{INVALID_STRING_ID, "INDUSTRY", MiniTool::Industry},
 };
 
 /* Area-command tools live apart from construction: the bottom-right corner
@@ -2904,6 +2963,11 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_FIELDS);
 			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_OBJ);
 			ScreenFillCircle(cx, cy, t, COL_ST_BUOY);
+			break;
+		case MiniTool::Industry:
+			ScreenFillRect(cx - h, cy - is / 6, cx + h, cy + h, COL_IND_B);
+			ScreenFillRect(cx - h + 2, cy - is / 6 + 2, cx + h - 2, cy + h - 2, COL_IND);
+			ScreenFillRect(cx + h / 4, cy - h, cx + h / 4 + t, cy - is / 6, COL_IND_B);
 			break;
 		default:
 			break;
@@ -3800,6 +3864,7 @@ static void DrawHud()
 			case MiniTool::Headquarters: hint = "CLICK 2x2 SPOT / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Trees: hint = "DRAG AREA / CTRL CLEAR / RMB CANCEL"; break;
 			case MiniTool::BuyLand: hint = "DRAG AREA / CTRL SELL / RMB CANCEL"; break;
+			case MiniTool::Industry: hint = "CLICK SITE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			default: break;
 		}
 		if (_cursor.in_window) {
@@ -3812,6 +3877,14 @@ static void DrawHud()
 				title += fmt::format("  {}", StrMakeValid(GetString(GetRailTypeInfo(PickRailType())->strings.name), {}));
 			}
 			if (_tool == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(PickSignalType()));
+			if (_tool == MiniTool::Industry) {
+				IndustryType it = PickIndustryType();
+				if (it != IT_INVALID) {
+					const IndustrySpec *indsp = GetIndustrySpec(it);
+					title += fmt::format("  {}  {}", StrMakeValid(GetString(indsp->name), {}),
+							StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, indsp->GetConstructionCost()), {}));
+				}
+			}
 			if (_dragging) {
 				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
 				if (_tool == MiniTool::Road && !_road_plan.tiles.empty()) title += fmt::format("  {}", _road_plan.tiles.size());
@@ -6570,6 +6643,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleRailType(1);
 			} else if (_tool == MiniTool::Signal) {
 				CycleSignalType(1);
+			} else if (_tool == MiniTool::Industry) {
+				CycleIndustryType(1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
 			}
@@ -6582,6 +6657,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleRailType(-1);
 			} else if (_tool == MiniTool::Signal) {
 				CycleSignalType(-1);
+			} else if (_tool == MiniTool::Industry) {
+				CycleIndustryType(-1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
 			}
