@@ -67,6 +67,7 @@
 #include "rail.h"
 #include "palette_func.h"
 #include "rail_cmd.h"
+#include "rail_gui.h"
 #include "rail_map.h"
 #include "road.h"
 #include "road_cmd.h"
@@ -2406,6 +2407,51 @@ static Track PickSignalTrack(TileIndex tile, double wx, double wy)
 	return FindFirstTrack(trackbits);
 }
 
+/* Signal choice lives in the tool as well: the picker window is replaced by
+ * Q/E over the types the signal GUI setting exposes. */
+static const SignalType _mini_signal_path[] = {SIGTYPE_PBS, SIGTYPE_PBS_ONEWAY};
+static const SignalType _mini_signal_all[] = {SIGTYPE_BLOCK, SIGTYPE_ENTRY, SIGTYPE_EXIT, SIGTYPE_COMBO, SIGTYPE_PBS, SIGTYPE_PBS_ONEWAY};
+
+static SignalType _signal_type = SIGTYPE_PBS;
+
+static std::span<const SignalType> SignalChoices()
+{
+	if (_settings_client.gui.signal_gui_mode == SIGNAL_GUI_ALL) return _mini_signal_all;
+	return _mini_signal_path;
+}
+
+static SignalType PickSignalType()
+{
+	std::span<const SignalType> choices = SignalChoices();
+	for (SignalType t : choices) {
+		if (t == _signal_type) return t;
+	}
+	return choices.front();
+}
+
+static void CycleSignalType(int dir)
+{
+	std::span<const SignalType> choices = SignalChoices();
+	int n = (int)choices.size();
+	int at = 0;
+	for (int i = 0; i < n; i++) {
+		if (choices[i] == PickSignalType()) at = i;
+	}
+	_signal_type = choices[((at + dir) % n + n) % n];
+}
+
+static std::string_view SignalTypeLabel(SignalType t)
+{
+	switch (t) {
+		case SIGTYPE_ENTRY: return "ENTRY";
+		case SIGTYPE_EXIT: return "EXIT";
+		case SIGTYPE_COMBO: return "COMBO";
+		case SIGTYPE_PBS: return "PATH";
+		case SIGTYPE_PBS_ONEWAY: return "ONE-WAY PATH";
+		default: return "BLOCK";
+	}
+}
+
 /* No airport picker window: Q/E walk the available airport types and the
  * blueprint previews the footprint, so the choice lives in the tool. */
 static uint8_t _airport_type = 0;
@@ -2546,7 +2592,7 @@ static void CommitPointTool()
 				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, tile, track);
 			} else {
 				SignalVariant sigvar = TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
-				Command<CMD_BUILD_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, tile, track, _settings_client.gui.default_signal_type, sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
+				Command<CMD_BUILD_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, tile, track, PickSignalType(), sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
 			}
 			break;
 		}
@@ -3746,7 +3792,7 @@ static void DrawHud()
 			case MiniTool::Canal: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Lock: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
-			case MiniTool::Signal: hint = "CLICK BUILD OR CYCLE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Signal: hint = "CLICK TRACK / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailTunnel:
 			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Terraform: hint = "DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
@@ -3764,6 +3810,7 @@ static void DrawHud()
 			if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
 				title += fmt::format("  {}", StrMakeValid(GetString(GetRailTypeInfo(PickRailType())->strings.name), {}));
 			}
+			if (_tool == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(PickSignalType()));
 			if (_dragging) {
 				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
 				if (_tool == MiniTool::Road && !_road_plan.tiles.empty()) title += fmt::format("  {}", _road_plan.tiles.size());
@@ -6464,6 +6511,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleAirportType(1);
 			} else if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
 				CycleRailType(1);
+			} else if (_tool == MiniTool::Signal) {
+				CycleSignalType(1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
 			}
@@ -6474,6 +6523,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 				CycleAirportType(-1);
 			} else if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
 				CycleRailType(-1);
+			} else if (_tool == MiniTool::Signal) {
+				CycleSignalType(-1);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
 			}
