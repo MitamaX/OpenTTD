@@ -298,6 +298,15 @@ struct MiniRoadPlan {
 
 static MiniRoadPlan _road_plan;
 
+struct MiniSignalPlan {
+	TileIndex start = INVALID_TILE;
+	TileIndex end = INVALID_TILE;
+	Track track = INVALID_TRACK;
+	std::vector<TileIndex> tiles;
+};
+
+static MiniSignalPlan _sig_plan;
+
 struct MiniRectPlan {
 	bool valid = false;
 	int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
@@ -2142,6 +2151,8 @@ static void ClearPlans()
 	_plan.path.clear();
 	_road_plan.tiles.clear();
 	_road_plan.start = INVALID_TILE;
+	_sig_plan.tiles.clear();
+	_sig_plan.start = INVALID_TILE;
 	_rect_plan.valid = false;
 }
 
@@ -2488,6 +2499,53 @@ static Track PickSignalTrack(TileIndex tile, double wx, double wy)
 	return FindFirstTrack(trackbits);
 }
 
+/* Signals lay in runs as well as one at a time. Only the two grid-straight
+ * tracks carry a run: the half tracks stop the plan at the anchor tile, so
+ * the preview always matches what the command will build. */
+static void UpdateSignalPlan(double wx, double wy)
+{
+	_sig_plan.tiles.clear();
+	_sig_plan.start = INVALID_TILE;
+
+	int ax = Clamp<int>((int)std::floor(_drag_ax), 0, Map::SizeX() - 1);
+	int ay = Clamp<int>((int)std::floor(_drag_ay), 0, Map::SizeY() - 1);
+	TileIndex anchor = TileXY(ax, ay);
+	_sig_plan.track = PickSignalTrack(anchor, _drag_ax, _drag_ay);
+	if (_sig_plan.track == INVALID_TRACK) return;
+
+	_sig_plan.start = anchor;
+	_sig_plan.end = anchor;
+	_sig_plan.tiles.push_back(anchor);
+	if (_sig_plan.track != TRACK_X && _sig_plan.track != TRACK_Y) return;
+
+	bool along_x = _sig_plan.track == TRACK_X;
+	int steps = Clamp((int)std::lround(along_x ? wx - _drag_ax : wy - _drag_ay), -127, 127);
+	int dir = steps >= 0 ? 1 : -1;
+	for (int i = dir; i != steps + dir; i += dir) {
+		int tx = along_x ? ax + i : ax;
+		int ty = along_x ? ay : ay + i;
+		if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) break;
+		TileIndex tile = TileXY(tx, ty);
+		if (!IsPlainRailTile(tile)) break;
+		if ((GetTrackBits(tile) & TrackToTrackBits(_sig_plan.track)) == TRACK_BIT_NONE) break;
+		_sig_plan.tiles.push_back(tile);
+		_sig_plan.end = tile;
+	}
+}
+
+static void DrawSignalPlan(int ppt)
+{
+	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
+	int w = std::max(2, ppt / 5);
+	for (TileIndex tile : _sig_plan.tiles) {
+		int tx = TileX(tile);
+		int ty = TileY(tile);
+		int x0 = ScrX(ty), y0 = ScrY(tx), x1 = ScrX(ty + 1) - 1, y1 = ScrY(tx + 1) - 1;
+		BlendRect(x0, y0, x1, y1, c, 70);
+		DrawTrackPiece(_sig_plan.track, x0, y0, x1, y1, w, c);
+	}
+}
+
 /* Funding an industry has no window either: Q/E walk the types the fund list
  * would offer and the HUD names the type with its price. */
 static IndustryType _industry_type = 0;
@@ -2719,18 +2777,6 @@ static void CommitPointTool()
 			}
 			break;
 
-		case MiniTool::Signal: {
-			Track track = PickSignalTrack(tile, _drag_ax, _drag_ay);
-			if (track == INVALID_TRACK) break;
-			if (_drag_remove) {
-				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, tile, track);
-			} else {
-				SignalVariant sigvar = TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
-				Command<CMD_BUILD_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, tile, track, PickSignalType(), sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
-			}
-			break;
-		}
-
 		default:
 			break;
 	}
@@ -2803,6 +2849,29 @@ static void CommitRoadPlan()
 		for (auto [a, b] : spans.land) {
 			Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, ts[b], ts[a], PickRoadType(), _road_plan.axis, DRD_NONE, false, false, false);
 		}
+	}
+	ClearPlans();
+}
+
+static void CommitSignalPlan()
+{
+	if (_sig_plan.start == INVALID_TILE) {
+		ClearPlans();
+		return;
+	}
+
+	SignalVariant sigvar = TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
+	if (_sig_plan.tiles.size() <= 1) {
+		if (_drag_remove) {
+			Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, _sig_plan.start, _sig_plan.track);
+		} else {
+			Command<CMD_BUILD_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, _sig_plan.start, _sig_plan.track, PickSignalType(), sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
+		}
+	} else if (_drag_remove) {
+		Command<CMD_REMOVE_SIGNAL_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, _sig_plan.start, _sig_plan.end, _sig_plan.track, false);
+	} else {
+		Command<CMD_BUILD_SIGNAL_TRACK>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, _sig_plan.start, _sig_plan.end, _sig_plan.track, PickSignalType(), sigvar,
+				false, false, !_settings_client.gui.drag_signals_fixed_distance, _settings_client.gui.drag_signals_density);
 	}
 	ClearPlans();
 }
@@ -3968,7 +4037,7 @@ static void DrawHud()
 			case MiniTool::Canal: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Lock: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
-			case MiniTool::Signal: hint = "CLICK TRACK / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Signal: hint = "DRAG TRACK / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailTunnel:
 			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailBridge:
@@ -4006,6 +4075,7 @@ static void DrawHud()
 				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
 				if (_tool == MiniTool::Road && !_road_plan.tiles.empty()) title += fmt::format("  {}", _road_plan.tiles.size());
 				if (IsBridgeTool(_tool)) title += fmt::format("  {}", BridgePlanLength());
+				if (_tool == MiniTool::Signal && !_sig_plan.tiles.empty()) title += fmt::format("  {}", _sig_plan.tiles.size());
 				if (IsRectTool(_tool) && _rect_plan.valid) title += fmt::format("  {}x{}", _rect_plan.x1 - _rect_plan.x0 + 1, _rect_plan.y1 - _rect_plan.y0 + 1);
 			}
 			int wmax = std::max<int>(GetStringBoundingBox(title).width, GetStringBoundingBox(hint).width);
@@ -6957,7 +7027,12 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				_drag_remove = _ctrl_pressed;
 				_drag_ax = MapXAt(_cursor.pos.y);
 				_drag_ay = MapYAt(_cursor.pos.x);
-				CommitPointTool();
+				if (_tool == MiniTool::Signal) {
+					_dragging = true;
+					UpdateSignalPlan(_drag_ax, _drag_ay);
+				} else {
+					CommitPointTool();
+				}
 			} else {
 				_dragging = true;
 				_drag_remove = _ctrl_pressed && _tool != MiniTool::Convert && !IsBridgeTool(_tool);
@@ -6978,6 +7053,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		if (_tool == MiniTool::Rail) CommitRailPlan();
 		if (_tool == MiniTool::Road) CommitRoadPlan();
 		if (IsBridgeTool(_tool)) CommitBridgePlan();
+		if (_tool == MiniTool::Signal) CommitSignalPlan();
 		if (_tool == MiniTool::Station) CommitStationPlan();
 		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
 		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
@@ -7305,6 +7381,9 @@ void MiniUiFrame(uint delta_ms)
 		} else if (IsBridgeTool(_tool)) {
 			UpdateRoadPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawBridgePlan(ppt);
+		} else if (_tool == MiniTool::Signal) {
+			UpdateSignalPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
+			DrawSignalPlan(ppt);
 		} else if (IsRectTool(_tool)) {
 			UpdateRectPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x), RectPlanLimit());
 			DrawRectPlan(ppt);
