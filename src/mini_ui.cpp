@@ -70,6 +70,7 @@
 #include "openttd.h"
 #include "order_base.h"
 #include "order_cmd.h"
+#include "order_func.h"
 #include "rail.h"
 #include "palette_func.h"
 #include "rail_cmd.h"
@@ -5052,6 +5053,28 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 			ImWndText(StrMakeValid(GetString(STR_VEHICLE_INFO_PROFIT_THIS_YEAR_LAST_YEAR, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()), {}), COL_CH_TEXT);
 			if (v->type == VEH_TRAIN) {
 				ImWndKV("총길이", fmt::format("{:.1f}타일", Train::From(v)->gcache.cached_total_length / (double)TILE_SIZE), COL_CH_TEXT);
+			}
+			/* How often a vehicle services decides how often it breaks down, so
+			 * the interval is the one setting that belongs on the vehicle. */
+			if (own) {
+				bool pct = v->ServiceIntervalIsPercent();
+				bool wall = TimerGameEconomy::UsingWallclockUnits();
+				uint si = v->GetServiceInterval();
+				uint lo = pct ? MIN_SERVINT_PERCENT : (wall ? MIN_SERVINT_MINUTES : MIN_SERVINT_DAYS);
+				uint hi = pct ? MAX_SERVINT_PERCENT : (wall ? MAX_SERVINT_MINUTES : MAX_SERVINT_DAYS);
+				uint step = pct ? 5 : (wall ? 1 : 10);
+				std::string val = pct ? fmt::format("{}%", si) : fmt::format("{}", si);
+				if (!v->ServiceIntervalIsCustom()) val += " 기본";
+				ImWndKV("정비 간격", val, COL_CH_TEXT);
+				if (ImWndLink("간격 늘리기", COL_CH_TEXT)) {
+					Command<CMD_CHANGE_SERVICE_INT>::Post(v->index, (uint16_t)std::min(si + step, hi), true, pct);
+				}
+				if (ImWndLink("간격 줄이기", COL_CH_TEXT)) {
+					Command<CMD_CHANGE_SERVICE_INT>::Post(v->index, (uint16_t)std::max(si > step ? si - step : lo, lo), true, pct);
+				}
+				if (v->ServiceIntervalIsCustom() && ImWndLink("간격 기본값", COL_CH_TEXT)) {
+					Command<CMD_CHANGE_SERVICE_INT>::Post(v->index, (uint16_t)si, false, pct);
+				}
 			}
 			if (v->type == VEH_TRAIN || (v->type == VEH_ROAD && _settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL)) {
 				const GroundVehicleCache *gc = v->GetGroundVehicleCache();
