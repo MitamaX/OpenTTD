@@ -78,6 +78,7 @@
 #include "road.h"
 #include "road_cmd.h"
 #include "road_map.h"
+#include "roadveh_cmd.h"
 #include "settings_type.h"
 #include "slope_func.h"
 #include "station_base.h"
@@ -4765,6 +4766,20 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 			}
 			ImWndKV("속도", fmt::format("{} / {}", v->GetDisplaySpeed(), v->GetDisplayMaxSpeed()), COL_CH_TEXT);
 			ImWndText(StrMakeValid(GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, v->reliability * 100 >> 16, v->breakdowns_since_last_service), {}), COL_CH_TEXT);
+			/* Unsticking a vehicle has no other home in the mini UI: a train
+			 * held at a danger signal or facing the wrong way can only be
+			 * fixed from here. */
+			if (own && v->type == VEH_TRAIN) {
+				if (ImWndLink("방향 전환", COL_CH_TEXT)) {
+					Command<CMD_REVERSE_TRAIN_DIRECTION>::Post(STR_ERROR_CAN_T_REVERSE_DIRECTION_TRAIN, v->tile, v->index, false);
+				}
+				if (Train::From(v)->flags.Test(VehicleRailFlag::Stuck) && ImWndLink("신호 강행", COL_CH_YELLOW)) {
+					Command<CMD_FORCE_TRAIN_PROCEED>::Post(STR_ERROR_CAN_T_MAKE_TRAIN_PASS_SIGNAL, v->tile, v->index);
+				}
+			}
+			if (own && v->type == VEH_ROAD && ImWndLink("회차", COL_CH_TEXT)) {
+				Command<CMD_TURN_ROADVEH>::Post(STR_ERROR_CAN_T_MAKE_ROAD_VEHICLE_TURN, v->tile, v->index);
+			}
 			break;
 		}
 
