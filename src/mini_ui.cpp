@@ -37,6 +37,7 @@
 #include <unordered_set>
 #include "fileio_func.h"
 #include "gfx_func.h"
+#include "goal_base.h"
 #include "graph_gui.h"
 #include "ground_vehicle.hpp"
 #include "group.h"
@@ -3101,6 +3102,9 @@ static void OpenTownListMiniWnd();
 static void OpenIndustryListMiniWnd();
 static void OpenNewsListMiniWnd();
 static void OpenSubsidyListMiniWnd();
+static void OpenGoalListMiniWnd();
+static void OpenLeagueMiniWnd();
+static void OpenGraphMiniWnd();
 
 static void OpenMiniWindow(MiniWin win)
 {
@@ -3108,9 +3112,9 @@ static void OpenMiniWindow(MiniWin win)
 	switch (win) {
 		case MiniWin::Finances: if (company) OpenFinanceMiniWnd(); break;
 		case MiniWin::CompanyInfo: if (company) OpenCompanyMiniWnd(); break;
-		case MiniWin::Goals: if (company) ShowGoalsList(_local_company); break;
-		case MiniWin::League: ShowPerformanceLeagueTable(); break;
-		case MiniWin::Graph: ShowOperatingProfitGraph(); break;
+		case MiniWin::Goals: OpenGoalListMiniWnd(); break;
+		case MiniWin::League: OpenLeagueMiniWnd(); break;
+		case MiniWin::Graph: OpenGraphMiniWnd(); break;
 		case MiniWin::Stations: if (company) OpenStationListMiniWnd(); break;
 		case MiniWin::Trains: if (company) OpenGroupMiniWnd(VEH_TRAIN); break;
 		case MiniWin::RoadVehicles: if (company) OpenGroupMiniWnd(VEH_ROAD); break;
@@ -3725,6 +3729,9 @@ enum class MiniWndKind : uint8_t {
 	IndustryList,
 	NewsList,
 	SubsidyList,
+	GoalList,
+	League,
+	Graph,
 };
 
 /* Directory kinds carry no entity: they read the whole pool each frame and
@@ -3733,7 +3740,8 @@ static bool WndIsList(MiniWndKind kind)
 {
 	return kind == MiniWndKind::StationList || kind == MiniWndKind::TownList ||
 			kind == MiniWndKind::IndustryList || kind == MiniWndKind::NewsList ||
-			kind == MiniWndKind::SubsidyList;
+			kind == MiniWndKind::SubsidyList || kind == MiniWndKind::GoalList ||
+			kind == MiniWndKind::League || kind == MiniWndKind::Graph;
 }
 
 struct MiniWnd {
@@ -3984,6 +3992,21 @@ static void OpenNewsListMiniWnd()
 static void OpenSubsidyListMiniWnd()
 {
 	OpenMiniWnd(MiniWndKind::SubsidyList, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenGoalListMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::GoalList, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenLeagueMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::League, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenGraphMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::Graph, VehicleID::Invalid(), StationID::Invalid());
 }
 
 static std::string WndOfficial(StringID str)
@@ -5320,6 +5343,180 @@ static void ImSubsidyListBody(MiniWnd &mw)
 	if (!any) ImWndText(awarded_tab ? "수주한 보조금 없음" : "제안된 보조금 없음", COL_CH_DIM);
 }
 
+/* Story pages have no mini window, so goals pointing at one stay inert. */
+static void GoalTargetOpen(const Goal *g)
+{
+	switch (g->type) {
+		case GT_TILE:
+			if (IsValidTile(TileIndex{g->dst})) MiniUiScrollTo(TileX(TileIndex{g->dst}) * TILE_SIZE, TileY(TileIndex{g->dst}) * TILE_SIZE);
+			break;
+		case GT_TOWN:
+			if (Town::IsValidID(g->dst)) {
+				OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), TownID(static_cast<uint16_t>(g->dst)));
+			}
+			break;
+		case GT_INDUSTRY:
+			if (Industry::IsValidID(g->dst)) {
+				OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID(static_cast<uint16_t>(g->dst)));
+			}
+			break;
+		case GT_COMPANY:
+			if (CompanyID(static_cast<uint8_t>(g->dst)) == _local_company) {
+				OpenMiniWnd(MiniWndKind::Company, VehicleID::Invalid(), StationID::Invalid());
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+static void ImGoalListBody(MiniWnd &mw)
+{
+	CompanyID owner = mw.tab == 1 ? CompanyID::Invalid() : _local_company;
+	bool any = false;
+	for (const Goal *g : Goal::Iterate()) {
+		if (g->company != owner) continue;
+		any = true;
+		std::string text = StrMakeValid(g->text.GetDecodedString(), {});
+		std::string progress = g->progress.empty() ? std::string() : StrMakeValid(g->progress.GetDecodedString(), {});
+		if (ImWndKVLink(text, progress, g->completed ? COL_CH_DIM : COL_CH_TEXT, g->completed ? COL_CH_ACCENT : COL_CH_TEXT)) {
+			GoalTargetOpen(g);
+		}
+	}
+	if (!any) ImWndText(WndOfficial(STR_GOALS_NONE), COL_CH_DIM);
+}
+
+static const StringID _mini_perf_titles[] = {
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ENGINEER,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ENGINEER,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRAFFIC_MANAGER,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRAFFIC_MANAGER,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRANSPORT_COORDINATOR,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRANSPORT_COORDINATOR,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ROUTE_SUPERVISOR,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ROUTE_SUPERVISOR,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_DIRECTOR,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_DIRECTOR,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHIEF_EXECUTIVE,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHIEF_EXECUTIVE,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHAIRMAN,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHAIRMAN,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_PRESIDENT,
+	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TYCOON,
+};
+
+static void ImLeagueBody()
+{
+	std::vector<const Company *> cs;
+	for (const Company *c : Company::Iterate()) cs.push_back(c);
+	if (cs.empty()) {
+		ImWndText("회사 없음", COL_CH_DIM);
+		return;
+	}
+	std::sort(cs.begin(), cs.end(), [](const Company *a, const Company *b) {
+		return a->old_economy[0].performance_history > b->old_economy[0].performance_history;
+	});
+
+	for (size_t i = 0; i < cs.size(); i++) {
+		const Company *c = cs[i];
+		int perf = c->old_economy[0].performance_history;
+		std::string title = WndOfficial(_mini_perf_titles[std::min<uint>(perf, 1000) >> 6]);
+		std::string label = fmt::format("{}. {} · {}", i + 1, StrMakeValid(GetString(STR_COMPANY_NAME, c->index), {}), title);
+		bool local = c->index == _local_company;
+		if (ImWndKVLink(label, fmt::format("{}", perf), local ? COL_CH_ACCENT : COL_CH_TEXT, COL_CH_TEXT) && local) {
+			OpenMiniWnd(MiniWndKind::Company, VehicleID::Invalid(), StationID::Invalid());
+		}
+	}
+}
+
+static int64_t GraphValue(const CompanyEconomyEntry &e, uint8_t tab)
+{
+	switch (tab) {
+		case 1: return (int64_t)e.company_value;
+		case 2: return e.performance_history;
+		case 3: return (int64_t)e.delivered_cargo.GetSum<OverflowSafeInt64>();
+		default: return (int64_t)(e.income + e.expenses);
+	}
+}
+
+static std::string GraphValueStr(int64_t v, uint8_t tab)
+{
+	if (tab == 2 || tab == 3) return fmt::format("{}", v);
+	return StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, v), {});
+}
+
+/* Quarters run oldest to newest from left to right; series shorter than the
+ * widest one start further right so the newest quarter always lines up. */
+static void ImGraphBody(MiniWnd &mw)
+{
+	struct Series {
+		uint32_t colour;
+		std::string name;
+		std::vector<int64_t> vals;
+		bool local;
+	};
+
+	std::vector<Series> series;
+	size_t span = 0;
+	for (const Company *c : Company::Iterate()) {
+		Series s;
+		s.colour = _company_rgb[_company_colours[c->index]];
+		s.name = StrMakeValid(GetString(STR_COMPANY_NAME, c->index), {});
+		s.local = c->index == _local_company;
+		int cnt = std::min<int>(c->num_valid_stat_ent, MAX_HISTORY_QUARTERS);
+		for (int j = cnt - 1; j >= 0; j--) s.vals.push_back(GraphValue(c->old_economy[j], mw.tab));
+		if (s.vals.empty()) continue;
+		span = std::max(span, s.vals.size());
+		series.push_back(std::move(s));
+	}
+
+	if (span < 2) {
+		ImWndText("기록이 쌓이면 그래프가 나타납니다", COL_CH_DIM);
+		return;
+	}
+
+	int64_t lo = 0;
+	int64_t hi = 0;
+	for (const Series &s : series) {
+		for (int64_t v : s.vals) {
+			lo = std::min(lo, v);
+			hi = std::max(hi, v);
+		}
+	}
+	if (lo == hi) hi = lo + 1;
+
+	float lh = ImGui::GetFontSize();
+	float legend_h = (float)series.size() * ImGui::GetTextLineHeightWithSpacing();
+	float w = ImGui::GetContentRegionAvail().x;
+	float h = std::max(ImGui::GetContentRegionAvail().y - legend_h - lh * 2.0f, lh * 5.0f);
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	ImGui::Dummy(ImVec2(w, h));
+
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), MiniImU32(COL_CH_TILE));
+
+	auto plot_y = [&](int64_t v) { return p.y + h - (float)((double)(v - lo) / (double)(hi - lo) * h); };
+	float zero_y = plot_y(0);
+	if (lo < 0) dl->AddLine(ImVec2(p.x, zero_y), ImVec2(p.x + w, zero_y), MiniImU32(COL_CH_DIM));
+
+	float step = w / (float)(span - 1);
+	for (const Series &s : series) {
+		size_t off = span - s.vals.size();
+		for (size_t i = 1; i < s.vals.size(); i++) {
+			ImVec2 a(p.x + (float)(off + i - 1) * step, plot_y(s.vals[i - 1]));
+			ImVec2 b(p.x + (float)(off + i) * step, plot_y(s.vals[i]));
+			dl->AddLine(a, b, MiniImU32(s.colour), s.local ? 2.5f : 1.5f);
+		}
+	}
+
+	dl->AddText(ImVec2(p.x + 3.0f, p.y + 2.0f), MiniImU32(COL_CH_DIM), GraphValueStr(hi, mw.tab).c_str());
+	dl->AddText(ImVec2(p.x + 3.0f, p.y + h - lh - 2.0f), MiniImU32(COL_CH_DIM), GraphValueStr(lo, mw.tab).c_str());
+
+	for (const Series &s : series) {
+		ImWndKV(fmt::format("{}{}", s.local ? "▶ " : "· ", s.name), GraphValueStr(s.vals.back(), mw.tab), s.colour);
+	}
+}
+
 static bool ImWndButton(std::string_view label, bool enabled)
 {
 	ImGui::BeginDisabled(!enabled);
@@ -5449,6 +5646,9 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 		case MiniWndKind::IndustryList:
 		case MiniWndKind::NewsList:
 		case MiniWndKind::SubsidyList:
+		case MiniWndKind::GoalList:
+		case MiniWndKind::League:
+		case MiniWndKind::Graph:
 			break;
 	}
 	ImGui::NewLine();
@@ -5553,6 +5753,9 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::IndustryList: title = "산업 목록"; break;
 		case MiniWndKind::NewsList: title = "소식"; break;
 		case MiniWndKind::SubsidyList: title = "보조금"; break;
+		case MiniWndKind::GoalList: title = "목표"; break;
+		case MiniWndKind::League: title = "순위"; break;
+		case MiniWndKind::Graph: title = "그래프"; break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
 	}
 	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
@@ -5646,6 +5849,22 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[0] = "제안";
 			tl[1] = "수주";
 			break;
+		case MiniWndKind::GoalList:
+			ntab = 2;
+			tl[0] = "회사";
+			tl[1] = "전체";
+			break;
+		case MiniWndKind::League:
+			ntab = 1;
+			tl[0] = "성능";
+			break;
+		case MiniWndKind::Graph:
+			ntab = 4;
+			tl[0] = "수익";
+			tl[1] = "가치";
+			tl[2] = "성능";
+			tl[3] = "화물";
+			break;
 		default:
 			ntab = 3;
 			tl[0] = "상태";
@@ -5684,6 +5903,9 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::IndustryList: ImIndustryListBody(mw); break;
 					case MiniWndKind::NewsList: ImNewsListBody(mw); break;
 					case MiniWndKind::SubsidyList: ImSubsidyListBody(mw); break;
+					case MiniWndKind::GoalList: ImGoalListBody(mw); break;
+					case MiniWndKind::League: ImLeagueBody(); break;
+					case MiniWndKind::Graph: ImGraphBody(mw); break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
