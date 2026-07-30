@@ -20,6 +20,7 @@
 #include "company_base.h"
 #include "window_func.h"
 #include "waypoint_base.h"
+#include "mini_ui.h"
 #include "station_base.h"
 #include "waypoint_cmd.h"
 #include "zoom_func.h"
@@ -231,5 +232,6 @@ static WindowDesc _waypoint_view_desc(
  */
 void ShowWaypointWindow(const Waypoint *wp)
 {
+	if (ShowMiniWaypointWindow(wp->index)) return;
 	AllocateWindowDescFront<WaypointWindow>(_waypoint_view_desc, wp->index);
 }

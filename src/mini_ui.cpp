@@ -101,6 +101,7 @@
 #include "vehicle_base.h"
 #include "vehicle_cmd.h"
 #include "water_cmd.h"
+#include "waypoint_base.h"
 #include "waypoint_cmd.h"
 #include "waypoint_func.h"
 #include "vehicle_func.h"
@@ -3929,6 +3930,7 @@ enum class MiniWndKind : uint8_t {
 	Graph,
 	Preview,
 	Takeover,
+	Waypoint,
 };
 
 /* Directory kinds carry no entity: they read the whole pool each frame and
@@ -5644,6 +5646,27 @@ static void ImPreviewBody(const MiniWnd &mw)
 	ImWndText(StrMakeValid(GetEngineInfoString(mw.eng), {}), COL_CH_TEXT);
 }
 
+static void ImWaypointBody(const MiniWnd &mw)
+{
+	const Waypoint *wp = Waypoint::GetIfValid(mw.st);
+	if (wp == nullptr) return;
+
+	std::string_view kind = "부표";
+	if (wp->facilities.Test(StationFacility::Train)) {
+		kind = "철도 대기점";
+	} else if (wp->facilities.Test(StationFacility::TruckStop) || wp->facilities.Test(StationFacility::BusStop)) {
+		kind = "도로 대기점";
+	}
+	ImWndKV("종류", kind, COL_CH_TEXT);
+	if (Company::IsValidID(wp->owner)) {
+		ImWndKV("소유", StrMakeValid(GetString(STR_COMPANY_NAME, wp->owner), {}), COL_CH_TEXT);
+	}
+	if (wp->town != nullptr) {
+		ImWndKV("도시", StrMakeValid(GetString(STR_TOWN_NAME, wp->town->index), {}), COL_CH_TEXT);
+	}
+	ImWndKV("좌표", fmt::format("{} · {}", TileX(wp->xy), TileY(wp->xy)), COL_CH_TEXT);
+}
+
 static Money TakeoverPrice(const MiniWnd &mw)
 {
 	const Company *c = Company::GetIfValid(mw.comp);
@@ -5856,6 +5879,14 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			break;
 		}
 
+		case MiniWndKind::Waypoint: {
+			const Waypoint *wp = Waypoint::GetIfValid(mw.st);
+			if (ImWndButton("지도에서 보기", wp != nullptr)) {
+				MiniUiScrollTo(TileX(wp->xy) * TILE_SIZE, TileY(wp->xy) * TILE_SIZE);
+			}
+			break;
+		}
+
 		case MiniWndKind::Preview:
 			if (ImWndButton("수락", Engine::GetIfValid(mw.eng) != nullptr)) {
 				Command<CMD_WANT_ENGINE_PREVIEW>::Post(mw.eng);
@@ -5915,6 +5946,10 @@ static bool WndRenamable(const MiniWnd &mw, const Vehicle *v, const Station *st,
 		case MiniWndKind::Station: return st != nullptr && st->owner == _local_company;
 		case MiniWndKind::Town: return t != nullptr;
 		case MiniWndKind::Company: return Company::IsValidID(_local_company);
+		case MiniWndKind::Waypoint: {
+			const Waypoint *wp = Waypoint::GetIfValid(mw.st);
+			return wp != nullptr && wp->owner == _local_company;
+		}
 		default: return false;
 	}
 }
@@ -5934,6 +5969,9 @@ static void WndPostRename(const MiniWnd &mw, const Vehicle *v, const Station *st
 			break;
 		case MiniWndKind::Company:
 			Command<CMD_RENAME_COMPANY>::Post(STR_ERROR_CAN_T_CHANGE_COMPANY_NAME, std::move(name));
+			break;
+		case MiniWndKind::Waypoint:
+			Command<CMD_RENAME_WAYPOINT>::Post(STR_ERROR_CAN_T_CHANGE_WAYPOINT_NAME, mw.st, std::move(name));
 			break;
 		default: break;
 	}
@@ -6014,6 +6052,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::Takeover:
 			if (Company::IsValidID(mw.comp)) title = StrMakeValid(GetString(STR_COMPANY_NAME, mw.comp), {});
 			idnum = mw.comp.base();
+			break;
+		case MiniWndKind::Waypoint:
+			if (Waypoint::IsValidID(mw.st)) title = StrMakeValid(GetString(STR_WAYPOINT_NAME, mw.st), {});
+			idnum = mw.st.base();
 			break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
 	}
@@ -6125,6 +6167,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			ntab = 1;
 			tl[0] = "인수";
 			break;
+		case MiniWndKind::Waypoint:
+			ntab = 1;
+			tl[0] = "상태";
+			break;
 		case MiniWndKind::Graph:
 			ntab = 4;
 			tl[0] = "수익";
@@ -6175,6 +6221,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::Graph: ImGraphBody(mw); break;
 					case MiniWndKind::Preview: ImPreviewBody(mw); break;
 					case MiniWndKind::Takeover: ImTakeoverBody(mw); break;
+					case MiniWndKind::Waypoint: ImWaypointBody(mw); break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
@@ -6207,6 +6254,7 @@ static void DrawMiniWndsImGui()
 				break;
 			}
 			case MiniWndKind::Takeover: alive = Company::IsValidID(_wnds[i].comp) && Company::IsValidID(_local_company); break;
+			case MiniWndKind::Waypoint: alive = Waypoint::IsValidID(_wnds[i].st); break;
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::StationList: alive = Company::IsValidID(_local_company); break;
 			default: alive = true; break;
@@ -6299,6 +6347,13 @@ bool ShowMiniVehicleWindow(const Vehicle *v)
 {
 	if (!_mini_active) return false;
 	OpenMiniWnd(MiniWndKind::Vehicle, v->First()->index, StationID::Invalid());
+	return true;
+}
+
+bool ShowMiniWaypointWindow(StationID waypoint)
+{
+	if (!_mini_active || !Waypoint::IsValidID(waypoint)) return false;
+	OpenMiniWnd(MiniWndKind::Waypoint, VehicleID::Invalid(), waypoint);
 	return true;
 }
 

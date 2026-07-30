@@ -48,6 +48,7 @@ bool MiniUiDrawResizeGlyph(const Rect &r, Colours colour, bool at_left);
 struct Vehicle;
 bool ShowMiniVehicleWindow(const Vehicle *v);
 bool ShowMiniStationWindow(StationID station);
+bool ShowMiniWaypointWindow(StationID waypoint);
 bool ShowMiniTownWindow(TownID town);
 bool ShowMiniIndustryWindow(IndustryID industry);
 bool ShowMiniDepotWindow(TileIndex tile, VehicleType type);
