@@ -5806,16 +5806,26 @@ static void ImGroupBody(MiniWnd &mw)
 	{
 		if (special) {
 			ImWndHeader("차량");
-			bool anyv = false;
+			/* A fleet is managed by finding the losers, so the list carries this
+			 * year's profit and puts the worst first. */
+			std::vector<const Vehicle *> list;
 			for (const Vehicle *v : Vehicle::Iterate()) {
 				if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
 				if (mw.sel_grp == DEFAULT_GROUP && v->group_id != DEFAULT_GROUP) continue;
-				anyv = true;
-				if (ImWndLink(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}), COL_CH_TEXT)) {
+				list.push_back(v);
+			}
+			std::sort(list.begin(), list.end(), [](const Vehicle *a, const Vehicle *b) {
+				return a->GetDisplayProfitThisYear() < b->GetDisplayProfitThisYear();
+			});
+			for (const Vehicle *v : list) {
+				Money profit = v->GetDisplayProfitThisYear();
+				if (ImWndKVLink(StrMakeValid(GetString(STR_VEHICLE_NAME, v->index), {}),
+						StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, profit), {}),
+						COL_CH_TEXT, profit < 0 ? COL_CH_RED : COL_CH_TEXT)) {
 					OpenMiniWnd(MiniWndKind::Vehicle, v->First()->index, StationID::Invalid());
 				}
 			}
-			if (!anyv) ImWndText("차량 없음", COL_CH_DIM);
+			if (list.empty()) ImWndText("차량 없음", COL_CH_DIM);
 		} else {
 			ImWndHeader("소속 차량. 클릭으로 제외");
 			bool anyin = false;
