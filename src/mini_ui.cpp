@@ -1642,6 +1642,18 @@ static bool OpenDepotWndAt(int sx, int sy)
 	return true;
 }
 
+/* Waypoints and buoys carry no map label, so the tile itself is the way into
+ * their window. */
+static bool OpenWaypointWndAt(int sx, int sy)
+{
+	int tx = (int)std::floor(MapXAt(sy));
+	int ty = (int)std::floor(MapYAt(sx));
+	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return false;
+	TileIndex tile = TileXY(tx, ty);
+	if (!IsRailWaypointTile(tile) && !IsRoadWaypointTile(tile) && !IsBuoyTile(tile)) return false;
+	return ShowMiniWaypointWindow(GetStationIndex(tile));
+}
+
 /* Stock order-window map picking, trimmed to the plain cases: a click
  * resolves to a depot, waypoint or station order for the picked vehicle. */
 static Order OrderFromTile(const Vehicle *v, TileIndex tile)
@@ -6599,8 +6611,9 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 			if (_tool == MiniTool::None) {
 				if (_order_pick_veh != VehicleID::Invalid()) {
 					OrderPickClick(_cursor.pos.x, _cursor.pos.y);
-				} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y)) {
-					OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y);
+				} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y) &&
+						!OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y)) {
+					OpenWaypointWndAt(_cursor.pos.x, _cursor.pos.y);
 				}
 			} else if (IsPointTool(_tool)) {
 				_drag_remove = _ctrl_pressed;
