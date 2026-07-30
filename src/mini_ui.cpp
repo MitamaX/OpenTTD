@@ -48,6 +48,7 @@
 #include "gui.h"
 #include "industry.h"
 #include "industry_cmd.h"
+#include "industry_map.h"
 #include "industrytype.h"
 #include "newgrf_industries.h"
 #include "ini_type.h"
@@ -1399,10 +1400,15 @@ static std::pair<double, double> LerpVehWorld(const Vehicle *v)
 	return {(e.px + (e.cx - e.px) * _lerp_alpha) / TILE_SIZE, (e.py + (e.cy - e.py) * _lerp_alpha) / TILE_SIZE};
 }
 
+static uint32_t PaletteRgb(PixelColour p)
+{
+	Colour c = _cur_palette.palette[p.p];
+	return 0xFF000000U | ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+}
+
 static uint32_t CargoRgb(CargoType ct)
 {
-	Colour c = _cur_palette.palette[CargoSpec::Get(ct)->legend_colour.p];
-	return 0xFF000000U | ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+	return PaletteRgb(CargoSpec::Get(ct)->legend_colour);
 }
 
 /* Silhouette tells the vehicle type apart: square train, round road
@@ -3125,6 +3131,7 @@ enum class MiniWin : uint8_t {
 	Subsidies,
 	Buy,
 	Groups,
+	Map,
 };
 
 struct MiniWinItem {
@@ -3159,6 +3166,7 @@ static const MiniWinItem _win_vehicle_items[] = {
 };
 
 static const MiniWinItem _win_world_items[] = {
+	{INVALID_STRING_ID, "MAP", MiniWin::Map},
 	{STR_NEWS_MENU_MESSAGE_HISTORY_MENU, "NEWS", MiniWin::News},
 	{STR_TOWN_MENU_TOWN_DIRECTORY, "TOWNS", MiniWin::Towns},
 	{STR_INDUSTRY_MENU_INDUSTRY_DIRECTORY, "INDUSTRY", MiniWin::Industries},
@@ -3168,7 +3176,7 @@ static const MiniWinItem _win_world_items[] = {
 static const MiniWinCategory _win_cats[] = {
 	{STR_CONFIG_SETTING_COMPANY, "COMPANY", MiniWin::Finances, _win_company_items},
 	{STR_CONFIG_SETTING_VEHICLES, "VEHICLES", MiniWin::Trains, _win_vehicle_items},
-	{STR_CONFIG_SETTING_ENVIRONMENT, "WORLD", MiniWin::Towns, _win_world_items},
+	{STR_CONFIG_SETTING_ENVIRONMENT, "WORLD", MiniWin::Map, _win_world_items},
 };
 
 static int _win_open = -1;
@@ -3267,6 +3275,12 @@ static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
 			ScreenFillRect(cx - h, cy - t / 2, cx + h, cy - t / 2 + t, cc);
 			ScreenFillRect(cx - h, cy + h - t, cx + h, cy + h, cc);
 			break;
+		case MiniWin::Map:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, _height_ramp[5]);
+			ScreenThickLine(cx - h, cy + h / 2, cx + h, cy - h / 2, t, COL_WATER);
+			ScreenFillRect(cx - h, cy - h, cx + h, cy - h + 1, COL_INK);
+			ScreenFillRect(cx - h, cy + h - 1, cx + h, cy + h, COL_INK);
+			break;
 	}
 }
 
@@ -3294,6 +3308,7 @@ static void OpenSubsidyListMiniWnd();
 static void OpenGoalListMiniWnd();
 static void OpenLeagueMiniWnd();
 static void OpenGraphMiniWnd();
+static void OpenMapMiniWnd();
 
 static void OpenMiniWindow(MiniWin win)
 {
@@ -3315,6 +3330,7 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Subsidies: OpenSubsidyListMiniWnd(); break;
 		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
 		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
+		case MiniWin::Map: OpenMapMiniWnd(); break;
 	}
 }
 
@@ -3943,16 +3959,18 @@ enum class MiniWndKind : uint8_t {
 	Preview,
 	Takeover,
 	Waypoint,
+	Map,
 };
 
-/* Directory kinds carry no entity: they read the whole pool each frame and
- * open the matching entity window on click. */
+/* Kinds that carry no entity and take no commands: they read the world each
+ * frame and act on a click in the body. */
 static bool WndIsList(MiniWndKind kind)
 {
 	return kind == MiniWndKind::StationList || kind == MiniWndKind::TownList ||
 			kind == MiniWndKind::IndustryList || kind == MiniWndKind::NewsList ||
 			kind == MiniWndKind::SubsidyList || kind == MiniWndKind::GoalList ||
-			kind == MiniWndKind::League || kind == MiniWndKind::Graph;
+			kind == MiniWndKind::League || kind == MiniWndKind::Graph ||
+			kind == MiniWndKind::Map;
 }
 
 struct MiniWnd {
@@ -3993,7 +4011,7 @@ static VehicleID FrontWndVehicle()
 
 /* Work windows and the plot run twice as wide; the other kinds keep the
  * narrow single-column shape. */
-static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Graph; }
+static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Graph || mw.kind == MiniWndKind::Map; }
 static int WndW(const MiniWnd &mw) { return std::min((WndWide(mw) ? 560 : 250) * _ms.hud_scale, _fbw - 12 * _ms.hud_scale); }
 static int WndTitleH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
 static int WndTabH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
@@ -4226,6 +4244,11 @@ static void OpenLeagueMiniWnd()
 static void OpenGraphMiniWnd()
 {
 	OpenMiniWnd(MiniWndKind::Graph, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenMapMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::Map, VehicleID::Invalid(), StationID::Invalid());
 }
 
 static std::string WndOfficial(StringID str)
@@ -5698,6 +5721,221 @@ static void ImTakeoverBody(const MiniWnd &mw)
 	ImWndKV("대출", StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, c->current_loan), {}), c->current_loan > 0 ? COL_CH_YELLOW : COL_CH_TEXT);
 }
 
+enum class MiniMapMode : uint8_t {
+	Contour,
+	Vehicles,
+	Industries,
+	Routes,
+	Owner,
+};
+
+static uint32_t MiniMapFaded(uint32_t c)
+{
+	return Mix(c, COL_CH_PANEL, 168);
+}
+
+static uint32_t MiniMapStationColour(TileIndex tile)
+{
+	switch (GetStationType(tile)) {
+		case StationType::Rail:
+		case StationType::RailWaypoint: return COL_ST_RAIL;
+		case StationType::Airport: return COL_ST_AIR;
+		case StationType::Truck:
+		case StationType::Bus:
+		case StationType::RoadWaypoint: return COL_ST_ROAD;
+		case StationType::Dock: return COL_ST_DOCK;
+		case StationType::Buoy: return COL_ST_BUOY;
+		default: return COL_OBJ;
+	}
+}
+
+static uint32_t MiniMapBaseColour(TileIndex tile)
+{
+	switch (GetTileType(tile)) {
+		case MP_VOID: return COL_VOID;
+		case MP_WATER: return COL_WATER;
+		case MP_TREES: return COL_TREE;
+		case MP_HOUSE: return COL_HOUSE;
+		case MP_INDUSTRY: return COL_IND;
+		case MP_RAILWAY: return COL_RAIL;
+		case MP_ROAD: return COL_ROAD;
+		case MP_STATION: return MiniMapStationColour(tile);
+		case MP_TUNNELBRIDGE: return COL_BRIDGE;
+		case MP_OBJECT: return COL_OBJ;
+		default: return GroundColour(tile, TileHeight(tile));
+	}
+}
+
+static uint32_t MiniMapOwnerColour(Owner o)
+{
+	if (Company::IsValidID(o)) return _company_rgb[_company_colours[o]];
+	if (o == OWNER_TOWN) return COL_ROAD;
+	return COL_OBJ;
+}
+
+static uint32_t MiniMapTileColour(TileIndex tile, MiniMapMode mode)
+{
+	TileType tt = GetTileType(tile);
+	if (tt == MP_VOID) return COL_VOID;
+
+	switch (mode) {
+		case MiniMapMode::Industries:
+			if (tt == MP_INDUSTRY) {
+				const Industry *ind = Industry::GetByTile(tile);
+				return PaletteRgb(GetIndustrySpec(ind->type)->map_colour);
+			}
+			return MiniMapFaded(MiniMapBaseColour(tile));
+
+		case MiniMapMode::Routes:
+			switch (tt) {
+				case MP_RAILWAY: return COL_PAPER;
+				case MP_ROAD: return COL_CATENARY;
+				case MP_STATION: return MiniMapStationColour(tile);
+				case MP_TUNNELBRIDGE: return COL_BRIDGE;
+				default: return MiniMapFaded(MiniMapBaseColour(tile));
+			}
+
+		case MiniMapMode::Owner:
+			switch (tt) {
+				case MP_HOUSE: return COL_HOUSE;
+				case MP_INDUSTRY: return COL_IND;
+				case MP_CLEAR:
+				case MP_TREES: return MiniMapFaded(MiniMapBaseColour(tile));
+				case MP_WATER: {
+					Owner o = GetTileOwner(tile);
+					return Company::IsValidID(o) ? _company_rgb[_company_colours[o]] : COL_WATER;
+				}
+				default: return MiniMapOwnerColour(GetTileOwner(tile));
+			}
+
+		case MiniMapMode::Vehicles:
+			return MiniMapFaded(MiniMapBaseColour(tile));
+
+		default:
+			return MiniMapBaseColour(tile);
+	}
+}
+
+/* Scanning every tile costs too much to repeat per frame, so the overview
+ * keeps a pixel buffer and refreshes it on a slow beat. */
+struct MiniMapCache {
+	int w = 0;
+	int h = 0;
+	uint8_t mode = 0xFF;
+	float age = 0.0f;
+	std::vector<uint32_t> px;
+};
+
+static MiniMapCache _map_cache;
+
+static void RebuildMiniMap(int w, int h, MiniMapMode mode)
+{
+	int mx = (int)Map::SizeX();
+	int my = (int)Map::SizeY();
+	_map_cache.px.assign((size_t)w * h, COL_VOID);
+	for (int y = 0; y < h; y++) {
+		int tx = (int)((int64_t)y * mx / h);
+		uint32_t *row = _map_cache.px.data() + (size_t)y * w;
+		for (int x = 0; x < w; x++) {
+			int ty = (int)((int64_t)x * my / w);
+			row[x] = MiniMapTileColour(TileXY(tx, ty), mode);
+		}
+	}
+	_map_cache.w = w;
+	_map_cache.h = h;
+	_map_cache.mode = (uint8_t)mode;
+	_map_cache.age = 0.0f;
+}
+
+/* Town names are placed largest first and a name that would land on one
+ * already placed is dropped, so a crowded map stays readable. */
+static void DrawMiniMapTownNames(ImDrawList *dl, ImVec2 p, int w, int h)
+{
+	std::vector<const Town *> towns;
+	for (const Town *t : Town::Iterate()) towns.push_back(t);
+	std::sort(towns.begin(), towns.end(), [](const Town *a, const Town *b) { return a->cache.population > b->cache.population; });
+
+	int mx = (int)Map::SizeX();
+	int my = (int)Map::SizeY();
+	std::vector<ImVec4> placed;
+	for (const Town *t : towns) {
+		std::string name = StrMakeValid(GetString(STR_TOWN_NAME, t->index), {});
+		ImVec2 sz = ImGui::CalcTextSize(name.c_str());
+		float cx = p.x + (float)TileY(t->xy) * w / my;
+		float cy = p.y + (float)TileX(t->xy) * h / mx;
+		ImVec4 r(cx - sz.x * 0.5f, cy - sz.y - 2.0f, cx + sz.x * 0.5f, cy - 2.0f);
+		if (r.x < p.x || r.z > p.x + w || r.y < p.y) continue;
+		bool hit = false;
+		for (const ImVec4 &o : placed) {
+			if (r.x < o.z && o.x < r.z && r.y < o.w && o.y < r.w) { hit = true; break; }
+		}
+		if (hit) continue;
+		placed.push_back(r);
+		dl->AddRectFilled(ImVec2(cx - 1.0f, cy - 1.0f), ImVec2(cx + 2.0f, cy + 2.0f), MiniImU32(COL_PAPER));
+		dl->AddText(ImVec2(r.x + 1.0f, r.y + 1.0f), MiniImU32(COL_INK), name.c_str());
+		dl->AddText(ImVec2(r.x, r.y), MiniImU32(COL_PAPER), name.c_str());
+	}
+}
+
+static void ImMapBody(MiniWnd &mw)
+{
+	MiniMapMode mode = (MiniMapMode)mw.tab;
+	int mx = (int)Map::SizeX();
+	int my = (int)Map::SizeY();
+
+	ImVec2 avail = ImGui::GetContentRegionAvail();
+	float scale = std::min(avail.x / (float)my, avail.y / (float)mx);
+	int w = std::max(1, (int)(my * scale));
+	int h = std::max(1, (int)(mx * scale));
+
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	p.x += std::floor((avail.x - w) * 0.5f);
+	ImGui::SetCursorScreenPos(p);
+	ImGui::InvisibleButton("map", ImVec2((float)w, (float)h));
+
+	_map_cache.age += ImGui::GetIO().DeltaTime;
+	if (_map_cache.w != w || _map_cache.h != h || _map_cache.mode != (uint8_t)mode || _map_cache.age > 0.5f) {
+		RebuildMiniMap(w, h, mode);
+	}
+
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	for (int y = 0; y < h; y++) {
+		const uint32_t *row = _map_cache.px.data() + (size_t)y * w;
+		int x = 0;
+		while (x < w) {
+			int e = x + 1;
+			while (e < w && row[e] == row[x]) e++;
+			dl->AddRectFilled(ImVec2(p.x + x, p.y + y), ImVec2(p.x + e, p.y + y + 1), MiniImU32(row[x]));
+			x = e;
+		}
+	}
+
+	if (mode == MiniMapMode::Vehicles) {
+		for (const Vehicle *v : Vehicle::Iterate()) {
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Hidden)) continue;
+			float sx = p.x + (float)(v->y_pos / TILE_SIZE) * w / my;
+			float sy = p.y + (float)(v->x_pos / TILE_SIZE) * h / mx;
+			uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_PAPER;
+			dl->AddRectFilled(ImVec2(sx - 1.0f, sy - 1.0f), ImVec2(sx + 2.0f, sy + 2.0f), MiniImU32(c));
+		}
+	}
+
+	if (mode == MiniMapMode::Contour) DrawMiniMapTownNames(dl, p, w, h);
+
+	double half_y = _fbw * 0.5 / _cam_ppt;
+	double half_x = _fbh * 0.5 / _cam_ppt;
+	dl->AddRect(ImVec2(p.x + (float)((_cam_y - half_y) * w / my), p.y + (float)((_cam_x - half_x) * h / mx)),
+			ImVec2(p.x + (float)((_cam_y + half_y) * w / my), p.y + (float)((_cam_x + half_x) * h / mx)),
+			MiniImU32(COL_CH_ACCENT), 0.0f, 0, 1.5f);
+
+	if (ImGui::IsItemActive()) {
+		ImVec2 m = ImGui::GetIO().MousePos;
+		int ty = Clamp((int)((m.x - p.x) * my / w), 0, my - 1);
+		int tx = Clamp((int)((m.y - p.y) * mx / h), 0, mx - 1);
+		MiniUiScrollTo(tx * TILE_SIZE, ty * TILE_SIZE);
+	}
+}
+
 static int64_t GraphValue(const CompanyEconomyEntry &e, uint8_t tab)
 {
 	switch (tab) {
@@ -5946,6 +6184,7 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 		case MiniWndKind::GoalList:
 		case MiniWndKind::League:
 		case MiniWndKind::Graph:
+		case MiniWndKind::Map:
 			break;
 	}
 	ImGui::NewLine();
@@ -6060,6 +6299,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::GoalList: title = "목표"; break;
 		case MiniWndKind::League: title = "순위"; break;
 		case MiniWndKind::Graph: title = "그래프"; break;
+		case MiniWndKind::Map: title = "지도"; break;
 		case MiniWndKind::Preview: title = "신형 차량"; idnum = mw.eng.base(); break;
 		case MiniWndKind::Takeover:
 			if (Company::IsValidID(mw.comp)) title = StrMakeValid(GetString(STR_COMPANY_NAME, mw.comp), {});
@@ -6190,6 +6430,14 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[2] = "성능";
 			tl[3] = "화물";
 			break;
+		case MiniWndKind::Map:
+			ntab = 5;
+			tl[0] = WndOfficial(STR_SMALLMAP_TYPE_CONTOURS);
+			tl[1] = WndOfficial(STR_SMALLMAP_TYPE_VEHICLES);
+			tl[2] = WndOfficial(STR_SMALLMAP_TYPE_INDUSTRIES);
+			tl[3] = WndOfficial(STR_SMALLMAP_TYPE_ROUTES);
+			tl[4] = WndOfficial(STR_SMALLMAP_TYPE_OWNERS);
+			break;
 		default:
 			ntab = 3;
 			tl[0] = "상태";
@@ -6231,6 +6479,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::GoalList: ImGoalListBody(mw); break;
 					case MiniWndKind::League: ImLeagueBody(); break;
 					case MiniWndKind::Graph: ImGraphBody(mw); break;
+					case MiniWndKind::Map: ImMapBody(mw); break;
 					case MiniWndKind::Preview: ImPreviewBody(mw); break;
 					case MiniWndKind::Takeover: ImTakeoverBody(mw); break;
 					case MiniWndKind::Waypoint: ImWaypointBody(mw); break;
