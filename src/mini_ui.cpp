@@ -54,6 +54,8 @@
 #include "network/network.h"
 #include "network/network_type.h"
 #include "newgrf_airport.h"
+#include "object_cmd.h"
+#include "object_type.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "news_gui.h"
@@ -81,6 +83,8 @@
 #include "town_cmd.h"
 #include "tile_map.h"
 #include "train.h"
+#include "tree_cmd.h"
+#include "tree_map.h"
 #include "timer/timer_game_calendar.h"
 #include "timer/timer_game_economy.h"
 #include "timer/timer_game_tick.h"
@@ -141,16 +145,20 @@ enum class MiniTool : uint8_t {
 	RailTunnel,
 	RoadTunnel,
 	Terraform,
+	Headquarters,
+	Trees,
+	BuyLand,
 };
 
 static bool IsRectTool(MiniTool t)
 {
-	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform || t == MiniTool::Canal || t == MiniTool::Convert;
+	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform || t == MiniTool::Canal || t == MiniTool::Convert ||
+			t == MiniTool::Trees || t == MiniTool::BuyLand;
 }
 
 static bool IsPointTool(MiniTool t)
 {
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock;
+	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters;
 }
 
 static bool IsDirPointTool(MiniTool t)
@@ -2345,6 +2353,28 @@ static void CommitCanalPlan()
 	ClearPlans();
 }
 
+static void CommitTreePlan()
+{
+	if (!_rect_plan.valid) return;
+	if (_drag_remove) {
+		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
+	} else {
+		Command<CMD_PLANT_TREE>::Post(STR_ERROR_CAN_T_PLANT_TREE_HERE, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), TREE_INVALID, false);
+	}
+	ClearPlans();
+}
+
+static void CommitBuyLandPlan()
+{
+	if (!_rect_plan.valid) return;
+	if (_drag_remove) {
+		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
+	} else {
+		Command<CMD_BUILD_OBJECT_AREA>::Post(STR_ERROR_CAN_T_PURCHASE_THIS_LAND, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), OBJECT_OWNED_LAND, 0, false);
+	}
+	ClearPlans();
+}
+
 /* Levelling copies the anchor tile's height, so the anchor corner is passed
  * as the reference tile rather than the normalised rectangle origin. */
 static void CommitTerraformPlan()
@@ -2499,6 +2529,14 @@ static void CommitPointTool()
 			break;
 		}
 
+		case MiniTool::Headquarters:
+			if (_drag_remove) {
+				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+			} else {
+				Command<CMD_BUILD_OBJECT>::Post(STR_ERROR_CAN_T_BUILD_COMPANY_HEADQUARTERS, tile, OBJECT_HQ, 0);
+			}
+			break;
+
 		case MiniTool::Signal: {
 			Track track = PickSignalTrack(tile, _drag_ax, _drag_ay);
 			if (track == INVALID_TRACK) break;
@@ -2554,6 +2592,8 @@ static void DrawPointToolPlan(int ppt)
 	} else if (_tool == MiniTool::Airport) {
 		const AirportSpec *as = AirportSpec::Get(PickAirportType());
 		if (as->IsAvailable()) BlendRect(x0, y0, ScrX(ty + as->size_y) - 1, ScrY(tx + as->size_x) - 1, c, 60);
+	} else if (_tool == MiniTool::Headquarters) {
+		BlendRect(x0, y0, ScrX(ty + 2) - 1, ScrY(tx + 2) - 1, c, 60);
 	} else if (IsDirPointTool(_tool)) {
 		int cx = (x0 + x1) / 2;
 		int cy = (y0 + y1) / 2;
@@ -2638,6 +2678,12 @@ static const MiniMenuItem _menu_air_items[] = {
 	{STR_LAI_STATION_DESCRIPTION_AIRPORT, "AIRPORT", MiniTool::Airport},
 };
 
+static const MiniMenuItem _menu_land_items[] = {
+	{STR_LAI_OBJECT_DESCRIPTION_COMPANY_HEADQUARTERS, "HQ", MiniTool::Headquarters},
+	{STR_LAI_TREE_NAME_TREES, "TREES", MiniTool::Trees},
+	{STR_LAI_OBJECT_DESCRIPTION_COMPANY_OWNED_LAND, "LAND", MiniTool::BuyLand},
+};
+
 /* Area-command tools live apart from construction: the bottom-right corner
  * is the command corner in the reference layout. */
 static const MiniMenuItem _cmd_items[] = {
@@ -2650,6 +2696,7 @@ static const MiniMenuCategory _menu_cats[] = {
 	{STR_ROAD_NAME_ROAD, "ROAD", MiniTool::Road, _menu_road_items},
 	{STR_LAI_WATER_DESCRIPTION_WATER, "WATER", MiniTool::Dock, _menu_water_items},
 	{STR_REPLACE_VEHICLE_AIRCRAFT, "AIR", MiniTool::Airport, _menu_air_items},
+	{INVALID_STRING_ID, "LAND", MiniTool::Headquarters, _menu_land_items},
 };
 
 static int _menu_open = -1;
@@ -2792,6 +2839,22 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 		case MiniTool::Demolish:
 			ScreenThickLine(cx - h, cy - h, cx + h, cy + h, t, COL_STOP);
 			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_STOP);
+			break;
+		case MiniTool::Headquarters: {
+			uint32_t cc = Company::IsValidID(_local_company) ? _company_rgb[_company_colours[_local_company]] : COL_OBJ;
+			ScreenFillRect(cx - h, cy - is / 6, cx + h, cy + h, COL_OBJ_B);
+			ScreenFillRect(cx - h + 2, cy - is / 6 + 2, cx + h - 2, cy + h - 2, cc);
+			ScreenFillRect(cx - t, cy - h, cx + t, cy - is / 6, COL_OBJ);
+			break;
+		}
+		case MiniTool::Trees:
+			ScreenFillRect(cx - 1, cy, cx + 1, cy + h, COL_ROAD);
+			ScreenFillCircle(cx, cy - is / 6, h - 1, COL_TREE);
+			break;
+		case MiniTool::BuyLand:
+			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_FIELDS);
+			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_OBJ);
+			ScreenFillCircle(cx, cy, t, COL_ST_BUOY);
 			break;
 		default:
 			break;
@@ -3679,6 +3742,9 @@ static void DrawHud()
 			case MiniTool::RailTunnel:
 			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Terraform: hint = "DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
+			case MiniTool::Headquarters: hint = "CLICK 2x2 SPOT / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Trees: hint = "DRAG AREA / CTRL CLEAR / RMB CANCEL"; break;
+			case MiniTool::BuyLand: hint = "DRAG AREA / CTRL SELL / RMB CANCEL"; break;
 			default: break;
 		}
 		if (_cursor.in_window) {
@@ -6260,6 +6326,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
 		if (_tool == MiniTool::Canal) CommitCanalPlan();
 		if (_tool == MiniTool::Convert) CommitConvertPlan();
+		if (_tool == MiniTool::Trees) CommitTreePlan();
+		if (_tool == MiniTool::BuyLand) CommitBuyLandPlan();
 	}
 	_prev_left = _left_button_down;
 
