@@ -73,6 +73,7 @@
 #include "string_func.h"
 #include "strings_func.h"
 #include "station_map.h"
+#include "subsidy_base.h"
 #include "terraform_cmd.h"
 #include "town.h"
 #include "town_cmd.h"
@@ -3097,6 +3098,7 @@ static void OpenStationListMiniWnd();
 static void OpenTownListMiniWnd();
 static void OpenIndustryListMiniWnd();
 static void OpenNewsListMiniWnd();
+static void OpenSubsidyListMiniWnd();
 
 static void OpenMiniWindow(MiniWin win)
 {
@@ -3115,7 +3117,7 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::News: OpenNewsListMiniWnd(); break;
 		case MiniWin::Towns: OpenTownListMiniWnd(); break;
 		case MiniWin::Industries: OpenIndustryListMiniWnd(); break;
-		case MiniWin::Subsidies: ShowSubsidiesList(); break;
+		case MiniWin::Subsidies: OpenSubsidyListMiniWnd(); break;
 		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
 		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
 	}
@@ -3719,6 +3721,7 @@ enum class MiniWndKind : uint8_t {
 	TownList,
 	IndustryList,
 	NewsList,
+	SubsidyList,
 };
 
 /* Directory kinds carry no entity: they read the whole pool each frame and
@@ -3726,7 +3729,8 @@ enum class MiniWndKind : uint8_t {
 static bool WndIsList(MiniWndKind kind)
 {
 	return kind == MiniWndKind::StationList || kind == MiniWndKind::TownList ||
-			kind == MiniWndKind::IndustryList || kind == MiniWndKind::NewsList;
+			kind == MiniWndKind::IndustryList || kind == MiniWndKind::NewsList ||
+			kind == MiniWndKind::SubsidyList;
 }
 
 struct MiniWnd {
@@ -3966,6 +3970,11 @@ static void OpenIndustryListMiniWnd()
 static void OpenNewsListMiniWnd()
 {
 	OpenMiniWnd(MiniWndKind::NewsList, VehicleID::Invalid(), StationID::Invalid());
+}
+
+static void OpenSubsidyListMiniWnd()
+{
+	OpenMiniWnd(MiniWndKind::SubsidyList, VehicleID::Invalid(), StationID::Invalid());
 }
 
 static std::string WndOfficial(StringID str)
@@ -5201,6 +5210,48 @@ static void ImNewsListBody(MiniWnd &mw)
 	if (!any) ImWndText("소식 없음", COL_CH_DIM);
 }
 
+static void SubsidySourceOpen(const Source &src)
+{
+	switch (src.type) {
+		case SourceType::Industry:
+			if (Industry::IsValidID(src.ToIndustryID())) {
+				OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), src.ToIndustryID());
+			}
+			break;
+		case SourceType::Town:
+			if (Town::IsValidID(src.ToTownID())) {
+				OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), src.ToTownID());
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+static void ImSubsidyListBody(MiniWnd &mw)
+{
+	bool awarded_tab = mw.tab == 1;
+	bool any = false;
+	for (const Subsidy *s : Subsidy::Iterate()) {
+		if (s->IsAwarded() != awarded_tab) continue;
+		any = true;
+		std::string route = fmt::format("{}  {} → {}",
+				StrMakeValid(GetString(CargoSpec::Get(s->cargo_type)->name), {}),
+				StrMakeValid(GetString(s->src.GetFormat(), s->src.id), {}),
+				StrMakeValid(GetString(s->dst.GetFormat(), s->dst.id), {}));
+		uint32_t ltint = COL_CH_TEXT;
+		if (awarded_tab) {
+			route = fmt::format("{}  {}", StrMakeValid(GetString(STR_COMPANY_NAME, s->awarded), {}), route);
+			if (s->awarded == _local_company) ltint = COL_CH_ACCENT;
+		}
+		/* The month in progress is not counted down yet, so it still counts as time left. */
+		uint left = s->remaining + 1;
+		std::string value = TimerGameEconomy::UsingWallclockUnits() ? fmt::format("{}분", left) : fmt::format("{}개월", left);
+		if (ImWndKVLink(route, value, ltint, left <= 3 ? COL_CH_YELLOW : COL_CH_TEXT)) SubsidySourceOpen(s->src);
+	}
+	if (!any) ImWndText(awarded_tab ? "수주한 보조금 없음" : "제안된 보조금 없음", COL_CH_DIM);
+}
+
 static bool ImWndButton(std::string_view label, bool enabled)
 {
 	ImGui::BeginDisabled(!enabled);
@@ -5320,6 +5371,7 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 		case MiniWndKind::TownList:
 		case MiniWndKind::IndustryList:
 		case MiniWndKind::NewsList:
+		case MiniWndKind::SubsidyList:
 			break;
 	}
 	ImGui::NewLine();
@@ -5418,6 +5470,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::TownList: title = "도시 목록"; break;
 		case MiniWndKind::IndustryList: title = "산업 목록"; break;
 		case MiniWndKind::NewsList: title = "소식"; break;
+		case MiniWndKind::SubsidyList: title = "보조금"; break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
 	}
 	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
@@ -5501,6 +5554,11 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[0] = "전체";
 			tl[1] = "조언";
 			break;
+		case MiniWndKind::SubsidyList:
+			ntab = 2;
+			tl[0] = "제안";
+			tl[1] = "수주";
+			break;
 		default:
 			ntab = 3;
 			tl[0] = "상태";
@@ -5537,6 +5595,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::TownList: ImTownListBody(mw); break;
 					case MiniWndKind::IndustryList: ImIndustryListBody(mw); break;
 					case MiniWndKind::NewsList: ImNewsListBody(mw); break;
+					case MiniWndKind::SubsidyList: ImSubsidyListBody(mw); break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
