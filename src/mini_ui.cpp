@@ -4370,6 +4370,7 @@ struct MiniWnd {
 	bool renaming = false;
 	bool focus_name = false;
 	GroupID rename_grp = GroupID::Invalid();
+	TileIndex rename_depot = INVALID_TILE;
 	bool rename_pres = false;
 	bool want_close = false;
 	char name_buf[128] = {};
@@ -4969,7 +4970,13 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 				switch (o.GetType()) {
 					case OT_GOTO_STATION: label = StrMakeValid(GetString(STR_STATION_NAME, o.GetDestination().ToStationID()), {}); break;
 					case OT_GOTO_WAYPOINT: label = StrMakeValid(GetString(STR_WAYPOINT_NAME, o.GetDestination().ToStationID()), {}); break;
-					case OT_GOTO_DEPOT: label = "차고"; break;
+					/* A route with several depot stops read as a list of
+					 * identical rows, so the row names the depot. */
+					case OT_GOTO_DEPOT:
+						label = o.GetDepotActionType().Test(OrderDepotActionFlag::NearestDepot)
+								? std::string("가까운 차고")
+								: StrMakeValid(GetString(STR_DEPOT_NAME, v->type, o.GetDestination()), {});
+						break;
 					case OT_CONDITIONAL: label = fmt::format("조건 {}번", o.GetConditionSkipToOrder() + 1); break;
 					default: break;
 				}
@@ -5395,6 +5402,7 @@ static void ImFleetBody(MiniWnd &mw)
 		mw.sel = VehicleID::Invalid();
 		sv = nullptr;
 	}
+	if (mw.rename_depot != INVALID_TILE && !IsDepotTile(mw.rename_depot)) mw.rename_depot = INVALID_TILE;
 
 	float lw = ImGui::GetContentRegionAvail().x * 0.45f;
 	ImGui::BeginChild("buy", ImVec2(lw, 0.0f));
@@ -5541,21 +5549,39 @@ static void ImFleetBody(MiniWnd &mw)
 				if (hit >= 0 && (size_t)hit < ids.size()) FleetMarkUnit(mw, ids[hit], false);
 			}
 		};
-		auto depot_block = [&](TileIndex tile, uint dest) {
+		/* Several depots in one town share a generated name, so the row renames
+		 * in place like a group row does. A hangar belongs to its station and
+		 * has no depot of its own to rename. */
+		auto depot_block = [&](TileIndex tile, uint dest, DepotID did) {
 			anydep = true;
 			VehicleList chains, wagons;
 			BuildDepotVehicleList(vt, tile, &chains, &wagons);
 			std::string dn = StrMakeValid(GetString(STR_DEPOT_NAME, vt, dest), {});
-			if (ImWndLink(draft.empty() ? dn : fmt::format("▶ {} 생산", dn), draft.empty() ? COL_CH_TEXT : COL_CH_ACCENT)) {
-				if (!IsDepotTile(tile)) {
-					/* stale row */
-				} else if (draft.empty()) {
-					MiniUiScrollTo(TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
-				} else if (_deploy.depot == INVALID_TILE) {
-					_deploy = FleetDeploy{};
-					_deploy.depot = tile;
-					_deploy.vt = vt;
-					_deploy.units = draft;
+			if (mw.rename_depot == tile) {
+				ImGui::PushID((int)tile.base());
+				int r = ImWndNameEdit(mw, ImGui::GetContentRegionAvail().x);
+				ImGui::PopID();
+				if (r == 1 && mw.name_buf[0] != '\0') {
+					Command<CMD_RENAME_DEPOT>::Post(STR_ERROR_CAN_T_RENAME_DEPOT, did, mw.name_buf);
+				}
+				if (r != 0) mw.rename_depot = INVALID_TILE;
+			} else {
+				if (ImWndLink(draft.empty() ? dn : fmt::format("▶ {} 생산", dn), draft.empty() ? COL_CH_TEXT : COL_CH_ACCENT)) {
+					if (!IsDepotTile(tile)) {
+						/* stale row */
+					} else if (draft.empty()) {
+						MiniUiScrollTo(TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
+					} else if (_deploy.depot == INVALID_TILE) {
+						_deploy = FleetDeploy{};
+						_deploy.depot = tile;
+						_deploy.vt = vt;
+						_deploy.units = draft;
+					}
+				}
+				if (did != DepotID::Invalid() && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+					ImWndNameEditBegin(mw, dn);
+					mw.rename_depot = tile;
+					mw.renaming = false;
 				}
 			}
 			for (const Vehicle *head : chains) chain_rows(head);
@@ -5564,13 +5590,13 @@ static void ImFleetBody(MiniWnd &mw)
 		if (vt == VEH_AIRCRAFT) {
 			for (const Station *st : Station::Iterate()) {
 				if (st->owner != _local_company || !st->facilities.Test(StationFacility::Airport) || !st->airport.HasHangar()) continue;
-				depot_block(st->airport.GetHangarTile(0), st->index.base());
+				depot_block(st->airport.GetHangarTile(0), st->index.base(), DepotID::Invalid());
 			}
 		} else {
 			for (const Depot *d : Depot::Iterate()) {
 				if (!IsDepotTile(d->xy) || GetDepotVehicleType(d->xy) != vt) continue;
 				if (GetTileOwner(d->xy) != _local_company) continue;
-				depot_block(d->xy, d->index.base());
+				depot_block(d->xy, d->index.base(), d->index);
 			}
 		}
 		if (!anydep) ImWndText("차고 없음", COL_CH_DIM);
