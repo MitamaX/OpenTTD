@@ -3904,9 +3904,9 @@ static VehicleID FrontWndVehicle()
 	return _front_wnd_veh;
 }
 
-/* The fleet and group windows run twice as wide with side-by-side columns;
- * the other kinds keep the narrow single-column shape. */
-static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group; }
+/* Work windows and the plot run twice as wide; the other kinds keep the
+ * narrow single-column shape. */
+static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Graph; }
 static int WndW(const MiniWnd &mw) { return std::min((WndWide(mw) ? 560 : 250) * _ms.hud_scale, _fbw - 12 * _ms.hud_scale); }
 static int WndTitleH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
 static int WndTabH() { return GetCharacterHeight(FS_NORMAL) + 8 * _ms.hud_scale; }
