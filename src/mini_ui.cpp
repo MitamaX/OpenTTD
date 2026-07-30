@@ -2829,6 +2829,83 @@ static void DrawPointToolPlan(int ppt)
 	}
 }
 
+/* Placing a station blind is the one thing the mini UI cannot afford, so any
+ * tool that creates catchment paints the square it will serve and picks out
+ * the houses and industries inside it. */
+static uint MiniCatchmentRadius()
+{
+	switch (_tool) {
+		case MiniTool::Station:
+		case MiniTool::BusStop:
+		case MiniTool::TruckStop:
+		case MiniTool::Dock:
+		case MiniTool::Airport:
+			break;
+		default:
+			return CA_NONE;
+	}
+	if (!_settings_game.station.modified_catchment) return CA_UNMODIFIED;
+	switch (_tool) {
+		case MiniTool::Station: return CA_TRAIN;
+		case MiniTool::BusStop: return CA_BUS;
+		case MiniTool::TruckStop: return CA_TRUCK;
+		case MiniTool::Dock: return CA_DOCK;
+		default: {
+			const AirportSpec *as = AirportSpec::Get(PickAirportType());
+			return as->IsAvailable() ? as->catchment : CA_NONE;
+		}
+	}
+}
+
+static void DrawCatchmentPlan(int ppt)
+{
+	int r = (int)MiniCatchmentRadius();
+	if (r == 0) return;
+
+	int x0, y0, x1, y1;
+	if (_tool == MiniTool::Station && _dragging) {
+		UpdateRectPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x), RectPlanLimit());
+		x0 = _rect_plan.x0;
+		y0 = _rect_plan.y0;
+		x1 = _rect_plan.x1;
+		y1 = _rect_plan.y1;
+	} else {
+		x0 = x1 = (int)std::floor(MapXAt(_cursor.pos.y));
+		y0 = y1 = (int)std::floor(MapYAt(_cursor.pos.x));
+		if (x0 < 0 || y0 < 0 || x0 >= (int)Map::SizeX() || y0 >= (int)Map::SizeY()) return;
+		if (_tool == MiniTool::Airport) {
+			const AirportSpec *as = AirportSpec::Get(PickAirportType());
+			if (!as->IsAvailable()) return;
+			x1 = x0 + as->size_x - 1;
+			y1 = y0 + as->size_y - 1;
+		}
+	}
+
+	int cx0 = std::max(0, x0 - r);
+	int cy0 = std::max(0, y0 - r);
+	int cx1 = std::min((int)Map::SizeX() - 1, x1 + r);
+	int cy1 = std::min((int)Map::SizeY() - 1, y1 + r);
+
+	int px0 = ScrX(cy0);
+	int py0 = ScrY(cx0);
+	int px1 = ScrX(cy1 + 1) - 1;
+	int py1 = ScrY(cx1 + 1) - 1;
+	BlendRect(px0, py0, px1, py1, COL_CH_ACCENT, 26);
+	int b = std::max(1, ppt / 10);
+	FillRect(px0, py0, px1, py0 + b - 1, COL_CH_ACCENT);
+	FillRect(px0, py1 - b + 1, px1, py1, COL_CH_ACCENT);
+	FillRect(px0, py0, px0 + b - 1, py1, COL_CH_ACCENT);
+	FillRect(px1 - b + 1, py0, px1, py1, COL_CH_ACCENT);
+
+	for (int tx = cx0; tx <= cx1; tx++) {
+		for (int ty = cy0; ty <= cy1; ty++) {
+			TileType tt = GetTileType(TileXY(tx, ty));
+			if (tt != MP_HOUSE && tt != MP_INDUSTRY) continue;
+			BlendRect(ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, COL_CH_ACCENT, 90);
+		}
+	}
+}
+
 static void CommitRoadPlan()
 {
 	if (_road_plan.start == INVALID_TILE) return;
@@ -7370,6 +7447,8 @@ void MiniUiFrame(uint delta_ms)
 			DrawTileLayer(TileXY(tx, ty), tx, ty, ppt, _filter_layer);
 		}
 	}
+
+	DrawCatchmentPlan(ppt);
 
 	if (_dragging) {
 		if (_tool == MiniTool::Rail) {
