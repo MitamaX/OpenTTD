@@ -5051,6 +5051,8 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 				}
 				if (!label.empty()) {
 					if (o.IsType(OT_GOTO_STATION)) {
+						if (o.GetNonStopType().Test(OrderNonStopFlag::NoIntermediate)) label += " · 비정차";
+						if (o.GetNonStopType().Test(OrderNonStopFlag::NoDestination)) label += " · 경유";
 						switch (o.GetLoadType()) {
 							case OrderLoadType::FullLoad:
 							case OrderLoadType::FullLoadAny: label += " · 만재"; break;
@@ -5114,6 +5116,20 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 								default: next = OrderUnloadType::UnloadIfPossible; break;
 							}
 							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_UNLOAD, to_underlying(next));
+						}
+					}
+					/* Whether a train stops at what it passes is a per-order
+					 * choice on a shared line, not a global setting. */
+					if (so->IsType(OT_GOTO_STATION) && v->IsGroundVehicle()) {
+						OrderNonStopFlags ns = so->GetNonStopType();
+						int at = (ns.Test(OrderNonStopFlag::NoIntermediate) ? 1 : 0) | (ns.Test(OrderNonStopFlag::NoDestination) ? 2 : 0);
+						static const std::string_view ns_names[] = {"모든 역 정차", "비정차", "경유", "비정차 경유"};
+						if (ImWndKVLink("정차", ns_names[at], COL_CH_DIM, COL_CH_TEXT)) {
+							int nx = (at + 1) % 4;
+							OrderNonStopFlags next{};
+							if ((nx & 1) != 0) next.Set(OrderNonStopFlag::NoIntermediate);
+							if ((nx & 2) != 0) next.Set(OrderNonStopFlag::NoDestination);
+							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_NON_STOP, next.base());
 						}
 					}
 					/* Spacing a fleet out is what a depot order is normally for,
