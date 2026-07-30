@@ -25,6 +25,8 @@
 #include "company_gui.h"
 #include "elrail_func.h"
 #include "engine_base.h"
+#include "engine_cmd.h"
+#include "engine_gui.h"
 #include "core/backup_type.hpp"
 #include "core/math_func.hpp"
 #include "core/utf8.hpp"
@@ -3804,6 +3806,7 @@ enum class MiniWndKind : uint8_t {
 	GoalList,
 	League,
 	Graph,
+	Preview,
 };
 
 /* Directory kinds carry no entity: they read the whole pool each frame and
@@ -3822,6 +3825,7 @@ struct MiniWnd {
 	StationID st = StationID::Invalid();
 	TownID town = TownID::Invalid();
 	IndustryID ind = IndustryID::Invalid();
+	EngineID eng = EngineID::Invalid();
 	VehicleID sel = VehicleID::Invalid();
 	GroupID sel_grp = ALL_GROUP;
 	EngineID sel_eng = EngineID::Invalid();
@@ -3834,6 +3838,7 @@ struct MiniWnd {
 	bool focus_name = false;
 	GroupID rename_grp = GroupID::Invalid();
 	bool rename_pres = false;
+	bool want_close = false;
 	char name_buf[128] = {};
 };
 
@@ -3983,19 +3988,20 @@ struct MiniOpenReq {
 	StationID st;
 	TownID town;
 	IndustryID ind;
+	EngineID eng;
 };
 
 static std::vector<MiniOpenReq> _wnd_opens;
 static bool _wnds_drawing = false;
 
-static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid())
+static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), EngineID eng = EngineID::Invalid())
 {
 	if (_wnds_drawing) {
-		_wnd_opens.push_back({kind, veh, st, town, ind});
+		_wnd_opens.push_back({kind, veh, st, town, ind, eng});
 		return;
 	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind) {
+		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind && _wnds[i].eng == eng) {
 			RaiseMiniWnd(i);
 			return;
 		}
@@ -4007,6 +4013,7 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	mw.st = st;
 	mw.town = town;
 	mw.ind = ind;
+	mw.eng = eng;
 	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
 	mw.y = Clamp(_win_bar_bottom + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
 	_wnds.push_back(mw);
@@ -5501,6 +5508,16 @@ static void ImLeagueBody()
 	}
 }
 
+static void ImPreviewBody(const MiniWnd &mw)
+{
+	const Engine *e = Engine::GetIfValid(mw.eng);
+	if (e == nullptr) return;
+
+	ImWndText(StrMakeValid(GetString(STR_ENGINE_PREVIEW_MESSAGE, GetEngineCategoryName(mw.eng)), {}), COL_CH_TEXT);
+	ImWndHeader(StrMakeValid(GetString(STR_ENGINE_NAME, PackEngineNameDParam(mw.eng, EngineNameContext::PreviewNews)), {}));
+	ImWndText(StrMakeValid(GetEngineInfoString(mw.eng), {}), COL_CH_TEXT);
+}
+
 static int64_t GraphValue(const CompanyEconomyEntry &e, uint8_t tab)
 {
 	switch (tab) {
@@ -5682,6 +5699,14 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			break;
 		}
 
+		case MiniWndKind::Preview:
+			if (ImWndButton("수락", Engine::GetIfValid(mw.eng) != nullptr)) {
+				Command<CMD_WANT_ENGINE_PREVIEW>::Post(mw.eng);
+				mw.want_close = true;
+			}
+			if (ImWndButton("거절", true)) mw.want_close = true;
+			break;
+
 		case MiniWndKind::Company: {
 			const Company *cc = Company::GetIfValid(_local_company);
 			bool has_hq = cc != nullptr && cc->location_of_HQ != INVALID_TILE;
@@ -5828,6 +5853,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::GoalList: title = "목표"; break;
 		case MiniWndKind::League: title = "순위"; break;
 		case MiniWndKind::Graph: title = "그래프"; break;
+		case MiniWndKind::Preview: title = "신형 차량"; idnum = mw.eng.base(); break;
 		default: if (ind != nullptr) title = StrMakeValid(GetString(STR_INDUSTRY_NAME, ind->index), {}); idnum = mw.ind.base(); break;
 	}
 	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
@@ -5930,6 +5956,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			ntab = 1;
 			tl[0] = "성능";
 			break;
+		case MiniWndKind::Preview:
+			ntab = 1;
+			tl[0] = "제안";
+			break;
 		case MiniWndKind::Graph:
 			ntab = 4;
 			tl[0] = "수익";
@@ -5978,9 +6008,11 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::GoalList: ImGoalListBody(mw); break;
 					case MiniWndKind::League: ImLeagueBody(); break;
 					case MiniWndKind::Graph: ImGraphBody(mw); break;
+					case MiniWndKind::Preview: ImPreviewBody(mw); break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
+				if (mw.want_close) open = false;
 				ImGui::EndTabItem();
 			}
 		}
@@ -6003,6 +6035,11 @@ static void DrawMiniWndsImGui()
 			case MiniWndKind::Industry: alive = Industry::IsValidID(_wnds[i].ind); break;
 			case MiniWndKind::Finance: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Company: alive = Company::IsValidID(_local_company); break;
+			case MiniWndKind::Preview: {
+				const Engine *pe = Engine::GetIfValid(_wnds[i].eng);
+				alive = pe != nullptr && pe->preview_company == _local_company;
+				break;
+			}
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::StationList: alive = Company::IsValidID(_local_company); break;
 			default: alive = true; break;
@@ -6021,7 +6058,7 @@ static void DrawMiniWndsImGui()
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
-	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind);
+	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.eng);
 }
 
 bool MiniUiShowError(std::string summary, std::string detail, bool warn)
@@ -6071,6 +6108,13 @@ bool MiniUiShowNews(const NewsItem *ni)
 	t.ref = ni->ref1;
 	_toasts.push_back(std::move(t));
 	if (_toasts.size() > MINI_TOAST_MAX) _toasts.erase(_toasts.begin());
+	return true;
+}
+
+bool ShowMiniEnginePreview(EngineID engine)
+{
+	if (!_mini_active) return false;
+	OpenMiniWnd(MiniWndKind::Preview, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), engine);
 	return true;
 }
 

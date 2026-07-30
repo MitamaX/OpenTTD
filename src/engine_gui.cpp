@@ -24,6 +24,7 @@
 #include "ship.h"
 #include "aircraft.h"
 #include "engine_cmd.h"
+#include "mini_ui.h"
 #include "zoom_func.h"
 
 #include "widgets/engine_widget.h"
@@ -151,6 +152,7 @@ static WindowDesc _engine_preview_desc(
 
 void ShowEnginePreviewWindow(EngineID engine)
 {
+	if (ShowMiniEnginePreview(engine)) return;
 	AllocateWindowDescFront<EnginePreviewWindow>(_engine_preview_desc, engine);
 }
 
