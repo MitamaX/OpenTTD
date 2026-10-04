@@ -5,22 +5,33 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file native_slot.h A panel element that shows the native screen lying under it. */
+/** @file raster_image.h A panel element that shows pixels the game draws on the CPU. */
 
-#ifndef MINI_UI_NATIVE_SLOT_H
-#define MINI_UI_NATIVE_SLOT_H
+#ifndef MINI_UI_RASTER_IMAGE_H
+#define MINI_UI_RASTER_IMAGE_H
+
+#include <RmlUi/Core/CallbackTexture.h>
+
+#include <span>
+#include <vector>
 
 #include "texture_box.h"
 
-class NativeSlot final : public TextureBox {
+class RasterImage final : public TextureBox {
 public:
-	explicit NativeSlot(const Rml::String &tag);
+	explicit RasterImage(const Rml::String &tag);
+
+	void Show(std::span<const uint32_t> argb, Rml::Vector2i size);
 
 protected:
 	void OnRender() override;
 
 private:
-	Rml::Texture screen;
+	bool Upload(const Rml::CallbackTextureInterface &texture_interface) const;
+
+	std::vector<Rml::byte> rgba;
+	Rml::Vector2i size;
+	Rml::CallbackTexture texture;
 };
 
-#endif /* MINI_UI_NATIVE_SLOT_H */
+#endif /* MINI_UI_RASTER_IMAGE_H */

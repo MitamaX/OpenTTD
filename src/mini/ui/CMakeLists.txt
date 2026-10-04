@@ -12,6 +12,8 @@ add_files(
     panel.h
     panel_host.cpp
     panel_host.h
+    raster_image.cpp
+    raster_image.h
     rml_input.cpp
     rml_input.h
     rml_interfaces.cpp
@@ -20,6 +22,8 @@ add_files(
     rml_layer.h
     rml_renderer.cpp
     rml_renderer.h
+    texture_box.cpp
+    texture_box.h
     ui_text.cpp
     ui_text.h
 )

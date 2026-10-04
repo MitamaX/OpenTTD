@@ -14,9 +14,17 @@
 
 #include "fonts.h"
 #include "native_slot.h"
+#include "raster_image.h"
 #include "rml_renderer.h"
 
 #include "../../safeguards.h"
+
+template <class TElement>
+static void RegisterElement(const char *tag)
+{
+	static Rml::ElementInstancerGeneric<TElement> instancer;
+	Rml::Factory::RegisterElementInstancer(tag, &instancer);
+}
 
 RmlLayer::RmlLayer() = default;
 RmlLayer::~RmlLayer() = default;
@@ -41,7 +49,8 @@ void RmlLayer::Start()
 	Rml::SetSystemInterface(&this->system);
 	Rml::SetRenderInterface(this->renderer.get());
 	Rml::Initialise();
-	NativeSlot::Register();
+	RegisterElement<NativeSlot>("native-slot");
+	RegisterElement<RasterImage>("raster-image");
 	for (const char *font : MINI_FONTS) Rml::LoadFontFace(font);
 
 	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1), nullptr, &this->text_input);

@@ -136,6 +136,6 @@ body {
 	color: var(--ink-dim);
 }
 
-native-slot {
+native-slot, raster-image {
 	display: block;
 }

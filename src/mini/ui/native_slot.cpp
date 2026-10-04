@@ -16,44 +16,17 @@
 
 #include "../../safeguards.h"
 
-static constexpr const char NATIVE_SLOT_TAG[] = "native-slot";
-
-void NativeSlot::Register()
+NativeSlot::NativeSlot(const Rml::String &tag) : TextureBox(tag)
 {
-	static Rml::ElementInstancerGeneric<NativeSlot> instancer;
-	Rml::Factory::RegisterElementInstancer(NATIVE_SLOT_TAG, &instancer);
-}
-
-NativeSlot::NativeSlot(const Rml::String &tag) : Rml::Element(tag)
-{
-}
-
-Rml::Rectanglei NativeSlot::ScreenRect()
-{
-	Rml::Vector2f origin = this->GetAbsoluteOffset(Rml::BoxArea::Content).Round();
-	Rml::Vector2f size = this->GetBox().GetSize(Rml::BoxArea::Content).Round();
-	return Rml::Rectanglei::FromPositionSize(Rml::Vector2i(origin), Rml::Vector2i(size));
 }
 
 void NativeSlot::OnRender()
 {
 	Rml::RenderManager *render_manager = this->GetRenderManager();
 	if (render_manager == nullptr) return;
-	if (!this->texture) this->texture = render_manager->LoadTexture(RmlRenderer::SCREEN_SOURCE);
+	if (!this->screen) this->screen = render_manager->LoadTexture(RmlRenderer::SCREEN_SOURCE);
 
 	Rml::Rectanglei rect = this->ScreenRect();
-	Rml::Vector2i screen = this->texture.GetDimensions();
-	if (rect != this->sampled_rect || screen != this->sampled_screen) this->Sample(*render_manager, rect, screen);
-	this->geometry.Render(Rml::Vector2f(rect.TopLeft()), this->texture);
-}
-
-void NativeSlot::Sample(Rml::RenderManager &render_manager, Rml::Rectanglei rect, Rml::Vector2i screen)
-{
-	Rml::Vector2f texels(Rml::Math::Max(screen, Rml::Vector2i(1)));
-	Rml::Mesh mesh = this->geometry.Release(Rml::Geometry::ReleaseMode::ClearMesh);
-	Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0.0f), Rml::Vector2f(rect.Size()), Rml::ColourbPremultiplied(255),
-		Rml::Vector2f(rect.TopLeft()) / texels, Rml::Vector2f(rect.BottomRight()) / texels);
-	this->geometry = render_manager.MakeGeometry(std::move(mesh));
-	this->sampled_rect = rect;
-	this->sampled_screen = screen;
+	Rml::Vector2f texels(Rml::Math::Max(this->screen.GetDimensions(), Rml::Vector2i(1)));
+	this->RenderTexture(rect, this->screen, Rml::Vector2f(rect.TopLeft()) / texels, Rml::Vector2f(rect.BottomRight()) / texels);
 }
