@@ -16,6 +16,7 @@ body {
 	--shadow: #0000008c;
 	--radius: 4dp;
 	--radius-tile: 3dp;
+	--icon: 10dp;
 
 	font-family: "Malgun Gothic";
 	font-weight: normal;
@@ -25,4 +26,10 @@ body {
 
 div, handle {
 	display: block;
+}
+
+.icon {
+	width: var(--icon);
+	height: var(--icon);
+	image-color: var(--ink);
 }

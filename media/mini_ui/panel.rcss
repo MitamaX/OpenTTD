@@ -25,12 +25,16 @@ body {
 }
 
 .close {
-	padding: 0dp 4dp;
-	color: var(--ink-muted);
+	display: flex;
+	padding: 3dp 4dp;
 }
 
-.close:hover {
-	color: var(--ink-strong);
+.close .icon {
+	image-color: var(--ink-muted);
+}
+
+.close:hover .icon {
+	image-color: var(--ink-strong);
 }
 
 .tabs {
