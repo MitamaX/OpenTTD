@@ -1,0 +1,421 @@
+{
+	"size": [
+		1920,
+		1080
+	],
+	"dp": 2,
+	"backdrop": "#79a85a",
+	"documents": [
+		{
+			"path": "mini_ui/hud.rml"
+		}
+	],
+	"models": {
+		"colony": {
+			"name": "LBH Cor.",
+			"date": "1976년 4월 30일",
+			"money": "$8,056,936",
+			"vehicles": "VEH 25",
+			"warning": "",
+			"funds_tone": "plain",
+			"gauge": [
+				{
+					"angle": "rotate(6.43deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(19.29deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(32.14deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(45.00deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(57.86deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(70.71deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(83.57deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(96.43deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(109.29deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(122.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(135.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(147.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(160.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(173.57deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(186.43deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(199.29deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(212.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(225.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(237.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(250.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(263.57deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(276.43deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(289.29deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(302.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(315.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(327.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(340.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(353.57deg)",
+					"done": false
+				}
+			],
+			"speeds": [
+				{
+					"icon": "icons/pause.svg",
+					"active": false,
+					"off": false
+				},
+				{
+					"icon": "icons/play.svg",
+					"active": true,
+					"off": false
+				},
+				{
+					"icon": "icons/fast.svg",
+					"active": false,
+					"off": false
+				}
+			]
+		},
+		"status": {
+			"rows": [
+				{
+					"status": 2,
+					"text": "STUCK (6)",
+					"tone": "loss",
+					"names": [
+						"열차 1",
+						"열차 4",
+						"열차 7"
+					]
+				}
+			]
+		},
+		"build": {
+			"categories": [
+				{
+					"label": "철도",
+					"icon": "icons/rail.svg",
+					"active": false
+				},
+				{
+					"label": "도로",
+					"icon": "icons/road.svg",
+					"active": true
+				},
+				{
+					"label": "물",
+					"icon": "icons/dock.svg",
+					"active": false
+				},
+				{
+					"label": "항공기",
+					"icon": "icons/airport.svg",
+					"active": false
+				},
+				{
+					"label": "LAND",
+					"icon": "icons/headquarters.svg",
+					"active": false
+				}
+			],
+			"shelf": true,
+			"tools": [
+				{
+					"label": "도로",
+					"icon": "icons/road.svg",
+					"active": false
+				},
+				{
+					"label": "버스 정류장",
+					"icon": "icons/bus-stop.svg",
+					"active": true
+				},
+				{
+					"label": "트럭 적하장",
+					"icon": "icons/truck-stop.svg",
+					"active": false
+				},
+				{
+					"label": "경유지",
+					"icon": "icons/road-waypoint.svg",
+					"active": false
+				},
+				{
+					"label": "차고지",
+					"icon": "icons/road-depot.svg",
+					"active": false
+				},
+				{
+					"label": "도로용 터널",
+					"icon": "icons/road-tunnel.svg",
+					"active": false
+				},
+				{
+					"label": "BRIDGE",
+					"icon": "icons/road-bridge.svg",
+					"active": false
+				},
+				{
+					"label": "CONVERT",
+					"icon": "icons/road-convert.svg",
+					"active": false
+				}
+			],
+			"title": "버스 정류장",
+			"rows": [
+				{
+					"text": "도로",
+					"option": 0,
+					"value": 0,
+					"active": false,
+					"head": true,
+					"mark": "",
+					"cells": []
+				},
+				{
+					"text": "도로",
+					"option": 1,
+					"value": 0,
+					"active": true,
+					"head": false,
+					"mark": "",
+					"cells": []
+				},
+				{
+					"text": "전차 선로",
+					"option": 1,
+					"value": 1,
+					"active": false,
+					"head": false,
+					"mark": "",
+					"cells": []
+				},
+				{
+					"text": "형태",
+					"option": 0,
+					"value": 0,
+					"active": false,
+					"head": true,
+					"mark": "",
+					"cells": []
+				},
+				{
+					"text": "통과",
+					"option": 6,
+					"value": 1,
+					"active": false,
+					"head": false,
+					"mark": "",
+					"cells": []
+				},
+				{
+					"text": "만입",
+					"option": 6,
+					"value": 0,
+					"active": true,
+					"head": false,
+					"mark": "",
+					"cells": []
+				},
+				{
+					"text": "방향",
+					"option": 0,
+					"value": 0,
+					"active": false,
+					"head": true,
+					"mark": "",
+					"cells": []
+				},
+				{
+					"text": "",
+					"option": 7,
+					"value": 0,
+					"active": false,
+					"head": false,
+					"mark": "icons/arrow.svg",
+					"cells": [
+						{
+							"value": 0,
+							"turn": "rotate(0deg)",
+							"active": false
+						},
+						{
+							"value": 1,
+							"turn": "rotate(90deg)",
+							"active": true
+						},
+						{
+							"value": 2,
+							"turn": "rotate(180deg)",
+							"active": false
+						},
+						{
+							"value": 3,
+							"turn": "rotate(270deg)",
+							"active": false
+						}
+					]
+				}
+			]
+		},
+		"toasts": {
+			"cards": []
+		},
+		"clear": {
+			"shown": false,
+			"rows": [
+				{
+					"label": "전체",
+					"active": true
+				},
+				{
+					"label": "철도",
+					"active": false
+				},
+				{
+					"label": "도로",
+					"active": false
+				},
+				{
+					"label": "수로",
+					"active": false
+				}
+			]
+		},
+		"commands": {
+			"commands": [
+				{
+					"label": "LEVEL",
+					"icon": "icons/terraform.svg",
+					"active": false
+				},
+				{
+					"label": "CLEAR",
+					"icon": "icons/demolish.svg",
+					"active": false
+				}
+			]
+		},
+		"windows": {
+			"categories": [
+				{
+					"label": "회사",
+					"icon": "icons/finances.svg",
+					"active": false
+				},
+				{
+					"label": "차량",
+					"icon": "icons/trains.svg",
+					"active": false
+				},
+				{
+					"label": "환경",
+					"icon": "icons/map.svg",
+					"active": false
+				},
+				{
+					"label": "SYSTEM",
+					"icon": "icons/options.svg",
+					"active": false
+				}
+			],
+			"shelf": false,
+			"windows": [],
+			"overlays": [
+				{
+					"label": "",
+					"icon": "icons/rail.svg",
+					"active": false
+				},
+				{
+					"label": "",
+					"icon": "icons/road.svg",
+					"active": false
+				}
+			]
+		},
+		"notes": {
+			"paused": false,
+			"pause_text": "일시 정지",
+			"tool_shown": false,
+			"title": "",
+			"hint": "",
+			"cost": "",
+			"cost_tone": "plain"
+		}
+	}
+}

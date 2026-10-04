@@ -1,0 +1,317 @@
+{
+	"size": [
+		1920,
+		1080
+	],
+	"dp": 2,
+	"backdrop": "#79a85a",
+	"documents": [
+		{
+			"path": "mini_ui/hud.rml"
+		}
+	],
+	"models": {
+		"colony": {
+			"name": "LBH Cor.",
+			"date": "1976년 4월 30일",
+			"money": "-$12,345",
+			"vehicles": "VEH 25",
+			"warning": "경고 2",
+			"funds_tone": "loss",
+			"gauge": [
+				{
+					"angle": "rotate(6.43deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(19.29deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(32.14deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(45.00deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(57.86deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(70.71deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(83.57deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(96.43deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(109.29deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(122.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(135.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(147.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(160.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(173.57deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(186.43deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(199.29deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(212.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(225.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(237.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(250.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(263.57deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(276.43deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(289.29deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(302.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(315.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(327.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(340.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(353.57deg)",
+					"done": false
+				}
+			],
+			"speeds": [
+				{
+					"icon": "icons/pause.svg",
+					"active": false,
+					"off": false
+				},
+				{
+					"icon": "icons/play.svg",
+					"active": true,
+					"off": false
+				},
+				{
+					"icon": "icons/fast.svg",
+					"active": false,
+					"off": false
+				}
+			]
+		},
+		"status": {
+			"rows": [
+				{
+					"status": 2,
+					"text": "STUCK (6)",
+					"tone": "loss",
+					"names": [
+						"열차 1",
+						"열차 4",
+						"열차 7"
+					]
+				}
+			]
+		},
+		"build": {
+			"categories": [
+				{
+					"label": "철도",
+					"icon": "icons/rail.svg",
+					"active": false
+				},
+				{
+					"label": "도로",
+					"icon": "icons/road.svg",
+					"active": false
+				},
+				{
+					"label": "물",
+					"icon": "icons/dock.svg",
+					"active": false
+				},
+				{
+					"label": "항공기",
+					"icon": "icons/airport.svg",
+					"active": false
+				},
+				{
+					"label": "LAND",
+					"icon": "icons/headquarters.svg",
+					"active": false
+				}
+			],
+			"shelf": false,
+			"tools": [],
+			"title": "CLEAR",
+			"rows": []
+		},
+		"toasts": {
+			"cards": []
+		},
+		"clear": {
+			"shown": true,
+			"rows": [
+				{
+					"label": "전체",
+					"active": true
+				},
+				{
+					"label": "철도",
+					"active": false
+				},
+				{
+					"label": "도로",
+					"active": false
+				},
+				{
+					"label": "수로",
+					"active": false
+				}
+			]
+		},
+		"commands": {
+			"commands": [
+				{
+					"label": "LEVEL",
+					"icon": "icons/terraform.svg",
+					"active": false
+				},
+				{
+					"label": "CLEAR",
+					"icon": "icons/demolish.svg",
+					"active": true
+				}
+			]
+		},
+		"windows": {
+			"categories": [
+				{
+					"label": "회사",
+					"icon": "icons/finances.svg",
+					"active": false
+				},
+				{
+					"label": "차량",
+					"icon": "icons/trains.svg",
+					"active": false
+				},
+				{
+					"label": "환경",
+					"icon": "icons/map.svg",
+					"active": false
+				},
+				{
+					"label": "SYSTEM",
+					"icon": "icons/options.svg",
+					"active": true
+				}
+			],
+			"shelf": true,
+			"windows": [
+				{
+					"label": "게임 저장하기",
+					"icon": "icons/save.svg",
+					"active": false
+				},
+				{
+					"label": "게임 불러오기",
+					"icon": "icons/load.svg",
+					"active": false
+				},
+				{
+					"label": "게임 기본 설정",
+					"icon": "icons/options.svg",
+					"active": false
+				},
+				{
+					"label": "효과음/배경 음악",
+					"icon": "icons/music.svg",
+					"active": false
+				},
+				{
+					"label": "게임 그만두기",
+					"icon": "icons/abandon.svg",
+					"active": false
+				},
+				{
+					"label": "종료",
+					"icon": "icons/quit.svg",
+					"active": false
+				}
+			],
+			"overlays": [
+				{
+					"label": "",
+					"icon": "icons/rail.svg",
+					"active": false
+				},
+				{
+					"label": "",
+					"icon": "icons/road.svg",
+					"active": false
+				}
+			]
+		},
+		"notes": {
+			"paused": true,
+			"pause_text": "일시 정지",
+			"tool_shown": false,
+			"title": "",
+			"hint": "",
+			"cost": "",
+			"cost_tone": "plain"
+		}
+	}
+}

@@ -12,19 +12,9 @@
 
 #include <RmlUi/Core.h>
 
-#include "../../core/format.hpp"
+#include "model_tag.h"
 
 #include "../../safeguards.h"
-
-static constexpr std::string_view RML_BODY_TAG = "<body";
-
-/* RmlUi binds a document to its data model while parsing, so the model name has to be in the body tag beforehand. */
-static Rml::String BindBodyToModel(Rml::String rml, const Rml::String &model_name)
-{
-	size_t body = rml.find(RML_BODY_TAG);
-	if (body != Rml::String::npos) rml.insert(body + RML_BODY_TAG.size(), fmt::format(" data-model=\"{}\"", model_name));
-	return rml;
-}
 
 Panel::Panel(std::string key, std::string document_path, Rml::String title, Rml::Vector<Rml::String> tabs) :
 	title(std::move(title)), key(std::move(key)), document_path(std::move(document_path)), tabs(std::move(tabs))

@@ -1,0 +1,355 @@
+{
+	"size": [
+		1920,
+		1080
+	],
+	"dp": 2,
+	"backdrop": "#79a85a",
+	"documents": [
+		{
+			"path": "mini_ui/hud.rml"
+		},
+		{
+			"path": "mini_ui/ledger.rml",
+			"model": "finance",
+			"position": [
+				820,
+				260
+			]
+		}
+	],
+	"models": {
+		"colony": {
+			"name": "LBH Cor.",
+			"date": "1976년 4월 30일",
+			"money": "$8,056,936",
+			"vehicles": "VEH 25",
+			"warning": "",
+			"funds_tone": "plain",
+			"gauge": [
+				{
+					"angle": "rotate(6.43deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(19.29deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(32.14deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(45.00deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(57.86deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(70.71deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(83.57deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(96.43deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(109.29deg)",
+					"done": true
+				},
+				{
+					"angle": "rotate(122.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(135.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(147.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(160.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(173.57deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(186.43deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(199.29deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(212.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(225.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(237.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(250.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(263.57deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(276.43deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(289.29deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(302.14deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(315.00deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(327.86deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(340.71deg)",
+					"done": false
+				},
+				{
+					"angle": "rotate(353.57deg)",
+					"done": false
+				}
+			],
+			"speeds": [
+				{
+					"icon": "icons/pause.svg",
+					"active": false,
+					"off": false
+				},
+				{
+					"icon": "icons/play.svg",
+					"active": true,
+					"off": false
+				},
+				{
+					"icon": "icons/fast.svg",
+					"active": false,
+					"off": false
+				}
+			]
+		},
+		"status": {
+			"rows": [
+				{
+					"status": 2,
+					"text": "STUCK (6)",
+					"tone": "loss",
+					"names": [
+						"열차 1",
+						"열차 4",
+						"열차 7"
+					]
+				}
+			]
+		},
+		"build": {
+			"categories": [
+				{
+					"label": "철도",
+					"icon": "icons/rail.svg",
+					"active": false
+				},
+				{
+					"label": "도로",
+					"icon": "icons/road.svg",
+					"active": false
+				},
+				{
+					"label": "물",
+					"icon": "icons/dock.svg",
+					"active": false
+				},
+				{
+					"label": "항공기",
+					"icon": "icons/airport.svg",
+					"active": false
+				},
+				{
+					"label": "LAND",
+					"icon": "icons/headquarters.svg",
+					"active": false
+				}
+			],
+			"shelf": false,
+			"tools": [],
+			"title": "",
+			"rows": []
+		},
+		"toasts": {
+			"cards": []
+		},
+		"clear": {
+			"shown": false,
+			"rows": [
+				{
+					"label": "전체",
+					"active": true
+				},
+				{
+					"label": "철도",
+					"active": false
+				},
+				{
+					"label": "도로",
+					"active": false
+				},
+				{
+					"label": "수로",
+					"active": false
+				}
+			]
+		},
+		"commands": {
+			"commands": [
+				{
+					"label": "LEVEL",
+					"icon": "icons/terraform.svg",
+					"active": false
+				},
+				{
+					"label": "CLEAR",
+					"icon": "icons/demolish.svg",
+					"active": false
+				}
+			]
+		},
+		"windows": {
+			"categories": [
+				{
+					"label": "회사",
+					"icon": "icons/finances.svg",
+					"active": false
+				},
+				{
+					"label": "차량",
+					"icon": "icons/trains.svg",
+					"active": false
+				},
+				{
+					"label": "환경",
+					"icon": "icons/map.svg",
+					"active": false
+				},
+				{
+					"label": "SYSTEM",
+					"icon": "icons/options.svg",
+					"active": false
+				}
+			],
+			"shelf": false,
+			"windows": [],
+			"overlays": [
+				{
+					"label": "",
+					"icon": "icons/rail.svg",
+					"active": false
+				},
+				{
+					"label": "",
+					"icon": "icons/road.svg",
+					"active": false
+				}
+			]
+		},
+		"notes": {
+			"paused": false,
+			"pause_text": "일시 정지",
+			"tool_shown": false,
+			"title": "",
+			"hint": "",
+			"cost": "",
+			"cost_tone": "plain"
+		},
+		"finance": {
+			"title": "재정",
+			"tabs": [
+				"올해",
+				"작년",
+				"재작년"
+			],
+			"tab": 0,
+			"commands": [
+				{
+					"label": "대출 늘리기",
+					"enabled": true
+				},
+				{
+					"label": "대출 갚기",
+					"enabled": false
+				}
+			],
+			"sections": [
+				{
+					"title": "수입",
+					"lines": [
+						{
+							"label": "열차 수입",
+							"value": "$1,204,500",
+							"tone": "plain",
+							"total": false
+						},
+						{
+							"label": "자동차 수입",
+							"value": "$84,200",
+							"tone": "plain",
+							"total": false
+						}
+					]
+				},
+				{
+					"title": "지출",
+					"lines": [
+						{
+							"label": "건설비",
+							"value": "-$402,100",
+							"tone": "loss",
+							"total": false
+						},
+						{
+							"label": "차량 운행비",
+							"value": "-$210,050",
+							"tone": "loss",
+							"total": false
+						},
+						{
+							"label": "합계",
+							"value": "$676,550",
+							"tone": "accent",
+							"total": true
+						}
+					]
+				}
+			]
+		}
+	}
+}
