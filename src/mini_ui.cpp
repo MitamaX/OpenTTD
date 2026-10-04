@@ -56,6 +56,8 @@
 #include "mini/core/canvas.h"
 #include "mini/core/tones.h"
 #include "mini/core/tuning.h"
+#include "mini/fleet/consist_draft.h"
+#include "mini/fleet/fleet_deploy.h"
 #include "mini/input/input_mode.h"
 #include "mini/input/press_owner.h"
 #include "mini/map/ground.h"
@@ -138,27 +140,6 @@ static bool _mini_active = false;
 /* Mini UI frame size in pixels; drawing goes through the raylib command
  * buffer, so this only mirrors the screen dimensions. */
 static int _fbw, _fbh;
-
-/* Consist drafts for the fleet window, one per vehicle type. A draft is
- * assembled in the window and produced whole at a depot. */
-static std::vector<EngineID> _fleet_draft[4];
-
-/* Deploy job: the draft is produced unit by unit and each new vehicle is
- * attached to the job's own consist head by explicit id, so the result is
- * one connected train regardless of what else sits in the depot. Commands
- * are asynchronous under network play, hence the stepwise states. */
-struct FleetDeploy {
-	TileIndex depot = INVALID_TILE;
-	VehicleType vt = VEH_TRAIN;
-	std::vector<EngineID> units;
-	size_t next = 0;
-	uint8_t stage = 0;
-	VehicleID head = VehicleID::Invalid();
-	VehicleID fresh = VehicleID::Invalid();
-	std::vector<VehicleID> before;
-	int waited = 0;
-};
-static FleetDeploy _deploy;
 
 static int _build_scroll = 0;
 static MiniTool _build_scroll_tool = MiniTool::None;
@@ -323,97 +304,6 @@ static bool OpenWaypointWndAt(int sx, int sy)
 	std::optional<TileIndex> tile = TileUnder(_camera.MapAt(sx, sy));
 	if (!tile.has_value() || (!IsRailWaypointTile(*tile) && !IsRoadWaypointTile(*tile) && !IsBuoyTile(*tile))) return false;
 	return ShowMiniWaypointWindow(GetStationIndex(*tile));
-}
-
-/* Stage 0 issues the next build, stage 1 spots the new vehicle among the
- * depot's chains, stage 2 waits for its attach move to apply before the
- * next unit goes out. Single player resolves each stage within a frame. */
-static void OpenVehicleMiniWnd(VehicleID veh);
-
-static void ProcessFleetDeploy()
-{
-	if (_deploy.depot == INVALID_TILE) return;
-	if (!IsDepotTile(_deploy.depot) || GetDepotVehicleType(_deploy.depot) != _deploy.vt) {
-		_deploy = FleetDeploy{};
-		return;
-	}
-
-	auto depot_ids = [&]() {
-		std::vector<VehicleID> ids;
-		for (const Vehicle *v : Vehicle::Iterate()) {
-			if (v->type == _deploy.vt && v->tile == _deploy.depot) ids.push_back(v->index);
-		}
-		return ids;
-	};
-
-	switch (_deploy.stage) {
-		case 0: {
-			if (_deploy.next >= _deploy.units.size()) {
-				/* The finished consist is the one thing the player wants next:
-				 * its window is where orders and the start command live. */
-				VehicleID built = _deploy.head;
-				_deploy = FleetDeploy{};
-				if (built != VehicleID::Invalid()) OpenVehicleMiniWnd(built);
-				return;
-			}
-			const Engine *e = Engine::GetIfValid(_deploy.units[_deploy.next]);
-			if (e == nullptr) {
-				_deploy.next++;
-				return;
-			}
-			_deploy.before = depot_ids();
-			Command<CMD_BUILD_VEHICLE>::Post(GetCmdBuildVehMsg(_deploy.vt), _deploy.depot, e->index, true, INVALID_CARGO, INVALID_CLIENT_ID);
-			_deploy.stage = 1;
-			_deploy.waited = 0;
-			return;
-		}
-
-		case 1: {
-			for (VehicleID id : depot_ids()) {
-				if (std::find(_deploy.before.begin(), _deploy.before.end(), id) != _deploy.before.end()) continue;
-				const Vehicle *nv = Vehicle::GetIfValid(id);
-				if (nv == nullptr || nv->First() != nv) continue;
-				_deploy.fresh = id;
-				break;
-			}
-			if (_deploy.fresh == VehicleID::Invalid()) {
-				if (++_deploy.waited > 180) _deploy = FleetDeploy{};
-				return;
-			}
-			if (_deploy.vt != VEH_TRAIN || _deploy.head == VehicleID::Invalid()) {
-				_deploy.head = _deploy.fresh;
-				_deploy.fresh = VehicleID::Invalid();
-				_deploy.next++;
-				_deploy.stage = 0;
-				return;
-			}
-			const Vehicle *hv = Vehicle::GetIfValid(_deploy.head);
-			if (hv == nullptr || hv->tile != _deploy.depot) {
-				_deploy = FleetDeploy{};
-				return;
-			}
-			Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, _deploy.depot, _deploy.fresh, hv->Last()->index, false);
-			_deploy.stage = 2;
-			_deploy.waited = 0;
-			return;
-		}
-
-		case 2: {
-			const Vehicle *nv = Vehicle::GetIfValid(_deploy.fresh);
-			if (nv == nullptr) {
-				_deploy = FleetDeploy{};
-				return;
-			}
-			if (nv->First()->index == _deploy.head) {
-				_deploy.fresh = VehicleID::Invalid();
-				_deploy.next++;
-				_deploy.stage = 0;
-				return;
-			}
-			if (++_deploy.waited > 180) _deploy = FleetDeploy{};
-			return;
-		}
-	}
 }
 
 static VehicleID FrontWndVehicle();
@@ -3594,11 +3484,8 @@ static void ImIndustryBody(MiniWnd &mw, const Industry *i)
 static void ImFleetBody(MiniWnd &mw)
 {
 	VehicleType vt = (VehicleType)mw.tab;
-	std::vector<EngineID> &draft = _fleet_draft[mw.tab];
-	std::erase_if(draft, [](EngineID eid) {
-		const Engine *e = Engine::GetIfValid(eid);
-		return e == nullptr || !e->IsEnabled();
-	});
+	ConsistDraft &draft = FleetDraft(vt);
+	draft.Prune();
 
 	const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
 	if (sv != nullptr && (sv->type != vt || !sv->First()->IsChainInDepot())) {
@@ -3657,13 +3544,7 @@ static void ImFleetBody(MiniWnd &mw)
 			for (const BuyRow &r : list) {
 				bool clicked = ImWndKVLink(r.name, GetString(STR_JUST_CURRENCY_LONG, r.cost), r.hidden ? COL_CH_DIM : COL_CH_TEXT, r.hidden ? COL_CH_DIM : COL_CH_TEXT);
 				if (ImGui::IsItemHovered()) mw.sel_eng = r.eid;
-				if (clicked) {
-					if (vt == VEH_TRAIN) {
-						draft.push_back(r.eid);
-					} else {
-						draft.assign(1, r.eid);
-					}
-				}
+				if (clicked) draft.Add(r.eid);
 			}
 		};
 		if (vt == VEH_TRAIN) {
@@ -3701,47 +3582,31 @@ static void ImFleetBody(MiniWnd &mw)
 		}
 
 		ImWndHeader("설계");
-		if (draft.empty()) {
+		if (draft.Empty()) {
 			ImWndText(vt == VEH_TRAIN ? "엔진 목록을 눌러 편성 구성" : "엔진 목록을 눌러 선택", COL_CH_DIM);
 		} else {
 			std::vector<ImStripUnit> units;
-			Money total = 0;
-			uint64_t power = 0, weight = 0;
-			uint16_t speed = 0;
-			uint cap = 0;
-			int len8 = 0;
-			for (size_t i = 0; i < draft.size(); i++) {
-				const Engine *e = Engine::Get(draft[i]);
-				total += e->GetCost();
-				power += e->GetPower();
-				weight += e->GetDisplayWeight();
-				uint16_t espd = e->GetDisplayMaxSpeed();
-				if (espd > 0) speed = speed == 0 ? espd : std::min(speed, espd);
-				cap += e->GetDisplayDefaultCapacity();
+			for (EngineID id : draft.Units()) {
+				const Engine *e = Engine::Get(id);
 				ImStripUnit su;
-				if (vt == VEH_TRAIN) {
-					const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
-					su.engine = rvi.railveh_type != RAILVEH_WAGON;
-					su.len8 = 8 - rvi.shorten_factor;
-				}
-				len8 += su.len8;
+				su.engine = vt == VEH_TRAIN && e->VehInfo<RailVehicleInfo>().railveh_type != RAILVEH_WAGON;
+				su.len8 = UnitLength(e);
 				CargoType dc = e->GetDefaultCargoType();
 				su.fill = e->GetDisplayDefaultCapacity() > 0 && IsValidCargoType(dc) ? CargoRgb(dc) : COL_CH_TILE;
 				units.push_back(su);
 			}
 			int del = ImWndUnitStrip(units);
-			if (del >= 0 && (size_t)del < draft.size()) draft.erase(draft.begin() + del);
-			ImWndKV("합계", GetString(STR_JUST_CURRENCY_LONG, total), COL_CH_ACCENT);
+			if (del >= 0) draft.Remove(del);
+			DraftSummary sum = draft.Summary();
+			ImWndKV("합계", GetString(STR_JUST_CURRENCY_LONG, sum.cost), COL_CH_ACCENT);
 			if (vt == VEH_TRAIN) {
-				ImWndText(GameText(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, weight, power, PackVelocity(speed, vt)), COL_CH_TEXT);
-				ImWndKV("길이", fmt::format("{:.1f}타일", len8 / 16.0), COL_CH_TEXT);
+				ImWndText(GameText(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, sum.weight, sum.power, PackVelocity(sum.speed, vt)), COL_CH_TEXT);
+				ImWndKV("길이", fmt::format("{:.1f}타일", sum.length / 16.0), COL_CH_TEXT);
 			}
-			if (cap > 0) ImWndKV("용량", fmt::format("{}", cap), COL_CH_TEXT);
+			if (sum.capacity > 0) ImWndKV("용량", fmt::format("{}", sum.capacity), COL_CH_TEXT);
 			ImWndText("차고 행 클릭으로 생산 · 블록 클릭으로 제외", COL_CH_DIM);
 		}
-		if (_deploy.depot != INVALID_TILE && _deploy.vt == vt) {
-			ImWndText(fmt::format("생산 중 {} / {}", std::min(_deploy.next + 1, _deploy.units.size()), _deploy.units.size()), COL_CH_ACCENT);
-		}
+		if (_deploy.Running(vt)) ImWndText(fmt::format("생산 중 {} / {}", _deploy.Unit(), _deploy.Units()), COL_CH_ACCENT);
 
 		ImWndHeader("차고");
 		if (sv != nullptr && vt == VEH_TRAIN) {
@@ -3801,16 +3666,13 @@ static void ImFleetBody(MiniWnd &mw)
 				}
 				if (r != 0) mw.rename_depot = INVALID_TILE;
 			} else {
-				if (ImWndLink(draft.empty() ? dn : fmt::format("▶ {} 생산", dn), draft.empty() ? COL_CH_TEXT : COL_CH_ACCENT)) {
+				if (ImWndLink(draft.Empty() ? dn : fmt::format("▶ {} 생산", dn), draft.Empty() ? COL_CH_TEXT : COL_CH_ACCENT)) {
 					if (!IsDepotTile(tile)) {
 						/* stale row */
-					} else if (draft.empty()) {
+					} else if (draft.Empty()) {
 						MiniUiScrollTo(TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
-					} else if (_deploy.depot == INVALID_TILE) {
-						_deploy = FleetDeploy{};
-						_deploy.depot = tile;
-						_deploy.vt = vt;
-						_deploy.units = draft;
+					} else {
+						_deploy.Start(tile, vt, draft.Units());
 					}
 				}
 				if (did != DepotID::Invalid() && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
@@ -4733,9 +4595,8 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 				Command<CMD_SELL_VEHICLE>::Post(GetCmdSellVehMsg(sv->type), sv->tile, sv->index, chain, true, INVALID_CLIENT_ID);
 				mw.sel = VehicleID::Invalid();
 			}
-			if (ImWndButton("설계 비우기", own && !_fleet_draft[mw.tab].empty())) {
-				_fleet_draft[mw.tab].clear();
-			}
+			ConsistDraft &draft = FleetDraft((VehicleType)mw.tab);
+			if (ImWndButton("설계 비우기", own && !draft.Empty())) draft.Clear();
 			if (ImWndButton("복제", own && sv != nullptr)) {
 				Command<CMD_CLONE_VEHICLE>::Post(GetCmdBuildVehMsg(sv->type), sv->tile, sv->First()->index, false);
 			}
@@ -5553,8 +5414,8 @@ void MiniUiResetGameState()
 	_vehicle_motion.Clear();
 	_stuck_long.clear();
 	for (auto &l : _status_veh) l.clear();
-	for (auto &d : _fleet_draft) d.clear();
-	_deploy = FleetDeploy{};
+	ClearFleetDrafts();
+	_deploy.Reset();
 	_toasts.clear();
 	_toast_rows.clear();
 }
@@ -5856,7 +5717,7 @@ void MiniUiFrame(uint delta_ms)
 	MiniAtlasEnsure();
 	_vehicle_motion.Advance(delta_ms);
 	UpdateToasts(delta_ms);
-	ProcessFleetDeploy();
+	if (VehicleID built = _deploy.Step(); built != VehicleID::Invalid()) OpenVehicleMiniWnd(built);
 	RlwCmdClear();
 	MiniImGuiEnsureSetup();
 	RlwImGuiNewFrame();
