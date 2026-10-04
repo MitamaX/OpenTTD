@@ -56,6 +56,9 @@
 #include "mini/core/canvas.h"
 #include "mini/core/tones.h"
 #include "mini/core/tuning.h"
+#include "mini/dock/carrier.h"
+#include "mini/dock/native_dock.h"
+#include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
 #include "mini/input/input_mode.h"
@@ -1998,7 +2001,6 @@ static void DrawHud()
  * window that is kept aligned with its slot; carriers under higher mini
  * windows are clipped out of the native overlay. */
 
-static constexpr int MW_CARRIER_NUM_BASE = 0x40000;
 static const uint32_t COL_CH_RED = 0xFFE05F4AU;
 static const uint32_t COL_CH_YELLOW = 0xFFE0B64AU;
 
@@ -2105,10 +2107,6 @@ static int WndPad() { return 6 * _tuning.hud_scale; }
 static int WndBodyH(const MiniWnd &mw) { return WndViewH() + WndPad() + (WndWide(mw) ? 10 : 6) * WndRowH(); }
 static int WndH(const MiniWnd &mw) { return WndTitleH() + WndTabH() + WndBodyH(mw) + WndCmdS() + 3 * WndPad(); }
 
-/* Kinds get separate number ranges; a vehicle and a station sharing one id
- * must not resolve to the same carrier window. */
-static constexpr int MW_CARRIER_KIND_STRIDE = 0x1000000;
-
 static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 {
 	int id;
@@ -2119,139 +2117,51 @@ static WindowNumber MiniCarrierNum(const MiniWnd &mw)
 		case MiniWndKind::Industry: id = (int)mw.ind.base(); break;
 		default: id = 0; break;
 	}
-	return MW_CARRIER_NUM_BASE + (int)mw.kind * MW_CARRIER_KIND_STRIDE + id;
+	return CarrierNumber((int)mw.kind, id);
 }
 
-static constexpr NWidgetPart _nested_mini_carrier_widgets[] = {
-	NWidget(NWID_VIEWPORT, INVALID_COLOUR, 0), SetResize(1, 1), SetFill(1, 1), SetMinimalSize(64, 48),
-};
-
-static WindowDesc _mini_carrier_desc(
-	WDP_MANUAL, {}, 0, 0,
-	WC_EXTRA_VIEWPORT, WC_NONE,
-	{},
-	_nested_mini_carrier_widgets
-);
-
-/* Frameless native viewport window aligned with a mini window's view slot. */
-struct MiniCarrierWindow : Window {
-	TileIndex focus_tile = INVALID_TILE;
-
-	MiniCarrierWindow(WindowDesc &desc, WindowNumber num, std::variant<TileIndex, VehicleID> focus) : Window(desc)
-	{
-		if (std::holds_alternative<TileIndex>(focus)) this->focus_tile = std::get<TileIndex>(focus);
-		this->InitNested(num);
-		this->GetWidget<NWidgetViewport>(0)->InitializeViewport(this, focus, ZoomLevel::Viewport);
-	}
-
-	/* The viewport scroll target is its top-left corner, so growing the
-	 * window from its minimal size would drift the view right and down. */
-	void OnResize() override
-	{
-		if (this->viewport == nullptr) return;
-		this->GetWidget<NWidgetViewport>(0)->UpdateViewportCoordinates(this);
-		if (this->focus_tile != INVALID_TILE) ScrollWindowToTile(this->focus_tile, this, true);
-	}
-
-};
-
-static Window *EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
+static std::optional<CarrierFocus> MiniCarrierFocus(const MiniWnd &mw)
 {
-	Window *cw = FindWindowById(WC_EXTRA_VIEWPORT, MiniCarrierNum(mw));
-	if (cw == nullptr) {
-		std::variant<TileIndex, VehicleID> focus;
-		if (mw.kind == MiniWndKind::Vehicle) {
+	switch (mw.kind) {
+		case MiniWndKind::Vehicle: {
 			const Vehicle *v = Vehicle::GetIfValid(mw.veh);
-			if (v == nullptr) return nullptr;
-			focus = v->index;
-		} else if (mw.kind == MiniWndKind::Station) {
+			if (v == nullptr) return std::nullopt;
+			return v->index;
+		}
+		case MiniWndKind::Station: {
 			const Station *st = Station::GetIfValid(mw.st);
-			if (st == nullptr) return nullptr;
-			focus = st->rect.IsEmpty() ? st->xy : TileXY((st->rect.left + st->rect.right) / 2, (st->rect.top + st->rect.bottom) / 2);
-		} else if (mw.kind == MiniWndKind::Town) {
+			if (st == nullptr) return std::nullopt;
+			return st->rect.IsEmpty() ? st->xy : TileXY((st->rect.left + st->rect.right) / 2, (st->rect.top + st->rect.bottom) / 2);
+		}
+		case MiniWndKind::Town: {
 			const Town *t = Town::GetIfValid(mw.town);
-			if (t == nullptr) return nullptr;
-			focus = t->xy;
-		} else if (mw.kind == MiniWndKind::Group) {
-			focus = TileXY(Map::SizeX() / 2, Map::SizeY() / 2);
-		} else {
+			if (t == nullptr) return std::nullopt;
+			return t->xy;
+		}
+		case MiniWndKind::Group:
+			return TileXY(Map::SizeX() / 2, Map::SizeY() / 2);
+		default: {
 			const Industry *i = Industry::GetIfValid(mw.ind);
-			if (i == nullptr) return nullptr;
-			focus = i->location.GetCenterTile();
+			if (i == nullptr) return std::nullopt;
+			return i->location.GetCenterTile();
 		}
-		cw = new MiniCarrierWindow(_mini_carrier_desc, MiniCarrierNum(mw), focus);
 	}
-	if (cw->width != w || cw->height != h) ResizeWindow(cw, w - cw->width, h - cw->height, false);
-	if (cw->left != x || cw->top != y) {
-		/* The vacated region must repaint too, or its pixels linger in the
-		 * screen buffer and smear through other carriers' overlay rects. */
-		cw->SetDirty();
-		if (cw->viewport != nullptr) {
-			cw->viewport->left += x - cw->left;
-			cw->viewport->top += y - cw->top;
-		}
-		cw->left = x;
-		cw->top = y;
-		cw->SetDirty();
+}
+
+static void EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
+{
+	Window *cw = FindCarrier(MiniCarrierNum(mw));
+	if (cw == nullptr) {
+		std::optional<CarrierFocus> focus = MiniCarrierFocus(mw);
+		if (!focus.has_value()) return;
+		cw = OpenCarrier(MiniCarrierNum(mw), *focus);
 	}
-	return cw;
+	FitCarrier(cw, x, y, w, h);
 }
 
 static void CloseMiniCarrier(const MiniWnd &mw)
 {
-	CloseWindowById(WC_EXTRA_VIEWPORT, MiniCarrierNum(mw));
-}
-
-/* Native windows pinned under a mini window body. The native paint lands in
- * the CPU screen buffer below the ImGui layer and the body samples the region
- * beneath the native caption, so official content arrives inside mini chrome
- * without a frame of its own. */
-struct MiniEmbedSpec {
-	WindowClass wc;
-	void (*open)(WindowNumber num);
-};
-
-struct MiniEmbed {
-	WindowClass wc;
-	int32_t num;
-	Rect vis;
-	/* Size of the shell's own resize grip in the bottom-right of the slot; the
-	 * native must not take those clicks or both grips would fight. */
-	int grip;
-	bool used;
-	/* Windows the mini UI opened itself go away with their slot; windows it
-	 * merely adopted are handed back where the player can still reach them. */
-	bool owned;
-};
-
-/* A released window keeps the position its slot forced on it, caption and all
- * above the screen edge; the no-op resize runs the visibility clamp. */
-static void ReleaseMiniEmbed(WindowClass wc, int32_t num)
-{
-	Window *w = FindWindowById(wc, num);
-	if (w != nullptr) ResizeWindow(w, 0, 0, true);
-}
-
-static std::vector<MiniEmbed> _embeds;
-
-static MiniEmbed *FindMiniEmbed(WindowClass wc, int32_t num)
-{
-	for (MiniEmbed &e : _embeds) {
-		if (e.wc == wc && e.num == num) return &e;
-	}
-	return nullptr;
-}
-
-static void CloseAllMiniEmbeds()
-{
-	for (const MiniEmbed &e : _embeds) {
-		if (e.owned) {
-			CloseWindowById(e.wc, e.num);
-		} else {
-			ReleaseMiniEmbed(e.wc, e.num);
-		}
-	}
-	_embeds.clear();
+	CloseCarrier(MiniCarrierNum(mw));
 }
 
 static void EmbedOpenCompany(WindowNumber) { ShowCompany(_local_company); }
@@ -2269,9 +2179,9 @@ static void EmbedOpenTownCargo(WindowNumber num) { ShowTownCargoGraph(num); }
 
 /* Tabs the official window fills better than a rewrite would: the manager
  * face, the plotted histories, the rating breakdown, the cargo chain. */
-static bool WndEmbedTarget(const MiniWnd &mw, MiniEmbedSpec &spec, WindowNumber &num)
+static bool WndEmbedTarget(const MiniWnd &mw, DockSpec &spec, WindowNumber &num)
 {
-	static const MiniEmbedSpec graphs[] = {
+	static const DockSpec graphs[] = {
 		{WC_OPERATING_PROFIT, EmbedOpenOperatingProfit},
 		{WC_INCOME_GRAPH, EmbedOpenIncome},
 		{WC_COMPANY_VALUE, EmbedOpenCompanyValue},
@@ -2300,8 +2210,8 @@ static bool WndEmbedTarget(const MiniWnd &mw, MiniEmbedSpec &spec, WindowNumber 
 			return true;
 
 		case MiniWndKind::League:
-			spec = mw.tab == 1 ? MiniEmbedSpec{WC_PERFORMANCE_DETAIL, EmbedOpenRatingDetail}
-					: MiniEmbedSpec{WC_COMPANY_LEAGUE, EmbedOpenLeague};
+			spec = mw.tab == 1 ? DockSpec{WC_PERFORMANCE_DETAIL, EmbedOpenRatingDetail}
+					: DockSpec{WC_COMPANY_LEAGUE, EmbedOpenLeague};
 			return true;
 
 		case MiniWndKind::IndustryList:
@@ -2324,39 +2234,6 @@ static bool WndEmbedTarget(const MiniWnd &mw, MiniEmbedSpec &spec, WindowNumber 
 		default:
 			return false;
 	}
-}
-
-/* Popups glued to something else keep their own placement and frame; anything
- * that carries a caption is a standalone window and gets mini chrome. */
-static bool NativeWrappable(const Window *w)
-{
-	switch (w->window_class) {
-		case WC_MAIN_WINDOW:
-		case WC_MAIN_TOOLBAR:
-		case WC_STATUS_BAR:
-		case WC_DROPDOWN_MENU:
-		case WC_TOOLTIPS:
-		case WC_OSK:
-		case WC_CONSOLE:
-		case WC_MODAL_PROGRESS:
-		case WC_HIGHSCORE:
-		case WC_ENDSCREEN:
-			return false;
-		default:
-			break;
-	}
-	if (w->window_class == WC_EXTRA_VIEWPORT && w->window_number >= MW_CARRIER_NUM_BASE) return false;
-	return w->nested_root != nullptr && w->nested_root->GetWidgetOfType(WWT_CAPTION) != nullptr;
-}
-
-static std::string NativeCaption(Window *w)
-{
-	if (w->nested_root == nullptr) return {};
-	const NWidgetCore *cap = dynamic_cast<const NWidgetCore *>(w->nested_root->GetWidgetOfType(WWT_CAPTION));
-	if (cap == nullptr) return {};
-	StringID sid = cap->GetString();
-	if (cap->GetIndex() < 0) return sid == STR_NULL ? std::string() : GameText(sid);
-	return StrMakeValid(w->GetWidgetString(cap->GetIndex(), sid), {});
 }
 
 static void CloseMiniWnd(size_t i)
@@ -2427,7 +2304,7 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 static void CloseAllMiniWnds()
 {
 	for (const MiniWnd &mw : _wnds) CloseMiniCarrier(mw);
-	CloseAllMiniEmbeds();
+	_dock.CloseAll();
 	_wnds.clear();
 	_wnd_opens.clear();
 	_views.CloseAll();
@@ -2643,28 +2520,6 @@ static void ImWndViewSlot(const MiniWnd &mw)
 	}
 }
 
-/* The caption row never reaches the screen: sampling starts below it so the
- * mini title bar stays the only title. */
-static int EmbedCrop(Window *w)
-{
-	if (w->nested_root == nullptr) return 0;
-	const NWidgetBase *cap = w->nested_root->GetWidgetOfType(WWT_CAPTION);
-	return cap == nullptr ? 0 : cap->pos_y + (int)cap->current_y;
-}
-
-/* ResizeWindow asserts the delta lands on a whole resize step, so anything
- * finer than the step is dropped. A pinned axis is left alone. */
-static void EmbedResize(Window *w, int want_w, int want_h, bool fix_w, bool fix_h)
-{
-	int sx = (int)w->nested_root->resize_x;
-	int sy = (int)w->nested_root->resize_y;
-	int dx = (fix_w || sx == 0) ? 0 : want_w - w->width;
-	int dy = (fix_h || sy == 0) ? 0 : want_h - w->height;
-	if (sx != 0) dx -= dx % sx;
-	if (sy != 0) dy -= dy % sy;
-	if (dx != 0 || dy != 0) ResizeWindow(w, dx, dy, false);
-}
-
 /* The native grows in whole resize steps while the shell would drag pixel by
  * pixel; snapping the shell onto the same grid keeps the two flush instead of
  * leaving a strip of the body cut off or a strip of empty shell. */
@@ -2723,75 +2578,43 @@ static void ClampShellToScreen(const MiniWnd &mw)
 	if (np.x != wp.x || np.y != wp.y) ImGui::SetWindowPos(np);
 }
 
-static void ImWndNativeSlot(MiniWnd &mw, const MiniEmbedSpec &spec, WindowNumber num)
+static void ImWndNativeSlot(MiniWnd &mw, const DockSpec &spec, WindowNumber num)
 {
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 avail = ImGui::GetContentRegionAvail();
 	if (avail.x < 32.0f || avail.y < 32.0f || _fbw <= 0 || _fbh <= 0) return;
 
-	Window *w = FindWindowById(spec.wc, num);
+	Window *w = _dock.Open(spec, num);
 	if (w == nullptr) {
-		if (spec.open == nullptr) return;
-		spec.open(num);
-		w = FindWindowById(spec.wc, num);
-		if (w == nullptr) {
-			ImWndText("표시할 내용이 없습니다", COL_CH_DIM);
-			return;
-		}
+		if (spec.open != nullptr) ImWndText("표시할 내용이 없습니다", COL_CH_DIM);
+		return;
 	}
 
-	/* Resize steps are no test: a caption puts a horizontal one on every
-	 * window. A resize box is what the player can actually drag. */
-	bool sizable = w->nested_root->GetWidgetOfType(WWT_RESIZEBOX) != nullptr;
-	mw.embed_fix_w = !sizable || w->nested_root->resize_x == 0;
-	mw.embed_fix_h = !sizable || w->nested_root->resize_y == 0;
-	mw.embed_step_w = std::max(1, (int)w->nested_root->resize_x);
-	mw.embed_step_h = std::max(1, (int)w->nested_root->resize_y);
-
-	int crop = EmbedCrop(w);
-	EmbedResize(w, (int)avail.x, (int)avail.y + crop, mw.embed_fix_w, mw.embed_fix_h);
-
-	int nx = (int)pos.x;
-	int ny = (int)pos.y - crop;
-	if (w->left != nx || w->top != ny) {
-		/* The vacated region must repaint too, or its pixels linger in the
-		 * screen buffer and smear through other overlay rects. */
-		w->SetDirty();
-		if (w->viewport != nullptr) {
-			w->viewport->left += nx - w->left;
-			w->viewport->top += ny - w->top;
-		}
-		w->left = nx;
-		w->top = ny;
-		w->SetDirty();
-	}
-
-	float sw = std::min((float)w->width, avail.x);
-	float sh = std::min((float)(w->height - crop), avail.y);
+	NativeSizing sizing = SizingOf(w);
+	mw.embed_fix_w = sizing.fix_w;
+	mw.embed_fix_h = sizing.fix_h;
+	mw.embed_step_w = sizing.step_w;
+	mw.embed_step_h = sizing.step_h;
 	/* The floor is the native minimum, not its current size, or every widening
 	 * drag would ratchet the mini window and never let it back. An axis the
 	 * native cannot resize becomes a hard size, so a drag cannot open dead
 	 * space the native will never fill. */
-	mw.embed_w = (int)w->nested_root->smallest_x + (int)(_imwnd_outer.x - avail.x);
-	mw.embed_h = (int)w->nested_root->smallest_y - crop + (int)(_imwnd_outer.y - avail.y);
+	mw.embed_w = sizing.min_w + (int)(_imwnd_outer.x - avail.x);
+	mw.embed_h = sizing.min_h + (int)(_imwnd_outer.y - avail.y);
 
-	MiniEmbed *e = FindMiniEmbed(spec.wc, num);
-	if (e == nullptr) {
-		_embeds.push_back({spec.wc, (int32_t)num, {}, 0, false, spec.open != nullptr});
-		e = &_embeds.back();
-	}
-	e->used = true;
-	e->vis = {(int)pos.x, (int)pos.y, (int)pos.x + (int)sw - 1, (int)pos.y + (int)sh - 1};
-	e->grip = (mw.embed_fix_w && mw.embed_fix_h) ? 0 : (int)ImGui::GetStyle().WindowPadding.x + 8 * _tuning.hud_scale;
+	int grip = sizing.Pinned() ? 0 : (int)ImGui::GetStyle().WindowPadding.x + 8 * _tuning.hud_scale;
+	Rect slot = {(int)pos.x, (int)pos.y, (int)pos.x + (int)avail.x - 1, (int)pos.y + (int)avail.y - 1};
+	Rect vis = _dock.Pin(w, spec.open != nullptr, slot, sizing, grip);
+	ImVec2 size((float)vis.Width(), (float)vis.Height());
 
 	/* An item under the cursor keeps ImGui from dragging the mini window, so
 	 * a press inside the slot is free to reach the native widget. */
-	ImGui::InvisibleButton("##native", ImVec2(sw, sh));
+	ImGui::InvisibleButton("##native", size);
 	uintptr_t tid = RlwScreenTexture().id;
 	if (tid == 0) return;
-	ImVec2 uv0((float)w->left / (float)_fbw, (float)(w->top + crop) / (float)_fbh);
-	ImVec2 uv1(((float)w->left + sw) / (float)_fbw, ((float)(w->top + crop) + sh) / (float)_fbh);
-	ImGui::GetWindowDrawList()->AddImage((ImTextureID)tid, pos, ImVec2(pos.x + sw, pos.y + sh), uv0, uv1);
+	ImVec2 uv0((float)vis.left / (float)_fbw, (float)vis.top / (float)_fbh);
+	ImVec2 uv1((float)(vis.left + vis.Width()) / (float)_fbw, (float)(vis.top + vis.Height()) / (float)_fbh);
+	ImGui::GetWindowDrawList()->AddImage((ImTextureID)tid, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1);
 }
 
 struct ImStripUnit {
@@ -4794,7 +4617,7 @@ static bool DrawImGuiNativeWnd(MiniWnd &mw)
 	_imrow = 0;
 	ImWndTitle(mw, title, false, open, nullptr, nullptr, nullptr);
 
-	MiniEmbedSpec spec;
+	DockSpec spec;
 	WindowNumber wnum;
 	if (WndEmbedTarget(mw, spec, wnum)) {
 		_imwnd_outer = ImGui::GetWindowSize();
@@ -5005,7 +4828,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 				}
 				bool has_cmds = !WndIsList(mw.kind);
 				float cmd_h = has_cmds ? ImGui::GetFrameHeightWithSpacing() + 4.0f * s : 0.0f;
-				MiniEmbedSpec spec;
+				DockSpec spec;
 				WindowNumber wnum;
 				bool embed = WndEmbedTarget(mw, spec, wnum);
 				/* A slot fills the body exactly; a scrollbar appearing on the
@@ -5056,66 +4879,22 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	return open;
 }
 
-/* Where two slots overlap, the native paint and the click both go to whichever
- * native window is on top, so native z-order has to follow mini window order.
- * Re-fronting is only worth doing when the two already disagree. */
-static size_t CarrierOwner(const Window *w);
-
-static void SyncEmbedZOrder()
+static std::vector<NativeKey> WantedNativeOrder()
 {
-	static std::vector<int32_t> want;
-	static std::vector<int32_t> have;
-	want.clear();
-	have.clear();
-
-	static std::vector<std::pair<uint32_t, size_t>> order;
-	order.clear();
+	std::vector<std::pair<uint32_t, size_t>> order;
 	for (size_t i = 0; i < _wnds.size(); i++) order.emplace_back(_wnds[i].focus_seq, i);
 	std::sort(order.begin(), order.end());
 
-	for (const auto &o : order) {
-		const MiniWnd &mw = _wnds[o.second];
+	std::vector<NativeKey> want;
+	for (const auto &[seq, i] : order) {
+		const MiniWnd &mw = _wnds[i];
 		WindowNumber cnum = MiniCarrierNum(mw);
-		if (FindWindowById(WC_EXTRA_VIEWPORT, cnum) != nullptr) {
-			want.push_back((int32_t)WC_EXTRA_VIEWPORT);
-			want.push_back((int32_t)cnum);
-		}
-		MiniEmbedSpec spec;
+		if (FindCarrier(cnum) != nullptr) want.push_back({WC_EXTRA_VIEWPORT, cnum});
+		DockSpec spec;
 		WindowNumber num;
-		if (!WndEmbedTarget(mw, spec, num)) continue;
-		if (FindWindowById(spec.wc, num) == nullptr) continue;
-		want.push_back((int32_t)spec.wc);
-		want.push_back((int32_t)num);
+		if (WndEmbedTarget(mw, spec, num) && FindWindowById(spec.wc, num) != nullptr) want.push_back({spec.wc, num});
 	}
-	if (want.size() <= 2) return;
-
-	for (const Window *w : Window::IterateFromBack()) {
-		if (FindMiniEmbed(w->window_class, w->window_number) == nullptr && CarrierOwner(w) == SIZE_MAX) continue;
-		have.push_back((int32_t)w->window_class);
-		have.push_back((int32_t)w->window_number);
-	}
-	if (have == want) return;
-
-	/* Some classes outrank others in the native z-order, so the wanted order is
-	 * not always reachable. Re-applying is driven by change on either side:
-	 * a new focus order, or the order drifting away from what was achieved. */
-	static std::vector<int32_t> applied;
-	static std::vector<int32_t> settled;
-	if (applied == want && have == settled) return;
-	applied = want;
-
-	for (size_t i = 0; i + 1 < want.size(); i += 2) {
-		Window *w = BringWindowToFrontById((WindowClass)want[i], want[i + 1]);
-		/* The activation flash would blink inside the slot on every reorder. */
-		if (w != nullptr) w->flags.Reset(WindowFlag::WhiteBorder);
-	}
-
-	settled.clear();
-	for (const Window *w : Window::IterateFromBack()) {
-		if (FindMiniEmbed(w->window_class, w->window_number) == nullptr && CarrierOwner(w) == SIZE_MAX) continue;
-		settled.push_back((int32_t)w->window_class);
-		settled.push_back((int32_t)w->window_number);
-	}
+	return want;
 }
 
 /* Two shells that overlap sample each other's pixels out of the shared screen
@@ -5160,7 +4939,7 @@ static void AdoptNativeWnds()
 	static std::vector<std::pair<WindowClass, int32_t>> taken;
 	taken.clear();
 	for (const MiniWnd &mw : _wnds) {
-		MiniEmbedSpec spec;
+		DockSpec spec;
 		WindowNumber num;
 		if (WndEmbedTarget(mw, spec, num)) taken.emplace_back(spec.wc, (int32_t)num);
 	}
@@ -5170,7 +4949,7 @@ static void AdoptNativeWnds()
 		if (!NativeWrappable(w)) continue;
 		/* A shell closed this frame leaves its window slotted until the sweep
 		 * runs; adopting it here would rebuild the shell the player dismissed. */
-		if (FindMiniEmbed(w->window_class, w->window_number) != nullptr) continue;
+		if (_dock.Find(w) != nullptr) continue;
 		bool held = false;
 		for (const auto &t : taken) {
 			if (t.first == w->window_class && t.second == (int32_t)w->window_number) {
@@ -5186,7 +4965,7 @@ static void AdoptNativeWnds()
 		mw.nat_num = w->window_number;
 		int chrome_x = 2 * (int)ImGui::GetStyle().WindowPadding.x + 2;
 		int chrome_y = 3 * (int)ImGui::GetStyle().WindowPadding.y + GetCharacterHeight(FS_NORMAL) + 8 * s;
-		PlaceNativeShell(mw, w->width + chrome_x, w->height - EmbedCrop(w) + chrome_y);
+		PlaceNativeShell(mw, w->width + chrome_x, w->height - CaptionCrop(w) + chrome_y);
 		mw.want_raise = true;
 		_wnds.push_back(mw);
 		taken.emplace_back(mw.nat_wc, mw.nat_num);
@@ -5222,13 +5001,11 @@ static void DrawMiniWndsImGui()
 
 	/* Mark before drawing: a shell whose Begin is skipped still owns its
 	 * window, and releasing it here would re-adopt it the very next frame. */
-	for (MiniEmbed &e : _embeds) e.used = false;
+	_dock.Unmark();
 	for (const MiniWnd &mw : _wnds) {
-		MiniEmbedSpec spec;
+		DockSpec spec;
 		WindowNumber num;
-		if (!WndEmbedTarget(mw, spec, num)) continue;
-		MiniEmbed *e = FindMiniEmbed(spec.wc, num);
-		if (e != nullptr) e->used = true;
+		if (WndEmbedTarget(mw, spec, num)) _dock.Mark({spec.wc, num});
 	}
 
 	_wnds_drawing = true;
@@ -5240,19 +5017,11 @@ static void DrawMiniWndsImGui()
 
 	/* An embed whose tab went away this frame has no slot left to draw into.
 	 * A window the mini UI opened goes with it; an adopted one is handed back. */
-	for (size_t i = _embeds.size(); i-- > 0;) {
-		if (_embeds[i].used) continue;
-		if (_embeds[i].owned) {
-			CloseWindowById(_embeds[i].wc, _embeds[i].num);
-		} else {
-			ReleaseMiniEmbed(_embeds[i].wc, _embeds[i].num);
-		}
-		_embeds.erase(_embeds.begin() + (ptrdiff_t)i);
-	}
+	_dock.Sweep();
 
 	for (size_t i = closed.size(); i-- > 0;) CloseMiniWnd(closed[i]);
 
-	SyncEmbedZOrder();
+	_dock.Stack(WantedNativeOrder());
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
@@ -5487,15 +5256,6 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	return true;
 }
 
-static size_t CarrierOwner(const Window *w)
-{
-	if (w->window_class != WC_EXTRA_VIEWPORT || w->window_number < MW_CARRIER_NUM_BASE) return SIZE_MAX;
-	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (MiniCarrierNum(_wnds[i]) == w->window_number) return i;
-	}
-	return SIZE_MAX;
-}
-
 void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 {
 	if (!_mini_active) return;
@@ -5504,7 +5264,7 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 		/* Carriers and embeds stay below the ImGui layer; their pixels surface
 		 * through the slot image. An embed is never blitted on its own: the
 		 * part of it that reaches past its slot would show through the chrome. */
-		bool under = FindMiniEmbed(w->window_class, w->window_number) != nullptr || CarrierOwner(w) != SIZE_MAX;
+		bool under = _dock.Docks(w);
 		rects.push_back({w->left, w->top, w->width, w->height, under, under});
 	}
 }
@@ -5523,9 +5283,9 @@ void MiniUiScrollTo(int x, int y)
 static bool NativeWindowTakesPointer()
 {
 	Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
-	if (w == nullptr || MiniUiHidesWindow(w->window_class) || CarrierOwner(w) != SIZE_MAX) return false;
+	if (w == nullptr || MiniUiHidesWindow(w->window_class) || IsCarrier(w)) return false;
 
-	const MiniEmbed *e = FindMiniEmbed(w->window_class, w->window_number);
+	const DockedWindow *e = _dock.Find(w);
 	if (e == nullptr) return true;
 	if (!e->vis.Contains({_cursor.pos.x, _cursor.pos.y})) return false;
 	return e->grip <= 0 || _cursor.pos.x <= e->vis.right - e->grip || _cursor.pos.y <= e->vis.bottom - e->grip;
