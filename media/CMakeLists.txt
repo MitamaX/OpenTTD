@@ -1,7 +1,11 @@
 add_subdirectory(baseset)
+add_subdirectory(mini_ui)
 
 add_library(media
         INTERFACE
+)
+add_dependencies(media
+        mini_ui_files
 )
 add_library(openttd::media ALIAS media)
 

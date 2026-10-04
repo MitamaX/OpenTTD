@@ -58,6 +58,9 @@
 #include "league_gui.h"
 #include "linkgraph/linkgraph.h"
 #include "mini_atlas.h"
+#include "mini/ui/finance_panel.h"
+#include "mini/ui/fonts.h"
+#include "mini/ui/panel_host.h"
 #include "mini/ui/ui_text.h"
 #include "economy_cmd.h"
 #include "economy_func.h"
@@ -595,9 +598,8 @@ static void MiniImGuiEnsureSetup()
 	done = true;
 
 	ImGuiIO &io = ImGui::GetIO();
-	const char *font_path = "C:\\Windows\\Fonts\\malgun.ttf";
-	if (FileExists(font_path)) {
-		ImFont *font = io.Fonts->AddFontFromFileTTF(font_path, (float)std::max(13, GetCharacterHeight(FS_NORMAL)));
+	if (FileExists(MINI_FONT_REGULAR)) {
+		ImFont *font = io.Fonts->AddFontFromFileTTF(MINI_FONT_REGULAR, (float)std::max(13, GetCharacterHeight(FS_NORMAL)));
 		if (font != nullptr) io.FontDefault = font;
 	}
 
@@ -5550,7 +5552,6 @@ enum class MiniWndKind : uint8_t {
 	Town,
 	Industry,
 	Fleet,
-	Finance,
 	Company,
 	Group,
 	StationList,
@@ -5620,6 +5621,7 @@ struct MiniWnd {
 };
 
 static std::vector<MiniWnd> _wnds;
+static PanelHost _panels;
 
 /* Mini windows stack by ImGui focus, not by list order, so the native windows
  * under them are ordered by when each shell last held focus. */
@@ -5972,6 +5974,7 @@ static void CloseAllMiniWnds()
 	CloseAllMiniEmbeds();
 	_wnds.clear();
 	_wnd_opens.clear();
+	_panels.CloseAll();
 }
 
 static void OpenFleetMiniWnd(int vt)
@@ -5986,7 +5989,7 @@ static void OpenVehicleMiniWnd(VehicleID veh)
 
 static void OpenFinanceMiniWnd()
 {
-	OpenMiniWnd(MiniWndKind::Finance, VehicleID::Invalid(), StationID::Invalid());
+	_panels.Show(std::make_unique<FinancePanel>());
 }
 
 static void OpenCompanyMiniWnd()
@@ -6043,7 +6046,6 @@ static void OpenMapMiniWnd()
 {
 	OpenMiniWnd(MiniWndKind::Map, VehicleID::Invalid(), StationID::Invalid());
 }
-
 
 static StringID TownRatingString(int rating)
 {
@@ -7290,48 +7292,6 @@ static void ImFleetBody(MiniWnd &mw)
 	ImGui::EndChild();
 }
 
-static void ImFinanceBody(uint8_t tab)
-{
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c == nullptr) return;
-
-	if (tab == 0) {
-		ImWndKV(GameText(STR_FINANCES_BANK_BALANCE_TITLE), GameText(STR_JUST_CURRENCY_LONG, c->money), COL_CH_ACCENT);
-		ImWndKV(GameText(STR_FINANCES_OWN_FUNDS_TITLE), GameText(STR_JUST_CURRENCY_LONG, c->money - c->current_loan), COL_CH_TEXT);
-		ImWndKV(GameText(STR_FINANCES_LOAN_TITLE), GameText(STR_JUST_CURRENCY_LONG, c->current_loan), c->current_loan > 0 ? COL_CH_YELLOW : COL_CH_TEXT);
-		ImWndText(GameText(STR_FINANCES_MAX_LOAN, c->GetMaxLoan()), COL_CH_TEXT);
-		ImWndText(GameText(STR_FINANCES_INTEREST_RATE, _economy.interest_rate), COL_CH_TEXT);
-		ImWndKV("회사 가치", GameText(STR_JUST_CURRENCY_LONG, CalculateCompanyValue(c)), COL_CH_TEXT);
-		return;
-	}
-
-	struct MiniExpCat {
-		StringID title;
-		std::initializer_list<ExpensesType> items;
-	};
-	static const MiniExpCat cats[] = {
-		{STR_FINANCES_REVENUE_TITLE, {EXPENSES_TRAIN_REVENUE, EXPENSES_ROADVEH_REVENUE, EXPENSES_AIRCRAFT_REVENUE, EXPENSES_SHIP_REVENUE}},
-		{STR_FINANCES_OPERATING_EXPENSES_TITLE, {EXPENSES_TRAIN_RUN, EXPENSES_ROADVEH_RUN, EXPENSES_AIRCRAFT_RUN, EXPENSES_SHIP_RUN, EXPENSES_PROPERTY, EXPENSES_LOAN_INTEREST}},
-		{STR_FINANCES_CAPITAL_EXPENSES_TITLE, {EXPENSES_CONSTRUCTION, EXPENSES_NEW_VEHICLES, EXPENSES_OTHER}},
-	};
-	const Expenses &tbl = c->yearly_expenses[0];
-	Money total = 0;
-	for (const MiniExpCat &cat : cats) {
-		ImWndHeader(GameText(cat.title));
-		Money sum = 0;
-		for (ExpensesType et : cat.items) {
-			Money cost = tbl[et];
-			sum += cost;
-			if (cost == 0) continue;
-			ImWndKV(GameText(STR_FINANCES_SECTION_CONSTRUCTION + et), CashFlowText(cost), cost > 0 ? COL_CH_RED : COL_CH_TEXT);
-		}
-		total += sum;
-		ImWndKV("합계", CashFlowText(sum), sum > 0 ? COL_CH_RED : COL_CH_TEXT);
-	}
-	ImWndHeader(GameText(STR_FINANCES_TOTAL_CAPTION));
-	ImWndKV("올해 손익", CashFlowText(total), total > 0 ? COL_CH_RED : COL_CH_ACCENT);
-}
-
 /* The overview tab embeds the official company window, so only the asset
  * roll-up is drawn here. */
 static void ImCompanyBody(MiniWnd &)
@@ -8220,17 +8180,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			break;
 		}
 
-		case MiniWndKind::Finance: {
-			const Company *fc = Company::GetIfValid(_local_company);
-			if (ImWndButton("빌리기", fc != nullptr && fc->current_loan < fc->GetMaxLoan())) {
-				Command<CMD_INCREASE_LOAN>::Post(STR_ERROR_CAN_T_BORROW_ANY_MORE_MONEY, LoanCommand::Interval, 0);
-			}
-			if (ImWndButton("갚기", fc != nullptr && fc->current_loan > 0)) {
-				Command<CMD_DECREASE_LOAN>::Post(STR_ERROR_CAN_T_REPAY_LOAN, LoanCommand::Interval, 0);
-			}
-			break;
-		}
-
 		case MiniWndKind::Takeover: {
 			const Company *tc = Company::GetIfValid(mw.comp);
 			const Company *own = Company::GetIfValid(_local_company);
@@ -8454,7 +8403,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::Station: if (st != nullptr) title = GameText(STR_STATION_NAME, st->index); idnum = mw.st.base(); break;
 		case MiniWndKind::Town: if (t != nullptr) title = GameText(STR_TOWN_NAME, t->index); idnum = mw.town.base(); break;
 		case MiniWndKind::Fleet: title = "차고"; break;
-		case MiniWndKind::Finance: title = "재정"; break;
 		case MiniWndKind::Company: if (Company::IsValidID(_local_company)) title = GameText(STR_COMPANY_NAME, _local_company); break;
 		case MiniWndKind::Group: title = "차량군"; break;
 		case MiniWndKind::StationList: title = "역 목록"; break;
@@ -8513,11 +8461,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			for (int ti = 0; ti < 4; ti++) tl[ti] = GameText(type_strs[ti]);
 			break;
 		}
-		case MiniWndKind::Finance:
-			ntab = 2;
-			tl[0] = "개요";
-			tl[1] = "손익";
-			break;
 		case MiniWndKind::Company:
 			ntab = 2;
 			tl[0] = "개요";
@@ -8658,7 +8601,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::Town: if (t != nullptr) ImTownBody(mw, t); break;
 					case MiniWndKind::Industry: if (ind != nullptr) ImIndustryBody(mw, ind); break;
 					case MiniWndKind::Fleet: ImFleetBody(mw); break;
-					case MiniWndKind::Finance: ImFinanceBody(mw.tab); break;
 					case MiniWndKind::Company: ImCompanyBody(mw); break;
 					case MiniWndKind::Group: ImGroupBody(mw); break;
 					case MiniWndKind::StationList: ImStationListBody(mw); break;
@@ -8837,7 +8779,6 @@ static void DrawMiniWndsImGui()
 			case MiniWndKind::Station: alive = Station::IsValidID(_wnds[i].st); break;
 			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
 			case MiniWndKind::Industry: alive = Industry::IsValidID(_wnds[i].ind); break;
-			case MiniWndKind::Finance: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Company: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Preview: {
 				const Engine *pe = Engine::GetIfValid(_wnds[i].eng);
@@ -9027,6 +8968,7 @@ static void Present()
 	DrawCmdBar();
 	DrawWinBar();
 	DrawMiniWndsImGui();
+	_panels.Frame(_fbw, _fbh, (float)_ms.hud_scale, _win_bar_bottom);
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -9098,6 +9040,7 @@ void MiniUiToggle()
 
 	LoadMiniSettings();
 	MiniAtlasReload();
+	_panels.ReloadDesign();
 	UndrawMouseCursor();
 	/* One palette-driven fill resets the 32bpp-anim mapping buffer, so later
 	 * direct framebuffer writes are not overwritten by palette animation. */
@@ -9206,6 +9149,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	bool any_down = _left_button_down || _right_button_down || _middle_button_down;
 	if (!any_down) _press_owner = MiniPressOwner::None;
+	_panels.TrackPointer();
 
 	if (_press_owner == MiniPressOwner::Native) return false;
 	if (_press_owner == MiniPressOwner::Mini) {
@@ -9232,10 +9176,10 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 				return false;
 			}
 		}
-		/* ImGui reads the wheel from the driver itself. Leaving the pending
+		/* The panels and ImGui have the wheel already. Leaving the pending
 		 * notch here would zoom the map the moment the cursor leaves the
 		 * window and the map starts consuming events again. */
-		if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse) {
+		if (_panels.CapturePointer() || (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)) {
 			_cursor.wheel = 0;
 			if (any_down) _press_owner = MiniPressOwner::Mini;
 			return true;
@@ -9333,6 +9277,33 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	return true;
 }
 
+/* Escape only unwinds mini UI state, one layer per press; leaving the mini UI is F9 alone. */
+static void UnwindEscape()
+{
+	if (_dragging) {
+		_dragging = false;
+		ClearPlans();
+		return;
+	}
+	if (_tool != MiniTool::None || _follow_veh != VehicleID::Invalid() || _order_pick_veh != VehicleID::Invalid()) {
+		EnterIdleMode();
+		return;
+	}
+	if (_panels.CloseFront()) return;
+	if (!_wnds.empty()) {
+		/* Windows stack by focus, so the one on top is the one the
+		 * player last worked in, not the one opened last. */
+		size_t top = _wnds.size() - 1;
+		for (size_t i = 0; i < _wnds.size(); i++) {
+			if (_wnds[i].focus_seq > _wnds[top].focus_seq) top = i;
+		}
+		CloseMiniWnd(top);
+		return;
+	}
+	_menu_open = -1;
+	_win_open = -1;
+}
+
 bool MiniUiHandleKeypress(uint keycode, char32_t)
 {
 	uint kc = keycode & ~WKC_SPECIAL_KEYS;
@@ -9358,25 +9329,8 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			Deactivate();
 			break;
 
-		/* Escape only unwinds mini UI state; leaving the mini UI is F9 alone. */
 		case WKC_ESC:
-			if (_dragging) {
-				_dragging = false;
-				ClearPlans();
-			} else if (_tool != MiniTool::None || _follow_veh != VehicleID::Invalid() || _order_pick_veh != VehicleID::Invalid()) {
-				EnterIdleMode();
-			} else if (!_wnds.empty()) {
-				/* Windows stack by focus, so the one on top is the one the
-				 * player last worked in, not the one opened last. */
-				size_t top = _wnds.size() - 1;
-				for (size_t i = 0; i < _wnds.size(); i++) {
-					if (_wnds[i].focus_seq > _wnds[top].focus_seq) top = i;
-				}
-				CloseMiniWnd(top);
-			} else if (_menu_open >= 0 || _win_open >= 0) {
-				_menu_open = -1;
-				_win_open = -1;
-			}
+			UnwindEscape();
 			break;
 
 		/* The pair turns the blueprint and nothing else: every type choice

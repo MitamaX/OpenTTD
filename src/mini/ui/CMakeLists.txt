@@ -1,4 +1,19 @@
 add_files(
+    finance_panel.cpp
+    finance_panel.h
+    fonts.h
+    ledger.cpp
+    ledger.h
+    ledger_panel.cpp
+    ledger_panel.h
+    panel.cpp
+    panel.h
+    panel_host.cpp
+    panel_host.h
+    rml_interfaces.cpp
+    rml_interfaces.h
+    rml_layer.cpp
+    rml_layer.h
     ui_text.cpp
     ui_text.h
 )

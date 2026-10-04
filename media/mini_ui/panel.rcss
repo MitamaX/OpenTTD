@@ -1,0 +1,137 @@
+body {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	width: 250dp;
+	background-color: var(--panel);
+	border: 1dp var(--panel-edge);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow) 0dp 6dp 18dp 0dp;
+}
+
+.caption {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 6dp 10dp;
+	background-color: var(--caption);
+	border-radius: var(--radius) var(--radius) 0dp 0dp;
+}
+
+.title {
+	font-size: 13dp;
+	font-weight: bold;
+	color: var(--accent);
+}
+
+.close {
+	padding: 0dp 4dp;
+	color: var(--ink-muted);
+}
+
+.close:hover {
+	color: var(--ink-strong);
+}
+
+.tabs {
+	display: flex;
+	border-bottom: 1dp var(--panel-edge);
+}
+
+.tab {
+	flex: 1;
+	padding: 5dp 0dp;
+	text-align: center;
+	background-color: var(--tile);
+	color: var(--tile-ink);
+	border-right: 1dp var(--panel-edge);
+}
+
+.tab:last-child {
+	border-right-width: 0dp;
+}
+
+.tab.active {
+	background-color: var(--tile-active);
+}
+
+.tab:hover, .tab.active {
+	color: var(--accent);
+}
+
+.sheet {
+	display: flex;
+	flex-direction: column;
+	gap: 8dp;
+	padding: 8dp 10dp;
+}
+
+.section {
+	display: flex;
+	flex-direction: column;
+	gap: 4dp;
+}
+
+.heading {
+	padding-bottom: 2dp;
+	border-bottom: 1dp var(--panel-edge);
+	font-weight: bold;
+	color: var(--ink-strong);
+}
+
+.line {
+	display: flex;
+	justify-content: space-between;
+	column-gap: 14dp;
+	color: var(--ink-soft);
+}
+
+.line.total {
+	padding-top: 3dp;
+	border-top: 1dp var(--panel-edge);
+}
+
+.value {
+	text-align: right;
+	color: var(--ink);
+}
+
+.value[tone=accent] {
+	color: var(--accent);
+}
+
+.value[tone=warn] {
+	color: var(--warn);
+}
+
+.value[tone=loss] {
+	color: var(--loss);
+}
+
+.value[tone=dim] {
+	color: var(--ink-dim);
+}
+
+.commands {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5dp;
+	padding: 8dp 10dp;
+	border-top: 1dp var(--panel-edge);
+}
+
+.command {
+	padding: 3dp 8dp;
+	background-color: var(--tile);
+	border: 1dp var(--panel-edge);
+	border-radius: var(--radius-tile);
+	color: var(--ink);
+}
+
+.command:hover {
+	color: var(--accent);
+}
+
+.command.off, .command.off:hover {
+	color: var(--ink-dim);
+}

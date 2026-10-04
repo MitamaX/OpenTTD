@@ -1,0 +1,14 @@
+<rml>
+<head>
+	<link type="text/template" href="panel.rml"/>
+</head>
+<body template="panel">
+	<div class="section" data-for="section : sections">
+		<div class="heading" data-if="section.title != ''">{{section.title}}</div>
+		<div class="line" data-for="line : section.lines" data-class-total="line.total">
+			<span class="label">{{line.label}}</span>
+			<span class="value" data-attr-tone="line.tone">{{line.value}}</span>
+		</div>
+	</div>
+</body>
+</rml>

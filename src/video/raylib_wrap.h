@@ -92,4 +92,15 @@ void RlwImGuiNewFrame();
  * inside ImGui images. 0 while the texture does not exist yet. */
 uintptr_t RlwScreenTexId();
 
+/* A GPU layer composited above the ImGui layer and below the native windows.
+ * It is detached before the window closes, while its GL resources can still be freed. */
+class RlwLayer {
+public:
+	virtual ~RlwLayer() = default;
+	virtual void Render(int width, int height) = 0;
+	virtual void Detach() = 0;
+};
+
+void RlwAttachLayer(RlwLayer *layer);
+
 #endif /* VIDEO_RAYLIB_WRAP_H */

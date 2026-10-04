@@ -1,0 +1,28 @@
+body {
+	--panel: #262624f7;
+	--panel-edge: #191916;
+	--caption: #33332f;
+	--tile: #2e2e2b;
+	--tile-active: #3d5a5c;
+	--tile-ink: #c5c0b2;
+	--ink: #d7d2c4;
+	--ink-strong: #e6e1d3;
+	--ink-soft: #a8a294;
+	--ink-muted: #8d8878;
+	--ink-dim: #6e6a5e;
+	--accent: #8fe0e8;
+	--warn: #e0b64a;
+	--loss: #e05f4a;
+	--shadow: #0000008c;
+	--radius: 4dp;
+	--radius-tile: 3dp;
+
+	font-family: "Malgun Gothic";
+	font-weight: normal;
+	font-size: 12dp;
+	color: var(--ink);
+}
+
+div, handle {
+	display: block;
+}

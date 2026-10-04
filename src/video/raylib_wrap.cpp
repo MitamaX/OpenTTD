@@ -10,6 +10,7 @@
 #include "../stdafx.h"
 #include "../gfx_type.h"
 #include <raylib.h>
+#include <rlgl.h>
 #include <unordered_map>
 #include <vector>
 #include "imgui.h"
@@ -128,8 +129,30 @@ uintptr_t RlwScreenTexId()
 	return _rlw_tex_ok ? _rlw_tex.id : 0;
 }
 
+static RlwLayer *_rlw_layer = nullptr;
+
+void RlwAttachLayer(RlwLayer *layer)
+{
+	_rlw_layer = layer;
+}
+
+static void RlwLayerRender(int w, int h)
+{
+	if (_rlw_layer == nullptr) return;
+	rlDrawRenderBatchActive();
+	_rlw_layer->Render(w, h);
+}
+
+static void RlwLayerDetach()
+{
+	if (_rlw_layer == nullptr) return;
+	_rlw_layer->Detach();
+	_rlw_layer = nullptr;
+}
+
 void RlwClose()
 {
+	RlwLayerDetach();
 	RlwImGuiShutdown();
 	if (_rlw_tex_ok) {
 		UnloadTexture(_rlw_tex);
@@ -485,7 +508,10 @@ void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRect
 	/* Two passes around the ImGui layer: carrier viewports below it, every
 	 * other native window above it. */
 	for (int pass = 0; pass < 2; pass++) {
-		if (pass == 1) RlwImGuiRender();
+		if (pass == 1) {
+			RlwImGuiRender();
+			RlwLayerRender(w, h);
+		}
 		for (size_t i = 0; i < count; i++) {
 			RlwRectI r = overlays[i];
 			if (r.under != (pass == 0)) continue;
