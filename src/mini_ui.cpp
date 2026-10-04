@@ -14,7 +14,6 @@
 #include "blitter/factory.hpp"
 #include "bridge_map.h"
 #include "cargotype.h"
-#include "clear_map.h"
 #include "airport.h"
 #include "autoreplace_cmd.h"
 #include "autoreplace_func.h"
@@ -23,13 +22,11 @@
 #include "company_cmd.h"
 #include "company_func.h"
 #include "company_gui.h"
-#include "elrail_func.h"
 #include "engine_base.h"
 #include "engine_cmd.h"
 #include "engine_gui.h"
 #include "core/backup_type.hpp"
 #include "core/math_func.hpp"
-#include "core/random_func.hpp"
 #include "core/utf8.hpp"
 #include "depot_base.h"
 #include "depot_cmd.h"
@@ -48,13 +45,10 @@
 #include "group_cmd.h"
 #include "gui.h"
 #include "industry.h"
-#include "industry_cmd.h"
 #include "industry_map.h"
 #include "industrytype.h"
-#include "newgrf_industries.h"
 #include "ini_type.h"
 #include "landscape.h"
-#include "landscape_cmd.h"
 #include "league_gui.h"
 #include "linkgraph/linkgraph.h"
 #include "mini_atlas.h"
@@ -69,6 +63,14 @@
 #include "mini/map/tile_shapes.h"
 #include "mini/map/vehicle_motion.h"
 #include "mini/map/vehicle_painter.h"
+#include "mini/tools/blueprint.h"
+#include "mini/tools/build_tool.h"
+#include "mini/tools/clear_filter.h"
+#include "mini/tools/command_probe.h"
+#include "mini/tools/tile_pick.h"
+#include "mini/tools/tool_choices.h"
+#include "mini/tools/tool_estimate.h"
+#include "mini/tools/tool_sites.h"
 #include "mini/ui/finance_panel.h"
 #include "mini/ui/fonts.h"
 #include "mini/ui/ui_text.h"
@@ -79,28 +81,21 @@
 #include "network/network.h"
 #include "network/network_type.h"
 #include "newgrf_airport.h"
-#include "newgrf_roadstop.h"
-#include "newgrf_station.h"
 #include "news_gui.h"
-#include "object_cmd.h"
-#include "object_type.h"
 #include "openttd.h"
 #include "order_base.h"
 #include "order_cmd.h"
 #include "order_func.h"
 #include "rail.h"
 #include "palette_func.h"
-#include "rail_cmd.h"
 #include "rail_gui.h"
 #include "rail_map.h"
 #include "road.h"
-#include "road_cmd.h"
 #include "road_map.h"
 #include "roadveh_cmd.h"
 #include "settings_type.h"
 #include "signs_base.h"
 #include "signs_cmd.h"
-#include "slope_func.h"
 #include "station_base.h"
 #include "station_cmd.h"
 #include "station_func.h"
@@ -108,25 +103,19 @@
 #include "strings_func.h"
 #include "station_map.h"
 #include "subsidy_base.h"
-#include "terraform_cmd.h"
 #include "town.h"
 #include "town_cmd.h"
 #include "tile_map.h"
 #include "train.h"
-#include "tree_cmd.h"
 #include "tree_map.h"
 #include "timer/timer_game_calendar.h"
 #include "timer/timer_game_economy.h"
 #include "timer/timer_game_tick.h"
-#include "tunnelbridge.h"
-#include "tunnelbridge_cmd.h"
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
 #include "vehicle_cmd.h"
-#include "water_cmd.h"
 #include "waypoint_base.h"
 #include "waypoint_cmd.h"
-#include "waypoint_func.h"
 #include "vehicle_func.h"
 #include "vehicle_gui.h"
 #include "vehiclelist.h"
@@ -147,95 +136,6 @@ static bool _mini_active = false;
 /* Mini UI frame size in pixels; drawing goes through the raylib command
  * buffer, so this only mirrors the screen dimensions. */
 static int _fbw, _fbh;
-
-enum class MiniTool : uint8_t {
-	None,
-	Rail,
-	Convert,
-	Road,
-	Station,
-	RailWaypoint,
-	RoadWaypoint,
-	BusStop,
-	TruckStop,
-	TrainDepot,
-	RoadDepot,
-	ShipDepot,
-	Dock,
-	Buoy,
-	Canal,
-	Lock,
-	Airport,
-	Demolish,
-	Signal,
-	RailTunnel,
-	RoadTunnel,
-	RailBridge,
-	RoadBridge,
-	RoadConvert,
-	Terraform,
-	Headquarters,
-	Trees,
-	BuyLand,
-	Industry,
-	Sign,
-};
-
-static bool IsRectTool(MiniTool t)
-{
-	return t == MiniTool::Station || t == MiniTool::Demolish || t == MiniTool::Terraform || t == MiniTool::Canal || t == MiniTool::Convert ||
-			t == MiniTool::RoadConvert || t == MiniTool::Trees || t == MiniTool::BuyLand;
-}
-
-static bool IsPointTool(MiniTool t)
-{
-	return t == MiniTool::BusStop || t == MiniTool::TruckStop || t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::Signal || t == MiniTool::RailTunnel || t == MiniTool::RoadTunnel || t == MiniTool::RailWaypoint || t == MiniTool::RoadWaypoint || t == MiniTool::ShipDepot || t == MiniTool::Dock || t == MiniTool::Buoy || t == MiniTool::Airport || t == MiniTool::Lock || t == MiniTool::Headquarters || t == MiniTool::Industry || t == MiniTool::Sign;
-}
-
-static bool IsBridgeTool(MiniTool t)
-{
-	return t == MiniTool::RailBridge || t == MiniTool::RoadBridge;
-}
-
-static bool IsRoadTool(MiniTool t)
-{
-	return t == MiniTool::Road || t == MiniTool::BusStop || t == MiniTool::TruckStop ||
-			t == MiniTool::RoadDepot || t == MiniTool::RoadTunnel || t == MiniTool::RoadBridge ||
-			t == MiniTool::RoadConvert || t == MiniTool::RoadWaypoint;
-}
-
-static bool IsDirPointTool(MiniTool t)
-{
-	return t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::ShipDepot;
-}
-
-static MiniLayer ToolLayer(MiniTool t)
-{
-	switch (t) {
-		case MiniTool::Rail:
-		case MiniTool::Convert:
-		case MiniTool::Station:
-		case MiniTool::RailWaypoint:
-		case MiniTool::TrainDepot:
-		case MiniTool::Signal:
-		case MiniTool::RailTunnel:
-		case MiniTool::RailBridge:
-			return MiniLayer::Rail;
-		case MiniTool::Road:
-		case MiniTool::BusStop:
-		case MiniTool::TruckStop:
-		case MiniTool::RoadDepot:
-		case MiniTool::RoadTunnel:
-		case MiniTool::RoadBridge:
-		case MiniTool::RoadConvert:
-		case MiniTool::RoadWaypoint:
-			return MiniLayer::Road;
-		default:
-			return MiniLayer::None;
-	}
-}
-
-static MiniTool _tool = MiniTool::None;
 
 static VehicleID _follow_veh = VehicleID::Invalid();
 
@@ -268,7 +168,7 @@ static int _build_scroll = 0;
  * vehicle. Entering one drops the others. */
 static void EnterIdleMode()
 {
-	_tool = MiniTool::None;
+	_tool.Select(MiniTool::None);
 	_follow_veh = VehicleID::Invalid();
 	_order_pick_veh = VehicleID::Invalid();
 	_build_scroll = 0;
@@ -277,7 +177,7 @@ static void EnterIdleMode()
 static void EnterBuildMode(MiniTool t)
 {
 	EnterIdleMode();
-	_tool = t;
+	_tool.Select(t);
 }
 
 static void EnterFollowMode(VehicleID v)
@@ -292,97 +192,7 @@ static void EnterOrderPickMode(VehicleID v)
 	_order_pick_veh = v;
 }
 
-static DiagDirection _point_dir = DIAGDIR_SE;
-static bool _dragging = false;
-static bool _drag_remove = false;
-static double _drag_ax, _drag_ay;
-
 static bool _prev_left = false;
-
-struct MiniRailPlan {
-	std::vector<TileIndex> path;
-	std::vector<std::pair<TileIndex, Track>> pieces;
-};
-
-static MiniRailPlan _plan;
-
-struct MiniRoadPlan {
-	TileIndex start = INVALID_TILE;
-	TileIndex end = INVALID_TILE;
-	Axis axis = AXIS_X;
-	std::vector<TileIndex> tiles;
-};
-
-static MiniRoadPlan _road_plan;
-
-struct MiniSignalPlan {
-	TileIndex start = INVALID_TILE;
-	TileIndex end = INVALID_TILE;
-	Track track = INVALID_TRACK;
-	std::vector<TileIndex> tiles;
-};
-
-static MiniSignalPlan _sig_plan;
-
-struct MiniRectPlan {
-	bool valid = false;
-	int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-};
-
-static MiniRectPlan _rect_plan;
-
-static int RectPlanWidth() { return _rect_plan.x1 - _rect_plan.x0 + 1; }
-static int RectPlanHeight() { return _rect_plan.y1 - _rect_plan.y0 + 1; }
-
-/* Rect tiles are numbered along the y axis inside each x column; the probe and
- * the blueprint both index them this way. */
-static size_t RectPlanIndex(int tx, int ty)
-{
-	return (size_t)(tx - _rect_plan.x0) * RectPlanHeight() + (ty - _rect_plan.y0);
-}
-
-/* Plan preview. The tool's own commands run a second time with the game's
- * estimate switch held down, so nothing is built and the game answers what it
- * would charge and what it would refuse. The probe borrows the live plan, so
- * the commit path must leave the plan alone while one is running. */
-struct MiniEstimate {
-	bool probing = false;
-	bool caught = false;
-	bool probed = false;
-	bool ok = false;
-	/* The probe declined to ask, so the plan carries no verdict either way. */
-	bool unknown = false;
-	Money cost = 0;
-	uint64_t key = 0;
-	/* Per-tile verdicts for the tools whose drag the game fills in tile by
-	 * tile; empty when the plan stands or falls as a whole. */
-	std::vector<bool> fit;
-	/* Where the tunnel command said it would surface, and how far that is. */
-	TileIndex tunnel_end = INVALID_TILE;
-	uint tunnel_len = 0;
-};
-
-static MiniEstimate _est;
-
-/* Long drags are not worth a command per tile, so past this the plan only
- * carries its whole-plan verdict. */
-static const size_t MINI_FIT_MAX = 1024;
-
-static bool TileFits(size_t i)
-{
-	return i >= _est.fit.size() || _est.fit[i];
-}
-
-/* Nothing per tile to say, so the whole blueprint takes the verdict. */
-static uint32_t PlanColour(uint32_t c)
-{
-	return (_est.probed && !_est.ok && !_est.unknown && _est.fit.empty()) ? COL_BP_NO : c;
-}
-
-static uint32_t PlanColour(uint32_t c, size_t i)
-{
-	return TileFits(i) ? PlanColour(c) : COL_BP_NO;
-}
 
 /* Screen chrome follows the reference HUD: warm dark panels with a thin
  * darker edge, teal active state, cyan accent, warm off-white text. */
@@ -780,1790 +590,6 @@ static bool HandleLabelClick(int x, int y)
 	return true;
 }
 
-/* Mirrors the zigzag walk of CmdRailTrackHelper: non-diagonal pieces alternate
- * between the two halves of the pair while stepping one tile per piece. */
-/* Pipe-style placement: the drag lays a free-form path that follows the
- * cursor tile by tile and turns where the cursor turns; stepping back onto
- * the previous tile undoes the last step. Pieces derive from the pairs of
- * tile edges the path crosses. Edge bits: 1 = -x, 2 = +x, 4 = -y, 8 = +y. */
-static int StepBit(TileIndex from, TileIndex to)
-{
-	if ((int)TileX(to) < (int)TileX(from)) return 1;
-	if ((int)TileX(to) > (int)TileX(from)) return 2;
-	if ((int)TileY(to) < (int)TileY(from)) return 4;
-	return 8;
-}
-
-static int OppositeBit(int b)
-{
-	switch (b) {
-		case 1: return 2;
-		case 2: return 1;
-		case 4: return 8;
-		default: return 4;
-	}
-}
-
-static Track EdgePairTrack(int mask)
-{
-	switch (mask) {
-		case 1 | 2: return TRACK_X;
-		case 4 | 8: return TRACK_Y;
-		case 1 | 4: return TRACK_UPPER;
-		case 2 | 8: return TRACK_LOWER;
-		case 2 | 4: return TRACK_LEFT;
-		case 1 | 8: return TRACK_RIGHT;
-		default: return INVALID_TRACK;
-	}
-}
-
-static void RailPathPieces()
-{
-	_plan.pieces.clear();
-	size_t n = _plan.path.size();
-	if (n < 2) return;
-	for (size_t i = 0; i < n; i++) {
-		int in = i > 0 ? OppositeBit(StepBit(_plan.path[i - 1], _plan.path[i])) : 0;
-		int out = i + 1 < n ? StepBit(_plan.path[i], _plan.path[i + 1]) : 0;
-		if (in == 0) in = OppositeBit(out);
-		if (out == 0) out = OppositeBit(in);
-		Track t = EdgePairTrack(in | out);
-		if (t != INVALID_TRACK) _plan.pieces.emplace_back(_plan.path[i], t);
-	}
-}
-
-static bool StepBitIsX(int b)
-{
-	return b == 1 || b == 2;
-}
-
-/* Two corner pieces meeting as a switchback turn a train 90 degrees, which
- * rail cannot carry: with the last two steps perpendicular, a new step that
- * reverses the older one is refused and the walk detours instead. */
-static bool RailStepAllowed(int d_pp, int d_prev, int d_new)
-{
-	if (d_pp == 0 || d_prev == 0) return true;
-	return StepBitIsX(d_pp) == StepBitIsX(d_prev) || d_new != OppositeBit(d_pp);
-}
-
-static TileIndex StepTile(TileIndex t, int b)
-{
-	int x = (int)TileX(t) + (b == 2) - (b == 1);
-	int y = (int)TileY(t) + (b == 8) - (b == 4);
-	if (x < 0 || y < 0 || x > (int)Map::SizeX() - 2 || y > (int)Map::SizeY() - 2) return INVALID_TILE;
-	return TileXY(x, y);
-}
-
-static void UpdateRailPlan(double wx, double wy)
-{
-	int tx = Clamp<int>((int)std::floor(wx), 0, Map::SizeX() - 2);
-	int ty = Clamp<int>((int)std::floor(wy), 0, Map::SizeY() - 2);
-
-	if (_plan.path.empty()) {
-		int ax = Clamp<int>((int)std::floor(_drag_ax), 0, Map::SizeX() - 2);
-		int ay = Clamp<int>((int)std::floor(_drag_ay), 0, Map::SizeY() - 2);
-		_plan.path.push_back(TileXY(ax, ay));
-	}
-
-	for (int guard = 0; guard < 4096 && _plan.path.size() < 1024; guard++) {
-		TileIndex cur = _plan.path.back();
-		int cx = (int)TileX(cur), cy = (int)TileY(cur);
-		int dx = tx - cx, dy = ty - cy;
-		if (dx == 0 && dy == 0) break;
-
-		size_t n = _plan.path.size();
-		int d_prev = n >= 2 ? StepBit(_plan.path[n - 2], _plan.path[n - 1]) : 0;
-		int d_pp = n >= 3 ? StepBit(_plan.path[n - 3], _plan.path[n - 2]) : 0;
-
-		int step_x = dx != 0 ? (dx > 0 ? 2 : 1) : 0;
-		int step_y = dy != 0 ? (dy > 0 ? 8 : 4) : 0;
-		int prim = std::abs(dx) >= std::abs(dy) ? step_x : step_y;
-		int sec = prim == step_x ? step_y : step_x;
-
-		TileIndex next = INVALID_TILE;
-		bool popped = false;
-		for (int cand : {prim, sec, d_prev}) {
-			if (cand == 0) continue;
-			TileIndex t = StepTile(cur, cand);
-			if (t == INVALID_TILE) continue;
-			/* Any candidate stepping back onto the previous tile is the undo
-			 * gesture; undoing ignores the turn rule. */
-			if (n >= 2 && t == _plan.path[n - 2]) {
-				_plan.path.pop_back();
-				popped = true;
-				break;
-			}
-			if (!RailStepAllowed(d_pp, d_prev, cand)) continue;
-			next = t;
-			break;
-		}
-		if (popped) continue;
-		if (next == INVALID_TILE) break;
-		_plan.path.push_back(next);
-	}
-
-	RailPathPieces();
-}
-
-static void DrawRailPlan(int ppt)
-{
-	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
-	int w = std::max(2, ppt / 5);
-	for (size_t i = 0; i < _plan.pieces.size(); i++) {
-		auto [tile, t] = _plan.pieces[i];
-		int tx = TileX(tile);
-		int ty = TileY(tile);
-		int x0 = _camera.ScreenX(ty);
-		int y0 = _camera.ScreenY(tx);
-		int x1 = _camera.ScreenX(ty + 1) - 1;
-		int y1 = _camera.ScreenY(tx + 1) - 1;
-		DrawTrackPiece(t, x0, y0, x1, y1, w, PlanColour(c, i));
-	}
-}
-
-static RailType _rail_type_sel = INVALID_RAILTYPE;
-
-static RailType PickRailType()
-{
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c == nullptr) return RAILTYPE_RAIL;
-	if (_rail_type_sel != INVALID_RAILTYPE && c->avail_railtypes.Test(_rail_type_sel)) return _rail_type_sel;
-	/* Electric rail runs everything plain rail does, so once it exists it is
-	 * the better default; mono and maglev stay an explicit choice. */
-	if (c->avail_railtypes.Test(RAILTYPE_ELECTRIC)) return RAILTYPE_ELECTRIC;
-	for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
-		if (c->avail_railtypes.Test(rt)) return rt;
-	}
-	return RAILTYPE_RAIL;
-}
-
-static void ClearPlans()
-{
-	if (_est.probing) return;
-
-	_plan.pieces.clear();
-	_plan.path.clear();
-	_road_plan.tiles.clear();
-	_road_plan.start = INVALID_TILE;
-	_sig_plan.tiles.clear();
-	_sig_plan.start = INVALID_TILE;
-	_rect_plan.valid = false;
-}
-
-/* Out of range until the player picks one, so spans keep taking the fastest
- * bridge the year allows. */
-static BridgeType _bridge_sel = MAX_BRIDGES;
-
-static BridgeType FastestBridgeType(uint len)
-{
-	BridgeType best = 0;
-	uint best_speed = 0;
-	for (BridgeType bt = 0; bt < MAX_BRIDGES; bt++) {
-		if (!CheckBridgeAvailability(bt, len).Succeeded()) continue;
-		if (_bridge[bt].speed > best_speed) {
-			best = bt;
-			best_speed = _bridge[bt].speed;
-		}
-	}
-	return best;
-}
-
-static BridgeType PickBridgeType(uint len)
-{
-	if (_bridge_sel < MAX_BRIDGES && CheckBridgeAvailability(_bridge_sel, len).Succeeded()) return _bridge_sel;
-	return FastestBridgeType(len);
-}
-
-/* A straight drag bridges water automatically: each water run becomes a
- * bridge between its neighbouring land tiles, which turn into ramps, so
- * the land spans stop short of them. */
-struct MiniSpans {
-	bool ok = false;
-	std::vector<std::pair<int, int>> land;
-	std::vector<std::pair<int, int>> bridges;
-};
-
-static MiniSpans SplitWaterSpans(std::span<const TileIndex> ts)
-{
-	MiniSpans out;
-	int n = (int)ts.size();
-	std::vector<uint8_t> head(n, 0);
-	for (int i = 0; i < n; i++) {
-		if (!IsTileType(ts[i], MP_WATER)) continue;
-		int j = i;
-		while (j + 1 < n && IsTileType(ts[j + 1], MP_WATER)) j++;
-		if (i == 0 || j == n - 1) return out;
-		head[i - 1] = head[j + 1] = 1;
-		out.bridges.emplace_back(i - 1, j + 1);
-		i = j;
-	}
-	for (int i = 0; i < n; i++) {
-		if (IsTileType(ts[i], MP_WATER) || head[i] != 0) continue;
-		int j = i;
-		while (j + 1 < n && !IsTileType(ts[j + 1], MP_WATER) && head[j + 1] == 0) j++;
-		out.land.emplace_back(i, j);
-		i = j;
-	}
-	out.ok = true;
-	return out;
-}
-
-/* One command's worth of the rail plan: an index range into the pieces, the
- * track they share and whether the range crosses water as a bridge. */
-struct MiniRailRun {
-	size_t a, b;
-	Track track;
-	bool bridge;
-};
-
-/* Maximal straight runs go through the range command so the water auto-bridge
- * logic still applies; corner pieces stand alone. The commit and the blueprint
- * probe both walk the plan this way. */
-static std::vector<MiniRailRun> SplitRailPlan()
-{
-	std::vector<MiniRailRun> out;
-	size_t i = 0;
-	while (i < _plan.pieces.size()) {
-		Track t = _plan.pieces[i].second;
-		size_t j = i;
-		if (t == TRACK_X || t == TRACK_Y) {
-			int dir = 0;
-			while (j + 1 < _plan.pieces.size() && _plan.pieces[j + 1].second == t) {
-				int step = StepBit(_plan.pieces[j].first, _plan.pieces[j + 1].first);
-				if (dir != 0 && step != dir) break;
-				dir = step;
-				j++;
-			}
-		}
-		if (j > i) {
-			std::vector<TileIndex> tiles;
-			for (size_t k = i; k <= j; k++) tiles.push_back(_plan.pieces[k].first);
-			MiniSpans spans = SplitWaterSpans(tiles);
-			if (!spans.ok) {
-				out.push_back({i, j, t, false});
-			} else {
-				for (auto [a, b] : spans.bridges) out.push_back({i + a, i + b, t, true});
-				for (auto [a, b] : spans.land) out.push_back({i + a, i + b, t, false});
-			}
-		} else {
-			out.push_back({i, i, t, false});
-		}
-		i = j + 1;
-	}
-	return out;
-}
-
-static void CommitRailPlan()
-{
-	if (_plan.pieces.empty()) {
-		ClearPlans();
-		return;
-	}
-
-	if (_drag_remove) {
-		for (const auto &[tile, t] : _plan.pieces) {
-			Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
-		}
-		ClearPlans();
-		return;
-	}
-
-	RailType rt = PickRailType();
-	for (const MiniRailRun &run : SplitRailPlan()) {
-		TileIndex from = _plan.pieces[run.a].first;
-		TileIndex to = _plan.pieces[run.b].first;
-		if (run.bridge) {
-			Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, to, from, TRANSPORT_RAIL, PickBridgeType((uint)(run.b - run.a - 1)), (uint8_t)rt);
-		} else {
-			Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, to, from, rt, run.track, true, false);
-		}
-	}
-	ClearPlans();
-}
-
-static void UpdateRoadPlan(double wx, double wy)
-{
-	_road_plan.tiles.clear();
-	_road_plan.start = INVALID_TILE;
-
-	int atx = Clamp<int>((int)std::floor(_drag_ax), 0, Map::SizeX() - 2);
-	int aty = Clamp<int>((int)std::floor(_drag_ay), 0, Map::SizeY() - 2);
-	double dx = wx - _drag_ax;
-	double dy = wy - _drag_ay;
-
-	int steps;
-	if (std::abs(dx) >= std::abs(dy)) {
-		_road_plan.axis = AXIS_X;
-		steps = Clamp((int)std::lround(dx), -127, 127);
-	} else {
-		_road_plan.axis = AXIS_Y;
-		steps = Clamp((int)std::lround(dy), -127, 127);
-	}
-	int dir = steps >= 0 ? 1 : -1;
-	for (int i = 0; ; i += dir) {
-		int tx = _road_plan.axis == AXIS_X ? atx + i : atx;
-		int ty = _road_plan.axis == AXIS_Y ? aty + i : aty;
-		if (tx < 0 || ty < 0 || tx > (int)Map::SizeX() - 2 || ty > (int)Map::SizeY() - 2) break;
-		_road_plan.tiles.push_back(TileXY(tx, ty));
-		if (i == steps) break;
-	}
-	if (_road_plan.tiles.empty()) return;
-
-	_road_plan.start = _road_plan.tiles.front();
-	_road_plan.end = _road_plan.tiles.back();
-}
-
-static void DrawRoadPlan(int ppt)
-{
-	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
-	int w = std::max(2, ppt / 3);
-	for (size_t i = 0; i < _road_plan.tiles.size(); i++) {
-		TileIndex tile = _road_plan.tiles[i];
-		int tx = TileX(tile);
-		int ty = TileY(tile);
-		DrawAxisBand(_road_plan.axis, _camera.ScreenX(ty), _camera.ScreenY(tx), _camera.ScreenX(ty + 1) - 1, _camera.ScreenY(tx + 1) - 1, w, PlanColour(c, i));
-	}
-}
-
-/* The span reuses the axis-locked line drag: the two end tiles become ramps
- * and everything between them is the bridge itself. */
-static uint BridgePlanLength()
-{
-	return _road_plan.tiles.size() < 3 ? 0 : (uint)(_road_plan.tiles.size() - 2);
-}
-
-static void DrawBridgePlan(int ppt)
-{
-	uint32_t c = BridgePlanLength() > 0 ? PlanColour(COL_BP) : COL_BP_RM;
-	int w = std::max(2, ppt / 2);
-	const std::vector<TileIndex> &ts = _road_plan.tiles;
-	for (size_t i = 0; i < ts.size(); i++) {
-		int tx = TileX(ts[i]);
-		int ty = TileY(ts[i]);
-		int x0 = _camera.ScreenX(ty), y0 = _camera.ScreenY(tx), x1 = _camera.ScreenX(ty + 1) - 1, y1 = _camera.ScreenY(tx + 1) - 1;
-		if (i == 0 || i + 1 == ts.size()) {
-			_canvas.BlendRect(x0, y0, x1, y1, c, 110);
-		} else {
-			DrawAxisBand(_road_plan.axis, x0, y0, x1, y1, w, c);
-		}
-	}
-}
-
-/* Out of range until the player picks one, so the road tools default to the
- * first plain road type and tram types stay opt-in. */
-static RoadType _road_type_sel = INVALID_ROADTYPE;
-
-static RoadType PickRoadType()
-{
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c != nullptr) {
-		if (_road_type_sel < ROADTYPE_END && c->avail_roadtypes.Test(_road_type_sel)) return _road_type_sel;
-		for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
-			if (GetRoadTramType(rt) == RTT_ROAD && c->avail_roadtypes.Test(rt)) return rt;
-		}
-	}
-	return ROADTYPE_ROAD;
-}
-
-/* Rectangle drag; the far corner truncates at the size limit so the
- * anchor corner always stays inside the allowed area. */
-static void UpdateRectPlan(double wx, double wy, int limit)
-{
-	int ax = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
-	int ay = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
-	int bx = Clamp<int>((int)std::floor(wx), 1, Map::SizeX() - 2);
-	int by = Clamp<int>((int)std::floor(wy), 1, Map::SizeY() - 2);
-
-	if (bx >= ax) {
-		_rect_plan.x0 = ax;
-		_rect_plan.x1 = std::min(bx, ax + limit - 1);
-	} else {
-		_rect_plan.x0 = std::max(bx, ax - limit + 1);
-		_rect_plan.x1 = ax;
-	}
-	if (by >= ay) {
-		_rect_plan.y0 = ay;
-		_rect_plan.y1 = std::min(by, ay + limit - 1);
-	} else {
-		_rect_plan.y0 = std::max(by, ay - limit + 1);
-		_rect_plan.y1 = ay;
-	}
-	_rect_plan.valid = true;
-}
-
-/* The clear tool takes a filter: the drag still covers an area, but only the
- * kind of tile the player picked is taken off it. */
-enum class MiniClear : uint8_t {
-	All,
-	RailAny,
-	RailTrack,
-	Signal,
-	RailStation,
-	RailDepot,
-	RailWaypoint,
-	RailTunnelBridge,
-	RoadAny,
-	Road,
-	RoadStop,
-	RoadDepot,
-	RoadWaypoint,
-	RoadTunnelBridge,
-	WaterAny,
-	Canal,
-	Dock,
-	Buoy,
-	ShipDepot,
-	Aqueduct,
-	AirAny,
-	Airport,
-	LandAny,
-	Tree,
-	House,
-	Industry,
-	Object,
-};
-
-struct MiniClearItem {
-	std::string_view label;
-	MiniTool icon;
-	MiniClear mode;
-};
-
-/* The category is a filter in its own right: it takes everything its items
- * cover, so one click clears a whole transport system off the drag. */
-struct MiniClearCategory {
-	std::string_view label;
-	MiniTool icon;
-	MiniClear mode;
-	std::span<const MiniClearItem> items;
-};
-
-static const MiniClearItem _clear_any_items[] = {
-	{"전부", MiniTool::Demolish, MiniClear::All},
-};
-
-static const MiniClearItem _clear_rail_items[] = {
-	{"선로", MiniTool::Rail, MiniClear::RailTrack},
-	{"신호", MiniTool::Signal, MiniClear::Signal},
-	{"역", MiniTool::Station, MiniClear::RailStation},
-	{"차고", MiniTool::TrainDepot, MiniClear::RailDepot},
-	{"경유지", MiniTool::RailWaypoint, MiniClear::RailWaypoint},
-	{"터널·다리", MiniTool::RailBridge, MiniClear::RailTunnelBridge},
-};
-
-static const MiniClearItem _clear_road_items[] = {
-	{"도로", MiniTool::Road, MiniClear::Road},
-	{"정류장", MiniTool::BusStop, MiniClear::RoadStop},
-	{"차고", MiniTool::RoadDepot, MiniClear::RoadDepot},
-	{"경유지", MiniTool::RoadWaypoint, MiniClear::RoadWaypoint},
-	{"터널·다리", MiniTool::RoadBridge, MiniClear::RoadTunnelBridge},
-};
-
-static const MiniClearItem _clear_water_items[] = {
-	{"운하", MiniTool::Canal, MiniClear::Canal},
-	{"부두", MiniTool::Dock, MiniClear::Dock},
-	{"부표", MiniTool::Buoy, MiniClear::Buoy},
-	{"조선소", MiniTool::ShipDepot, MiniClear::ShipDepot},
-	{"수로교", MiniTool::Lock, MiniClear::Aqueduct},
-};
-
-static const MiniClearItem _clear_air_items[] = {
-	{"공항", MiniTool::Airport, MiniClear::Airport},
-};
-
-static const MiniClearItem _clear_land_items[] = {
-	{"나무", MiniTool::Trees, MiniClear::Tree},
-	{"건물", MiniTool::Headquarters, MiniClear::House},
-	{"산업", MiniTool::Industry, MiniClear::Industry},
-	{"소유지", MiniTool::BuyLand, MiniClear::Object},
-};
-
-static const MiniClearCategory _clear_cats[] = {
-	{"전체", MiniTool::Demolish, MiniClear::All, _clear_any_items},
-	{"철도", MiniTool::Rail, MiniClear::RailAny, _clear_rail_items},
-	{"도로", MiniTool::Road, MiniClear::RoadAny, _clear_road_items},
-	{"수상", MiniTool::Canal, MiniClear::WaterAny, _clear_water_items},
-	{"항공", MiniTool::Airport, MiniClear::AirAny, _clear_air_items},
-	{"지형", MiniTool::Trees, MiniClear::LandAny, _clear_land_items},
-};
-
-static MiniClear _clear_mode = MiniClear::All;
-
-static const MiniClearCategory *ClearCategoryOf(MiniClear mode)
-{
-	for (const MiniClearCategory &cat : _clear_cats) {
-		if (cat.mode == mode) return &cat;
-		for (const MiniClearItem &it : cat.items) {
-			if (it.mode == mode) return &cat;
-		}
-	}
-	return nullptr;
-}
-
-static std::string_view ClearModeLabel(MiniClear mode)
-{
-	for (const MiniClearCategory &cat : _clear_cats) {
-		if (cat.mode == mode) return cat.label;
-		for (const MiniClearItem &it : cat.items) {
-			if (it.mode == mode) return it.label;
-		}
-	}
-	return {};
-}
-
-static TransportType TunnelBridgeTransport(TileIndex tile)
-{
-	return IsTileType(tile, MP_TUNNELBRIDGE) ? GetTunnelBridgeTransportType(tile) : INVALID_TRANSPORT;
-}
-
-static bool ClearKindMatches(TileIndex tile, MiniClear kind)
-{
-	switch (kind) {
-		case MiniClear::All: return true;
-		/* A level crossing carries both, so it answers to the rail filter and
-		 * the road one alike. */
-		case MiniClear::RailTrack: return IsPlainRailTile(tile) || IsLevelCrossingTile(tile);
-		case MiniClear::Signal: return IsPlainRailTile(tile) && HasSignals(tile);
-		case MiniClear::RailStation: return IsRailStationTile(tile);
-		case MiniClear::RailDepot: return IsRailDepotTile(tile);
-		case MiniClear::RailWaypoint: return IsRailWaypointTile(tile);
-		case MiniClear::RailTunnelBridge: return TunnelBridgeTransport(tile) == TRANSPORT_RAIL;
-		case MiniClear::Road: return IsNormalRoadTile(tile) || IsLevelCrossingTile(tile);
-		case MiniClear::RoadStop: return IsStationRoadStopTile(tile);
-		case MiniClear::RoadDepot: return IsRoadDepotTile(tile);
-		case MiniClear::RoadWaypoint: return IsRoadWaypointTile(tile);
-		case MiniClear::RoadTunnelBridge: return TunnelBridgeTransport(tile) == TRANSPORT_ROAD;
-		case MiniClear::Canal: return IsTileType(tile, MP_WATER) && (IsCanal(tile) || IsLock(tile));
-		case MiniClear::Dock: return IsDockTile(tile);
-		case MiniClear::Buoy: return IsBuoyTile(tile);
-		case MiniClear::ShipDepot: return IsShipDepotTile(tile);
-		case MiniClear::Aqueduct: return TunnelBridgeTransport(tile) == TRANSPORT_WATER;
-		case MiniClear::Airport: return IsAirportTile(tile);
-		case MiniClear::Tree: return IsTileType(tile, MP_TREES);
-		case MiniClear::House: return IsTileType(tile, MP_HOUSE);
-		case MiniClear::Industry: return IsTileType(tile, MP_INDUSTRY);
-		case MiniClear::Object: return IsTileType(tile, MP_OBJECT);
-		default: return false;
-	}
-}
-
-/* Takes the chosen kind off the tile and leaves the rest standing, so a
- * crossing keeps its road when the rails go. Answers whether the tile was
- * asked about at all, which is what tells a skipped tile from a refused one. */
-static bool PostClearKind(TileIndex tile, MiniClear kind)
-{
-	if (!ClearKindMatches(tile, kind)) return false;
-
-	switch (kind) {
-		case MiniClear::RailTrack: {
-			TrackBits bits = IsLevelCrossingTile(tile) ? GetCrossingRailBits(tile) : GetTrackBits(tile);
-			bool asked = false;
-			for (Track t : SetTrackBitIterator(bits)) {
-				Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
-				asked = true;
-			}
-			return asked;
-		}
-
-		case MiniClear::Signal: {
-			bool asked = false;
-			for (Track t : SetTrackBitIterator(GetTrackBits(tile))) {
-				if (!HasSignalOnTrack(tile, t)) continue;
-				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, tile, t);
-				asked = true;
-			}
-			return asked;
-		}
-
-		/* One tile of road can hold a road type and a tram type at once, and the
-		 * command works along an axis, so only the axes the tile carries are
-		 * asked for: an axis with no piece on it answers with an error. */
-		case MiniClear::Road: {
-			bool asked = false;
-			for (RoadTramType rtt : {RTT_ROAD, RTT_TRAM}) {
-				if (!HasTileRoadType(tile, rtt)) continue;
-				RoadType rt = GetRoadType(tile, rtt);
-				RoadBits bits = GetAnyRoadBits(tile, rtt);
-				for (Axis a : {AXIS_X, AXIS_Y}) {
-					if ((bits & AxisToRoadBits(a)) == ROAD_NONE) continue;
-					Command<CMD_REMOVE_LONG_ROAD>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_FROM, tile, tile, rt, a, false, false);
-					asked = true;
-				}
-			}
-			return asked;
-		}
-
-		case MiniClear::RailStation:
-			Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, tile, tile, false);
-			return true;
-
-		case MiniClear::RailWaypoint:
-			Command<CMD_REMOVE_FROM_RAIL_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_RAIL_WAYPOINT, tile, tile, false);
-			return true;
-
-		case MiniClear::RoadWaypoint:
-			Command<CMD_REMOVE_FROM_ROAD_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_WAYPOINT, tile, tile);
-			return true;
-
-		case MiniClear::RoadStop: {
-			RoadStopType st = GetRoadStopType(tile);
-			Command<CMD_REMOVE_ROAD_STOP>::Post(st == RoadStopType::Bus ? STR_ERROR_CAN_T_REMOVE_BUS_STATION : STR_ERROR_CAN_T_REMOVE_TRUCK_STATION, tile, 1, 1, st, false);
-			return true;
-		}
-
-		default:
-			break;
-	}
-
-	Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-	return true;
-}
-
-/* A category takes every kind it holds, so the tile is offered to each of them
- * in turn: a crossing under the rail filter loses its rails and keeps its road. */
-static bool PostClearTile(TileIndex tile)
-{
-	const MiniClearCategory *cat = ClearCategoryOf(_clear_mode);
-	if (cat == nullptr || cat->mode != _clear_mode) return PostClearKind(tile, _clear_mode);
-
-	bool asked = false;
-	for (const MiniClearItem &it : cat->items) {
-		/* Pulling the track takes its signals with it, so asking for both would
-		 * charge the signals twice and refuse the second command. */
-		if (it.mode == MiniClear::Signal && ClearKindMatches(tile, MiniClear::RailTrack)) continue;
-		if (PostClearKind(tile, it.mode)) asked = true;
-	}
-	return asked;
-}
-
-static bool ClearFilterActive()
-{
-	return _tool == MiniTool::Demolish && _clear_mode != MiniClear::All;
-}
-
-/* Whether the filter takes anything off the tile at all. The same question the
- * commit path asks, without asking the game, so the blueprint can answer it for
- * every tile on screen. */
-static bool ClearTileMatches(TileIndex tile)
-{
-	const MiniClearCategory *cat = ClearCategoryOf(_clear_mode);
-	if (cat == nullptr || cat->mode != _clear_mode) return ClearKindMatches(tile, _clear_mode);
-
-	for (const MiniClearItem &it : cat->items) {
-		if (ClearKindMatches(tile, it.mode)) return true;
-	}
-	return false;
-}
-
-static int RectPlanLimit()
-{
-	if (_tool == MiniTool::Station) return _settings_game.station.station_spread;
-	return std::max<int>(Map::SizeX(), Map::SizeY());
-}
-
-/* A square drag leaves the platform direction ambiguous and a rectangle can
- * still want the short side, so the axis is derived and Q/E flips it. */
-static bool _station_flip = false;
-
-static Axis StationPlanAxis()
-{
-	int w = _rect_plan.x1 - _rect_plan.x0 + 1;
-	int h = _rect_plan.y1 - _rect_plan.y0 + 1;
-	return (w >= h) != _station_flip ? AXIS_X : AXIS_Y;
-}
-
-static void DrawRectPlan(int ppt)
-{
-	if (!_rect_plan.valid) return;
-	uint32_t c = (_drag_remove || _tool == MiniTool::Demolish) ? COL_BP_RM : COL_BP;
-	if (_est.fit.empty()) c = PlanColour(c);
-	int px0 = _camera.ScreenX(_rect_plan.y0);
-	int py0 = _camera.ScreenY(_rect_plan.x0);
-	int px1 = _camera.ScreenX(_rect_plan.y1 + 1) - 1;
-	int py1 = _camera.ScreenY(_rect_plan.x1 + 1) - 1;
-	/* A filter leaves most of the area standing, so the fill goes on the tiles
-	 * that come off and the frame keeps showing how far the drag reaches. The
-	 * area can be the whole map, so only what is on screen is walked. */
-	bool filtered = ClearFilterActive();
-	if (filtered) {
-		int vx0 = std::max(_rect_plan.x0, (int)std::floor(_camera.MapXAt(0)));
-		int vx1 = std::min(_rect_plan.x1, (int)std::floor(_camera.MapXAt(_fbh - 1)));
-		int vy0 = std::max(_rect_plan.y0, (int)std::floor(_camera.MapYAt(0)));
-		int vy1 = std::min(_rect_plan.y1, (int)std::floor(_camera.MapYAt(_fbw - 1)));
-		for (int tx = vx0; tx <= vx1; tx++) {
-			for (int ty = vy0; ty <= vy1; ty++) {
-				if (!ClearTileMatches(TileXY(tx, ty))) continue;
-				_canvas.BlendRect(_camera.ScreenX(ty), _camera.ScreenY(tx), _camera.ScreenX(ty + 1) - 1, _camera.ScreenY(tx + 1) - 1, c, 90);
-			}
-		}
-	} else {
-		_canvas.BlendRect(px0, py0, px1, py1, c, 90);
-	}
-	int b = std::max(1, ppt / 8);
-	_canvas.FillRect(px0, py0, px1, py0 + b - 1, c);
-	_canvas.FillRect(px0, py1 - b + 1, px1, py1, c);
-	_canvas.FillRect(px0, py0, px0 + b - 1, py1, c);
-	_canvas.FillRect(px1 - b + 1, py0, px1, py1, c);
-
-	/* A refused patch is painted over the area, so the run shows its holes
-	 * before the drag is let go. */
-	if (!_est.fit.empty()) {
-		for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
-			for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) {
-				if (TileFits(RectPlanIndex(tx, ty))) continue;
-				/* Outside the filter is not a hole; nothing was going to come
-				 * off there in the first place. */
-				if (filtered && !ClearTileMatches(TileXY(tx, ty))) continue;
-				_canvas.BlendRect(_camera.ScreenX(ty), _camera.ScreenY(tx), _camera.ScreenX(ty + 1) - 1, _camera.ScreenY(tx + 1) - 1, COL_BP_NO, 150);
-			}
-		}
-	}
-
-	if (_tool != MiniTool::Station || _drag_remove) return;
-	Axis axis = StationPlanAxis();
-	int rail_w = std::max(1, ppt / 6);
-	for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
-		for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) {
-			DrawAxisBand(axis, _camera.ScreenX(ty), _camera.ScreenY(tx), _camera.ScreenX(ty + 1) - 1, _camera.ScreenY(tx + 1) - 1, rail_w, c);
-		}
-	}
-}
-
-static void CommitStationPlan()
-{
-	if (!_rect_plan.valid) return;
-	int w = _rect_plan.x1 - _rect_plan.x0 + 1;
-	int h = _rect_plan.y1 - _rect_plan.y0 + 1;
-	TileIndex org = TileXY(_rect_plan.x0, _rect_plan.y0);
-	if (_drag_remove) {
-		Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, org, TileXY(_rect_plan.x1, _rect_plan.y1), true);
-	} else {
-		Axis axis = StationPlanAxis();
-		uint8_t plat_len = (uint8_t)(axis == AXIS_X ? w : h);
-		uint8_t numtracks = (uint8_t)(axis == AXIS_X ? h : w);
-		Command<CMD_BUILD_RAIL_STATION>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, org, PickRailType(), axis, numtracks, plat_len, STAT_CLASS_DFLT, 0, StationID::Invalid(), false);
-	}
-	ClearPlans();
-}
-
-static void CommitDemolishPlan()
-{
-	if (!_rect_plan.valid) return;
-	if (_clear_mode == MiniClear::All) {
-		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
-	} else {
-		/* A filtered clear asks the game once per tile. That is fine for the
-		 * one run the player asked for, but a probe repeats it while the drag
-		 * moves, so past the fit limit the price is left unanswered. */
-		size_t n = (size_t)(_rect_plan.x1 - _rect_plan.x0 + 1) * (size_t)(_rect_plan.y1 - _rect_plan.y0 + 1);
-		if (_est.probing && n > MINI_FIT_MAX) {
-			_est.unknown = true;
-		} else {
-			for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
-				for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) PostClearTile(TileXY(tx, ty));
-			}
-		}
-	}
-	ClearPlans();
-}
-
-static void CommitConvertPlan()
-{
-	if (!_rect_plan.valid) return;
-	Command<CMD_CONVERT_RAIL>::Post(STR_ERROR_CAN_T_CONVERT_RAIL, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), PickRailType(), false);
-	ClearPlans();
-}
-
-static void CommitRoadConvertPlan()
-{
-	if (!_rect_plan.valid) return;
-	Command<CMD_CONVERT_ROAD>::Post(STR_ERROR_CAN_T_CONVERT_ROAD, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), PickRoadType(), false);
-	ClearPlans();
-}
-
-static void CommitCanalPlan()
-{
-	if (!_rect_plan.valid) return;
-	if (_drag_remove) {
-		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
-	} else {
-		Command<CMD_BUILD_CANAL>::Post(STR_ERROR_CAN_T_BUILD_CANALS, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), WaterClass::Canal, false);
-	}
-	ClearPlans();
-}
-
-static void CommitTreePlan()
-{
-	if (!_rect_plan.valid) return;
-	if (_drag_remove) {
-		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
-	} else {
-		Command<CMD_PLANT_TREE>::Post(STR_ERROR_CAN_T_PLANT_TREE_HERE, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), TREE_INVALID, false);
-	}
-	ClearPlans();
-}
-
-static void CommitBuyLandPlan()
-{
-	if (!_rect_plan.valid) return;
-	if (_drag_remove) {
-		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
-	} else {
-		Command<CMD_BUILD_OBJECT_AREA>::Post(STR_ERROR_CAN_T_PURCHASE_THIS_LAND, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), OBJECT_OWNED_LAND, 0, false);
-	}
-	ClearPlans();
-}
-
-/* Levelling copies the anchor tile's height, so the anchor corner is passed
- * as the reference tile rather than the normalised rectangle origin. */
-static void CommitTerraformPlan()
-{
-	if (!_rect_plan.valid) return;
-	int ax = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
-	int ay = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
-	int ex = _rect_plan.x0 == ax ? _rect_plan.x1 : _rect_plan.x0;
-	int ey = _rect_plan.y0 == ay ? _rect_plan.y1 : _rect_plan.y0;
-	TileIndex anchor = TileXY(ax, ay);
-	TileIndex end = TileXY(ex, ey);
-	LevelMode lm = _drag_remove ? LM_LOWER : (anchor == end ? LM_RAISE : LM_LEVEL);
-	Command<CMD_LEVEL_LAND>::Post(STR_ERROR_CAN_T_LEVEL_LAND_HERE, end, anchor, false, lm);
-	ClearPlans();
-}
-
-/* Same sub-track pick as GenericPlaceSignals: on paired straight pieces the
- * fractional click position decides which half gets the signal. */
-static Track PickSignalTrack(TileIndex tile, double wx, double wy)
-{
-	if (!IsPlainRailTile(tile)) return INVALID_TRACK;
-	TrackBits trackbits = GetTrackBits(tile);
-	double fx = wx - std::floor(wx);
-	double fy = wy - std::floor(wy);
-	if (trackbits & TRACK_BIT_VERT) trackbits = (fx <= fy) ? TRACK_BIT_RIGHT : TRACK_BIT_LEFT;
-	if (trackbits & TRACK_BIT_HORZ) trackbits = (fx + fy <= 1.0) ? TRACK_BIT_UPPER : TRACK_BIT_LOWER;
-	return FindFirstTrack(trackbits);
-}
-
-/* Signals lay in runs as well as one at a time. Only the two grid-straight
- * tracks carry a run: the half tracks stop the plan at the anchor tile, so
- * the preview always matches what the command will build. */
-static void UpdateSignalPlan(double wx, double wy)
-{
-	_sig_plan.tiles.clear();
-	_sig_plan.start = INVALID_TILE;
-
-	int ax = Clamp<int>((int)std::floor(_drag_ax), 0, Map::SizeX() - 1);
-	int ay = Clamp<int>((int)std::floor(_drag_ay), 0, Map::SizeY() - 1);
-	TileIndex anchor = TileXY(ax, ay);
-	_sig_plan.track = PickSignalTrack(anchor, _drag_ax, _drag_ay);
-	if (_sig_plan.track == INVALID_TRACK) return;
-
-	_sig_plan.start = anchor;
-	_sig_plan.end = anchor;
-	_sig_plan.tiles.push_back(anchor);
-	if (_sig_plan.track != TRACK_X && _sig_plan.track != TRACK_Y) return;
-
-	bool along_x = _sig_plan.track == TRACK_X;
-	int steps = Clamp((int)std::lround(along_x ? wx - _drag_ax : wy - _drag_ay), -127, 127);
-	int dir = steps >= 0 ? 1 : -1;
-	for (int i = dir; i != steps + dir; i += dir) {
-		int tx = along_x ? ax + i : ax;
-		int ty = along_x ? ay : ay + i;
-		if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) break;
-		TileIndex tile = TileXY(tx, ty);
-		if (!IsPlainRailTile(tile)) break;
-		if ((GetTrackBits(tile) & TrackToTrackBits(_sig_plan.track)) == TRACK_BIT_NONE) break;
-		_sig_plan.tiles.push_back(tile);
-		_sig_plan.end = tile;
-	}
-}
-
-static void DrawSignalPlan(int ppt)
-{
-	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
-	int w = std::max(2, ppt / 5);
-	for (size_t i = 0; i < _sig_plan.tiles.size(); i++) {
-		TileIndex tile = _sig_plan.tiles[i];
-		int tx = TileX(tile);
-		int ty = TileY(tile);
-		int x0 = _camera.ScreenX(ty), y0 = _camera.ScreenY(tx), x1 = _camera.ScreenX(ty + 1) - 1, y1 = _camera.ScreenY(tx + 1) - 1;
-		uint32_t tc = PlanColour(c, i);
-		_canvas.BlendRect(x0, y0, x1, y1, tc, 70);
-		DrawTrackPiece(_sig_plan.track, x0, y0, x1, y1, w, tc);
-	}
-}
-
-/* Funding an industry has no window either: the build panel lists the types
- * the fund list would offer and the HUD names the type with its price. */
-static IndustryType _industry_type = 0;
-
-static bool MiniIndustryAvailable(IndustryType it)
-{
-	if (it >= NUM_INDUSTRYTYPES) return false;
-	const IndustrySpec *indsp = GetIndustrySpec(it);
-	if (!indsp->enabled) return false;
-	if (indsp->IsRawIndustry() && _settings_game.construction.raw_industry_construction == 0) return false;
-	return GetIndustryProbabilityCallback(it, IACT_USERCREATION, 1) > 0;
-}
-
-static IndustryType PickIndustryType()
-{
-	if (MiniIndustryAvailable(_industry_type)) return _industry_type;
-	for (IndustryType it = 0; it < NUM_INDUSTRYTYPES; it++) {
-		if (MiniIndustryAvailable(it)) return it;
-	}
-	return IT_INVALID;
-}
-
-/* Signal choice lives in the tool as well: the picker window is replaced by
- * the build panel over the types the signal GUI setting exposes. */
-static const SignalType _mini_signal_path[] = {SIGTYPE_PBS, SIGTYPE_PBS_ONEWAY};
-static const SignalType _mini_signal_all[] = {SIGTYPE_BLOCK, SIGTYPE_ENTRY, SIGTYPE_EXIT, SIGTYPE_COMBO, SIGTYPE_PBS, SIGTYPE_PBS_ONEWAY};
-
-static SignalType _signal_type = SIGTYPE_PBS;
-
-static std::span<const SignalType> SignalChoices()
-{
-	if (_settings_client.gui.signal_gui_mode == SIGNAL_GUI_ALL) return _mini_signal_all;
-	return _mini_signal_path;
-}
-
-static SignalType PickSignalType()
-{
-	std::span<const SignalType> choices = SignalChoices();
-	for (SignalType t : choices) {
-		if (t == _signal_type) return t;
-	}
-	return choices.front();
-}
-
-static std::string_view SignalTypeLabel(SignalType t)
-{
-	switch (t) {
-		case SIGTYPE_ENTRY: return "ENTRY";
-		case SIGTYPE_EXIT: return "EXIT";
-		case SIGTYPE_COMBO: return "COMBO";
-		case SIGTYPE_PBS: return "PATH";
-		case SIGTYPE_PBS_ONEWAY: return "ONE-WAY PATH";
-		default: return "BLOCK";
-	}
-}
-
-/* No airport picker window: the build panel lists the available airport types
- * and the blueprint previews the footprint, so the choice lives in the tool. */
-static uint8_t _airport_type = 0;
-
-static uint8_t PickAirportType()
-{
-	if (AirportSpec::Get(_airport_type)->IsAvailable()) return _airport_type;
-	for (uint8_t i = 0; i < NUM_AIRPORTS; i++) {
-		if (AirportSpec::Get(i)->IsAvailable()) return i;
-	}
-	return _airport_type;
-}
-
-/* Road stops come in two shapes: a bay entered from one side, or a
- * drive-through pair along an axis. The shape is a build panel choice and Q/E
- * turn whichever one is in hand. Drive-through along X stays the default. */
-static bool _stop_through = true;
-static DiagDirection _stop_dir = DIAGDIR_NE;
-
-static bool StopIsThrough()
-{
-	return _stop_through;
-}
-
-static DiagDirection StopDiagDir()
-{
-	if (_stop_through) return AxisToDiagDir(DiagDirToAxis(_stop_dir));
-	return _stop_dir;
-}
-
-/* Point tools place on click: the blueprint floats on the hover tile and
- * Q/E spin _point_dir, so no drag gesture is involved. */
-static void CommitPointTool()
-{
-	int tx = Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2);
-	int ty = Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2);
-	TileIndex tile = TileXY(tx, ty);
-
-	switch (_tool) {
-		case MiniTool::BusStop:
-		case MiniTool::TruckStop: {
-			bool bus = _tool == MiniTool::BusStop;
-			RoadStopType st = bus ? RoadStopType::Bus : RoadStopType::Truck;
-			if (_drag_remove) {
-				Command<CMD_REMOVE_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_REMOVE_BUS_STATION : STR_ERROR_CAN_T_REMOVE_TRUCK_STATION, tile, 1, 1, st, false);
-			} else {
-				Command<CMD_BUILD_ROAD_STOP>::Post(bus ? STR_ERROR_CAN_T_BUILD_BUS_STATION : STR_ERROR_CAN_T_BUILD_TRUCK_STATION, tile, 1, 1, st, StopIsThrough(), StopDiagDir(), PickRoadType(), ROADSTOP_CLASS_DFLT, 0, StationID::Invalid(), false);
-			}
-			break;
-		}
-
-		case MiniTool::RailWaypoint:
-			if (_drag_remove) {
-				Command<CMD_REMOVE_FROM_RAIL_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_RAIL_WAYPOINT, tile, tile, true);
-			} else {
-				/* The waypoint must follow the track under it, so the axis comes
-				 * from the tile rather than the tool rotation. */
-				Axis axis = GetAxisForNewRailWaypoint(tile);
-				Command<CMD_BUILD_RAIL_WAYPOINT>::Post(STR_ERROR_CAN_T_BUILD_RAIL_WAYPOINT, tile, IsValidAxis(axis) ? axis : AXIS_X, 1, 1, STAT_CLASS_WAYP, 0, StationID::Invalid(), false);
-			}
-			break;
-
-		/* A fresh sign carries a placeholder so it is visible at once; the sign
-		 * list is where it gets its real name. */
-		case MiniTool::Sign:
-			if (_drag_remove) {
-				for (const Sign *si : Sign::Iterate()) {
-					if (TileVirtXY((uint)si->x, (uint)si->y) != tile) continue;
-					Command<CMD_RENAME_SIGN>::Post(si->index, std::string{});
-					break;
-				}
-			} else {
-				Command<CMD_PLACE_SIGN>::Post(STR_ERROR_CAN_T_PLACE_SIGN_HERE, tile, std::string("표지판"));
-			}
-			break;
-
-		case MiniTool::RoadWaypoint:
-			if (_drag_remove) {
-				Command<CMD_REMOVE_FROM_ROAD_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_WAYPOINT, tile, tile);
-			} else {
-				Axis axis = GetAxisForNewRoadWaypoint(tile);
-				Command<CMD_BUILD_ROAD_WAYPOINT>::Post(STR_ERROR_CAN_T_BUILD_ROAD_WAYPOINT, tile, IsValidAxis(axis) ? axis : AXIS_X, 1, 1, ROADSTOP_CLASS_WAYP, 0, StationID::Invalid(), false);
-			}
-			break;
-
-		case MiniTool::TrainDepot:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_TRAIN_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_TRAIN_DEPOT, tile, PickRailType(), _point_dir);
-			}
-			break;
-
-		case MiniTool::RoadDepot:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_ROAD_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_ROAD_DEPOT, tile, PickRoadType(), _point_dir);
-			}
-			break;
-
-		case MiniTool::ShipDepot:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_SHIP_DEPOT>::Post(STR_ERROR_CAN_T_BUILD_SHIP_DEPOT, tile, DiagDirToAxis(_point_dir));
-			}
-			break;
-
-		case MiniTool::Dock:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_DOCK>::Post(STR_ERROR_CAN_T_BUILD_DOCK_HERE, tile, StationID::Invalid(), false);
-			}
-			break;
-
-		case MiniTool::Buoy:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_BUOY>::Post(STR_ERROR_CAN_T_POSITION_BUOY_HERE, tile);
-			}
-			break;
-
-		case MiniTool::Airport:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_AIRPORT>::Post(STR_ERROR_CAN_T_BUILD_AIRPORT_HERE, tile, PickAirportType(), 0, StationID::Invalid(), false);
-			}
-			break;
-
-		case MiniTool::Lock:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_LOCK>::Post(STR_ERROR_CAN_T_BUILD_LOCKS, tile);
-			}
-			break;
-
-		case MiniTool::RailTunnel:
-		case MiniTool::RoadTunnel: {
-			bool rail = _tool == MiniTool::RailTunnel;
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_TUNNEL>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, tile, rail ? TRANSPORT_RAIL : TRANSPORT_ROAD, rail ? (uint8_t)PickRailType() : (uint8_t)PickRoadType());
-			}
-			break;
-		}
-
-		case MiniTool::Industry: {
-			IndustryType it = PickIndustryType();
-			if (it == IT_INVALID) break;
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-				break;
-			}
-			const IndustrySpec *indsp = GetIndustrySpec(it);
-			/* Raw industries are prospected under the funding setting that hides
-			 * their location, so the click only pays for the search. */
-			bool prospect = _settings_game.construction.raw_industry_construction == 2 && indsp->IsRawIndustry();
-			uint32_t seed = InteractiveRandom();
-			uint32_t layout = InteractiveRandomRange((uint32_t)indsp->layouts.size());
-			Command<CMD_BUILD_INDUSTRY>::Post(STR_ERROR_CAN_T_CONSTRUCT_THIS_INDUSTRY, prospect ? TileIndex{} : tile, it, prospect ? 0 : layout, false, seed);
-			break;
-		}
-
-		case MiniTool::Headquarters:
-			if (_drag_remove) {
-				Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
-			} else {
-				Command<CMD_BUILD_OBJECT>::Post(STR_ERROR_CAN_T_BUILD_COMPANY_HEADQUARTERS, tile, OBJECT_HQ, 0);
-			}
-			break;
-
-		default:
-			break;
-	}
-}
-
-static void DrawPointToolPlan(int ppt)
-{
-	uint32_t c = PlanColour(_ctrl_pressed ? COL_BP_RM : COL_BP);
-	double wx = _camera.MapXAt(_cursor.pos.y);
-	double wy = _camera.MapYAt(_cursor.pos.x);
-	int tx = Clamp<int>((int)std::floor(wx), 1, Map::SizeX() - 2);
-	int ty = Clamp<int>((int)std::floor(wy), 1, Map::SizeY() - 2);
-	int x0 = _camera.ScreenX(ty);
-	int y0 = _camera.ScreenY(tx);
-	int x1 = _camera.ScreenX(ty + 1) - 1;
-	int y1 = _camera.ScreenY(tx + 1) - 1;
-	_canvas.BlendRect(x0, y0, x1, y1, c, 90);
-	if (_ctrl_pressed) return;
-
-	if (_tool == MiniTool::Signal) {
-		Track track = PickSignalTrack(TileXY(tx, ty), wx, wy);
-		if (track != INVALID_TRACK) DrawTrackPiece(track, x0, y0, x1, y1, std::max(2, ppt / 5), c);
-	} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-		if (StopIsThrough()) {
-			DrawAxisBand(DiagDirToAxis(StopDiagDir()), x0, y0, x1, y1, std::max(2, ppt / 3), c);
-		} else {
-			int cx = (x0 + x1) / 2;
-			int cy = (y0 + y1) / 2;
-			DiagDirection d = StopDiagDir();
-			_canvas.ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 3), c);
-		}
-	} else if (_tool == MiniTool::RailWaypoint) {
-		Axis axis = GetAxisForNewRailWaypoint(TileXY(tx, ty));
-		if (IsValidAxis(axis)) DrawAxisBand(axis, x0, y0, x1, y1, std::max(2, ppt / 3), c);
-	} else if (_tool == MiniTool::RoadWaypoint) {
-		Axis axis = GetAxisForNewRoadWaypoint(TileXY(tx, ty));
-		if (IsValidAxis(axis)) DrawAxisBand(axis, x0, y0, x1, y1, std::max(2, ppt / 3), c);
-	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel) {
-		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
-		if (d != INVALID_DIAGDIR) {
-			int cx = (x0 + x1) / 2;
-			int cy = (y0 + y1) / 2;
-			_canvas.ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 5), c);
-		}
-		/* The bore runs straight, so the box between the two mouths is the
-		 * tunnel; the far mouth is picked out because that is the tile the
-		 * player cannot see from here. */
-		if (_est.tunnel_end != INVALID_TILE) {
-			int ex = TileX(_est.tunnel_end);
-			int ey = TileY(_est.tunnel_end);
-			int bx0 = std::min(tx, ex), bx1 = std::max(tx, ex);
-			int by0 = std::min(ty, ey), by1 = std::max(ty, ey);
-			_canvas.BlendRect(_camera.ScreenX(by0), _camera.ScreenY(bx0), _camera.ScreenX(by1 + 1) - 1, _camera.ScreenY(bx1 + 1) - 1, c, 55);
-			int mx0 = _camera.ScreenX(ey), my0 = _camera.ScreenY(ex), mx1 = _camera.ScreenX(ey + 1) - 1, my1 = _camera.ScreenY(ex + 1) - 1;
-			int b = std::max(1, ppt / 8);
-			_canvas.BlendRect(mx0, my0, mx1, my1, c, 90);
-			_canvas.FillRect(mx0, my0, mx1, my0 + b - 1, c);
-			_canvas.FillRect(mx0, my1 - b + 1, mx1, my1, c);
-			_canvas.FillRect(mx0, my0, mx0 + b - 1, my1, c);
-			_canvas.FillRect(mx1 - b + 1, my0, mx1, my1, c);
-		}
-	} else if (_tool == MiniTool::Dock || _tool == MiniTool::Lock) {
-		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
-		if (d != INVALID_DIAGDIR) {
-			int cx = (x0 + x1) / 2;
-			int cy = (y0 + y1) / 2;
-			_canvas.ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 5), c);
-		}
-	} else if (_tool == MiniTool::ShipDepot) {
-		/* The depot spans two tiles along its axis; show the real footprint. */
-		Axis a = DiagDirToAxis(_point_dir);
-		int fx1 = a == AXIS_Y ? _camera.ScreenX(ty + 2) - 1 : x1;
-		int fy1 = a == AXIS_X ? _camera.ScreenY(tx + 2) - 1 : y1;
-		_canvas.BlendRect(x0, y0, fx1, fy1, c, 60);
-	} else if (_tool == MiniTool::Airport) {
-		const AirportSpec *as = AirportSpec::Get(PickAirportType());
-		if (as->IsAvailable()) _canvas.BlendRect(x0, y0, _camera.ScreenX(ty + as->size_y) - 1, _camera.ScreenY(tx + as->size_x) - 1, c, 60);
-	} else if (_tool == MiniTool::Headquarters) {
-		_canvas.BlendRect(x0, y0, _camera.ScreenX(ty + 2) - 1, _camera.ScreenY(tx + 2) - 1, c, 60);
-	} else if (IsDirPointTool(_tool)) {
-		int cx = (x0 + x1) / 2;
-		int cy = (y0 + y1) / 2;
-		_canvas.ThickLine(cx, cy, cx + _diag_dx[_point_dir] * (ppt / 2), cy + _diag_dy[_point_dir] * (ppt / 2), std::max(2, ppt / 5), c);
-	}
-}
-
-/* Placing a station blind is the one thing the mini UI cannot afford, so any
- * tool that creates catchment paints the square it will serve and picks out
- * the houses and industries inside it. */
-static uint MiniCatchmentRadius()
-{
-	switch (_tool) {
-		case MiniTool::Station:
-		case MiniTool::BusStop:
-		case MiniTool::TruckStop:
-		case MiniTool::Dock:
-		case MiniTool::Airport:
-			break;
-		default:
-			return CA_NONE;
-	}
-	if (!_settings_game.station.modified_catchment) return CA_UNMODIFIED;
-	switch (_tool) {
-		case MiniTool::Station: return CA_TRAIN;
-		case MiniTool::BusStop: return CA_BUS;
-		case MiniTool::TruckStop: return CA_TRUCK;
-		case MiniTool::Dock: return CA_DOCK;
-		default: {
-			const AirportSpec *as = AirportSpec::Get(PickAirportType());
-			return as->IsAvailable() ? as->catchment : CA_NONE;
-		}
-	}
-}
-
-static void DrawCatchmentPlan(int ppt)
-{
-	int r = (int)MiniCatchmentRadius();
-	if (r == 0) return;
-
-	int x0, y0, x1, y1;
-	if (_tool == MiniTool::Station && _dragging) {
-		x0 = _rect_plan.x0;
-		y0 = _rect_plan.y0;
-		x1 = _rect_plan.x1;
-		y1 = _rect_plan.y1;
-	} else {
-		x0 = x1 = (int)std::floor(_camera.MapXAt(_cursor.pos.y));
-		y0 = y1 = (int)std::floor(_camera.MapYAt(_cursor.pos.x));
-		if (x0 < 0 || y0 < 0 || x0 >= (int)Map::SizeX() || y0 >= (int)Map::SizeY()) return;
-		if (_tool == MiniTool::Airport) {
-			const AirportSpec *as = AirportSpec::Get(PickAirportType());
-			if (!as->IsAvailable()) return;
-			x1 = x0 + as->size_x - 1;
-			y1 = y0 + as->size_y - 1;
-		}
-	}
-
-	int cx0 = std::max(0, x0 - r);
-	int cy0 = std::max(0, y0 - r);
-	int cx1 = std::min((int)Map::SizeX() - 1, x1 + r);
-	int cy1 = std::min((int)Map::SizeY() - 1, y1 + r);
-
-	int px0 = _camera.ScreenX(cy0);
-	int py0 = _camera.ScreenY(cx0);
-	int px1 = _camera.ScreenX(cy1 + 1) - 1;
-	int py1 = _camera.ScreenY(cx1 + 1) - 1;
-	_canvas.BlendRect(px0, py0, px1, py1, COL_CH_ACCENT, 26);
-	int b = std::max(1, ppt / 10);
-	_canvas.FillRect(px0, py0, px1, py0 + b - 1, COL_CH_ACCENT);
-	_canvas.FillRect(px0, py1 - b + 1, px1, py1, COL_CH_ACCENT);
-	_canvas.FillRect(px0, py0, px0 + b - 1, py1, COL_CH_ACCENT);
-	_canvas.FillRect(px1 - b + 1, py0, px1, py1, COL_CH_ACCENT);
-
-	for (int tx = cx0; tx <= cx1; tx++) {
-		for (int ty = cy0; ty <= cy1; ty++) {
-			TileType tt = GetTileType(TileXY(tx, ty));
-			if (tt != MP_HOUSE && tt != MP_INDUSTRY) continue;
-			_canvas.BlendRect(_camera.ScreenX(ty), _camera.ScreenY(tx), _camera.ScreenX(ty + 1) - 1, _camera.ScreenY(tx + 1) - 1, COL_CH_ACCENT, 90);
-		}
-	}
-}
-
-static void CommitRoadPlan()
-{
-	if (_road_plan.start == INVALID_TILE) return;
-	if (_drag_remove) {
-		Command<CMD_REMOVE_LONG_ROAD>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_FROM, _road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, false, false);
-		ClearPlans();
-		return;
-	}
-
-	MiniSpans spans = SplitWaterSpans(_road_plan.tiles);
-	if (!spans.ok) {
-		Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, _road_plan.end, _road_plan.start, PickRoadType(), _road_plan.axis, DRD_NONE, false, false, false);
-	} else {
-		const std::vector<TileIndex> &ts = _road_plan.tiles;
-		for (auto [a, b] : spans.bridges) {
-			Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, ts[b], ts[a], TRANSPORT_ROAD, PickBridgeType((uint)(b - a - 1)), (uint8_t)PickRoadType());
-		}
-		for (auto [a, b] : spans.land) {
-			Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, ts[b], ts[a], PickRoadType(), _road_plan.axis, DRD_NONE, false, false, false);
-		}
-	}
-	ClearPlans();
-}
-
-static void CommitSignalPlan()
-{
-	if (_sig_plan.start == INVALID_TILE) {
-		ClearPlans();
-		return;
-	}
-
-	SignalVariant sigvar = TimerGameCalendar::year < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
-	if (_sig_plan.tiles.size() <= 1) {
-		if (_drag_remove) {
-			Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, _sig_plan.start, _sig_plan.track);
-		} else {
-			Command<CMD_BUILD_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, _sig_plan.start, _sig_plan.track, PickSignalType(), sigvar, false, false, false, SIGTYPE_PBS, SIGTYPE_LAST, 0, 0);
-		}
-	} else if (_drag_remove) {
-		Command<CMD_REMOVE_SIGNAL_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, _sig_plan.start, _sig_plan.end, _sig_plan.track, false);
-	} else {
-		Command<CMD_BUILD_SIGNAL_TRACK>::Post(STR_ERROR_CAN_T_BUILD_SIGNALS_HERE, _sig_plan.start, _sig_plan.end, _sig_plan.track, PickSignalType(), sigvar,
-				false, false, !_settings_client.gui.drag_signals_fixed_distance, _settings_client.gui.drag_signals_density);
-	}
-	ClearPlans();
-}
-
-static void CommitBridgePlan()
-{
-	uint len = BridgePlanLength();
-	if (len == 0) {
-		ClearPlans();
-		return;
-	}
-	const std::vector<TileIndex> &ts = _road_plan.tiles;
-	if (_tool == MiniTool::RailBridge) {
-		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, ts.back(), ts.front(), TRANSPORT_RAIL, PickBridgeType(len), (uint8_t)PickRailType());
-	} else {
-		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, ts.back(), ts.front(), TRANSPORT_ROAD, PickBridgeType(len), (uint8_t)PickRoadType());
-	}
-	ClearPlans();
-}
-
-static uint64_t EstMix(uint64_t h, uint64_t v)
-{
-	return h ^ (v + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2));
-}
-
-/* Everything the commit path reads, folded into one number: the probe only
- * runs again once the player has changed what would be built. */
-static uint64_t EstimateKey()
-{
-	uint64_t h = EstMix(0, (uint64_t)_tool);
-	h = EstMix(h, (_drag_remove ? 1 : 0) | (_ctrl_pressed ? 2 : 0) | (_dragging ? 4 : 0) | (_station_flip ? 8 : 0));
-	h = EstMix(h, (uint64_t)PickRailType());
-	h = EstMix(h, (uint64_t)PickRoadType());
-	h = EstMix(h, (uint64_t)PickSignalType());
-	h = EstMix(h, (uint64_t)PickAirportType());
-	h = EstMix(h, ((uint64_t)_point_dir << 8) | ((uint64_t)_stop_dir << 1) | (_stop_through ? 1 : 0));
-	h = EstMix(h, (uint64_t)_bridge_sel);
-	h = EstMix(h, (uint64_t)_clear_mode);
-
-	for (const auto &[tile, t] : _plan.pieces) h = EstMix(h, ((uint64_t)tile.base() << 4) | (uint64_t)t);
-	for (TileIndex t : _road_plan.tiles) h = EstMix(h, t.base());
-	h = EstMix(h, ((uint64_t)_road_plan.axis << 32) | _road_plan.tiles.size());
-	for (TileIndex t : _sig_plan.tiles) h = EstMix(h, t.base());
-	h = EstMix(h, (uint64_t)_sig_plan.track);
-	if (_rect_plan.valid) {
-		h = EstMix(h, ((uint64_t)_rect_plan.x0 << 48) | ((uint64_t)_rect_plan.y0 << 32) | ((uint64_t)_rect_plan.x1 << 16) | (uint64_t)_rect_plan.y1);
-	}
-	if (IsPointTool(_tool)) {
-		h = EstMix(h, ((uint64_t)(uint32_t)(int32_t)std::floor(_camera.MapXAt(_cursor.pos.y)) << 32) | (uint32_t)(int32_t)std::floor(_camera.MapYAt(_cursor.pos.x)));
-	}
-	/* Zero marks "no probe yet", so a real key never lands on it. */
-	return h | 1;
-}
-
-/* Point tools read the drag anchor the click would have set, so it is staged
- * for the probe and put back afterwards. */
-static void ProbeToolCost()
-{
-	bool save_remove = _drag_remove;
-	double save_ax = _drag_ax;
-	double save_ay = _drag_ay;
-	bool save_shift = _shift_pressed;
-
-	_est.probing = true;
-	_est.caught = false;
-	_est.unknown = false;
-	_est.cost = 0;
-	_est.tunnel_end = INVALID_TILE;
-	_shift_pressed = true;
-
-	if (IsPointTool(_tool) && _tool != MiniTool::Signal) {
-		_drag_remove = _ctrl_pressed;
-		_drag_ax = _camera.MapXAt(_cursor.pos.y);
-		_drag_ay = _camera.MapYAt(_cursor.pos.x);
-		/* The tunnel command works out where it surfaces and leaves the tile
-		 * behind for the interface; a stale one would draw a tunnel that is
-		 * not being planned. */
-		_build_tunnel_endtile = TileIndex{};
-		CommitPointTool();
-		if (_build_tunnel_endtile != 0 && (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel)) {
-			_est.tunnel_end = _build_tunnel_endtile;
-			TileIndex mouth = TileXY(Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2), Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2));
-			_est.tunnel_len = DistanceManhattan(mouth, _est.tunnel_end);
-		}
-	} else {
-		if (_tool == MiniTool::Rail) CommitRailPlan();
-		if (_tool == MiniTool::Road) CommitRoadPlan();
-		if (IsBridgeTool(_tool)) CommitBridgePlan();
-		if (_tool == MiniTool::Signal) CommitSignalPlan();
-		if (_tool == MiniTool::Station) CommitStationPlan();
-		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
-		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
-		if (_tool == MiniTool::Canal) CommitCanalPlan();
-		if (_tool == MiniTool::Convert) CommitConvertPlan();
-		if (_tool == MiniTool::RoadConvert) CommitRoadConvertPlan();
-		if (_tool == MiniTool::Trees) CommitTreePlan();
-		if (_tool == MiniTool::BuyLand) CommitBuyLandPlan();
-	}
-
-	_shift_pressed = save_shift;
-	_drag_remove = save_remove;
-	_drag_ax = save_ax;
-	_drag_ay = save_ay;
-	_est.probing = false;
-	_est.probed = true;
-	_est.ok = _est.caught;
-}
-
-static bool ProbedOk()
-{
-	bool ok = _est.caught;
-	_est.caught = false;
-	return ok;
-}
-
-/* Area commands build what they can and skip the rest, so asking once for the
- * whole drag hides exactly the holes the player wants to see coming. Each tile
- * gets its own question instead. */
-static void ProbeRectFit()
-{
-	if (!_rect_plan.valid) return;
-	size_t n = (size_t)RectPlanWidth() * RectPlanHeight();
-	if (n > MINI_FIT_MAX) return;
-
-	_est.fit.assign(n, false);
-	RailType rt = PickRailType();
-	RoadType rdt = PickRoadType();
-
-	for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
-		for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) {
-			TileIndex tile = TileXY(tx, ty);
-			if (_tool == MiniTool::Demolish && _clear_mode != MiniClear::All) {
-				_est.fit[RectPlanIndex(tx, ty)] = PostClearTile(tile) && ProbedOk();
-				continue;
-			}
-			if (_drag_remove || _tool == MiniTool::Demolish) {
-				Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile, tile, false);
-			} else {
-				switch (_tool) {
-					case MiniTool::Canal: Command<CMD_BUILD_CANAL>::Post(STR_ERROR_CAN_T_BUILD_CANALS, tile, tile, WaterClass::Canal, false); break;
-					case MiniTool::Trees: Command<CMD_PLANT_TREE>::Post(STR_ERROR_CAN_T_PLANT_TREE_HERE, tile, tile, TREE_INVALID, false); break;
-					case MiniTool::BuyLand: Command<CMD_BUILD_OBJECT_AREA>::Post(STR_ERROR_CAN_T_PURCHASE_THIS_LAND, tile, tile, OBJECT_OWNED_LAND, 0, false); break;
-					case MiniTool::Convert: Command<CMD_CONVERT_RAIL>::Post(STR_ERROR_CAN_T_CONVERT_RAIL, tile, tile, rt, false); break;
-					case MiniTool::RoadConvert: Command<CMD_CONVERT_ROAD>::Post(STR_ERROR_CAN_T_CONVERT_ROAD, tile, tile, rdt, false); break;
-					default: break;
-				}
-			}
-			_est.fit[RectPlanIndex(tx, ty)] = ProbedOk();
-		}
-	}
-}
-
-static void ProbeRailFit()
-{
-	size_t n = _plan.pieces.size();
-	if (n == 0 || n > MINI_FIT_MAX) return;
-
-	_est.fit.assign(n, false);
-	if (_drag_remove) {
-		for (size_t k = 0; k < n; k++) {
-			auto [tile, t] = _plan.pieces[k];
-			Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
-			_est.fit[k] = ProbedOk();
-		}
-		return;
-	}
-
-	RailType rt = PickRailType();
-	for (const MiniRailRun &run : SplitRailPlan()) {
-		if (run.bridge) {
-			/* A bridge stands or falls in one piece, so its span shares one answer. */
-			Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, _plan.pieces[run.b].first, _plan.pieces[run.a].first, TRANSPORT_RAIL, PickBridgeType((uint)(run.b - run.a - 1)), (uint8_t)rt);
-			bool ok = ProbedOk();
-			for (size_t k = run.a; k <= run.b; k++) _est.fit[k] = ok;
-		} else {
-			for (size_t k = run.a; k <= run.b; k++) {
-				TileIndex tile = _plan.pieces[k].first;
-				Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tile, tile, rt, run.track, true, false);
-				_est.fit[k] = ProbedOk();
-			}
-		}
-	}
-}
-
-static void ProbeRoadFit()
-{
-	size_t n = _road_plan.tiles.size();
-	if (n == 0 || n > MINI_FIT_MAX) return;
-
-	_est.fit.assign(n, false);
-	RoadType rdt = PickRoadType();
-	Axis axis = _road_plan.axis;
-
-	if (_drag_remove) {
-		for (size_t k = 0; k < n; k++) {
-			TileIndex tile = _road_plan.tiles[k];
-			Command<CMD_REMOVE_LONG_ROAD>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_FROM, tile, tile, rdt, axis, false, false);
-			_est.fit[k] = ProbedOk();
-		}
-		return;
-	}
-
-	MiniSpans spans = SplitWaterSpans(_road_plan.tiles);
-	if (!spans.ok) {
-		for (size_t k = 0; k < n; k++) {
-			TileIndex tile = _road_plan.tiles[k];
-			Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, tile, tile, rdt, axis, DRD_NONE, false, false, false);
-			_est.fit[k] = ProbedOk();
-		}
-		return;
-	}
-
-	for (auto [a, b] : spans.bridges) {
-		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, _road_plan.tiles[b], _road_plan.tiles[a], TRANSPORT_ROAD, PickBridgeType((uint)(b - a - 1)), (uint8_t)rdt);
-		bool ok = ProbedOk();
-		for (size_t k = (size_t)a; k <= (size_t)b; k++) _est.fit[k] = ok;
-	}
-	for (auto [a, b] : spans.land) {
-		for (size_t k = (size_t)a; k <= (size_t)b; k++) {
-			TileIndex tile = _road_plan.tiles[k];
-			Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, tile, tile, rdt, axis, DRD_NONE, false, false, false);
-			_est.fit[k] = ProbedOk();
-		}
-	}
-}
-
-/* The cost probe asks the way the tool commits, which for a drag is one range
- * command. That answers for the run as a whole, so the tools whose run the game
- * fills in tile by tile get asked again, once per tile. */
-static void ProbeToolFit()
-{
-	_est.fit.clear();
-
-	bool save_shift = _shift_pressed;
-	Money save_cost = _est.cost;
-	_est.probing = true;
-	_est.caught = false;
-	_shift_pressed = true;
-
-	switch (_tool) {
-		case MiniTool::Rail: ProbeRailFit(); break;
-		case MiniTool::Road: ProbeRoadFit(); break;
-		/* A signal run is laid at the density setting's spacing, so most tiles
-		 * in the drag never get one and a per-tile answer would be about
-		 * signals that are not being placed. The run keeps one verdict. */
-		case MiniTool::Demolish:
-		case MiniTool::Canal:
-		case MiniTool::Trees:
-		case MiniTool::BuyLand:
-		case MiniTool::Convert:
-		case MiniTool::RoadConvert:
-			ProbeRectFit();
-			break;
-		default: break;
-	}
-
-	_shift_pressed = save_shift;
-	_est.probing = false;
-	_est.caught = false;
-	_est.cost = save_cost;
-}
-
-/* A tunnel mouth, a dock, a lock and a ship depot each want one shape of
- * ground, and a blueprint that only answers for the tile under the cursor
- * leaves the player clicking around to find it. The ground near the cursor is
- * swept instead and every spot that would take the build is ghosted. */
-static const int MINI_SITE_RADIUS = 10;
-/* Open water passes the shape test everywhere, so the sweep stops asking once
- * it has offered this many spots. */
-static const size_t MINI_SITE_MAX = 200;
-
-static std::vector<TileIndex> _sites;
-static uint64_t _sites_key = 0;
-
-static bool ToolNeedsSite()
-{
-	switch (_tool) {
-		case MiniTool::RailTunnel:
-		case MiniTool::RoadTunnel:
-		case MiniTool::Dock:
-		case MiniTool::Lock:
-		case MiniTool::Buoy:
-		case MiniTool::ShipDepot:
-			return true;
-		default:
-			return false;
-	}
-}
-
-/* A shape test comes first so the command is only asked where the ground could
- * plausibly carry the build; the sweep would be far too many commands
- * otherwise. */
-static bool SiteShapeFits(TileIndex tile)
-{
-	switch (_tool) {
-		case MiniTool::RailTunnel:
-		case MiniTool::RoadTunnel:
-		case MiniTool::Dock:
-		case MiniTool::Lock:
-			return GetInclinedSlopeDirection(GetTileSlope(tile)) != INVALID_DIAGDIR;
-		case MiniTool::Buoy:
-		case MiniTool::ShipDepot:
-			return IsTileType(tile, MP_WATER);
-		default:
-			return false;
-	}
-}
-
-static void ProbeToolSites()
-{
-	_sites.clear();
-
-	int cx = Clamp<int>((int)std::floor(_camera.MapXAt(_cursor.pos.y)), 1, Map::SizeX() - 2);
-	int cy = Clamp<int>((int)std::floor(_camera.MapYAt(_cursor.pos.x)), 1, Map::SizeY() - 2);
-
-	bool save_remove = _drag_remove;
-	double save_ax = _drag_ax;
-	double save_ay = _drag_ay;
-	bool save_shift = _shift_pressed;
-	Money save_cost = _est.cost;
-
-	_est.probing = true;
-	_est.caught = false;
-	_shift_pressed = true;
-	_drag_remove = false;
-
-	int x_lo = std::max(1, cx - MINI_SITE_RADIUS);
-	int x_hi = std::min<int>(Map::SizeX() - 2, cx + MINI_SITE_RADIUS);
-	int y_lo = std::max(1, cy - MINI_SITE_RADIUS);
-	int y_hi = std::min<int>(Map::SizeY() - 2, cy + MINI_SITE_RADIUS);
-	for (int tx = x_lo; tx <= x_hi && _sites.size() < MINI_SITE_MAX; tx++) {
-		for (int ty = y_lo; ty <= y_hi && _sites.size() < MINI_SITE_MAX; ty++) {
-			TileIndex tile = TileXY(tx, ty);
-			if (!SiteShapeFits(tile)) continue;
-			/* The tool's own placement runs on the candidate, so the sweep
-			 * follows whatever the tool would actually put down. */
-			_drag_ax = tx + 0.5;
-			_drag_ay = ty + 0.5;
-			CommitPointTool();
-			if (ProbedOk()) _sites.push_back(tile);
-		}
-	}
-
-	_shift_pressed = save_shift;
-	_drag_remove = save_remove;
-	_drag_ax = save_ax;
-	_drag_ay = save_ay;
-	_est.probing = false;
-	_est.caught = false;
-	_est.cost = save_cost;
-}
-
-static void UpdateToolSites()
-{
-	if (!ToolNeedsSite() || !_cursor.in_window || _ctrl_pressed || !Company::IsValidID(_local_company)) {
-		_sites.clear();
-		_sites_key = 0;
-		return;
-	}
-
-	int cx = Clamp<int>((int)std::floor(_camera.MapXAt(_cursor.pos.y)), 1, Map::SizeX() - 2);
-	int cy = Clamp<int>((int)std::floor(_camera.MapYAt(_cursor.pos.x)), 1, Map::SizeY() - 2);
-	uint64_t key = EstMix(0, (uint64_t)_tool);
-	key = EstMix(key, ((uint64_t)cx << 32) | (uint32_t)cy);
-	key = EstMix(key, ((uint64_t)_point_dir << 16) | ((uint64_t)PickRailType() << 8) | (uint64_t)PickRoadType());
-	key |= 1;
-	if (key == _sites_key) return;
-	_sites_key = key;
-	ProbeToolSites();
-}
-
-static void DrawSitePlan(int ppt)
-{
-	if (_sites.empty()) return;
-	int cx = Clamp<int>((int)std::floor(_camera.MapXAt(_cursor.pos.y)), 1, Map::SizeX() - 2);
-	int cy = Clamp<int>((int)std::floor(_camera.MapYAt(_cursor.pos.x)), 1, Map::SizeY() - 2);
-	TileIndex hover = TileXY(cx, cy);
-	int b = std::max(1, ppt / 10);
-	for (TileIndex tile : _sites) {
-		if (tile == hover) continue;
-		int tx = TileX(tile);
-		int ty = TileY(tile);
-		int x0 = _camera.ScreenX(ty), y0 = _camera.ScreenY(tx), x1 = _camera.ScreenX(ty + 1) - 1, y1 = _camera.ScreenY(tx + 1) - 1;
-		_canvas.BlendRect(x0, y0, x1, y1, COL_BP, 35);
-		_canvas.BlendRect(x0, y0, x1, y0 + b - 1, COL_BP, 130);
-		_canvas.BlendRect(x0, y1 - b + 1, x1, y1, COL_BP, 130);
-		_canvas.BlendRect(x0, y0, x0 + b - 1, y1, COL_BP, 130);
-		_canvas.BlendRect(x1 - b + 1, y0, x1, y1, COL_BP, 130);
-	}
-}
-
-/* The plan has to be settled before anything asks the game about it, and the
- * camera it is measured against only settles late in the frame. Both the probe
- * and the blueprint read the plan from here on. */
-static void UpdateToolPlans()
-{
-	if (!_dragging) return;
-
-	double wx = _camera.MapXAt(_cursor.pos.y);
-	double wy = _camera.MapYAt(_cursor.pos.x);
-	if (_tool == MiniTool::Rail) UpdateRailPlan(wx, wy);
-	if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(wx, wy);
-	if (_tool == MiniTool::Signal) UpdateSignalPlan(wx, wy);
-	if (IsRectTool(_tool)) UpdateRectPlan(wx, wy, RectPlanLimit());
-}
-
-/* The industry tool prices itself from the spec and signs are free, so neither
- * is worth a probe. */
-static bool ToolWantsEstimate()
-{
-	if (_tool == MiniTool::None || _tool == MiniTool::Industry || _tool == MiniTool::Sign) return false;
-	if ((!IsPointTool(_tool) || _tool == MiniTool::Signal) && !_dragging) return false;
-	return Company::IsValidID(_local_company);
-}
-
-static void UpdateToolEstimate()
-{
-	if (!ToolWantsEstimate() || !_cursor.in_window) {
-		_est.probed = false;
-		_est.ok = false;
-		_est.unknown = false;
-		_est.fit.clear();
-		_est.tunnel_end = INVALID_TILE;
-		_est.key = 0;
-		return;
-	}
-
-	uint64_t key = EstimateKey();
-	if (key == _est.key) return;
-	_est.key = key;
-	ProbeToolCost();
-	ProbeToolFit();
-}
-
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
  * above it, three per row. Drawn in screen space after Present(), so hit
  * rects live in screen pixels. */
@@ -2835,21 +861,9 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 /* Build panel: the tool in hand names itself above the build menu and every
  * variant it can take is a row that switches to it, so a type is chosen by
  * pointing at it instead of by walking a hidden cycle. */
-enum class MiniOptKind : uint8_t {
-	RailType,
-	RoadType,
-	SignalType,
-	AirportType,
-	IndustryType,
-	BridgeType,
-	StopShape,
-	Direction,
-	StationAxis,
-};
-
 struct MiniBuildRow {
 	std::string text;
-	MiniOptKind kind = MiniOptKind::RailType;
+	ToolOption kind = ToolOption::RailType;
 	int value = 0;
 	bool active = false;
 	bool head = false;
@@ -2863,21 +877,9 @@ struct MiniBuildRow {
 static const int MINI_BUILD_VIS_ROWS = 12;
 
 static std::vector<MiniBuildRow> _build_rows;
-static std::vector<std::tuple<Rect, MiniOptKind, int>> _build_hits;
+static std::vector<std::tuple<Rect, ToolOption, int>> _build_hits;
 static Rect _build_panel_rect;
 static bool _build_scrolls = false;
-
-static bool ToolUsesRailType(MiniTool t)
-{
-	return t == MiniTool::Rail || t == MiniTool::Convert || t == MiniTool::Station ||
-			t == MiniTool::TrainDepot || t == MiniTool::RailTunnel || t == MiniTool::RailBridge;
-}
-
-/* A waypoint drops onto road that is already there, so it takes no type. */
-static bool ToolUsesRoadType(MiniTool t)
-{
-	return IsRoadTool(t) && t != MiniTool::RoadWaypoint;
-}
 
 static void AddBuildHead(std::string text)
 {
@@ -2887,7 +889,7 @@ static void AddBuildHead(std::string text)
 	_build_rows.push_back(std::move(row));
 }
 
-static void AddBuildOpt(std::string text, MiniOptKind kind, int value, bool active)
+static void AddBuildOpt(std::string text, ToolOption kind, int value, bool active)
 {
 	MiniBuildRow row;
 	row.text = std::move(text);
@@ -2897,7 +899,7 @@ static void AddBuildOpt(std::string text, MiniOptKind kind, int value, bool acti
 	_build_rows.push_back(std::move(row));
 }
 
-static void AddBuildDirs(MiniOptKind kind, std::vector<int> cells, int cur, bool axis)
+static void AddBuildDirs(ToolOption kind, std::vector<int> cells, int cur, bool axis)
 {
 	MiniBuildRow row;
 	row.kind = kind;
@@ -2915,112 +917,84 @@ static void CollectBuildRows()
 	_build_rows.clear();
 
 	const Company *c = Company::GetIfValid(_local_company);
+	MiniTool kind = _tool.Kind();
 
-	if (c != nullptr && ToolUsesRailType(_tool)) {
+	if (c != nullptr && ToolUsesRailType(kind)) {
 		AddBuildHead("선로");
 		for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
 			if (!c->avail_railtypes.Test(rt)) continue;
-			AddBuildOpt(GameText(GetRailTypeInfo(rt)->strings.name), MiniOptKind::RailType, (int)rt, rt == PickRailType());
+			AddBuildOpt(GameText(GetRailTypeInfo(rt)->strings.name), ToolOption::RailType, (int)rt, rt == _choices.Rail());
 		}
 	}
 
-	if (c != nullptr && ToolUsesRoadType(_tool)) {
+	if (c != nullptr && ToolUsesRoadType(kind)) {
 		AddBuildHead("도로");
 		for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
 			if (!c->avail_roadtypes.Test(rt)) continue;
-			AddBuildOpt(GameText(GetRoadTypeInfo(rt)->strings.name), MiniOptKind::RoadType, (int)rt, rt == PickRoadType());
+			AddBuildOpt(GameText(GetRoadTypeInfo(rt)->strings.name), ToolOption::RoadType, (int)rt, rt == _choices.Road());
 		}
 	}
 
-	if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+	if (IsRoadStopTool(kind)) {
 		AddBuildHead("형태");
-		AddBuildOpt("통과", MiniOptKind::StopShape, 1, StopIsThrough());
-		AddBuildOpt("만입", MiniOptKind::StopShape, 0, !StopIsThrough());
+		AddBuildOpt("통과", ToolOption::StopShape, 1, _choices.StopThrough());
+		AddBuildOpt("만입", ToolOption::StopShape, 0, !_choices.StopThrough());
 		AddBuildHead("방향");
-		if (StopIsThrough()) {
-			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_AXES, StopDiagDir(), true);
+		bool through = _choices.StopThrough();
+		AddBuildDirs(ToolOption::Direction, through ? MINI_DIR_AXES : MINI_DIR_TURNS, _choices.StopFacing(), through);
+	}
+
+	if (IsDirPointTool(kind)) {
+		AddBuildHead("방향");
+		if (kind == MiniTool::ShipDepot) {
+			AddBuildDirs(ToolOption::Direction, MINI_DIR_AXES, AxisToDiagDir(DiagDirToAxis(_choices.PointFacing())), true);
 		} else {
-			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_TURNS, _stop_dir, false);
+			AddBuildDirs(ToolOption::Direction, MINI_DIR_TURNS, _choices.PointFacing(), false);
 		}
 	}
 
-	if (IsDirPointTool(_tool)) {
-		AddBuildHead("방향");
-		if (_tool == MiniTool::ShipDepot) {
-			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_AXES, AxisToDiagDir(DiagDirToAxis(_point_dir)), true);
-		} else {
-			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_TURNS, _point_dir, false);
-		}
-	}
-
-	if (_tool == MiniTool::Station) {
+	if (kind == MiniTool::Station) {
 		AddBuildHead("승강장");
-		AddBuildDirs(MiniOptKind::StationAxis, MINI_DIR_AXES, AxisToDiagDir(StationPlanAxis()), true);
+		AddBuildDirs(ToolOption::StationAxis, MINI_DIR_AXES, AxisToDiagDir(_choices.StationAxis()), true);
 	}
 
-	if (_tool == MiniTool::Signal) {
+	if (kind == MiniTool::Signal) {
 		AddBuildHead("신호");
-		for (SignalType st : SignalChoices()) {
-			AddBuildOpt(std::string(SignalTypeLabel(st)), MiniOptKind::SignalType, (int)st, st == PickSignalType());
+		for (SignalType st : _choices.Signals()) {
+			AddBuildOpt(std::string(SignalTypeLabel(st)), ToolOption::SignalType, (int)st, st == _choices.Signal());
 		}
 	}
 
-	if (IsBridgeTool(_tool)) {
-		uint len = std::max(BridgePlanLength(), 1U);
-		VehicleType vt = _tool == MiniTool::RailBridge ? VEH_TRAIN : VEH_ROAD;
+	if (IsBridgeTool(kind)) {
+		uint len = std::max(_tool.Plans().line.BridgeLength(), 1U);
+		VehicleType vt = kind == MiniTool::RailBridge ? VEH_TRAIN : VEH_ROAD;
 		AddBuildHead("다리");
 		for (BridgeType bt = 0; bt < MAX_BRIDGES; bt++) {
 			if (!CheckBridgeAvailability(bt, len).Succeeded()) continue;
 			const BridgeSpec *spec = GetBridgeSpec(bt);
 			AddBuildOpt(GameText(STR_SELECT_BRIDGE_INFO_NAME_MAX_SPEED, spec->material, PackVelocity(spec->speed, vt)),
-					MiniOptKind::BridgeType, (int)bt, bt == PickBridgeType(len));
+					ToolOption::BridgeType, (int)bt, bt == _choices.Bridge(len));
 		}
 	}
 
-	if (_tool == MiniTool::Airport) {
+	if (kind == MiniTool::Airport) {
 		AddBuildHead("공항");
 		for (uint8_t i = 0; i < NUM_AIRPORTS; i++) {
 			const AirportSpec *as = AirportSpec::Get(i);
 			if (!as->IsAvailable()) continue;
-			AddBuildOpt(GameText(as->name), MiniOptKind::AirportType, (int)i, i == PickAirportType());
+			AddBuildOpt(GameText(as->name), ToolOption::AirportType, (int)i, i == _choices.Airport());
 		}
 	}
 
-	if (_tool == MiniTool::Industry) {
+	if (kind == MiniTool::Industry) {
 		AddBuildHead("산업");
 		for (IndustryType it = 0; it < NUM_INDUSTRYTYPES; it++) {
-			if (!MiniIndustryAvailable(it)) continue;
+			if (!IndustryFundable(it)) continue;
 			const IndustrySpec *indsp = GetIndustrySpec(it);
 			AddBuildOpt(fmt::format("{}  {}", GameText(indsp->name),
 					GameText(STR_JUST_CURRENCY_LONG, indsp->GetConstructionCost())),
-					MiniOptKind::IndustryType, (int)it, it == PickIndustryType());
+					ToolOption::IndustryType, (int)it, it == _choices.Industry());
 		}
-	}
-}
-
-static void ApplyBuildOpt(MiniOptKind kind, int value)
-{
-	switch (kind) {
-		case MiniOptKind::RailType: _rail_type_sel = (RailType)value; break;
-		case MiniOptKind::RoadType: _road_type_sel = (RoadType)value; break;
-		case MiniOptKind::SignalType: _signal_type = (SignalType)value; break;
-		case MiniOptKind::AirportType: _airport_type = (uint8_t)value; break;
-		case MiniOptKind::IndustryType: _industry_type = (IndustryType)value; break;
-		case MiniOptKind::BridgeType: _bridge_sel = (BridgeType)value; break;
-		case MiniOptKind::StopShape: _stop_through = value != 0; break;
-
-		case MiniOptKind::Direction:
-			if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-				_stop_dir = (DiagDirection)value;
-			} else {
-				_point_dir = (DiagDirection)value;
-			}
-			break;
-
-		/* The axis follows the drag, so the flip is what a click can set. */
-		case MiniOptKind::StationAxis:
-			if (StationPlanAxis() != DiagDirToAxis((DiagDirection)value)) _station_flip = !_station_flip;
-			break;
 	}
 }
 
@@ -3031,7 +1005,7 @@ static void DrawBuildPanel(int px, int bottom)
 	_build_hits.clear();
 	_build_panel_rect = {0, 0, -1, -1};
 	_build_scrolls = false;
-	if (_tool == MiniTool::None) return;
+	if (_tool.Kind() == MiniTool::None) return;
 
 	CollectBuildRows();
 
@@ -3043,7 +1017,7 @@ static void DrawBuildPanel(int px, int bottom)
 	int indent = 3 * s;
 	int cell = row_h - 2 * s;
 
-	std::string title = ToolLabel(_tool);
+	std::string title = ToolLabel(_tool.Kind());
 	int wmax = (int)GetStringBoundingBox(title).width;
 	for (const MiniBuildRow &r : _build_rows) {
 		int w = r.cells.empty() ? (int)GetStringBoundingBox(r.text).width
@@ -3113,7 +1087,7 @@ static bool HandleBuildPanelClick(int x, int y)
 {
 	for (const auto &[r, kind, value] : _build_hits) {
 		if (!InRect(r, x, y)) continue;
-		ApplyBuildOpt(kind, value);
+		_choices.Apply(kind, value);
 		return true;
 	}
 	return InRect(_build_panel_rect, x, y);
@@ -3165,7 +1139,7 @@ static void DrawBuildMenu()
 			int ix = margin + pp + (i % cols) * (tile + gap);
 			int iy = py + pp + row * (tile + gap);
 			Rect ir = {ix, iy, ix + tile - 1, iy + tile - 1};
-			DrawMenuTile(ir, it.str, it.fallback, it.tool, _tool == it.tool);
+			DrawMenuTile(ir, it.str, it.fallback, it.tool, _tool.Kind() == it.tool);
 			_menu_item_hits.emplace_back(ir, it.tool);
 		}
 		if (rows > vis) {
@@ -3206,7 +1180,7 @@ static bool HandleMenuClick(int x, int y)
 	}
 	for (const auto &[r, t] : _menu_item_hits) {
 		if (InRect(r, x, y)) {
-			if (_tool == t) EnterIdleMode(); else EnterBuildMode(t);
+			if (_tool.Kind() == t) EnterIdleMode(); else EnterBuildMode(t);
 			return true;
 		}
 	}
@@ -3231,7 +1205,7 @@ static void DrawCmdBar()
 		const MiniMenuItem &it = _cmd_items[i];
 		int x = x0 + i * (tile + gap);
 		Rect r = {x, y, x + tile - 1, y + tile - 1};
-		DrawMenuTile(r, it.str, it.fallback, it.tool, _tool == it.tool);
+		DrawMenuTile(r, it.str, it.fallback, it.tool, _tool.Kind() == it.tool);
 		_cmd_hits.emplace_back(r, it.tool);
 	}
 }
@@ -3240,7 +1214,7 @@ static bool HandleCmdClick(int x, int y)
 {
 	for (const auto &[r, t] : _cmd_hits) {
 		if (InRect(r, x, y)) {
-			if (_tool == t) EnterIdleMode(); else EnterBuildMode(t);
+			if (_tool.Kind() == t) EnterIdleMode(); else EnterBuildMode(t);
 			return true;
 		}
 	}
@@ -3256,7 +1230,7 @@ static void DrawClearPanel()
 {
 	_clear_hits.clear();
 	_clear_panel_rect = {0, 0, -1, -1};
-	if (_tool != MiniTool::Demolish) return;
+	if (_tool.Kind() != MiniTool::Demolish) return;
 
 	int s = _tuning.hud_scale;
 	int lh = GetCharacterHeight(FS_NORMAL);
@@ -3267,9 +1241,9 @@ static void DrawClearPanel()
 	int tile = MenuTileSide();
 
 	int wmax = 0;
-	for (const MiniClearCategory &cat : _clear_cats) wmax = std::max<int>(wmax, GetStringBoundingBox(cat.label).width);
+	for (const MiniClearCategory &cat : ClearCategories()) wmax = std::max<int>(wmax, GetStringBoundingBox(cat.label).width);
 
-	int n = (int)std::size(_clear_cats);
+	int n = (int)ClearCategories().size();
 	int pw = wmax + 2 * pad;
 	int ph = n * row_h + 2 * pad;
 	int px = _fbw - margin - pw;
@@ -3278,9 +1252,9 @@ static void DrawClearPanel()
 	ChromePanel(px, py, px + pw - 1, py + ph - 1);
 
 	int ty = py + pad;
-	for (const MiniClearCategory &cat : _clear_cats) {
+	for (const MiniClearCategory &cat : ClearCategories()) {
 		Rect r = {px + s, ty - s, px + pw - 1 - s, ty + row_h - s - 1};
-		bool on = _clear_mode == cat.mode;
+		bool on = _clear_filter.Mode() == cat.mode;
 		bool hover = _cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y);
 		if (on || hover) RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, 2 * s, on ? COL_CH_ACTIVE : COL_CH_TILE);
 		_canvas.DrawText(cat.label, px + pad, ty, on ? COL_CH_ACCENT : COL_CH_TEXT);
@@ -3293,8 +1267,7 @@ static bool HandleClearClick(int x, int y)
 {
 	for (const auto &[r, mode] : _clear_hits) {
 		if (!InRect(r, x, y)) continue;
-		_clear_mode = mode;
-		ClearPlans();
+		_clear_filter.Select(mode);
 		return true;
 	}
 	return InRect(_clear_panel_rect, x, y);
@@ -4120,14 +2093,15 @@ static void DrawHud()
 {
 	int s = _tuning.hud_scale;
 	int lh = GetCharacterHeight(FS_NORMAL);
+	MiniTool kind = _tool.Kind();
 
 	if (_pause_mode.Any()) DrawHudTextCentred(_fbw / 2, 6 * s, GameText(STR_STATUSBAR_PAUSED));
 
-	if (_tool != MiniTool::None) {
+	if (kind != MiniTool::None) {
 		/* The active tool announces itself beside the cursor: official name on
 		 * top, action and rotation hints below, live size while dragging. */
 		std::string_view hint;
-		switch (_tool) {
+		switch (kind) {
 			case MiniTool::Rail: hint = "DRAG PATH / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Convert:
 			case MiniTool::RoadConvert: hint = "DRAG AREA / RMB CANCEL"; break;
@@ -4160,45 +2134,46 @@ static void DrawHud()
 			default: break;
 		}
 		if (_cursor.in_window) {
-			std::string title = ToolLabel(_tool);
-			if (_tool == MiniTool::Airport) {
-				const AirportSpec *as = AirportSpec::Get(PickAirportType());
+			std::string title = ToolLabel(kind);
+			if (kind == MiniTool::Airport) {
+				const AirportSpec *as = AirportSpec::Get(_choices.Airport());
 				if (as->IsAvailable()) title += fmt::format("  {}", GameText(as->name));
 			}
-			if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
-				title += fmt::format("  {}", GameText(GetRailTypeInfo(PickRailType())->strings.name));
+			if (kind == MiniTool::Rail || kind == MiniTool::Convert) {
+				title += fmt::format("  {}", GameText(GetRailTypeInfo(_choices.Rail())->strings.name));
 			}
-			if (IsRoadTool(_tool)) {
-				title += fmt::format("  {}", GameText(GetRoadTypeInfo(PickRoadType())->strings.name));
+			if (IsRoadTool(kind)) {
+				title += fmt::format("  {}", GameText(GetRoadTypeInfo(_choices.Road())->strings.name));
 			}
-			if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-				title += StopIsThrough() ? "  통과" : "  만입";
+			if (IsRoadStopTool(kind)) {
+				title += _choices.StopThrough() ? "  통과" : "  만입";
 			}
-			if (_tool == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(PickSignalType()));
-			if (_tool == MiniTool::Demolish) title += fmt::format("  {}", ClearModeLabel(_clear_mode));
-			if (_est.tunnel_end != INVALID_TILE) title += fmt::format("  {}칸", _est.tunnel_len);
-			if (IsBridgeTool(_tool)) {
-				uint len = std::max(BridgePlanLength(), 1U);
-				title += fmt::format("  {}", GameText(GetBridgeSpec(PickBridgeType(len))->material));
+			if (kind == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(_choices.Signal()));
+			if (kind == MiniTool::Demolish) title += fmt::format("  {}", _clear_filter.Label());
+			if (_estimate.TunnelEnd() != INVALID_TILE) title += fmt::format("  {}칸", _estimate.TunnelLength());
+			if (IsBridgeTool(kind)) {
+				uint len = std::max(_tool.Plans().line.BridgeLength(), 1U);
+				title += fmt::format("  {}", GameText(GetBridgeSpec(_choices.Bridge(len))->material));
 			}
-			if (_tool == MiniTool::Industry) {
-				IndustryType it = PickIndustryType();
+			if (kind == MiniTool::Industry) {
+				IndustryType it = _choices.Industry();
 				if (it != IT_INVALID) {
 					const IndustrySpec *indsp = GetIndustrySpec(it);
 					title += fmt::format("  {}  {}", GameText(indsp->name),
 							GameText(STR_JUST_CURRENCY_LONG, indsp->GetConstructionCost()));
 				}
 			}
-			if (_dragging) {
-				if (_tool == MiniTool::Rail && !_plan.pieces.empty()) title += fmt::format("  {}", _plan.pieces.size());
-				if (_tool == MiniTool::Road && !_road_plan.tiles.empty()) title += fmt::format("  {}", _road_plan.tiles.size());
-				if (IsBridgeTool(_tool)) title += fmt::format("  {}", BridgePlanLength());
-				if (_tool == MiniTool::Signal && !_sig_plan.tiles.empty()) title += fmt::format("  {}", _sig_plan.tiles.size());
-				if (IsRectTool(_tool) && _rect_plan.valid) title += fmt::format("  {}x{}", _rect_plan.x1 - _rect_plan.x0 + 1, _rect_plan.y1 - _rect_plan.y0 + 1);
-				if (_tool == MiniTool::Station && _rect_plan.valid && !_drag_remove) {
-					int w = _rect_plan.x1 - _rect_plan.x0 + 1;
-					int h = _rect_plan.y1 - _rect_plan.y0 + 1;
-					bool along_x = StationPlanAxis() == AXIS_X;
+			if (_tool.Dragging()) {
+				const ToolPlans &plans = _tool.Plans();
+				if (kind == MiniTool::Rail && !plans.rail.pieces.empty()) title += fmt::format("  {}", plans.rail.pieces.size());
+				if (kind == MiniTool::Road && !plans.line.tiles.empty()) title += fmt::format("  {}", plans.line.tiles.size());
+				if (IsBridgeTool(kind)) title += fmt::format("  {}", plans.line.BridgeLength());
+				if (kind == MiniTool::Signal && !plans.signal.tiles.empty()) title += fmt::format("  {}", plans.signal.tiles.size());
+				if (IsRectTool(kind) && plans.area.valid) title += fmt::format("  {}x{}", plans.area.Width(), plans.area.Height());
+				if (kind == MiniTool::Station && plans.area.valid && !_tool.Removing()) {
+					int w = plans.area.Width();
+					int h = plans.area.Height();
+					bool along_x = _choices.StationAxis() == AXIS_X;
 					title += fmt::format("  {}선 {}칸", along_x ? h : w, along_x ? w : h);
 				}
 			}
@@ -4206,11 +2181,12 @@ static void DrawHud()
 			 * balance cannot cover it. */
 			std::string cost;
 			TextColour cost_tc = TC_WHITE;
-			if (_est.probed && _est.ok) {
-				bool income = _est.cost < 0;
-				cost = GameText(income ? STR_MESSAGE_ESTIMATED_INCOME : STR_MESSAGE_ESTIMATED_COST, income ? -_est.cost : _est.cost);
+			if (_estimate.Priced()) {
+				Money price = _estimate.Cost();
+				bool income = price < 0;
+				cost = GameText(income ? STR_MESSAGE_ESTIMATED_INCOME : STR_MESSAGE_ESTIMATED_COST, income ? -price : price);
 				const Company *c = Company::GetIfValid(_local_company);
-				if (!income && c != nullptr && c->money < _est.cost) cost_tc = TC_RED;
+				if (!income && c != nullptr && c->money < price) cost_tc = TC_RED;
 			}
 
 			int lines = cost.empty() ? 2 : 3;
@@ -7527,17 +5503,13 @@ static void DrawMiniWndsImGui()
 
 bool MiniUiCatchEstimate(Money cost)
 {
-	if (!_est.probing) return false;
-
-	_est.cost += cost;
-	_est.caught = true;
-	return true;
+	return CommandProbe::Catch(cost);
 }
 
 bool MiniUiShowError(std::string summary, std::string detail, bool warn)
 {
 	/* A probe asks what a plan would cost; a refusal is the answer, not news. */
-	if (_est.probing) return true;
+	if (CommandProbe::Open()) return true;
 	if (!_mini_active || summary.empty()) return false;
 
 	uint life = std::max<uint>(_settings_client.gui.errmsg_duration, 1) * 1000;
@@ -7669,10 +5641,9 @@ static void Deactivate()
 	_overlay.Reset();
 	_menu_open = -1;
 	_win_open = -1;
-	_dragging = false;
+	_tool.Abort();
 	_camera.Halt();
 	_vehicle_motion.Clear();
-	ClearPlans();
 	MarkWholeScreenDirty();
 }
 
@@ -7681,8 +5652,7 @@ void MiniUiResetGameState()
 {
 	CloseAllMiniWnds();
 	EnterIdleMode();
-	_dragging = false;
-	ClearPlans();
+	_tool.Abort();
 	_vehicle_motion.Clear();
 	_stuck_long.clear();
 	for (auto &l : _status_veh) l.clear();
@@ -7814,7 +5784,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		return true;
 	}
 
-	if (_press_owner == MiniPressOwner::None && !_dragging && !_middle_button_down) {
+	if (_press_owner == MiniPressOwner::None && !_tool.Dragging() && !_middle_button_down) {
 		if (native_capture) return false;
 		/* Native windows float above the ImGui layer and take the click;
 		 * carriers sit below it, so ImGui gets those instead. An embed takes
@@ -7865,63 +5835,25 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
 		if (!HandleToastClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
-			if (_tool == MiniTool::None) {
+			if (_tool.Kind() == MiniTool::None) {
 				if (_order_pick_veh != VehicleID::Invalid()) {
 					OrderPickClick(_cursor.pos.x, _cursor.pos.y);
 				} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y) &&
 						!OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y)) {
 					OpenWaypointWndAt(_cursor.pos.x, _cursor.pos.y);
 				}
-			} else if (IsPointTool(_tool)) {
-				_drag_remove = _ctrl_pressed;
-				_drag_ax = _camera.MapXAt(_cursor.pos.y);
-				_drag_ay = _camera.MapYAt(_cursor.pos.x);
-				if (_tool == MiniTool::Signal) {
-					_dragging = true;
-					UpdateSignalPlan(_drag_ax, _drag_ay);
-				} else {
-					CommitPointTool();
-				}
 			} else {
-				_dragging = true;
-				_drag_remove = _ctrl_pressed && _tool != MiniTool::Convert && _tool != MiniTool::RoadConvert && !IsBridgeTool(_tool);
-				_drag_ax = _camera.MapXAt(_cursor.pos.y);
-				_drag_ay = _camera.MapYAt(_cursor.pos.x);
-				if (_tool == MiniTool::Rail) {
-					_plan.path.clear();
-					UpdateRailPlan(_drag_ax, _drag_ay);
-				}
-				if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(_drag_ax, _drag_ay);
-				if (IsRectTool(_tool)) UpdateRectPlan(_drag_ax, _drag_ay, RectPlanLimit());
+				_tool.Press(CursorPoint(), _ctrl_pressed);
 			}
 		}
 	}
 
-	if (!_left_button_down && _prev_left && _dragging) {
-		_dragging = false;
-		if (_tool == MiniTool::Rail) CommitRailPlan();
-		if (_tool == MiniTool::Road) CommitRoadPlan();
-		if (IsBridgeTool(_tool)) CommitBridgePlan();
-		if (_tool == MiniTool::Signal) CommitSignalPlan();
-		if (_tool == MiniTool::Station) CommitStationPlan();
-		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
-		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
-		if (_tool == MiniTool::Canal) CommitCanalPlan();
-		if (_tool == MiniTool::Convert) CommitConvertPlan();
-		if (_tool == MiniTool::RoadConvert) CommitRoadConvertPlan();
-		if (_tool == MiniTool::Trees) CommitTreePlan();
-		if (_tool == MiniTool::BuyLand) CommitBuyLandPlan();
-	}
+	if (!_left_button_down && _prev_left) _tool.Release();
 	_prev_left = _left_button_down;
 
 	if (_right_button_clicked) {
 		_right_button_clicked = false;
-		if (_dragging) {
-			_dragging = false;
-			ClearPlans();
-		} else {
-			EnterIdleMode();
-		}
+		if (!_tool.Abort()) EnterIdleMode();
 	}
 
 	_cursor.delta.x = 0;
@@ -7933,12 +5865,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 /* Escape only unwinds mini UI state, one layer per press; leaving the mini UI is F9 alone. */
 static void UnwindEscape()
 {
-	if (_dragging) {
-		_dragging = false;
-		ClearPlans();
-		return;
-	}
-	if (_tool != MiniTool::None || _follow_veh != VehicleID::Invalid() || _order_pick_veh != VehicleID::Invalid()) {
+	if (_tool.Abort()) return;
+	if (_tool.Kind() != MiniTool::None || _follow_veh != VehicleID::Invalid() || _order_pick_veh != VehicleID::Invalid()) {
 		EnterIdleMode();
 		return;
 	}
@@ -7991,23 +5919,11 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 		 * belongs to the build panel. It is modal, not a global shortcut, so
 		 * it only lives while a placement tool is in hand. */
 		case 'E':
-			if (_tool == MiniTool::Station) {
-				_station_flip = !_station_flip;
-			} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-				_stop_dir = ChangeDiagDir(_stop_dir, DIAGDIRDIFF_90RIGHT);
-			} else if (IsDirPointTool(_tool)) {
-				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
-			}
+			_choices.Turn(DIAGDIRDIFF_90RIGHT);
 			break;
 
 		case 'Q':
-			if (_tool == MiniTool::Station) {
-				_station_flip = !_station_flip;
-			} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-				_stop_dir = ChangeDiagDir(_stop_dir, DIAGDIRDIFF_90LEFT);
-			} else if (IsDirPointTool(_tool)) {
-				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
-			}
+			_choices.Turn(DIAGDIRDIFF_90LEFT);
 			break;
 
 		default:
@@ -8074,42 +5990,15 @@ void MiniUiFrame(uint delta_ms)
 
 	int ppt = _camera.TilePixels();
 
-	UpdateToolPlans();
-	UpdateToolEstimate();
-	UpdateToolSites();
+	_tool.Follow(CursorPoint());
+	_estimate.Update();
+	_sites.Update();
 
-	_overlay.FollowTool(ToolLayer(_tool));
+	_overlay.FollowTool(ToolLayer(_tool.Kind()));
 
 	_map_painter.Paint(ppt, _overlay.Filter());
 
-	DrawCatchmentPlan(ppt);
-
-	if (_dragging) {
-		if (_tool == MiniTool::Rail) {
-			DrawRailPlan(ppt);
-		} else if (_tool == MiniTool::Road) {
-			DrawRoadPlan(ppt);
-		} else if (IsBridgeTool(_tool)) {
-			DrawBridgePlan(ppt);
-		} else if (_tool == MiniTool::Signal) {
-			DrawSignalPlan(ppt);
-		} else if (IsRectTool(_tool)) {
-			DrawRectPlan(ppt);
-		}
-	} else if (IsPointTool(_tool)) {
-		DrawSitePlan(ppt);
-		DrawPointToolPlan(ppt);
-	} else if (_tool != MiniTool::None) {
-		int htx = (int)std::floor(_camera.MapXAt(_cursor.pos.y));
-		int hty = (int)std::floor(_camera.MapYAt(_cursor.pos.x));
-		if (htx >= 0 && hty >= 0 && htx < (int)Map::SizeX() && hty < (int)Map::SizeY()) {
-			uint32_t c = _tool == MiniTool::Demolish ? COL_BP_RM : COL_BP;
-			/* The filter would take nothing here, so the cue stays but drops the
-			 * removal red. */
-			if (ClearFilterActive() && !ClearTileMatches(TileXY(htx, hty))) c = COL_BP_NO;
-			_canvas.BlendRect(_camera.ScreenX(hty), _camera.ScreenY(htx), _camera.ScreenX(hty + 1) - 1, _camera.ScreenY(htx + 1) - 1, c, 70);
-		}
-	}
+	PaintBlueprint(ppt);
 
 	DrawOrderRoute();
 	_vehicle_painter.Paint(ppt, _overlay.Filter());

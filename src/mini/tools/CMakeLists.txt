@@ -1,0 +1,24 @@
+add_files(
+    blueprint.cpp
+    blueprint.h
+    build_tool.cpp
+    build_tool.h
+    clear_filter.cpp
+    clear_filter.h
+    command_probe.cpp
+    command_probe.h
+    tile_pick.cpp
+    tile_pick.h
+    tool_choices.cpp
+    tool_choices.h
+    tool_commit.cpp
+    tool_commit.h
+    tool_estimate.cpp
+    tool_estimate.h
+    tool_kind.cpp
+    tool_kind.h
+    tool_plans.cpp
+    tool_plans.h
+    tool_sites.cpp
+    tool_sites.h
+)

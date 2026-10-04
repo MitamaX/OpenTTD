@@ -10,6 +10,7 @@
 #ifndef MINI_MAP_TILE_SHAPES_H
 #define MINI_MAP_TILE_SHAPES_H
 
+#include "../../core/geometry_type.hpp"
 #include "../../direction_type.h"
 #include "../../road_type.h"
 #include "../../track_type.h"
@@ -21,5 +22,15 @@ void DrawTrackPiece(Track t, int x0, int y0, int x1, int y1, int width, uint32_t
 void DrawTrackBitsPx(TrackBits bits, int x0, int y0, int x1, int y1, int width, uint32_t c);
 void DrawRoadBitsPx(RoadBits bits, int x0, int y0, int x1, int y1, int width, uint32_t c);
 void DrawAxisBand(Axis axis, int x0, int y0, int x1, int y1, int width, uint32_t c);
+
+inline void DrawTrackPiece(Track t, const Rect &r, int width, uint32_t c)
+{
+	DrawTrackPiece(t, r.left, r.top, r.right, r.bottom, width, c);
+}
+
+inline void DrawAxisBand(Axis axis, const Rect &r, int width, uint32_t c)
+{
+	DrawAxisBand(axis, r.left, r.top, r.right, r.bottom, width, c);
+}
 
 #endif /* MINI_MAP_TILE_SHAPES_H */
