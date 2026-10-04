@@ -135,3 +135,7 @@ body {
 .command.off, .command.off:hover {
 	color: var(--ink-dim);
 }
+
+native-slot {
+	display: block;
+}

@@ -6,6 +6,8 @@ add_files(
     ledger.h
     ledger_panel.cpp
     ledger_panel.h
+    native_slot.cpp
+    native_slot.h
     panel.cpp
     panel.h
     panel_host.cpp
@@ -16,6 +18,8 @@ add_files(
     rml_interfaces.h
     rml_layer.cpp
     rml_layer.h
+    rml_renderer.cpp
+    rml_renderer.h
     ui_text.cpp
     ui_text.h
 )

@@ -18,7 +18,7 @@
 #include "rml_interfaces.h"
 
 namespace Rml { class Context; }
-class RenderInterface_GL3;
+class RmlRenderer;
 
 class RmlLayer final : public RlwLayer {
 public:
@@ -45,7 +45,7 @@ private:
 	RmlFileInterface files;
 	RmlSystemInterface system;
 	RmlTextInputHandler text_input;
-	std::unique_ptr<RenderInterface_GL3> renderer;
+	std::unique_ptr<RmlRenderer> renderer;
 	Rml::Context *context = nullptr;
 	bool unavailable = false;
 	std::array<bool, 3> held{};

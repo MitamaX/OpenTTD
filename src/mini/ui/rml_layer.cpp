@@ -11,9 +11,10 @@
 #include "rml_layer.h"
 
 #include <RmlUi/Core.h>
-#include <RmlUi_Renderer_GL3.h>
 
 #include "fonts.h"
+#include "native_slot.h"
+#include "rml_renderer.h"
 
 #include "../../safeguards.h"
 
@@ -31,7 +32,7 @@ void RmlLayer::Start()
 	this->unavailable = !RmlGL3::Initialize();
 	if (this->unavailable) return;
 
-	auto renderer = std::make_unique<RenderInterface_GL3>();
+	auto renderer = std::make_unique<RmlRenderer>();
 	this->unavailable = !*renderer;
 	if (this->unavailable) return;
 	this->renderer = std::move(renderer);
@@ -40,6 +41,7 @@ void RmlLayer::Start()
 	Rml::SetSystemInterface(&this->system);
 	Rml::SetRenderInterface(this->renderer.get());
 	Rml::Initialise();
+	NativeSlot::Register();
 	for (const char *font : MINI_FONTS) Rml::LoadFontFace(font);
 
 	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1), nullptr, &this->text_input);
@@ -55,6 +57,7 @@ void RmlLayer::Update(int width, int height, float dp_ratio)
 
 void RmlLayer::Render(int width, int height)
 {
+	this->renderer->SyncScreenTexture();
 	this->renderer->SetViewport(width, height);
 	this->renderer->BeginFrame();
 	this->context->Render();

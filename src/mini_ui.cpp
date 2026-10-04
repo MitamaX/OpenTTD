@@ -6177,7 +6177,7 @@ static void ImWndViewSlot(const MiniWnd &mw)
 	float vw = ImGui::GetContentRegionAvail().x;
 	if (vw < 32.0f || _fbw <= 0 || _fbh <= 0) return;
 	EnsureMiniCarrier(mw, (int)pos.x, (int)pos.y, (int)vw, (int)vh);
-	uintptr_t tid = RlwScreenTexId();
+	uintptr_t tid = RlwScreenTexture().id;
 	if (tid != 0) {
 		ImVec2 uv0(pos.x / (float)_fbw, pos.y / (float)_fbh);
 		ImVec2 uv1((pos.x + vw) / (float)_fbw, (pos.y + vh) / (float)_fbh);
@@ -6331,7 +6331,7 @@ static void ImWndNativeSlot(MiniWnd &mw, const MiniEmbedSpec &spec, WindowNumber
 	/* An item under the cursor keeps ImGui from dragging the mini window, so
 	 * a press inside the slot is free to reach the native widget. */
 	ImGui::InvisibleButton("##native", ImVec2(sw, sh));
-	uintptr_t tid = RlwScreenTexId();
+	uintptr_t tid = RlwScreenTexture().id;
 	if (tid == 0) return;
 	ImVec2 uv0((float)w->left / (float)_fbw, (float)(w->top + crop) / (float)_fbh);
 	ImVec2 uv1(((float)w->left + sw) / (float)_fbw, ((float)(w->top + crop) + sh) / (float)_fbh);

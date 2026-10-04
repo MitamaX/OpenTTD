@@ -124,9 +124,10 @@ static void RlwImGuiDropFrame()
 	_rlw_imgui_frame = false;
 }
 
-uintptr_t RlwScreenTexId()
+RlwTextureInfo RlwScreenTexture()
 {
-	return _rlw_tex_ok ? _rlw_tex.id : 0;
+	if (!_rlw_tex_ok) return {};
+	return {_rlw_tex.id, _rlw_tex_w, _rlw_tex_h};
 }
 
 static RlwLayer *_rlw_layer = nullptr;

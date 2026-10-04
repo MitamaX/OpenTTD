@@ -90,9 +90,17 @@ void RlwImGuiInit();
 void RlwImGuiShutdown();
 void RlwImGuiNewFrame();
 
-/* GL handle of the CPU screen texture, for sampling native-window regions
- * inside ImGui images. 0 while the texture does not exist yet. */
-uintptr_t RlwScreenTexId();
+struct RlwTextureInfo {
+	uintptr_t id = 0;
+	int width = 0;
+	int height = 0;
+
+	bool operator==(const RlwTextureInfo &) const = default;
+};
+
+/* GL texture of the CPU screen, for sampling native-window regions inside
+ * the GPU layers. Its id is 0 while the texture does not exist yet. */
+RlwTextureInfo RlwScreenTexture();
 
 /* A GPU layer composited above the ImGui layer and below the native windows.
  * It is detached before the window closes, while its GL resources can still be freed. */
