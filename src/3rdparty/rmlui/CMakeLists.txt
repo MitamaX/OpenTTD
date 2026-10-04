@@ -3,9 +3,11 @@ if(NOT raylib_FOUND)
 endif()
 
 file(GLOB_RECURSE RMLUI_CORE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Source/Core/*.cpp)
+file(GLOB RMLUI_SVG_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Source/SVG/*.cpp)
 
 add_library(rmlui STATIC
     ${RMLUI_CORE_SOURCES}
+    ${RMLUI_SVG_SOURCES}
     Backends/RmlUi_Renderer_GL3.cpp
 )
 
@@ -14,8 +16,9 @@ target_compile_options(rmlui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-w>)
 target_include_directories(rmlui SYSTEM PUBLIC Include Backends)
 target_compile_definitions(rmlui
     PUBLIC RMLUI_STATIC_LIB
-    PRIVATE RMLUI_FONT_ENGINE_FREETYPE
+    PRIVATE RMLUI_FONT_ENGINE_FREETYPE RMLUI_SVG_PLUGIN
 )
+target_link_libraries(rmlui PRIVATE lunasvg)
 
 # MinGW links everything statically, and FindFreetype leaves out FreeType's own dependencies.
 if(MINGW)
