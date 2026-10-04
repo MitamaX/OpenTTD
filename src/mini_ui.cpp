@@ -62,6 +62,13 @@
 #include "mini/core/canvas.h"
 #include "mini/core/tones.h"
 #include "mini/core/tuning.h"
+#include "mini/map/ground.h"
+#include "mini/map/map_labels.h"
+#include "mini/map/map_overlay.h"
+#include "mini/map/map_painter.h"
+#include "mini/map/tile_shapes.h"
+#include "mini/map/vehicle_motion.h"
+#include "mini/map/vehicle_painter.h"
 #include "mini/ui/finance_panel.h"
 #include "mini/ui/fonts.h"
 #include "mini/ui/ui_text.h"
@@ -202,12 +209,6 @@ static bool IsDirPointTool(MiniTool t)
 	return t == MiniTool::TrainDepot || t == MiniTool::RoadDepot || t == MiniTool::ShipDepot;
 }
 
-enum class MiniLayer : uint8_t {
-	None,
-	Rail,
-	Road,
-};
-
 static MiniLayer ToolLayer(MiniTool t)
 {
 	switch (t) {
@@ -291,13 +292,6 @@ static void EnterOrderPickMode(VehicleID v)
 	_order_pick_veh = v;
 }
 
-/* ONI-style overlay: an explicit toggle that swaps the info layer without
- * leaving the screen. Picking a build tool auto-engages its layer; that
- * auto choice reverts when the tool is dropped, a manual toggle sticks. */
-static MiniLayer _overlay = MiniLayer::None;
-static bool _overlay_auto = false;
-static MiniLayer _last_tool_layer = MiniLayer::None;
-static MiniLayer _filter_layer = MiniLayer::None;
 static DiagDirection _point_dir = DIAGDIR_SE;
 static bool _dragging = false;
 static bool _drag_remove = false;
@@ -480,8 +474,6 @@ bool MiniUiActive()
 	return _mini_active;
 }
 
-static uint64_t _mini_frame = 0;
-
 static void DrawScreenText(int x, int y, std::string_view text, TextColour colour = TC_WHITE)
 {
 	_canvas.DrawText(text, x, y, TextTint(colour));
@@ -511,856 +503,6 @@ static void DrawHudText(int x, int y, std::string_view text, int min_w = 0, Text
 static void DrawHudTextCentred(int cx, int y, std::string_view text)
 {
 	DrawHudText(cx - GetStringBoundingBox(text).width / 2, y, text);
-}
-
-static uint32_t GroundColour(TileIndex tile, int h)
-{
-	h = Clamp(h, 0, 15);
-	switch (GetTileType(tile)) {
-		case MP_CLEAR:
-			switch (GetClearGround(tile)) {
-				case CLEAR_FIELDS: return COL_FIELDS;
-				case CLEAR_ROCKS: return COL_ROCKS;
-				case CLEAR_SNOW: return COL_SNOW;
-				case CLEAR_DESERT: return COL_DESERT;
-				default: return _height_ramp[h];
-			}
-		default:
-			return _height_ramp[h];
-	}
-}
-
-static MiniSprite GroundSlot(TileIndex tile)
-{
-	if (GetTileType(tile) == MP_CLEAR) {
-		switch (GetClearGround(tile)) {
-			case CLEAR_FIELDS: return MiniSprite::Field;
-			case CLEAR_ROCKS: return MiniSprite::Rock;
-			case CLEAR_SNOW: return MiniSprite::Snow;
-			case CLEAR_DESERT: return MiniSprite::Desert;
-			default: break;
-		}
-	}
-	return MiniSprite::Grass;
-}
-
-static uint32_t RampLerp(double h)
-{
-	h = Clamp(h, 0.0, 15.0);
-	int i = (int)h;
-	if (i >= 15) return _height_ramp[15];
-	return Mix(_height_ramp[i], _height_ramp[i + 1], (uint)((h - i) * 255.0));
-}
-
-static bool IsSpecialGround(TileIndex tile)
-{
-	if (GetTileType(tile) != MP_CLEAR) return false;
-	switch (GetClearGround(tile)) {
-		case CLEAR_FIELDS:
-		case CLEAR_ROCKS:
-		case CLEAR_SNOW:
-		case CLEAR_DESERT:
-			return true;
-		default:
-			return false;
-	}
-}
-
-static uint32_t GroundOverviewColour(TileIndex tile, Slope s, int hbase)
-{
-	double avg = (GetSlopeZInCorner(s, CORNER_N) + GetSlopeZInCorner(s, CORNER_W) + GetSlopeZInCorner(s, CORNER_E) + GetSlopeZInCorner(s, CORNER_S)) / 4.0;
-	if (IsSpecialGround(tile)) return Mix(GroundColour(tile, hbase), COL_SHADOW, std::min(255, (int)(_tuning.relief_strength * avg)));
-	return RampLerp(hbase + avg);
-}
-
-/* Sloped ground is one gradient quad: the corner colours sample the height
- * ramp at the corner levels and the GPU interpolates between them, so the
- * top of a slope lands on exactly the colour of the next level and
- * gradients run tile to tile. */
-static void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
-{
-	auto [s, hbase] = GetTileSlopeZ(tile);
-
-	/* Ground art is a luminance texture tinted by the ramp colour, so height
-	 * bands and hillshading survive the swap to real tiles. The overview tier
-	 * stays on flat colours: per-tile quads are slow at that tile count and
-	 * their seams read as a grid. */
-	MiniSprite slot = GroundSlot(tile);
-	if (ppt >= 8 && MiniAtlasHasArt(slot)) {
-		uint32_t c = s == SLOPE_FLAT ? GroundColour(tile, hbase) : GroundOverviewColour(tile, s, hbase);
-		if (MiniAtlasQuad(slot, x0, y0, x1, y1, _canvas.Tone(c))) return;
-	}
-
-	if (s == SLOPE_FLAT) {
-		_canvas.FillRect(x0, y0, x1, y1, GroundColour(tile, hbase));
-		return;
-	}
-
-	if (ppt < 8) {
-		_canvas.FillRect(x0, y0, x1, y1, GroundOverviewColour(tile, s, hbase));
-		return;
-	}
-
-	bool special = IsSpecialGround(tile);
-	uint32_t flat = GroundColour(tile, hbase);
-	auto corner = [&](Corner cn) {
-		int z = GetSlopeZInCorner(s, cn);
-		return _canvas.Tone(special ? Mix(flat, COL_SHADOW, std::min(255, _tuning.relief_strength * z)) : RampLerp(hbase + z));
-	};
-	RlwCmdGradientRect(x0, y0, x1, y1, corner(CORNER_N), corner(CORNER_E), corner(CORNER_W), corner(CORNER_S));
-}
-
-static void DrawTrackPiece(Track t, int x0, int y0, int x1, int y1, int width, uint32_t c)
-{
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	switch (t) {
-		case TRACK_X: _canvas.FillRect(cx - width / 2, y0, cx - width / 2 + width - 1, y1, c); break;
-		case TRACK_Y: _canvas.FillRect(x0, cy - width / 2, x1, cy - width / 2 + width - 1, c); break;
-		case TRACK_UPPER: _canvas.ThickLine(x0, cy, cx, y0, width, c); break;
-		case TRACK_LOWER: _canvas.ThickLine(cx, y1, x1, cy, width, c); break;
-		case TRACK_LEFT: _canvas.ThickLine(x0, cy, cx, y1, width, c); break;
-		case TRACK_RIGHT: _canvas.ThickLine(cx, y0, x1, cy, width, c); break;
-		default: break;
-	}
-}
-
-static void DrawTrackBitsPx(TrackBits bits, int x0, int y0, int x1, int y1, int width, uint32_t c)
-{
-	for (Track t : {TRACK_X, TRACK_Y, TRACK_UPPER, TRACK_LOWER, TRACK_LEFT, TRACK_RIGHT}) {
-		if (bits & TrackToTrackBits(t)) DrawTrackPiece(t, x0, y0, x1, y1, width, c);
-	}
-}
-
-static void DrawRoadBitsPx(RoadBits bits, int x0, int y0, int x1, int y1, int width, uint32_t c)
-{
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int lo = width / 2;
-	if (bits & ROAD_NW) _canvas.FillRect(x0, cy - lo, cx, cy - lo + width - 1, c);
-	if (bits & ROAD_SE) _canvas.FillRect(cx, cy - lo, x1, cy - lo + width - 1, c);
-	if (bits & ROAD_NE) _canvas.FillRect(cx - lo, y0, cx - lo + width - 1, cy, c);
-	if (bits & ROAD_SW) _canvas.FillRect(cx - lo, cy, cx - lo + width - 1, y1, c);
-}
-
-struct ZoomDetail {
-	bool tree_dots;
-	bool block_borders;
-	bool signals;
-	bool oneway;
-	bool cargo_dots;
-	bool vehicle_shapes;
-	bool station_names;
-	bool all_town_names;
-};
-
-static ZoomDetail _zd;
-
-/* Zoom tiers: below 8 ppt the map is a terrain overview, mid zoom shows
- * infrastructure, close zoom adds per-unit detail. */
-static void ComputeZoomDetail(int ppt)
-{
-	_zd.tree_dots = ppt >= 8;
-	_zd.block_borders = ppt >= 8;
-	_zd.signals = ppt >= 8;
-	_zd.oneway = ppt >= 8;
-	_zd.cargo_dots = ppt >= 16;
-	_zd.vehicle_shapes = ppt >= 8;
-	_zd.station_names = ppt >= 8;
-	_zd.all_town_names = ppt >= 8;
-}
-
-static const int _diag_dx[4] = {0, 1, 0, -1};
-static const int _diag_dy[4] = {-1, 0, 1, 0};
-
-static void DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
-{
-	if (!_zd.signals) return;
-	int r = std::max(1, ppt / 10);
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int off = (int)((x1 - x0 + 1) * 0.36);
-	for (Track t : {TRACK_X, TRACK_Y, TRACK_UPPER, TRACK_LOWER, TRACK_LEFT, TRACK_RIGHT}) {
-		if (!HasSignalOnTrack(tile, t)) continue;
-		for (Trackdir td : {TrackToTrackdir(t), ReverseTrackdir(TrackToTrackdir(t))}) {
-			if (!HasSignalOnTrackdir(tile, td)) continue;
-			DiagDirection d = TrackdirToExitdir(td);
-			int px = cx + _diag_dx[d] * off;
-			int py = cy + _diag_dy[d] * off;
-			uint32_t c = GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_GREEN ? COL_GO : COL_STOP;
-			_canvas.FillCircle(px, py, r + 1, COL_INK);
-			_canvas.FillCircle(px, py, r, c);
-		}
-	}
-}
-
-static void DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
-{
-	if (!_zd.oneway) return;
-	DisallowedRoadDirections drd = GetDisallowedRoadDirections(tile);
-	if (drd == DRD_NONE) return;
-
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int s = std::max(2, ppt / 4);
-
-	if (drd == DRD_BOTH) {
-		_canvas.FillRect(cx - s, cy - s / 3, cx + s, cy + s / 3, COL_STOP);
-		return;
-	}
-
-	RoadBits rb = GetRoadBits(tile, RTT_ROAD);
-	bool axis_x = (rb & ROAD_X) == ROAD_X;
-	bool axis_y = (rb & ROAD_Y) == ROAD_Y;
-	if (axis_x == axis_y) return;
-
-	/* Northbound traffic heads toward smaller map coordinates. */
-	int dir = drd == DRD_SOUTHBOUND ? -1 : 1;
-	for (int i = 0; i <= s; i++) {
-		int w = (s - i) / 2;
-		if (axis_x) {
-			int py = cy + dir * (i - s / 2);
-			_canvas.FillRect(cx - w, py, cx + w, py, COL_PAPER);
-		} else {
-			int px = cx + dir * (i - s / 2);
-			_canvas.FillRect(px, cy - w, px, cy + w, COL_PAPER);
-		}
-	}
-}
-
-static void DrawBlock(MiniSprite s, int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
-{
-	if (ppt >= 8 && MiniAtlasHasArt(s) && MiniAtlasQuad(s, x0, y0, x1, y1, _canvas.Tone(fill))) return;
-	if (!_zd.block_borders) {
-		_canvas.FillRect(x0, y0, x1, y1, fill);
-		return;
-	}
-	int inset = std::max(1, ppt / 10);
-	int b = std::max(1, ppt / 10);
-	_canvas.FillRect(x0 + inset, y0 + inset, x1 - inset, y1 - inset, border);
-	_canvas.FillRect(x0 + inset + b, y0 + inset + b, x1 - inset - b, y1 - inset - b, fill);
-}
-
-/* Dark block with a bright tick pointing out of the exit side. Depot art is
- * authored exit-up and rotates to the real exit instead of the tick. */
-static void DrawDepot(int x0, int y0, int x1, int y1, int ppt, DiagDirection exit)
-{
-	if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Depot)) {
-		if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, _canvas.Tone(COL_DEPOT))) return;
-	}
-	DrawBlock(MiniSprite::Depot, x0, y0, x1, y1, ppt, COL_DEPOT, COL_INK);
-	if (!_zd.block_borders) return;
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int w = std::max(2, ppt / 5);
-	_canvas.ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, COL_PAPER);
-}
-
-static void DrawWater(int x0, int y0, int x1, int y1, int ppt)
-{
-	if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Water) && MiniAtlasQuad(MiniSprite::Water, x0, y0, x1, y1, _canvas.Tone(COL_WATER))) return;
-	_canvas.FillRect(x0, y0, x1, y1, COL_WATER);
-}
-
-static void DrawAxisBand(Axis axis, int x0, int y0, int x1, int y1, int width, uint32_t c)
-{
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int lo = width / 2;
-	if (axis == AXIS_X) {
-		_canvas.FillRect(cx - lo, y0, cx - lo + width - 1, y1, c);
-	} else {
-		_canvas.FillRect(x0, cy - lo, x1, cy - lo + width - 1, c);
-	}
-}
-
-static void DrawTile(TileIndex tile, int tx, int ty, int ppt)
-{
-	int x0 = _camera.ScreenX(ty);
-	int y0 = _camera.ScreenY(tx);
-	int x1 = _camera.ScreenX(ty + 1) - 1;
-	int y1 = _camera.ScreenY(tx + 1) - 1;
-	if (x1 < 0 || y1 < 0 || x0 >= _fbw || y0 >= _fbh) return;
-
-	int rail_w = std::max(1, ppt / 6);
-	int road_w = std::max(2, ppt / 3);
-	int cat_w = rail_w >= 2 ? std::max(1, rail_w / 3) : 0;
-
-	bool water_tile = false;
-
-	switch (GetTileType(tile)) {
-		case MP_VOID:
-			_canvas.FillRect(x0, y0, x1, y1, COL_VOID);
-			return;
-
-		case MP_WATER:
-			DrawWater(x0, y0, x1, y1, ppt);
-			water_tile = true;
-			if (IsShipDepot(tile)) DrawDepot(x0, y0, x1, y1, ppt, GetShipDepotDirection(tile));
-			break;
-
-		case MP_CLEAR:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			break;
-
-		case MP_TREES: {
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			if (_zd.tree_dots) {
-				int cx = (x0 + x1) / 2;
-				int cy = (y0 + y1) / 2;
-				int r = std::max(1, ppt / 8);
-				_canvas.FillShapeRot(MiniSprite::Tree, cx, cy, r, 0, COL_TREE);
-			}
-			break;
-		}
-
-		case MP_RAILWAY:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			if (IsRailDepot(tile)) {
-				DrawDepot(x0, y0, x1, y1, ppt, GetRailDepotDirection(tile));
-			} else {
-				TrackBits bits = GetTrackBits(tile);
-				DrawTrackBitsPx(bits, x0, y0, x1, y1, rail_w, COL_RAIL);
-				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-					DrawTrackBitsPx(bits, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-				if (HasSignals(tile)) DrawSignals(tile, x0, y0, x1, y1, ppt);
-			}
-			break;
-
-		case MP_ROAD:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			if (IsLevelCrossing(tile)) {
-				DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
-				DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
-			} else if (IsRoadDepot(tile)) {
-				DrawDepot(x0, y0, x1, y1, ppt, GetRoadDepotDirection(tile));
-			} else {
-				RoadBits bits = GetAnyRoadBits(tile, RTT_ROAD, true) | GetAnyRoadBits(tile, RTT_TRAM, true);
-				DrawRoadBitsPx(bits, x0, y0, x1, y1, road_w, COL_ROAD);
-				if (IsNormalRoad(tile)) DrawOneWay(tile, x0, y0, x1, y1, ppt);
-			}
-			break;
-
-		case MP_HOUSE:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(MiniSprite::House, x0, y0, x1, y1, ppt, COL_HOUSE, COL_HOUSE_B);
-			break;
-
-		case MP_INDUSTRY:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(MiniSprite::Industry, x0, y0, x1, y1, ppt, COL_IND, COL_IND_B);
-			break;
-
-		case MP_STATION: {
-			uint32_t fill, border;
-			bool on_water = false;
-			switch (GetStationType(tile)) {
-				case StationType::Rail:
-				case StationType::RailWaypoint: fill = COL_ST_RAIL; border = COL_ST_RAIL_B; break;
-				case StationType::Airport: fill = COL_ST_AIR; border = COL_ST_AIR_B; break;
-				case StationType::Truck:
-				case StationType::Bus:
-				case StationType::RoadWaypoint: fill = COL_ST_ROAD; border = COL_ST_ROAD_B; break;
-				case StationType::Dock: fill = COL_ST_DOCK; border = COL_ST_DOCK_B; on_water = true; break;
-				case StationType::Buoy: fill = COL_ST_BUOY; border = COL_ST_BUOY_B; on_water = true; break;
-				default: fill = COL_OBJ; border = COL_OBJ_B; on_water = true; break;
-			}
-			if (on_water) {
-				DrawWater(x0, y0, x1, y1, ppt);
-				water_tile = true;
-			} else {
-				DrawGround(tile, x0, y0, x1, y1, ppt);
-			}
-			DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, fill, border);
-			if (IsDriveThroughStopTile(tile)) {
-				DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
-			}
-			if (HasStationRail(tile)) {
-				DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
-				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-					DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-			}
-			break;
-		}
-
-		case MP_OBJECT:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(MiniSprite::Object, x0, y0, x1, y1, ppt, COL_OBJ, COL_OBJ_B);
-			break;
-
-		case MP_TUNNELBRIDGE: {
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
-			if (IsTunnel(tile)) {
-				DrawBlock(MiniSprite::Tunnel, x0, y0, x1, y1, ppt, COL_TUNNEL, COL_RAIL);
-			} else {
-				DrawAxisBand(axis, x0, y0, x1, y1, road_w, COL_BRIDGE);
-				if (cat_w > 0 && GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL && HasRailCatenary(GetRailType(tile))) {
-					DrawAxisBand(axis, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-			}
-			break;
-		}
-
-		default:
-			_canvas.FillRect(x0, y0, x1, y1, COL_OBJ);
-			break;
-	}
-
-	if (IsBridgeAbove(tile)) {
-		DrawAxisBand(GetBridgeAxis(tile), x0, y0, x1, y1, road_w, COL_BRIDGE);
-	}
-
-	if (!water_tile) {
-		int cw = std::max(1, ppt / 8);
-		uint h = TileHeight(tile);
-		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) _canvas.BlendRect(x0, y1 - cw + 1, x1, y1, COL_SHADOW, _tuning.contour_alpha);
-		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) _canvas.BlendRect(x1 - cw + 1, y0, x1, y1, COL_SHADOW, _tuning.contour_alpha);
-	}
-}
-
-/* Second pass for the overlay: the base map went down as dark greyscale and
- * the active layer's content is repainted in a bright accent so it carries
- * the frame. Rail reads as paper-white lines, road as catenary-yellow. */
-static void DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer layer)
-{
-	int x0 = _camera.ScreenX(ty);
-	int y0 = _camera.ScreenY(tx);
-	int x1 = _camera.ScreenX(ty + 1) - 1;
-	int y1 = _camera.ScreenY(tx + 1) - 1;
-	if (x1 < 0 || y1 < 0 || x0 >= _fbw || y0 >= _fbh) return;
-
-	int rail_w = std::max(1, ppt / 6);
-	int road_w = std::max(2, ppt / 3);
-	int cat_w = rail_w >= 2 ? std::max(1, rail_w / 3) : 0;
-	bool rail = layer == MiniLayer::Rail;
-	uint32_t accent = rail ? COL_PAPER : COL_CATENARY;
-
-	auto depot = [&](DiagDirection exit) {
-		if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Depot)) {
-			if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, _canvas.Tone(accent))) return;
-		}
-		uint32_t fill = Darken(accent);
-		DrawBlock(MiniSprite::Depot, x0, y0, x1, y1, ppt, fill, accent);
-		if (!_zd.block_borders) return;
-		uint lum = (77 * ((fill >> 16) & 0xFFU) + 151 * ((fill >> 8) & 0xFFU) + 28 * (fill & 0xFFU)) >> 8;
-		int cx = (x0 + x1) / 2;
-		int cy = (y0 + y1) / 2;
-		int w = std::max(2, ppt / 5);
-		_canvas.ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, lum >= 140 ? COL_INK : COL_PAPER);
-	};
-
-	switch (GetTileType(tile)) {
-		case MP_RAILWAY:
-			if (!rail) break;
-			if (IsRailDepot(tile)) {
-				depot(GetRailDepotDirection(tile));
-			} else {
-				TrackBits bits = GetTrackBits(tile);
-				DrawTrackBitsPx(bits, x0, y0, x1, y1, rail_w, accent);
-				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-					DrawTrackBitsPx(bits, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-				if (HasSignals(tile)) DrawSignals(tile, x0, y0, x1, y1, ppt);
-			}
-			break;
-
-		case MP_ROAD:
-			if (IsLevelCrossing(tile)) {
-				if (rail) {
-					DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, accent);
-				} else {
-					DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, accent);
-				}
-			} else if (!rail) {
-				if (IsRoadDepot(tile)) {
-					depot(GetRoadDepotDirection(tile));
-				} else {
-					RoadBits bits = GetAnyRoadBits(tile, RTT_ROAD, true) | GetAnyRoadBits(tile, RTT_TRAM, true);
-					DrawRoadBitsPx(bits, x0, y0, x1, y1, road_w, accent);
-					if (IsNormalRoad(tile)) DrawOneWay(tile, x0, y0, x1, y1, ppt);
-				}
-			}
-			break;
-
-		case MP_STATION:
-			switch (GetStationType(tile)) {
-				case StationType::Rail:
-				case StationType::RailWaypoint:
-					if (!rail) break;
-					DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, COL_ST_RAIL, COL_ST_RAIL_B);
-					DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, accent);
-					if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-						DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, cat_w, COL_CATENARY);
-					}
-					break;
-				case StationType::Truck:
-				case StationType::Bus:
-				case StationType::RoadWaypoint:
-					if (rail) break;
-					DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, COL_ST_ROAD, COL_ST_ROAD_B);
-					if (IsDriveThroughStopTile(tile)) {
-						DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, accent);
-					}
-					break;
-				default:
-					break;
-			}
-			break;
-
-		case MP_TUNNELBRIDGE: {
-			TransportType tt = GetTunnelBridgeTransportType(tile);
-			if (rail ? tt != TRANSPORT_RAIL : tt != TRANSPORT_ROAD) break;
-			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
-			if (IsTunnel(tile)) {
-				DrawBlock(MiniSprite::Tunnel, x0, y0, x1, y1, ppt, COL_TUNNEL, accent);
-			} else {
-				DrawAxisBand(axis, x0, y0, x1, y1, road_w, accent);
-				if (cat_w > 0 && rail && HasRailCatenary(GetRailType(tile))) {
-					DrawAxisBand(axis, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-			}
-			break;
-		}
-
-		default:
-			break;
-	}
-
-	if (IsBridgeAbove(tile)) {
-		TransportType tt = GetTunnelBridgeTransportType(GetSouthernBridgeEnd(tile));
-		if (rail ? tt == TRANSPORT_RAIL : tt == TRANSPORT_ROAD) {
-			DrawAxisBand(GetBridgeAxis(tile), x0, y0, x1, y1, road_w, accent);
-		}
-	}
-}
-
-/* A tile whose whole footprint is one solid colour can join a horizontal run
- * with equal neighbours; one rect per run keeps the command count far below
- * one per tile on open terrain and water. Tree tiles merge their ground too
- * and only defer the dot on top. Ground with art still merges: the run draws
- * as one repeat-wrapped quad instead of a rect, keyed by the art slot. */
-static bool TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, bool &tree_dot, MiniSprite &art)
-{
-	tree_dot = false;
-	art = MiniSprite::End;
-	if (IsBridgeAbove(tile)) return false;
-	switch (GetTileType(tile)) {
-		case MP_VOID:
-			c = COL_VOID;
-			return true;
-
-		case MP_WATER:
-			if (IsShipDepot(tile)) return false;
-			c = COL_WATER;
-			if (ppt >= 8 && MiniAtlasHasArt(MiniSprite::Water)) art = MiniSprite::Water;
-			return true;
-
-		case MP_TREES:
-			tree_dot = _zd.tree_dots;
-			[[fallthrough]];
-		case MP_CLEAR: {
-			auto [s, hbase] = GetTileSlopeZ(tile);
-			if (s == SLOPE_FLAT) {
-				c = GroundColour(tile, hbase);
-				if (ppt >= 8) {
-					MiniSprite g = GroundSlot(tile);
-					if (MiniAtlasHasArt(g)) art = g;
-				}
-			} else if (ppt < 8) {
-				c = GroundOverviewColour(tile, s, hbase);
-			} else {
-				return false;
-			}
-			uint h = TileHeight(tile);
-			if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) return false;
-			if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) return false;
-			return true;
-		}
-
-		default:
-			return false;
-	}
-}
-
-static const int8_t _dir_dx[8] = {-1, 0, 1, 1, 1, 0, -1, -1};
-static const int8_t _dir_dy[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
-
-/* Screen-space heading in degrees clockwise from up, per Direction. */
-static const int16_t _dir_angle[8] = {-45, 0, 45, 90, 135, 180, -135, -90};
-
-/* Vehicles only move on game ticks while drawing runs at render rate, so
- * raw positions stutter. Each frame interpolates between a unit's previous
- * and current tick position; the fraction comes from a smoothed measure of
- * the real tick interval, which also absorbs fast forward. */
-struct MiniVehSnap {
-	int32_t px, py;
-	int32_t cx, cy;
-	uint64_t tick;
-};
-
-static std::unordered_map<uint32_t, MiniVehSnap> _veh_snap;
-static uint64_t _lerp_tick = 0;
-static double _lerp_since = 0.0;
-static double _lerp_interval = 30.0;
-static double _lerp_alpha = 1.0;
-
-static void UpdateLerpClock(uint delta_ms)
-{
-	_lerp_since += delta_ms;
-	uint64_t t = TimerGameTick::counter;
-	if (t != _lerp_tick) {
-		double per = _lerp_since / (double)(t - _lerp_tick);
-		if (per >= 5.0 && per <= 200.0) _lerp_interval = _lerp_interval * 0.7 + per * 0.3;
-		_lerp_tick = t;
-		_lerp_since = 0.0;
-	}
-	_lerp_alpha = std::min(_lerp_since / _lerp_interval, 1.0);
-	if ((_mini_frame & 0xFF) == 0) {
-		std::erase_if(_veh_snap, [](const auto &kv) { return kv.second.tick + 64 < _lerp_tick; });
-	}
-}
-
-/* Returns the display position in tile units. Entries older than one tick
- * and jumps wider than two tiles snap instead of streaking. */
-static std::pair<double, double> LerpVehWorld(const Vehicle *v)
-{
-	MiniVehSnap &e = _veh_snap[v->index.base()];
-	if (e.tick != _lerp_tick) {
-		if (e.tick + 1 == _lerp_tick) {
-			e.px = e.cx;
-			e.py = e.cy;
-		} else {
-			e.px = v->x_pos;
-			e.py = v->y_pos;
-		}
-		e.cx = v->x_pos;
-		e.cy = v->y_pos;
-		e.tick = _lerp_tick;
-	}
-	if (std::abs(e.cx - e.px) > 32 || std::abs(e.cy - e.py) > 32) {
-		e.px = e.cx;
-		e.py = e.cy;
-	}
-	return {(e.px + (e.cx - e.px) * _lerp_alpha) / TILE_SIZE, (e.py + (e.cy - e.py) * _lerp_alpha) / TILE_SIZE};
-}
-
-static uint32_t PaletteRgb(PixelColour p)
-{
-	Colour c = _cur_palette.palette[p.p];
-	return 0xFF000000U | ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-}
-
-static uint32_t CargoRgb(CargoType ct)
-{
-	return PaletteRgb(CargoSpec::Get(ct)->legend_colour);
-}
-
-/* Silhouette tells the vehicle type apart: square train, round road
- * vehicle, diamond ship, triangle aircraft. The centre dot is the unit's
- * cargo in its legend colour. */
-static bool VehicleInLayer(VehicleType vt)
-{
-	switch (_filter_layer) {
-		case MiniLayer::Rail: return vt == VEH_TRAIN;
-		case MiniLayer::Road: return vt == VEH_ROAD;
-		default: return true;
-	}
-}
-
-/* Shapes without a clear nose carry a paper dot on the leading edge, the
- * same accent as the train head dot. */
-static void DrawHeadingDot(int cx, int cy, int r, Direction dir)
-{
-	if (r < 3) return;
-	int d = dir;
-	double inv = (_dir_dx[d] != 0 && _dir_dy[d] != 0) ? 0.70710678 : 1.0;
-	int px = cx + (int)std::lround(_dir_dx[d] * inv * 0.62 * r);
-	int py = cy + (int)std::lround(_dir_dy[d] * inv * 0.62 * r);
-	_canvas.FillCircle(px, py, std::max(1, (r + 1) / 3), COL_PAPER);
-}
-
-/* A consist draws as one polyline through its unit centres. The game spaces
- * units in path steps, and a cardinal step moves both map axes, so raw
- * centres sit sqrt(2) apart on diagonals; the native isometric projection
- * cancels that but a top-down view shows it as a stretched train. Units are
- * therefore re-laid along their own polyline at true unit lengths from the
- * head, which keeps the drawn length constant on any mix of track. Ink
- * underlays the whole line before the colour pass, so joints stay clean. */
-static void DrawTrainConsist(const Vehicle *head, int ppt)
-{
-	static std::vector<std::pair<double, double>> raw;
-	static std::vector<double> arc;
-	static std::vector<double> want;
-	static std::vector<std::pair<int, int>> pts;
-	raw.clear();
-	arc.clear();
-	want.clear();
-	pts.clear();
-
-	/* Units inside a depot are hidden one by one; the consist keeps drawing
-	 * through its still-visible run. */
-	const Vehicle *first = nullptr;
-	const Vehicle *tail = nullptr;
-	double s = 0.0;
-	double prev_len = 0.0;
-	for (const Vehicle *u = head; u != nullptr; u = u->Next()) {
-		if (u->vehstatus.Test(VehState::Hidden)) continue;
-		auto [ux, uy] = LerpVehWorld(u);
-		raw.emplace_back(_camera.ExactScreenX(uy), _camera.ExactScreenY(ux));
-		double len = u->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
-		if (!want.empty()) s += (prev_len + len) * 0.5;
-		want.push_back(s);
-		prev_len = len;
-		if (first == nullptr) first = u;
-		tail = u;
-	}
-	if (raw.empty()) return;
-
-	arc.resize(raw.size());
-	arc[0] = 0.0;
-	for (size_t i = 1; i < raw.size(); i++) {
-		double dx = raw[i].first - raw[i - 1].first;
-		double dy = raw[i].second - raw[i - 1].second;
-		arc[i] = arc[i - 1] + std::sqrt(dx * dx + dy * dy);
-	}
-
-	size_t seg = 0;
-	for (size_t i = 0; i < raw.size(); i++) {
-		double t = want[i];
-		double x, y;
-		if (t >= arc.back()) {
-			x = raw.back().first;
-			y = raw.back().second;
-			if (raw.size() >= 2) {
-				double dx = x - raw[raw.size() - 2].first;
-				double dy = y - raw[raw.size() - 2].second;
-				double d = std::sqrt(dx * dx + dy * dy);
-				if (d > 0.0) {
-					x += dx / d * (t - arc.back());
-					y += dy / d * (t - arc.back());
-				}
-			}
-		} else {
-			while (seg + 2 < raw.size() && arc[seg + 1] <= t) seg++;
-			double span = arc[seg + 1] - arc[seg];
-			double f = span > 0.0 ? (t - arc[seg]) / span : 0.0;
-			x = raw[seg].first + (raw[seg + 1].first - raw[seg].first) * f;
-			y = raw[seg].second + (raw[seg + 1].second - raw[seg].second) * f;
-		}
-		pts.emplace_back((int)std::lround(x), (int)std::lround(y));
-	}
-
-	/* The nose and tail stick out half a unit length past the end centres. */
-	auto overhang = [&](const Vehicle *u, int sign) {
-		double len = u->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
-		double inv = (_dir_dx[u->direction] != 0 && _dir_dy[u->direction] != 0) ? 0.70710678 : 1.0;
-		return std::pair<int, int>(
-				(int)std::lround(sign * _dir_dx[u->direction] * inv * len * 0.5),
-				(int)std::lround(sign * _dir_dy[u->direction] * inv * len * 0.5));
-	};
-	auto [nx, ny] = overhang(first, 1);
-	pts.insert(pts.begin(), {pts.front().first + nx, pts.front().second + ny});
-	auto [bx, by] = overhang(tail, -1);
-	pts.emplace_back(pts.back().first + bx, pts.back().second + by);
-
-	int w = std::max(2, ppt / 4);
-	int m = w + 2;
-	int minx = pts[0].first, maxx = minx, miny = pts[0].second, maxy = miny;
-	for (auto [x, y] : pts) {
-		minx = std::min(minx, x);
-		maxx = std::max(maxx, x);
-		miny = std::min(miny, y);
-		maxy = std::max(maxy, y);
-	}
-	if (maxx < -m || maxy < -m || minx >= _fbw + m || miny >= _fbh + m) return;
-
-	uint32_t c = Company::IsValidID(head->owner) ? _company_rgb[_company_colours[head->owner]] : COL_OBJ;
-	bool dim = !VehicleInLayer(VEH_TRAIN);
-	uint32_t ink = COL_INK;
-	if (dim) {
-		ink = _canvas.Greyed(COL_INK);
-		c = _canvas.Greyed(c);
-	}
-
-	for (size_t i = 0; i + 1 < pts.size(); i++) _canvas.ThickLine(pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second, w + 2, ink);
-	for (size_t i = 1; i + 1 < pts.size(); i++) _canvas.FillCircle(pts[i].first, pts[i].second, (w + 2) / 2, ink);
-	for (size_t i = 0; i + 1 < pts.size(); i++) _canvas.ThickLine(pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second, w, c);
-	for (size_t i = 1; i + 1 < pts.size(); i++) _canvas.FillCircle(pts[i].first, pts[i].second, std::max(1, w / 2), c);
-
-	if (!dim && first == head) _canvas.FillCircle(pts[0].first, pts[0].second, std::max(1, w / 2 - 1), COL_PAPER);
-
-	if (!dim && _zd.cargo_dots) {
-		int half = std::max(3, ppt * 2 / 5) / 2;
-		int dr = std::max(1, half - 2);
-		size_t i = 1;
-		for (const Vehicle *u = head; u != nullptr; u = u->Next()) {
-			if (u->vehstatus.Test(VehState::Hidden)) continue;
-			if (u->cargo_cap != 0 && IsValidCargoType(u->cargo_type)) {
-				_canvas.FillCircle(pts[i].first, pts[i].second, dr + 1, COL_INK);
-				_canvas.FillCircle(pts[i].first, pts[i].second, dr, CargoRgb(u->cargo_type));
-			}
-			i++;
-		}
-	}
-}
-
-static void DrawVehicles(int ppt)
-{
-	int half = std::max(3, ppt * 2 / 5) / 2;
-	for (const Vehicle *v : Vehicle::Iterate()) {
-		if (v->type > VEH_AIRCRAFT) continue;
-		if (v->type == VEH_TRAIN && _zd.vehicle_shapes) {
-			if (v->IsPrimaryVehicle()) DrawTrainConsist(v, ppt);
-			continue;
-		}
-		if (v->vehstatus.Test(VehState::Hidden)) continue;
-		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
-		int r = (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT) ? half + 2 : half;
-		auto [wx, wy] = LerpVehWorld(v);
-		int cx = _camera.ScreenX(wy);
-		int cy = _camera.ScreenY(wx);
-		if (cx < -r - 1 || cy < -r - 1 || cx >= _fbw + r + 1 || cy >= _fbh + r + 1) continue;
-		uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_OBJ;
-		bool dim = !VehicleInLayer(v->type);
-		uint32_t ink = COL_INK;
-		if (dim) {
-			ink = _canvas.Greyed(COL_INK);
-			c = _canvas.Greyed(c);
-		}
-		if (!_zd.vehicle_shapes) {
-			_canvas.FillRect(cx - 1, cy - 1, cx + 1, cy + 1, c);
-			continue;
-		}
-		int angle = _dir_angle[v->direction];
-		switch (v->type) {
-			case VEH_ROAD:
-				_canvas.FillShapeRot(MiniSprite::RoadVeh, cx, cy, r + 1, angle, ink);
-				_canvas.FillShapeRot(MiniSprite::RoadVeh, cx, cy, r, angle, c);
-				if (!dim) DrawHeadingDot(cx, cy, r, v->direction);
-				break;
-			case VEH_SHIP:
-				/* The diamond only shows its axis when rotated; the head dot
-				 * picks which end leads. */
-				_canvas.FillShapeRot(MiniSprite::Ship, cx, cy, r + 1, angle, ink);
-				_canvas.FillShapeRot(MiniSprite::Ship, cx, cy, r, angle, c);
-				if (!dim) DrawHeadingDot(cx, cy, r, v->direction);
-				break;
-			case VEH_AIRCRAFT:
-				_canvas.FillShapeRot(MiniSprite::Aircraft, cx, cy, r + 1, angle, ink);
-				_canvas.FillShapeRot(MiniSprite::Aircraft, cx, cy, r, angle, c);
-				break;
-			default:
-				break;
-		}
-		if (!dim && _zd.cargo_dots && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) {
-			int dr = std::max(1, half - 2);
-			_canvas.FillCircle(cx, cy, dr + 1, COL_INK);
-			_canvas.FillCircle(cx, cy, dr, CargoRgb(v->cargo_type));
-		}
-	}
 }
 
 /* Any unit of a consist opens its head's window, so the window always
@@ -1601,7 +743,7 @@ static void DrawOrderRoute()
 	for (auto [x, y] : stops) _canvas.FillCircle(x, y, 4, COL_BP);
 
 	if (cur_stop >= 0) {
-		auto [wx, wy] = LerpVehWorld(v);
+		auto [wx, wy] = _vehicle_motion.Position(v);
 		int vx = _camera.ScreenX(wy);
 		int vy = _camera.ScreenY(wx);
 		_canvas.ThickLine(vx, vy, stops[cur_stop].first, stops[cur_stop].second, 2, COL_PAPER);
@@ -1612,7 +754,7 @@ static void DrawVehicleRing(int ppt)
 {
 	const Vehicle *v = Vehicle::GetIfValid(FrontWndVehicle());
 	if (v == nullptr) return;
-	auto [wx, wy] = LerpVehWorld(v);
+	auto [wx, wy] = _vehicle_motion.Position(v);
 	int cx = _camera.ScreenX(wy);
 	int cy = _camera.ScreenY(wx);
 	int r = std::max(6, ppt / 2 + 3);
@@ -1624,118 +766,21 @@ static void DrawVehicleRing(int ppt)
 
 void ShowIndustryViewWindow(IndustryID industry);
 
-/* Town names always show for navigation; station and industry names join
- * at the infrastructure zoom tier. Labels sit centred above their sign
- * tile. */
-static std::vector<std::pair<Rect, TownID>> _town_label_hits;
-static std::vector<std::pair<Rect, StationID>> _station_label_hits;
-static std::vector<std::pair<Rect, IndustryID>> _industry_label_hits;
-static std::vector<std::pair<Rect, SignID>> _sign_label_hits;
-
-static TextColour PlateTextColour(uint32_t c)
-{
-	uint lum = (77 * ((c >> 16) & 0xFFU) + 151 * ((c >> 8) & 0xFFU) + 28 * (c & 0xFFU)) >> 8;
-	return lum >= 140 ? TC_BLACK : TC_WHITE;
-}
-
-/* Flat mini-style plate; drawn in mini UI screen space because the native
- * sign kdtree lives in viewport coordinates. */
-static Rect DrawLabelPlate(int cx, int cy, std::string_view str, uint32_t fill, bool transparent, TextColour tc)
-{
-	int pad = 3;
-	const CanvasText *e = _canvas.Text(str);
-	int tw = e != nullptr ? e->w : (int)GetStringBoundingBox(str).width;
-	int w = tw + 2 * pad;
-	int h = GetCharacterHeight(FS_NORMAL) + 2 * pad;
-	Rect r = {cx - w / 2, cy - h - 3, cx - w / 2 + w - 1, cy - 4};
-	if (transparent) {
-		RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, pad, (fill & 0x00FFFFFFU) | 0xAA000000U);
-	} else {
-		RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, pad, COL_CH_EDGE);
-		RlwCmdRoundRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, pad, fill);
-	}
-	if (e != nullptr) _canvas.DrawText(*e, r.left + pad, r.top + pad, TextTint(tc));
-	return r;
-}
-
-static void DrawLabels()
-{
-	_town_label_hits.clear();
-	_station_label_hits.clear();
-	_industry_label_hits.clear();
-	_sign_label_hits.clear();
-	int margin = 300;
-	int limit = GetCharacterHeight(FS_NORMAL) + 20;
-	/* Signs are the player's own notes, so they show at every zoom tier. */
-	for (const Sign *si : Sign::Iterate()) {
-		if (si->name.empty()) continue;
-		int cx = _camera.ScreenX(si->y / (double)TILE_SIZE);
-		int cy = _camera.ScreenY(si->x / (double)TILE_SIZE);
-		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
-		Rect r = DrawLabelPlate(cx, cy, si->name, COL_ST_BUOY, false, PlateTextColour(COL_ST_BUOY));
-		_sign_label_hits.emplace_back(r, si->index);
-	}
-	for (const Town *t : Town::Iterate()) {
-		if (!_zd.all_town_names && !t->larger_town) continue;
-		int cx = _camera.ScreenX(TileY(t->xy) + 0.5);
-		int cy = _camera.ScreenY(TileX(t->xy) + 0.5);
-		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
-		std::string str = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
-		Rect r = DrawLabelPlate(cx, cy, str, COL_CH_PANEL, true, TC_WHITE);
-		_town_label_hits.emplace_back(r, t->index);
-	}
-	if (!_zd.station_names) return;
-	/* Oil rigs already carry the plate of their neutral station. */
-	for (const Industry *ind : Industry::Iterate()) {
-		if (ind->neutral_station != nullptr) continue;
-		TileIndex tile = ind->location.GetCenterTile();
-		int cx = _camera.ScreenX(TileY(tile) + 0.5);
-		int cy = _camera.ScreenY(TileX(tile) + 0.5);
-		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
-		std::string str = GetString(STR_INDUSTRY_NAME, ind->index);
-		Rect r = DrawLabelPlate(cx, cy, str, COL_IND, false, PlateTextColour(COL_IND));
-		_industry_label_hits.emplace_back(r, ind->index);
-	}
-	for (const Station *st : Station::Iterate()) {
-		int cx = _camera.ScreenX(TileY(st->xy) + 0.5);
-		int cy = _camera.ScreenY(TileX(st->xy) + 0.5);
-		if (cx < -margin || cy < 0 || cx >= _fbw + margin || cy >= _fbh + limit) continue;
-		std::string str = GetString(STR_VIEWPORT_STATION, st->index, st->facilities);
-		uint32_t plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COL_OBJ : _company_rgb[_company_colours[st->owner]];
-		Rect r = DrawLabelPlate(cx, cy, str, plate, false, PlateTextColour(plate));
-		_station_label_hits.emplace_back(r, st->index);
-	}
-}
-
 static void OpenSignListMiniWnd(SignID focus);
+
+struct LabelOpener {
+	void operator()(SignID sign) const { OpenSignListMiniWnd(sign); }
+	void operator()(StationID station) const { ShowStationViewWindow(station); }
+	void operator()(IndustryID industry) const { ShowIndustryViewWindow(industry); }
+	void operator()(TownID town) const { ShowTownViewWindow(town); }
+};
 
 static bool HandleLabelClick(int x, int y)
 {
-	for (const auto &[r, id] : _sign_label_hits) {
-		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			OpenSignListMiniWnd(id);
-			return true;
-		}
-	}
-	for (const auto &[r, id] : _station_label_hits) {
-		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			ShowStationViewWindow(id);
-			return true;
-		}
-	}
-	for (const auto &[r, id] : _industry_label_hits) {
-		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			ShowIndustryViewWindow(id);
-			return true;
-		}
-	}
-	for (const auto &[r, id] : _town_label_hits) {
-		if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-			ShowTownViewWindow(id);
-			return true;
-		}
-	}
-	return false;
+	std::optional<LabelTarget> target = _map_labels.HitAt(x, y);
+	if (!target.has_value()) return false;
+	std::visit(LabelOpener{}, *target);
+	return true;
 }
 
 /* Mirrors the zigzag walk of CmdRailTrackHelper: non-diagonal pieces alternate
@@ -4608,7 +3653,7 @@ static void DrawWinBar()
 		for (int i = 0; i < n; i++) {
 			int x = sx + op + i * (os + gap);
 			Rect r = {x, sy + op, x + os - 1, sy + op + os - 1};
-			bool active = _overlay == layers[i];
+			bool active = _overlay.Shown() == layers[i];
 			ChromeTile(r, active);
 			DrawOverlayGlyph(layers[i], (r.left + r.right) / 2, (r.top + r.bottom) / 2, os, active);
 			_ovl_hits.emplace_back(r, layers[i]);
@@ -4642,8 +3687,7 @@ static bool HandleWinClick(int x, int y)
 {
 	for (const auto &[r, l] : _ovl_hits) {
 		if (InRect(r, x, y)) {
-			_overlay = _overlay == l ? MiniLayer::None : l;
-			_overlay_auto = false;
+			_overlay.Toggle(l);
 			return true;
 		}
 	}
@@ -8606,7 +7650,7 @@ bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 
 static void Present()
 {
-	DrawLabels();
+	_map_labels.Paint(_camera.TilePixels());
 	DrawHud();
 	DrawColonyPanel();
 	DrawStatusStream();
@@ -8625,14 +7669,12 @@ static void Deactivate()
 	CloseAllMiniWnds();
 	_mini_active = false;
 	EnterIdleMode();
-	_overlay = MiniLayer::None;
-	_overlay_auto = false;
-	_last_tool_layer = MiniLayer::None;
+	_overlay.Reset();
 	_menu_open = -1;
 	_win_open = -1;
 	_dragging = false;
 	_camera.Halt();
-	_veh_snap.clear();
+	_vehicle_motion.Clear();
 	ClearPlans();
 	MarkWholeScreenDirty();
 }
@@ -8644,7 +7686,7 @@ void MiniUiResetGameState()
 	EnterIdleMode();
 	_dragging = false;
 	ClearPlans();
-	_veh_snap.clear();
+	_vehicle_motion.Clear();
 	_stuck_long.clear();
 	for (auto &l : _status_veh) l.clear();
 	for (auto &d : _fleet_draft) d.clear();
@@ -8995,7 +8037,7 @@ static std::optional<TilePoint> FollowTarget()
 		_follow_veh = VehicleID::Invalid();
 		return std::nullopt;
 	}
-	return LerpVehWorld(v);
+	return _vehicle_motion.Position(v);
 }
 
 void MiniUiFrame(uint delta_ms)
@@ -9021,10 +8063,9 @@ void MiniUiFrame(uint delta_ms)
 	if (_fbw <= 0 || _fbh <= 0) return;
 	_camera.SetViewport(_fbw, _fbh);
 
-	_mini_frame++;
 	_canvas.BeginFrame();
 	MiniAtlasEnsure();
-	UpdateLerpClock(delta_ms);
+	_vehicle_motion.Advance(delta_ms);
 	UpdateToasts(delta_ms);
 	ProcessFleetDeploy();
 	RlwCmdClear();
@@ -9034,102 +8075,15 @@ void MiniUiFrame(uint delta_ms)
 
 	_camera.Update(delta_ms, FollowTarget());
 
-	int ppt = std::max(1, (int)std::lround(_camera.Ppt()));
-	ComputeZoomDetail(ppt);
+	int ppt = _camera.TilePixels();
 
 	UpdateToolPlans();
 	UpdateToolEstimate();
 	UpdateToolSites();
 
-	MiniLayer tool_layer = ToolLayer(_tool);
-	if (tool_layer != _last_tool_layer) {
-		if (tool_layer != MiniLayer::None) {
-			_overlay = tool_layer;
-			_overlay_auto = true;
-		} else if (_overlay_auto) {
-			_overlay = MiniLayer::None;
-			_overlay_auto = false;
-		}
-		_last_tool_layer = tool_layer;
-	}
-	_filter_layer = _tuning.filter_alpha > 0 ? _overlay : MiniLayer::None;
+	_overlay.FollowTool(ToolLayer(_tool));
 
-	int tx0 = std::max(0, (int)std::floor(_camera.MapXAt(0)));
-	int ty0 = std::max(0, (int)std::floor(_camera.MapYAt(0)));
-	int tx1 = std::min<int>(Map::SizeX() - 1, (int)std::floor(_camera.MapXAt(_fbh - 1)));
-	int ty1 = std::min<int>(Map::SizeY() - 1, (int)std::floor(_camera.MapYAt(_fbw - 1)));
-
-	_canvas.SetGrey(_filter_layer != MiniLayer::None);
-	_canvas.FillRect(0, 0, _fbw - 1, _fbh - 1, COL_VOID);
-	static std::vector<std::pair<int, int>> tree_dots;
-	static std::vector<std::pair<int, int>> layer_tiles;
-	tree_dots.clear();
-	layer_tiles.clear();
-	for (int ty = ty0; ty <= ty1; ty++) {
-		int run_start = -1;
-		uint32_t run_c = 0;
-		MiniSprite run_art = MiniSprite::End;
-		auto flush = [&](int tx_end) {
-			if (run_start < 0) return;
-			int x0 = _camera.ScreenX(ty), y0 = _camera.ScreenY(run_start), x1 = _camera.ScreenX(ty + 1) - 1, y1 = _camera.ScreenY(tx_end) - 1;
-			if (run_art == MiniSprite::End || !MiniAtlasTileRun(run_art, x0, y0, x1, y1, tx_end - run_start, _canvas.Tone(run_c))) {
-				_canvas.FillRect(x0, y0, x1, y1, run_c);
-			}
-			run_start = -1;
-		};
-		for (int tx = tx0; tx <= tx1; tx++) {
-			TileIndex tile = TileXY(tx, ty);
-			uint32_t c;
-			bool tree_dot;
-			MiniSprite art;
-			if (TileRunColour(tile, tx, ty, ppt, c, tree_dot, art)) {
-				if (run_start >= 0 && (c != run_c || art != run_art)) flush(tx);
-				if (run_start < 0) {
-					run_start = tx;
-					run_c = c;
-					run_art = art;
-				}
-				if (tree_dot) tree_dots.emplace_back(tx, ty);
-			} else {
-				flush(tx);
-				DrawTile(tile, tx, ty, ppt);
-				if (_filter_layer != MiniLayer::None) layer_tiles.emplace_back(tx, ty);
-			}
-		}
-		flush(tx1 + 1);
-	}
-
-	/* Deliberate tile grid at build zooms: merged runs are seamless, so tile
-	 * boundaries return as their own faint overlay instead of draw artefacts. */
-	if (ppt >= 8 && _tuning.grid_alpha > 0) {
-		int gx0 = std::max(0, _camera.ScreenX(ty0));
-		int gx1 = std::min(_fbw - 1, _camera.ScreenX(ty1 + 1) - 1);
-		int gy0 = std::max(0, _camera.ScreenY(tx0));
-		int gy1 = std::min(_fbh - 1, _camera.ScreenY(tx1 + 1) - 1);
-		for (int ty = ty0; ty <= ty1 + 1; ty++) {
-			int x = _camera.ScreenX(ty);
-			if (x >= 0 && x < _fbw) _canvas.BlendRect(x, gy0, x, gy1, COL_SHADOW, _tuning.grid_alpha);
-		}
-		for (int tx = tx0; tx <= tx1 + 1; tx++) {
-			int y = _camera.ScreenY(tx);
-			if (y >= 0 && y < _fbh) _canvas.BlendRect(gx0, y, gx1, y, COL_SHADOW, _tuning.grid_alpha);
-		}
-	}
-
-	int tree_r = std::max(1, ppt / 8);
-	for (auto [tx, ty] : tree_dots) {
-		_canvas.FillShapeRot(MiniSprite::Tree, (_camera.ScreenX(ty) + _camera.ScreenX(ty + 1) - 1) / 2, (_camera.ScreenY(tx) + _camera.ScreenY(tx + 1) - 1) / 2, tree_r, 0, COL_TREE);
-	}
-
-	_canvas.SetGrey(false);
-
-	/* Runs only merge bare ground and water, so every tile that can carry
-	 * layer content already went through DrawTile and sits in layer_tiles. */
-	if (_filter_layer != MiniLayer::None) {
-		for (auto [tx, ty] : layer_tiles) {
-			DrawTileLayer(TileXY(tx, ty), tx, ty, ppt, _filter_layer);
-		}
-	}
+	_map_painter.Paint(ppt, _overlay.Filter());
 
 	DrawCatchmentPlan(ppt);
 
@@ -9161,7 +8115,7 @@ void MiniUiFrame(uint delta_ms)
 	}
 
 	DrawOrderRoute();
-	DrawVehicles(ppt);
+	_vehicle_painter.Paint(ppt, _overlay.Filter());
 	DrawVehicleRing(ppt);
 	Present();
 }

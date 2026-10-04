@@ -1,0 +1,17 @@
+add_files(
+    ground.cpp
+    ground.h
+    map_labels.cpp
+    map_labels.h
+    map_overlay.cpp
+    map_overlay.h
+    map_painter.cpp
+    map_painter.h
+    tile_shapes.cpp
+    tile_shapes.h
+    vehicle_motion.cpp
+    vehicle_motion.h
+    vehicle_painter.cpp
+    vehicle_painter.h
+    zoom_detail.h
+)

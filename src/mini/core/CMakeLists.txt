@@ -3,6 +3,7 @@ add_files(
     camera.h
     canvas.cpp
     canvas.h
+    tones.cpp
     tones.h
     tuning.cpp
     tuning.h

@@ -10,6 +10,9 @@
 #ifndef MINI_CORE_TONES_H
 #define MINI_CORE_TONES_H
 
+#include "../../cargo_type.h"
+#include "../../gfx_type.h"
+
 constexpr uint32_t Mix(uint32_t dst, uint32_t src, uint alpha)
 {
 	uint inv = 255 - alpha;
@@ -85,5 +88,8 @@ inline constexpr uint32_t _company_rgb[16] = {
 	0xFF3D6DCCU, 0xFFEFE5C0U, 0xFF9E8FA8U, 0xFF8E6FB8U,
 	0xFFF29C4AU, 0xFF8D6E63U, 0xFF9E9E9EU, 0xFFF5F5F5U,
 };
+
+uint32_t PaletteRgb(PixelColour p);
+uint32_t CargoRgb(CargoType ct);
 
 #endif /* MINI_CORE_TONES_H */

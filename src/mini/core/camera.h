@@ -23,6 +23,9 @@ public:
 	double X() const { return this->x; }
 	double Y() const { return this->y; }
 	double Ppt() const { return this->ppt; }
+	int TilePixels() const;
+	int Width() const { return this->width; }
+	int Height() const { return this->height; }
 
 	void SetViewport(int width, int height);
 

@@ -44,6 +44,11 @@ static double AxisVelocity(double velocity, bool negative, bool positive, double
 	return std::abs(velocity) < PAN_STOP_SPEED ? 0.0 : velocity;
 }
 
+int Camera::TilePixels() const
+{
+	return std::max(1, static_cast<int>(std::lround(this->ppt)));
+}
+
 void Camera::SetViewport(int width, int height)
 {
 	this->width = width;
