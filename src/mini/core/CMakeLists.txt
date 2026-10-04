@@ -1,0 +1,9 @@
+add_files(
+    camera.cpp
+    camera.h
+    canvas.cpp
+    canvas.h
+    tones.h
+    tuning.cpp
+    tuning.h
+)
