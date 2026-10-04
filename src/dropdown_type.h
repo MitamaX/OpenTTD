@@ -14,6 +14,7 @@
 #include "window_type.h"
 #include "gfx_func.h"
 #include "gfx_type.h"
+#include "mini_ui.h"
 #include "palette_func.h"
 #include "window_gui.h"
 
@@ -40,7 +41,7 @@ public:
 
 	virtual void Draw(const Rect &full, const Rect &, bool, int, Colours bg_colour) const
 	{
-		if (this->masked) GfxFillRect(full, GetColourGradient(bg_colour, SHADE_LIGHT), FILLRECT_CHECKER);
+		if (this->masked) GfxFillRect(full, MiniUiActive() ? MiniUiSkinTone(MINI_CH_SUNKEN) : GetColourGradient(bg_colour, SHADE_LIGHT), FILLRECT_CHECKER);
 	}
 
 	TextColour GetColour(bool sel) const

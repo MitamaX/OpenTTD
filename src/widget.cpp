@@ -310,12 +310,13 @@ void DrawFrameRect(int left, int top, int right, int bottom, Colours colour, Fra
 	if (flags.Test(FrameFlag::Transparent)) {
 		GfxFillRect(left, top, right, bottom, PALETTE_TO_TRANSPARENT, FILLRECT_RECOLOUR);
 	} else if (MiniUiActive()) {
-		/* Flat skin: one dark outline, no bevel; pressed widgets darken instead of sinking. */
+		/* Flat skin: one dark outline, no bevel, chrome tones instead of the
+		 * official ramp so embedded windows match the mini windows holding
+		 * them. Pressed widgets take the active tone instead of sinking. */
 		assert(colour < COLOUR_END);
 
-		const PixelColour border = GetColourGradient(colour, SHADE_DARKEST);
-		ColourShade shade = flags.Test(FrameFlag::Lowered) ? (flags.Test(FrameFlag::Darkened) ? SHADE_DARK : SHADE_NORMAL) : SHADE_LIGHT;
-		const PixelColour interior = GetColourGradient(colour, shade);
+		const PixelColour border = MiniUiSkinFrameBorder(flags.Test(FrameFlag::Lowered), flags.Test(FrameFlag::Darkened));
+		const PixelColour interior = MiniUiSkinFrameFill(flags.Test(FrameFlag::Lowered), flags.Test(FrameFlag::Darkened));
 
 		Rect outer = {left, top, right, bottom};
 		Rect inner = outer.Shrink(WidgetDimensions::scaled.bevel);
@@ -720,12 +721,17 @@ static inline void DrawDebugBox(const Rect &r, Colours colour, bool clicked)
  */
 static inline void DrawResizeBox(const Rect &r, Colours colour, bool at_left, bool clicked, bool bevel)
 {
+	/* Mini chrome puts its own grip on the shell corner; a second one sitting
+	 * under it would be two resize handles on the same pixels. */
+	if (MiniUiActive()) {
+		GfxFillRect(r, MiniUiSkinTone(MINI_CH_PANEL));
+		return;
+	}
 	if (bevel) {
 		DrawFrameRect(r, colour, clicked ? FrameFlag::Lowered : FrameFlags{});
 	} else if (clicked) {
 		GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), GetColourGradient(colour, SHADE_LIGHTER));
 	}
-	if (MiniUiDrawResizeGlyph(r, colour, at_left)) return;
 	DrawSpriteIgnorePadding(at_left ? SPR_WINDOW_RESIZE_LEFT : SPR_WINDOW_RESIZE_RIGHT, PAL_NONE, r.Shrink(ScaleGUITrad(2)), at_left ? (SA_LEFT | SA_BOTTOM | SA_FORCE) : (SA_RIGHT | SA_BOTTOM | SA_FORCE));
 }
 
@@ -2363,7 +2369,13 @@ void NWidgetBackground::Draw(const Window *w)
 
 	switch (this->type) {
 		case WWT_PANEL:
-			DrawFrameRect(r, this->colour, this->IsLowered() ? FrameFlag::Lowered : FrameFlags{});
+			/* The window face carries the mini chrome tone so the widgets on
+			 * top of it keep a tone and an outline of their own. */
+			if (MiniUiActive() && !this->IsLowered()) {
+				GfxFillRect(r, MiniUiSkinTone(MINI_CH_PANEL));
+			} else {
+				DrawFrameRect(r, this->colour, this->IsLowered() ? FrameFlag::Lowered : FrameFlags{});
+			}
 			break;
 
 		case WWT_FRAME:

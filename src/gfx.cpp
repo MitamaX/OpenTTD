@@ -18,6 +18,7 @@
 #include "settings_type.h"
 #include "network/network.h"
 #include "network/network_func.h"
+#include "mini_ui.h"
 #include "window_gui.h"
 #include "window_func.h"
 #include "newgrf_debug.h"
@@ -473,7 +474,7 @@ void DrawRectOutline(const Rect &r, PixelColour colour, int width, int dash)
  * Set the colour remap to be for the given colour.
  * @param colour the new colour of the remap.
  */
-static void SetColourRemap(TextColour colour)
+static void SetColourRemap(TextColour colour, bool shadow = false)
 {
 	if (colour == TC_INVALID) return;
 
@@ -483,7 +484,13 @@ static void SetColourRemap(TextColour colour)
 	bool raw_colour = (colour & TC_IS_PALETTE_COLOUR) != 0;
 	colour &= ~(TC_NO_SHADE | TC_IS_PALETTE_COLOUR | TC_FORCED);
 
-	_string_colourremap[1] = raw_colour ? (uint8_t)colour : _string_colourmap[colour].p;
+	if (raw_colour) {
+		_string_colourremap[1] = (uint8_t)colour;
+	} else {
+		/* The shadow pass must stay dark or the skin would turn it into a halo. */
+		PixelColour pc = _string_colourmap[colour];
+		_string_colourremap[1] = (shadow ? pc : MiniUiSkinTextColour(pc)).p;
+	}
 	_string_colourremap[2] = no_shade ? 0 : 1;
 	_colour_remap_ptr = _string_colourremap;
 }
@@ -605,7 +612,7 @@ static int DrawLayoutLine(const ParagraphLayouter::Line &line, int y, int left, 
 			/* Update the last colour for the truncation ellipsis. */
 			last_colour = colour;
 			if (do_shadow && (!fc->GetDrawGlyphShadow() || !colour_has_shadow)) continue;
-			SetColourRemap(do_shadow ? TC_BLACK : colour);
+			SetColourRemap(do_shadow ? TC_BLACK : colour, do_shadow);
 
 			for (int i = 0; i < run.GetGlyphCount(); i++) {
 				GlyphID glyph = glyphs[i];

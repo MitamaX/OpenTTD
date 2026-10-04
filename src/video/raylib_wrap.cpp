@@ -489,6 +489,7 @@ void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRect
 		for (size_t i = 0; i < count; i++) {
 			RlwRectI r = overlays[i];
 			if (r.under != (pass == 0)) continue;
+			if (r.sample_only) continue;
 			if (r.x < 0) { r.w += r.x; r.x = 0; }
 			if (r.y < 0) { r.h += r.y; r.y = 0; }
 			if (r.x + r.w > w) r.w = w - r.x;

@@ -18,9 +18,89 @@
 
 #include "safeguards.h"
 
-static PixelColour GlyphInk(Colours colour)
+static const uint32_t _skin_tones[] = {
+	MINI_CH_PANEL, MINI_CH_EDGE, MINI_CH_SUNKEN, MINI_CH_TILE,
+	MINI_CH_ACTIVE, MINI_CH_TEXT, MINI_CH_DIM, MINI_CH_ACCENT,
+};
+
+/* Chrome tones are authored as RGB but widgets paint through palette indices.
+ * The palette's neutral ramp steps by sixteen, so nearest-colour matching
+ * collapses the edge onto the panel and the outline disappears; the greys are
+ * pinned to ramp steps instead and only the tinted tones are matched. */
+PixelColour MiniUiSkinTone(uint32_t argb)
 {
-	return GetColourGradient(colour, SHADE_DARKEST);
+	switch (argb) {
+		case MINI_CH_EDGE: return GREY_SCALE(1);
+		case MINI_CH_SUNKEN: return GREY_SCALE(1);
+		case MINI_CH_PANEL: return GREY_SCALE(2);
+		case MINI_CH_TILE: return GREY_SCALE(3);
+		case MINI_CH_DIM: return GREY_SCALE(7);
+		default: break;
+	}
+
+	static uint8_t resolved[lengthof(_skin_tones)];
+	static bool ready = false;
+	if (!ready) {
+		for (size_t i = 0; i < lengthof(_skin_tones); i++) {
+			uint32_t t = _skin_tones[i];
+			resolved[i] = GetNearestColourIndex((uint8_t)(t >> 16), (uint8_t)(t >> 8), (uint8_t)t);
+		}
+		ready = true;
+	}
+	for (size_t i = 0; i < lengthof(_skin_tones); i++) {
+		if (_skin_tones[i] == argb) return PixelColour{resolved[i]};
+	}
+	return PixelColour{GetNearestColourIndex((uint8_t)(argb >> 16), (uint8_t)(argb >> 8), (uint8_t)argb)};
+}
+
+/* Buttons take the tile tone so their outline reads; the window face behind
+ * them is painted separately with the panel tone. */
+PixelColour MiniUiSkinFrameFill(bool lowered, bool darkened)
+{
+	if (!lowered) return MiniUiSkinTone(MINI_CH_TILE);
+	return MiniUiSkinTone(darkened ? MINI_CH_SUNKEN : MINI_CH_ACTIVE);
+}
+
+/* A sunken field is already the darkest tone the ramp has, and the official
+ * code fills some of them with plain black on top, so a dark outline would
+ * make the whole field one flat block. Those get a light rim instead. */
+PixelColour MiniUiSkinFrameBorder(bool lowered, bool darkened)
+{
+	return (lowered && darkened) ? MiniUiSkinTone(MINI_CH_TILE) : MiniUiSkinTone(MINI_CH_EDGE);
+}
+
+/* String colours were picked against the light official palette; on the dark
+ * skin the dim ones are lifted to a readable level with their hue kept. */
+PixelColour MiniUiSkinTextColour(PixelColour colour)
+{
+	static const uint LIFT_BELOW = 110;
+	static const uint LIFT_TO = 168;
+
+	if (!MiniUiActive()) return colour;
+
+	static uint8_t lifted[256];
+	static bool known[256];
+	if (!known[colour.p]) {
+		const Colour &c = _cur_palette.palette[colour.p];
+		uint lum = (c.r * 30 + c.g * 59 + c.b * 11) / 100;
+		if (lum >= LIFT_BELOW) {
+			lifted[colour.p] = colour.p;
+		} else if (lum < 8) {
+			lifted[colour.p] = MiniUiSkinTone(MINI_CH_TEXT).p;
+		} else {
+			lifted[colour.p] = GetNearestColourIndex(
+					(uint8_t)std::min<uint>(255, c.r * LIFT_TO / lum),
+					(uint8_t)std::min<uint>(255, c.g * LIFT_TO / lum),
+					(uint8_t)std::min<uint>(255, c.b * LIFT_TO / lum));
+		}
+		known[colour.p] = true;
+	}
+	return PixelColour{lifted[colour.p]};
+}
+
+static PixelColour GlyphInk(Colours)
+{
+	return MiniUiSkinTone(MINI_CH_TEXT);
 }
 
 static Rect GlyphBox(const Rect &r, int pad)
@@ -141,7 +221,7 @@ bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite)
 			if (inner.Width() > 0 && inner.Height() > 0) GfxFillRect(inner, ink);
 			return true;
 		}
-		case SPR_BLOT: DrawDiscGlyph(b, true, GetColourGradient(colour, SHADE_NORMAL), stroke); return true;
+		case SPR_BLOT: DrawDiscGlyph(b, true, MiniUiSkinTone(MINI_CH_ACCENT), stroke); return true;
 		case SPR_RENAME: DrawPenGlyph(b, ink, stroke); return true;
 		case SPR_GOTO_LOCATION: DrawCrosshairGlyph(b, ink, stroke); return true;
 		default: return false;
@@ -169,24 +249,5 @@ bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour)
 	const Rect b = GlyphBox(r, ScaleGUITrad(4));
 	GfxDrawLine(b.left, b.top, b.right, b.bottom, ink, stroke);
 	GfxDrawLine(b.left, b.bottom, b.right, b.top, ink, stroke);
-	return true;
-}
-
-bool MiniUiDrawResizeGlyph(const Rect &r, Colours colour, bool at_left)
-{
-	if (!MiniUiActive()) return false;
-
-	const PixelColour ink = GlyphInk(colour);
-	const int stroke = std::max(1, ScaleGUITrad(1));
-	const Rect b = r.Shrink(ScaleGUITrad(3));
-	int step = std::max(2, std::min(b.Width(), b.Height()) / 3);
-	for (int k = 1; k <= 2; k++) {
-		int reach = k * step;
-		if (at_left) {
-			GfxDrawLine(b.left + reach, b.bottom, b.left, b.bottom - reach, ink, stroke);
-		} else {
-			GfxDrawLine(b.right - reach, b.bottom, b.right, b.bottom - reach, ink, stroke);
-		}
-	}
 	return true;
 }

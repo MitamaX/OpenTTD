@@ -22,6 +22,7 @@
 #include "station_base.h"
 #include "waypoint_base.h"
 #include "texteff.hpp"
+#include "mini_ui.h"
 #include "strings_func.h"
 #include "window_func.h"
 #include "querystring_gui.h"
@@ -494,6 +495,10 @@ void ShowAboutWindow()
  */
 void ShowEstimatedCostOrIncome(Money cost, int x, int y)
 {
+	/* The mini UI asks for estimates on its own to label the blueprint, so it
+	 * takes the figure instead of letting it pop up. */
+	if (MiniUiCatchEstimate(cost)) return;
+
 	StringID msg = STR_MESSAGE_ESTIMATED_COST;
 
 	if (cost < 0) {
@@ -654,8 +659,10 @@ struct TooltipsWindow : public Window
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
 		if (widget != WID_TT_BACKGROUND) return;
-		GfxFillRect(r, PC_BLACK);
-		GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), PC_LIGHT_YELLOW);
+		/* The skin lifts string colours for dark panels, so the light note
+		 * paper would leave the text unreadable. */
+		GfxFillRect(r, MiniUiActive() ? MiniUiSkinTone(MINI_CH_EDGE) : PC_BLACK);
+		GfxFillRect(r.Shrink(WidgetDimensions::scaled.bevel), MiniUiActive() ? MiniUiSkinTone(MINI_CH_PANEL) : PC_LIGHT_YELLOW);
 
 		DrawStringMultiLine(r.Shrink(WidgetDimensions::scaled.framerect).Shrink(WidgetDimensions::scaled.fullbevel), this->text.GetDecodedString(), TC_BLACK, SA_CENTER);
 	}

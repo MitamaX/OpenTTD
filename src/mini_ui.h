@@ -15,6 +15,7 @@
 
 #include "company_type.h"
 #include "core/geometry_type.hpp"
+#include "economy_type.h"
 #include "engine_type.h"
 #include "gfx_type.h"
 #include "industry_type.h"
@@ -36,14 +37,30 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt);
 void MiniUiOverlayRects(std::vector<RlwRectI> &rects);
 void MiniUiScrollTo(int x, int y);
 bool MiniUiShowError(std::string summary, std::string detail, bool warn);
+bool MiniUiCatchEstimate(Money cost);
 
 struct NewsItem;
 bool MiniUiShowNews(const NewsItem *ni);
 
+/* Chrome tones. The GPU chrome and the native widget skin share them so mini
+ * windows and the official windows embedded in them read as one surface. */
+static constexpr uint32_t MINI_CH_PANEL = 0xFF262624U;
+static constexpr uint32_t MINI_CH_EDGE = 0xFF191916U;
+static constexpr uint32_t MINI_CH_SUNKEN = 0xFF1F1F1DU;
+static constexpr uint32_t MINI_CH_TILE = 0xFF2E2E2BU;
+static constexpr uint32_t MINI_CH_ACTIVE = 0xFF3D5A5CU;
+static constexpr uint32_t MINI_CH_TEXT = 0xFFC5C0B2U;
+static constexpr uint32_t MINI_CH_DIM = 0xFF6E6A5EU;
+static constexpr uint32_t MINI_CH_ACCENT = 0xFF8FE0E8U;
+
+PixelColour MiniUiSkinTone(uint32_t argb);
+PixelColour MiniUiSkinFrameFill(bool lowered, bool darkened);
+PixelColour MiniUiSkinFrameBorder(bool lowered, bool darkened);
+PixelColour MiniUiSkinTextColour(PixelColour colour);
+
 bool MiniUiDrawControlGlyph(const Rect &r, Colours colour, SpriteID sprite);
 bool MiniUiDrawCloseGlyph(const Rect &r, Colours colour);
 bool MiniUiDrawCoverageGlyph(const Rect &r, Colours colour);
-bool MiniUiDrawResizeGlyph(const Rect &r, Colours colour, bool at_left);
 
 struct Vehicle;
 bool ShowMiniVehicleWindow(const Vehicle *v);

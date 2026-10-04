@@ -44,6 +44,10 @@ struct RlwRectI {
 	/* Overlays normally draw above the ImGui layer; carrier viewports draw
 	 * below it and reach the screen through an ImGui image instead. */
 	bool under = false;
+	/* Embedded windows reach the screen only through their slot image. Their
+	 * region is still refreshed, but blitting it would show the parts that
+	 * reach past the slot. */
+	bool sample_only = false;
 };
 
 bool RlwInit(int w, int h, const char *title, bool vsync);

@@ -284,7 +284,7 @@ struct DropdownWindow : Window {
 				Rect full = ir.Translate(0, y).WithHeight(item_height);
 
 				bool selected = (this->selected_result == item->result) && item->Selectable() && this->selected_click_result < 0;
-				if (selected) GfxFillRect(full, PC_BLACK);
+				if (selected) GfxFillRect(full, MiniUiActive() ? MiniUiSkinTone(MINI_CH_ACTIVE) : PC_BLACK);
 
 				item->Draw(full, full.Shrink(WidgetDimensions::scaled.dropdowntext, RectPadding::zero), selected, selected ? this->selected_click_result : -1, colour);
 			}

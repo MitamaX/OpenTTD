@@ -39,6 +39,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "fileio_func.h"
+#include "fios.h"
 #include "gfx_func.h"
 #include "goal_base.h"
 #include "graph_gui.h"
@@ -102,6 +103,7 @@
 #include "timer/timer_game_calendar.h"
 #include "timer/timer_game_economy.h"
 #include "timer/timer_game_tick.h"
+#include "tunnelbridge.h"
 #include "tunnelbridge_cmd.h"
 #include "tunnelbridge_map.h"
 #include "vehicle_base.h"
@@ -258,6 +260,8 @@ struct FleetDeploy {
 };
 static FleetDeploy _deploy;
 
+static int _build_scroll = 0;
+
 /* The screen has exactly one input mode: idle, building or following a
  * vehicle. Entering one drops the others. */
 static void EnterIdleMode()
@@ -265,6 +269,7 @@ static void EnterIdleMode()
 	_tool = MiniTool::None;
 	_follow_veh = VehicleID::Invalid();
 	_order_pick_veh = VehicleID::Invalid();
+	_build_scroll = 0;
 }
 
 static void EnterBuildMode(MiniTool t)
@@ -330,6 +335,48 @@ struct MiniRectPlan {
 };
 
 static MiniRectPlan _rect_plan;
+
+static int RectPlanWidth() { return _rect_plan.x1 - _rect_plan.x0 + 1; }
+static int RectPlanHeight() { return _rect_plan.y1 - _rect_plan.y0 + 1; }
+
+/* Rect tiles are numbered along the y axis inside each x column; the probe and
+ * the blueprint both index them this way. */
+static size_t RectPlanIndex(int tx, int ty)
+{
+	return (size_t)(tx - _rect_plan.x0) * RectPlanHeight() + (ty - _rect_plan.y0);
+}
+
+/* Plan preview. The tool's own commands run a second time with the game's
+ * estimate switch held down, so nothing is built and the game answers what it
+ * would charge and what it would refuse. The probe borrows the live plan, so
+ * the commit path must leave the plan alone while one is running. */
+struct MiniEstimate {
+	bool probing = false;
+	bool caught = false;
+	bool probed = false;
+	bool ok = false;
+	/* The probe declined to ask, so the plan carries no verdict either way. */
+	bool unknown = false;
+	Money cost = 0;
+	uint64_t key = 0;
+	/* Per-tile verdicts for the tools whose drag the game fills in tile by
+	 * tile; empty when the plan stands or falls as a whole. */
+	std::vector<bool> fit;
+	/* Where the tunnel command said it would surface, and how far that is. */
+	TileIndex tunnel_end = INVALID_TILE;
+	uint tunnel_len = 0;
+};
+
+static MiniEstimate _est;
+
+/* Long drags are not worth a command per tile, so past this the plan only
+ * carries its whole-plan verdict. */
+static const size_t MINI_FIT_MAX = 1024;
+
+static bool TileFits(size_t i)
+{
+	return i >= _est.fit.size() || _est.fit[i];
+}
 
 struct MiniSettings {
 	int start_active = 1;
@@ -492,16 +539,30 @@ static const uint32_t COL_GO = 0xFF3FCB6AU;
 static const uint32_t COL_STOP = 0xFFE04B4BU;
 static const uint32_t COL_BP = 0xFF7FD1FFU;
 static const uint32_t COL_BP_RM = 0xFFFF6B6BU;
+/* A tile the game would refuse. Neither blueprint blue nor removal red, so a
+ * hole in a long drag reads as a hole rather than as intent. */
+static const uint32_t COL_BP_NO = 0xFF8C8578U;
+
+/* Nothing per tile to say, so the whole blueprint takes the verdict. */
+static uint32_t PlanColour(uint32_t c)
+{
+	return (_est.probed && !_est.ok && !_est.unknown && _est.fit.empty()) ? COL_BP_NO : c;
+}
+
+static uint32_t PlanColour(uint32_t c, size_t i)
+{
+	return TileFits(i) ? PlanColour(c) : COL_BP_NO;
+}
 
 /* Screen chrome follows the reference HUD: warm dark panels with a thin
  * darker edge, teal active state, cyan accent, warm off-white text. */
-static const uint32_t COL_CH_PANEL = 0xFF262624U;
-static const uint32_t COL_CH_EDGE = 0xFF191916U;
-static const uint32_t COL_CH_TILE = 0xFF2E2E2BU;
-static const uint32_t COL_CH_ACTIVE = 0xFF3D5A5CU;
-static const uint32_t COL_CH_TEXT = 0xFFC5C0B2U;
-static const uint32_t COL_CH_DIM = 0xFF6E6A5EU;
-static const uint32_t COL_CH_ACCENT = 0xFF8FE0E8U;
+static const uint32_t COL_CH_PANEL = MINI_CH_PANEL;
+static const uint32_t COL_CH_EDGE = MINI_CH_EDGE;
+static const uint32_t COL_CH_TILE = MINI_CH_TILE;
+static const uint32_t COL_CH_ACTIVE = MINI_CH_ACTIVE;
+static const uint32_t COL_CH_TEXT = MINI_CH_TEXT;
+static const uint32_t COL_CH_DIM = MINI_CH_DIM;
+static const uint32_t COL_CH_ACCENT = MINI_CH_ACCENT;
 
 /* All-green ramp like the old top-down renderer settled on: one step
  * darker per height level, hue constant so slopes match their neighbours. */
@@ -787,13 +848,13 @@ static void ChromePanel(int x0, int y0, int x1, int y1)
 	RlwCmdRoundRect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, r, COL_CH_PANEL);
 }
 
-static void DrawHudText(int x, int y, std::string_view text, int min_w = 0)
+static void DrawHudText(int x, int y, std::string_view text, int min_w = 0, TextColour colour = TC_WHITE)
 {
 	int pad = 4;
 	int w = std::max<int>(GetStringBoundingBox(text).width, min_w);
 	int lh = GetCharacterHeight(FS_NORMAL);
 	RlwCmdRoundRect(x - pad, y - pad, x + w + pad, y + lh + pad - 1, pad, (COL_CH_PANEL & 0x00FFFFFFU) | 0xF0000000U);
-	DrawScreenText(x, y, text);
+	DrawScreenText(x, y, text, colour);
 }
 
 static void DrawHudTextCentred(int cx, int y, std::string_view text)
@@ -2155,14 +2216,15 @@ static void DrawRailPlan(int ppt)
 {
 	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
 	int w = std::max(2, ppt / 5);
-	for (const auto &[tile, t] : _plan.pieces) {
+	for (size_t i = 0; i < _plan.pieces.size(); i++) {
+		auto [tile, t] = _plan.pieces[i];
 		int tx = TileX(tile);
 		int ty = TileY(tile);
 		int x0 = ScrX(ty);
 		int y0 = ScrY(tx);
 		int x1 = ScrX(ty + 1) - 1;
 		int y1 = ScrY(tx + 1) - 1;
-		DrawTrackPiece(t, x0, y0, x1, y1, w, c);
+		DrawTrackPiece(t, x0, y0, x1, y1, w, PlanColour(c, i));
 	}
 }
 
@@ -2182,23 +2244,10 @@ static RailType PickRailType()
 	return RAILTYPE_RAIL;
 }
 
-static void CycleRailType(int dir)
-{
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c == nullptr) return;
-	RailType cur = PickRailType();
-	for (int i = 1; i <= (int)RAILTYPE_END; i++) {
-		int t = ((int)cur + dir * i) % (int)RAILTYPE_END;
-		if (t < 0) t += (int)RAILTYPE_END;
-		if (c->avail_railtypes.Test((RailType)t)) {
-			_rail_type_sel = (RailType)t;
-			return;
-		}
-	}
-}
-
 static void ClearPlans()
 {
+	if (_est.probing) return;
+
 	_plan.pieces.clear();
 	_plan.path.clear();
 	_road_plan.tiles.clear();
@@ -2230,19 +2279,6 @@ static BridgeType PickBridgeType(uint len)
 {
 	if (_bridge_sel < MAX_BRIDGES && CheckBridgeAvailability(_bridge_sel, len).Succeeded()) return _bridge_sel;
 	return FastestBridgeType(len);
-}
-
-static void CycleBridgeType(int dir)
-{
-	int at = (int)PickBridgeType(1);
-	for (int i = 1; i <= (int)MAX_BRIDGES; i++) {
-		int bt = (at + dir * i) % (int)MAX_BRIDGES;
-		if (bt < 0) bt += (int)MAX_BRIDGES;
-		if (CheckBridgeAvailability((BridgeType)bt, 1).Succeeded()) {
-			_bridge_sel = (BridgeType)bt;
-			return;
-		}
-	}
 }
 
 /* A straight drag bridges water automatically: each water run becomes a
@@ -2279,27 +2315,23 @@ static MiniSpans SplitWaterSpans(std::span<const TileIndex> ts)
 	return out;
 }
 
-static void CommitRailPlan()
+/* One command's worth of the rail plan: an index range into the pieces, the
+ * track they share and whether the range crosses water as a bridge. */
+struct MiniRailRun {
+	size_t a, b;
+	Track track;
+	bool bridge;
+};
+
+/* Maximal straight runs go through the range command so the water auto-bridge
+ * logic still applies; corner pieces stand alone. The commit and the blueprint
+ * probe both walk the plan this way. */
+static std::vector<MiniRailRun> SplitRailPlan()
 {
-	if (_plan.pieces.empty()) {
-		ClearPlans();
-		return;
-	}
-
-	if (_drag_remove) {
-		for (const auto &[tile, t] : _plan.pieces) {
-			Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
-		}
-		ClearPlans();
-		return;
-	}
-
-	/* Maximal straight runs go through the range command so the water
-	 * auto-bridge logic still applies; corner pieces commit tile by tile. */
-	RailType rt = PickRailType();
+	std::vector<MiniRailRun> out;
 	size_t i = 0;
 	while (i < _plan.pieces.size()) {
-		auto [tile, t] = _plan.pieces[i];
+		Track t = _plan.pieces[i].second;
 		size_t j = i;
 		if (t == TRACK_X || t == TRACK_Y) {
 			int dir = 0;
@@ -2315,19 +2347,43 @@ static void CommitRailPlan()
 			for (size_t k = i; k <= j; k++) tiles.push_back(_plan.pieces[k].first);
 			MiniSpans spans = SplitWaterSpans(tiles);
 			if (!spans.ok) {
-				Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tiles.back(), tiles.front(), rt, t, true, false);
+				out.push_back({i, j, t, false});
 			} else {
-				for (auto [a, b] : spans.bridges) {
-					Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, tiles[b], tiles[a], TRANSPORT_RAIL, PickBridgeType((uint)(b - a - 1)), (uint8_t)rt);
-				}
-				for (auto [a, b] : spans.land) {
-					Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tiles[b], tiles[a], rt, t, true, false);
-				}
+				for (auto [a, b] : spans.bridges) out.push_back({i + a, i + b, t, true});
+				for (auto [a, b] : spans.land) out.push_back({i + a, i + b, t, false});
 			}
 		} else {
-			Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tile, tile, rt, t, true, false);
+			out.push_back({i, i, t, false});
 		}
 		i = j + 1;
+	}
+	return out;
+}
+
+static void CommitRailPlan()
+{
+	if (_plan.pieces.empty()) {
+		ClearPlans();
+		return;
+	}
+
+	if (_drag_remove) {
+		for (const auto &[tile, t] : _plan.pieces) {
+			Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
+		}
+		ClearPlans();
+		return;
+	}
+
+	RailType rt = PickRailType();
+	for (const MiniRailRun &run : SplitRailPlan()) {
+		TileIndex from = _plan.pieces[run.a].first;
+		TileIndex to = _plan.pieces[run.b].first;
+		if (run.bridge) {
+			Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, to, from, TRANSPORT_RAIL, PickBridgeType((uint)(run.b - run.a - 1)), (uint8_t)rt);
+		} else {
+			Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, to, from, rt, run.track, true, false);
+		}
 	}
 	ClearPlans();
 }
@@ -2368,10 +2424,11 @@ static void DrawRoadPlan(int ppt)
 {
 	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
 	int w = std::max(2, ppt / 3);
-	for (TileIndex tile : _road_plan.tiles) {
+	for (size_t i = 0; i < _road_plan.tiles.size(); i++) {
+		TileIndex tile = _road_plan.tiles[i];
 		int tx = TileX(tile);
 		int ty = TileY(tile);
-		DrawAxisBand(_road_plan.axis, ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, w, c);
+		DrawAxisBand(_road_plan.axis, ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, w, PlanColour(c, i));
 	}
 }
 
@@ -2384,7 +2441,7 @@ static uint BridgePlanLength()
 
 static void DrawBridgePlan(int ppt)
 {
-	uint32_t c = BridgePlanLength() > 0 ? COL_BP : COL_BP_RM;
+	uint32_t c = BridgePlanLength() > 0 ? PlanColour(COL_BP) : COL_BP_RM;
 	int w = std::max(2, ppt / 2);
 	const std::vector<TileIndex> &ts = _road_plan.tiles;
 	for (size_t i = 0; i < ts.size(); i++) {
@@ -2415,21 +2472,6 @@ static RoadType PickRoadType()
 	return ROADTYPE_ROAD;
 }
 
-static void CycleRoadType(int dir)
-{
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c == nullptr) return;
-	int at = (int)PickRoadType();
-	for (int i = 1; i <= (int)ROADTYPE_END; i++) {
-		int rt = (at + dir * i) % (int)ROADTYPE_END;
-		if (rt < 0) rt += (int)ROADTYPE_END;
-		if (c->avail_roadtypes.Test((RoadType)rt)) {
-			_road_type_sel = (RoadType)rt;
-			return;
-		}
-	}
-}
-
 /* Rectangle drag; the far corner truncates at the size limit so the
  * anchor corner always stays inside the allowed area. */
 static void UpdateRectPlan(double wx, double wy, int limit)
@@ -2456,6 +2498,270 @@ static void UpdateRectPlan(double wx, double wy, int limit)
 	_rect_plan.valid = true;
 }
 
+/* The clear tool takes a filter: the drag still covers an area, but only the
+ * kind of tile the player picked is taken off it. */
+enum class MiniClear : uint8_t {
+	All,
+	RailAny,
+	RailTrack,
+	Signal,
+	RailStation,
+	RailDepot,
+	RailWaypoint,
+	RailTunnelBridge,
+	RoadAny,
+	Road,
+	RoadStop,
+	RoadDepot,
+	RoadWaypoint,
+	RoadTunnelBridge,
+	WaterAny,
+	Canal,
+	Dock,
+	Buoy,
+	ShipDepot,
+	Aqueduct,
+	AirAny,
+	Airport,
+	LandAny,
+	Tree,
+	House,
+	Industry,
+	Object,
+};
+
+struct MiniClearItem {
+	std::string_view label;
+	MiniTool icon;
+	MiniClear mode;
+};
+
+/* The category is a filter in its own right: it takes everything its items
+ * cover, so one click clears a whole transport system off the drag. */
+struct MiniClearCategory {
+	std::string_view label;
+	MiniTool icon;
+	MiniClear mode;
+	std::span<const MiniClearItem> items;
+};
+
+static const MiniClearItem _clear_any_items[] = {
+	{"전부", MiniTool::Demolish, MiniClear::All},
+};
+
+static const MiniClearItem _clear_rail_items[] = {
+	{"선로", MiniTool::Rail, MiniClear::RailTrack},
+	{"신호", MiniTool::Signal, MiniClear::Signal},
+	{"역", MiniTool::Station, MiniClear::RailStation},
+	{"차고", MiniTool::TrainDepot, MiniClear::RailDepot},
+	{"경유지", MiniTool::RailWaypoint, MiniClear::RailWaypoint},
+	{"터널·다리", MiniTool::RailBridge, MiniClear::RailTunnelBridge},
+};
+
+static const MiniClearItem _clear_road_items[] = {
+	{"도로", MiniTool::Road, MiniClear::Road},
+	{"정류장", MiniTool::BusStop, MiniClear::RoadStop},
+	{"차고", MiniTool::RoadDepot, MiniClear::RoadDepot},
+	{"경유지", MiniTool::RoadWaypoint, MiniClear::RoadWaypoint},
+	{"터널·다리", MiniTool::RoadBridge, MiniClear::RoadTunnelBridge},
+};
+
+static const MiniClearItem _clear_water_items[] = {
+	{"운하", MiniTool::Canal, MiniClear::Canal},
+	{"부두", MiniTool::Dock, MiniClear::Dock},
+	{"부표", MiniTool::Buoy, MiniClear::Buoy},
+	{"조선소", MiniTool::ShipDepot, MiniClear::ShipDepot},
+	{"수로교", MiniTool::Lock, MiniClear::Aqueduct},
+};
+
+static const MiniClearItem _clear_air_items[] = {
+	{"공항", MiniTool::Airport, MiniClear::Airport},
+};
+
+static const MiniClearItem _clear_land_items[] = {
+	{"나무", MiniTool::Trees, MiniClear::Tree},
+	{"건물", MiniTool::Headquarters, MiniClear::House},
+	{"산업", MiniTool::Industry, MiniClear::Industry},
+	{"소유지", MiniTool::BuyLand, MiniClear::Object},
+};
+
+static const MiniClearCategory _clear_cats[] = {
+	{"전체", MiniTool::Demolish, MiniClear::All, _clear_any_items},
+	{"철도", MiniTool::Rail, MiniClear::RailAny, _clear_rail_items},
+	{"도로", MiniTool::Road, MiniClear::RoadAny, _clear_road_items},
+	{"수상", MiniTool::Canal, MiniClear::WaterAny, _clear_water_items},
+	{"항공", MiniTool::Airport, MiniClear::AirAny, _clear_air_items},
+	{"지형", MiniTool::Trees, MiniClear::LandAny, _clear_land_items},
+};
+
+static MiniClear _clear_mode = MiniClear::All;
+
+static const MiniClearCategory *ClearCategoryOf(MiniClear mode)
+{
+	for (const MiniClearCategory &cat : _clear_cats) {
+		if (cat.mode == mode) return &cat;
+		for (const MiniClearItem &it : cat.items) {
+			if (it.mode == mode) return &cat;
+		}
+	}
+	return nullptr;
+}
+
+static std::string_view ClearModeLabel(MiniClear mode)
+{
+	for (const MiniClearCategory &cat : _clear_cats) {
+		if (cat.mode == mode) return cat.label;
+		for (const MiniClearItem &it : cat.items) {
+			if (it.mode == mode) return it.label;
+		}
+	}
+	return {};
+}
+
+static TransportType TunnelBridgeTransport(TileIndex tile)
+{
+	return IsTileType(tile, MP_TUNNELBRIDGE) ? GetTunnelBridgeTransportType(tile) : INVALID_TRANSPORT;
+}
+
+static bool ClearKindMatches(TileIndex tile, MiniClear kind)
+{
+	switch (kind) {
+		case MiniClear::All: return true;
+		/* A level crossing carries both, so it answers to the rail filter and
+		 * the road one alike. */
+		case MiniClear::RailTrack: return IsPlainRailTile(tile) || IsLevelCrossingTile(tile);
+		case MiniClear::Signal: return IsPlainRailTile(tile) && HasSignals(tile);
+		case MiniClear::RailStation: return IsRailStationTile(tile);
+		case MiniClear::RailDepot: return IsRailDepotTile(tile);
+		case MiniClear::RailWaypoint: return IsRailWaypointTile(tile);
+		case MiniClear::RailTunnelBridge: return TunnelBridgeTransport(tile) == TRANSPORT_RAIL;
+		case MiniClear::Road: return IsNormalRoadTile(tile) || IsLevelCrossingTile(tile);
+		case MiniClear::RoadStop: return IsStationRoadStopTile(tile);
+		case MiniClear::RoadDepot: return IsRoadDepotTile(tile);
+		case MiniClear::RoadWaypoint: return IsRoadWaypointTile(tile);
+		case MiniClear::RoadTunnelBridge: return TunnelBridgeTransport(tile) == TRANSPORT_ROAD;
+		case MiniClear::Canal: return IsTileType(tile, MP_WATER) && (IsCanal(tile) || IsLock(tile));
+		case MiniClear::Dock: return IsDockTile(tile);
+		case MiniClear::Buoy: return IsBuoyTile(tile);
+		case MiniClear::ShipDepot: return IsShipDepotTile(tile);
+		case MiniClear::Aqueduct: return TunnelBridgeTransport(tile) == TRANSPORT_WATER;
+		case MiniClear::Airport: return IsAirportTile(tile);
+		case MiniClear::Tree: return IsTileType(tile, MP_TREES);
+		case MiniClear::House: return IsTileType(tile, MP_HOUSE);
+		case MiniClear::Industry: return IsTileType(tile, MP_INDUSTRY);
+		case MiniClear::Object: return IsTileType(tile, MP_OBJECT);
+		default: return false;
+	}
+}
+
+/* Takes the chosen kind off the tile and leaves the rest standing, so a
+ * crossing keeps its road when the rails go. Answers whether the tile was
+ * asked about at all, which is what tells a skipped tile from a refused one. */
+static bool PostClearKind(TileIndex tile, MiniClear kind)
+{
+	if (!ClearKindMatches(tile, kind)) return false;
+
+	switch (kind) {
+		case MiniClear::RailTrack: {
+			TrackBits bits = IsLevelCrossingTile(tile) ? GetCrossingRailBits(tile) : GetTrackBits(tile);
+			bool asked = false;
+			for (Track t : SetTrackBitIterator(bits)) {
+				Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
+				asked = true;
+			}
+			return asked;
+		}
+
+		case MiniClear::Signal: {
+			bool asked = false;
+			for (Track t : SetTrackBitIterator(GetTrackBits(tile))) {
+				if (!HasSignalOnTrack(tile, t)) continue;
+				Command<CMD_REMOVE_SINGLE_SIGNAL>::Post(STR_ERROR_CAN_T_REMOVE_SIGNALS_FROM, tile, t);
+				asked = true;
+			}
+			return asked;
+		}
+
+		/* One tile of road can hold a road type and a tram type at once, and the
+		 * command works along an axis, so only the axes the tile carries are
+		 * asked for: an axis with no piece on it answers with an error. */
+		case MiniClear::Road: {
+			bool asked = false;
+			for (RoadTramType rtt : {RTT_ROAD, RTT_TRAM}) {
+				if (!HasTileRoadType(tile, rtt)) continue;
+				RoadType rt = GetRoadType(tile, rtt);
+				RoadBits bits = GetAnyRoadBits(tile, rtt);
+				for (Axis a : {AXIS_X, AXIS_Y}) {
+					if ((bits & AxisToRoadBits(a)) == ROAD_NONE) continue;
+					Command<CMD_REMOVE_LONG_ROAD>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_FROM, tile, tile, rt, a, false, false);
+					asked = true;
+				}
+			}
+			return asked;
+		}
+
+		case MiniClear::RailStation:
+			Command<CMD_REMOVE_FROM_RAIL_STATION>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, tile, tile, false);
+			return true;
+
+		case MiniClear::RailWaypoint:
+			Command<CMD_REMOVE_FROM_RAIL_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_RAIL_WAYPOINT, tile, tile, false);
+			return true;
+
+		case MiniClear::RoadWaypoint:
+			Command<CMD_REMOVE_FROM_ROAD_WAYPOINT>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_WAYPOINT, tile, tile);
+			return true;
+
+		case MiniClear::RoadStop: {
+			RoadStopType st = GetRoadStopType(tile);
+			Command<CMD_REMOVE_ROAD_STOP>::Post(st == RoadStopType::Bus ? STR_ERROR_CAN_T_REMOVE_BUS_STATION : STR_ERROR_CAN_T_REMOVE_TRUCK_STATION, tile, 1, 1, st, false);
+			return true;
+		}
+
+		default:
+			break;
+	}
+
+	Command<CMD_LANDSCAPE_CLEAR>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile);
+	return true;
+}
+
+/* A category takes every kind it holds, so the tile is offered to each of them
+ * in turn: a crossing under the rail filter loses its rails and keeps its road. */
+static bool PostClearTile(TileIndex tile)
+{
+	const MiniClearCategory *cat = ClearCategoryOf(_clear_mode);
+	if (cat == nullptr || cat->mode != _clear_mode) return PostClearKind(tile, _clear_mode);
+
+	bool asked = false;
+	for (const MiniClearItem &it : cat->items) {
+		/* Pulling the track takes its signals with it, so asking for both would
+		 * charge the signals twice and refuse the second command. */
+		if (it.mode == MiniClear::Signal && ClearKindMatches(tile, MiniClear::RailTrack)) continue;
+		if (PostClearKind(tile, it.mode)) asked = true;
+	}
+	return asked;
+}
+
+static bool ClearFilterActive()
+{
+	return _tool == MiniTool::Demolish && _clear_mode != MiniClear::All;
+}
+
+/* Whether the filter takes anything off the tile at all. The same question the
+ * commit path asks, without asking the game, so the blueprint can answer it for
+ * every tile on screen. */
+static bool ClearTileMatches(TileIndex tile)
+{
+	const MiniClearCategory *cat = ClearCategoryOf(_clear_mode);
+	if (cat == nullptr || cat->mode != _clear_mode) return ClearKindMatches(tile, _clear_mode);
+
+	for (const MiniClearItem &it : cat->items) {
+		if (ClearKindMatches(tile, it.mode)) return true;
+	}
+	return false;
+}
+
 static int RectPlanLimit()
 {
 	if (_tool == MiniTool::Station) return _settings_game.station.station_spread;
@@ -2477,16 +2783,48 @@ static void DrawRectPlan(int ppt)
 {
 	if (!_rect_plan.valid) return;
 	uint32_t c = (_drag_remove || _tool == MiniTool::Demolish) ? COL_BP_RM : COL_BP;
+	if (_est.fit.empty()) c = PlanColour(c);
 	int px0 = ScrX(_rect_plan.y0);
 	int py0 = ScrY(_rect_plan.x0);
 	int px1 = ScrX(_rect_plan.y1 + 1) - 1;
 	int py1 = ScrY(_rect_plan.x1 + 1) - 1;
-	BlendRect(px0, py0, px1, py1, c, 90);
+	/* A filter leaves most of the area standing, so the fill goes on the tiles
+	 * that come off and the frame keeps showing how far the drag reaches. The
+	 * area can be the whole map, so only what is on screen is walked. */
+	bool filtered = ClearFilterActive();
+	if (filtered) {
+		int vx0 = std::max(_rect_plan.x0, (int)std::floor(MapXAt(0)));
+		int vx1 = std::min(_rect_plan.x1, (int)std::floor(MapXAt(_fbh - 1)));
+		int vy0 = std::max(_rect_plan.y0, (int)std::floor(MapYAt(0)));
+		int vy1 = std::min(_rect_plan.y1, (int)std::floor(MapYAt(_fbw - 1)));
+		for (int tx = vx0; tx <= vx1; tx++) {
+			for (int ty = vy0; ty <= vy1; ty++) {
+				if (!ClearTileMatches(TileXY(tx, ty))) continue;
+				BlendRect(ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, c, 90);
+			}
+		}
+	} else {
+		BlendRect(px0, py0, px1, py1, c, 90);
+	}
 	int b = std::max(1, ppt / 8);
 	FillRect(px0, py0, px1, py0 + b - 1, c);
 	FillRect(px0, py1 - b + 1, px1, py1, c);
 	FillRect(px0, py0, px0 + b - 1, py1, c);
 	FillRect(px1 - b + 1, py0, px1, py1, c);
+
+	/* A refused patch is painted over the area, so the run shows its holes
+	 * before the drag is let go. */
+	if (!_est.fit.empty()) {
+		for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
+			for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) {
+				if (TileFits(RectPlanIndex(tx, ty))) continue;
+				/* Outside the filter is not a hole; nothing was going to come
+				 * off there in the first place. */
+				if (filtered && !ClearTileMatches(TileXY(tx, ty))) continue;
+				BlendRect(ScrX(ty), ScrY(tx), ScrX(ty + 1) - 1, ScrY(tx + 1) - 1, COL_BP_NO, 150);
+			}
+		}
+	}
 
 	if (_tool != MiniTool::Station || _drag_remove) return;
 	Axis axis = StationPlanAxis();
@@ -2518,7 +2856,21 @@ static void CommitStationPlan()
 static void CommitDemolishPlan()
 {
 	if (!_rect_plan.valid) return;
-	Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
+	if (_clear_mode == MiniClear::All) {
+		Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, TileXY(_rect_plan.x1, _rect_plan.y1), TileXY(_rect_plan.x0, _rect_plan.y0), false);
+	} else {
+		/* A filtered clear asks the game once per tile. That is fine for the
+		 * one run the player asked for, but a probe repeats it while the drag
+		 * moves, so past the fit limit the price is left unanswered. */
+		size_t n = (size_t)(_rect_plan.x1 - _rect_plan.x0 + 1) * (size_t)(_rect_plan.y1 - _rect_plan.y0 + 1);
+		if (_est.probing && n > MINI_FIT_MAX) {
+			_est.unknown = true;
+		} else {
+			for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
+				for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) PostClearTile(TileXY(tx, ty));
+			}
+		}
+	}
 	ClearPlans();
 }
 
@@ -2636,17 +2988,19 @@ static void DrawSignalPlan(int ppt)
 {
 	uint32_t c = _drag_remove ? COL_BP_RM : COL_BP;
 	int w = std::max(2, ppt / 5);
-	for (TileIndex tile : _sig_plan.tiles) {
+	for (size_t i = 0; i < _sig_plan.tiles.size(); i++) {
+		TileIndex tile = _sig_plan.tiles[i];
 		int tx = TileX(tile);
 		int ty = TileY(tile);
 		int x0 = ScrX(ty), y0 = ScrY(tx), x1 = ScrX(ty + 1) - 1, y1 = ScrY(tx + 1) - 1;
-		BlendRect(x0, y0, x1, y1, c, 70);
-		DrawTrackPiece(_sig_plan.track, x0, y0, x1, y1, w, c);
+		uint32_t tc = PlanColour(c, i);
+		BlendRect(x0, y0, x1, y1, tc, 70);
+		DrawTrackPiece(_sig_plan.track, x0, y0, x1, y1, w, tc);
 	}
 }
 
-/* Funding an industry has no window either: Q/E walk the types the fund list
- * would offer and the HUD names the type with its price. */
+/* Funding an industry has no window either: the build panel lists the types
+ * the fund list would offer and the HUD names the type with its price. */
 static IndustryType _industry_type = 0;
 
 static bool MiniIndustryAvailable(IndustryType it)
@@ -2667,22 +3021,8 @@ static IndustryType PickIndustryType()
 	return IT_INVALID;
 }
 
-static void CycleIndustryType(int dir)
-{
-	IndustryType at = PickIndustryType();
-	if (at == IT_INVALID) return;
-	for (int i = 1; i <= NUM_INDUSTRYTYPES; i++) {
-		int t = ((int)at + dir * i) % NUM_INDUSTRYTYPES;
-		if (t < 0) t += NUM_INDUSTRYTYPES;
-		if (MiniIndustryAvailable((IndustryType)t)) {
-			_industry_type = (IndustryType)t;
-			return;
-		}
-	}
-}
-
 /* Signal choice lives in the tool as well: the picker window is replaced by
- * Q/E over the types the signal GUI setting exposes. */
+ * the build panel over the types the signal GUI setting exposes. */
 static const SignalType _mini_signal_path[] = {SIGTYPE_PBS, SIGTYPE_PBS_ONEWAY};
 static const SignalType _mini_signal_all[] = {SIGTYPE_BLOCK, SIGTYPE_ENTRY, SIGTYPE_EXIT, SIGTYPE_COMBO, SIGTYPE_PBS, SIGTYPE_PBS_ONEWAY};
 
@@ -2703,17 +3043,6 @@ static SignalType PickSignalType()
 	return choices.front();
 }
 
-static void CycleSignalType(int dir)
-{
-	std::span<const SignalType> choices = SignalChoices();
-	int n = (int)choices.size();
-	int at = 0;
-	for (int i = 0; i < n; i++) {
-		if (choices[i] == PickSignalType()) at = i;
-	}
-	_signal_type = choices[((at + dir) % n + n) % n];
-}
-
 static std::string_view SignalTypeLabel(SignalType t)
 {
 	switch (t) {
@@ -2726,8 +3055,8 @@ static std::string_view SignalTypeLabel(SignalType t)
 	}
 }
 
-/* No airport picker window: Q/E walk the available airport types and the
- * blueprint previews the footprint, so the choice lives in the tool. */
+/* No airport picker window: the build panel lists the available airport types
+ * and the blueprint previews the footprint, so the choice lives in the tool. */
 static uint8_t _airport_type = 0;
 
 static uint8_t PickAirportType()
@@ -2739,33 +3068,21 @@ static uint8_t PickAirportType()
 	return _airport_type;
 }
 
-static void CycleAirportType(int dir)
-{
-	for (int i = 1; i <= NUM_AIRPORTS; i++) {
-		int t = ((int)PickAirportType() + dir * i) % NUM_AIRPORTS;
-		if (t < 0) t += NUM_AIRPORTS;
-		if (AirportSpec::Get((uint8_t)t)->IsAvailable()) {
-			_airport_type = (uint8_t)t;
-			return;
-		}
-	}
-}
-
-/* Road stops come in two shapes and the tool walks both: the first four steps
- * are a bay entered from that side, the last two a drive-through along that
- * axis. Drive-through along X stays the default. */
-static const int MINI_STOP_STATES = 6;
-static uint8_t _stop_state = 4;
+/* Road stops come in two shapes: a bay entered from one side, or a
+ * drive-through pair along an axis. The shape is a build panel choice and Q/E
+ * turn whichever one is in hand. Drive-through along X stays the default. */
+static bool _stop_through = true;
+static DiagDirection _stop_dir = DIAGDIR_NE;
 
 static bool StopIsThrough()
 {
-	return _stop_state >= 4;
+	return _stop_through;
 }
 
 static DiagDirection StopDiagDir()
 {
-	if (StopIsThrough()) return AxisToDiagDir(_stop_state == 4 ? AXIS_X : AXIS_Y);
-	return (DiagDirection)_stop_state;
+	if (_stop_through) return AxisToDiagDir(DiagDirToAxis(_stop_dir));
+	return _stop_dir;
 }
 
 /* Point tools place on click: the blueprint floats on the hover tile and
@@ -2922,7 +3239,7 @@ static void CommitPointTool()
 
 static void DrawPointToolPlan(int ppt)
 {
-	uint32_t c = _ctrl_pressed ? COL_BP_RM : COL_BP;
+	uint32_t c = PlanColour(_ctrl_pressed ? COL_BP_RM : COL_BP);
 	double wx = MapXAt(_cursor.pos.y);
 	double wy = MapYAt(_cursor.pos.x);
 	int tx = Clamp<int>((int)std::floor(wx), 1, Map::SizeX() - 2);
@@ -2952,7 +3269,31 @@ static void DrawPointToolPlan(int ppt)
 	} else if (_tool == MiniTool::RoadWaypoint) {
 		Axis axis = GetAxisForNewRoadWaypoint(TileXY(tx, ty));
 		if (IsValidAxis(axis)) DrawAxisBand(axis, x0, y0, x1, y1, std::max(2, ppt / 3), c);
-	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel || _tool == MiniTool::Dock || _tool == MiniTool::Lock) {
+	} else if (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel) {
+		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
+		if (d != INVALID_DIAGDIR) {
+			int cx = (x0 + x1) / 2;
+			int cy = (y0 + y1) / 2;
+			ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), std::max(2, ppt / 5), c);
+		}
+		/* The bore runs straight, so the box between the two mouths is the
+		 * tunnel; the far mouth is picked out because that is the tile the
+		 * player cannot see from here. */
+		if (_est.tunnel_end != INVALID_TILE) {
+			int ex = TileX(_est.tunnel_end);
+			int ey = TileY(_est.tunnel_end);
+			int bx0 = std::min(tx, ex), bx1 = std::max(tx, ex);
+			int by0 = std::min(ty, ey), by1 = std::max(ty, ey);
+			BlendRect(ScrX(by0), ScrY(bx0), ScrX(by1 + 1) - 1, ScrY(bx1 + 1) - 1, c, 55);
+			int mx0 = ScrX(ey), my0 = ScrY(ex), mx1 = ScrX(ey + 1) - 1, my1 = ScrY(ex + 1) - 1;
+			int b = std::max(1, ppt / 8);
+			BlendRect(mx0, my0, mx1, my1, c, 90);
+			FillRect(mx0, my0, mx1, my0 + b - 1, c);
+			FillRect(mx0, my1 - b + 1, mx1, my1, c);
+			FillRect(mx0, my0, mx0 + b - 1, my1, c);
+			FillRect(mx1 - b + 1, my0, mx1, my1, c);
+		}
+	} else if (_tool == MiniTool::Dock || _tool == MiniTool::Lock) {
 		DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(TileXY(tx, ty)));
 		if (d != INVALID_DIAGDIR) {
 			int cx = (x0 + x1) / 2;
@@ -3012,7 +3353,6 @@ static void DrawCatchmentPlan(int ppt)
 
 	int x0, y0, x1, y1;
 	if (_tool == MiniTool::Station && _dragging) {
-		UpdateRectPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x), RectPlanLimit());
 		x0 = _rect_plan.x0;
 		y0 = _rect_plan.y0;
 		x1 = _rect_plan.x1;
@@ -3115,6 +3455,420 @@ static void CommitBridgePlan()
 		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, ts.back(), ts.front(), TRANSPORT_ROAD, PickBridgeType(len), (uint8_t)PickRoadType());
 	}
 	ClearPlans();
+}
+
+static uint64_t EstMix(uint64_t h, uint64_t v)
+{
+	return h ^ (v + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2));
+}
+
+/* Everything the commit path reads, folded into one number: the probe only
+ * runs again once the player has changed what would be built. */
+static uint64_t EstimateKey()
+{
+	uint64_t h = EstMix(0, (uint64_t)_tool);
+	h = EstMix(h, (_drag_remove ? 1 : 0) | (_ctrl_pressed ? 2 : 0) | (_dragging ? 4 : 0) | (_station_flip ? 8 : 0));
+	h = EstMix(h, (uint64_t)PickRailType());
+	h = EstMix(h, (uint64_t)PickRoadType());
+	h = EstMix(h, (uint64_t)PickSignalType());
+	h = EstMix(h, (uint64_t)PickAirportType());
+	h = EstMix(h, ((uint64_t)_point_dir << 8) | ((uint64_t)_stop_dir << 1) | (_stop_through ? 1 : 0));
+	h = EstMix(h, (uint64_t)_bridge_sel);
+	h = EstMix(h, (uint64_t)_clear_mode);
+
+	for (const auto &[tile, t] : _plan.pieces) h = EstMix(h, ((uint64_t)tile.base() << 4) | (uint64_t)t);
+	for (TileIndex t : _road_plan.tiles) h = EstMix(h, t.base());
+	h = EstMix(h, ((uint64_t)_road_plan.axis << 32) | _road_plan.tiles.size());
+	for (TileIndex t : _sig_plan.tiles) h = EstMix(h, t.base());
+	h = EstMix(h, (uint64_t)_sig_plan.track);
+	if (_rect_plan.valid) {
+		h = EstMix(h, ((uint64_t)_rect_plan.x0 << 48) | ((uint64_t)_rect_plan.y0 << 32) | ((uint64_t)_rect_plan.x1 << 16) | (uint64_t)_rect_plan.y1);
+	}
+	if (IsPointTool(_tool)) {
+		h = EstMix(h, ((uint64_t)(uint32_t)(int32_t)std::floor(MapXAt(_cursor.pos.y)) << 32) | (uint32_t)(int32_t)std::floor(MapYAt(_cursor.pos.x)));
+	}
+	/* Zero marks "no probe yet", so a real key never lands on it. */
+	return h | 1;
+}
+
+/* Point tools read the drag anchor the click would have set, so it is staged
+ * for the probe and put back afterwards. */
+static void ProbeToolCost()
+{
+	bool save_remove = _drag_remove;
+	double save_ax = _drag_ax;
+	double save_ay = _drag_ay;
+	bool save_shift = _shift_pressed;
+
+	_est.probing = true;
+	_est.caught = false;
+	_est.unknown = false;
+	_est.cost = 0;
+	_est.tunnel_end = INVALID_TILE;
+	_shift_pressed = true;
+
+	if (IsPointTool(_tool) && _tool != MiniTool::Signal) {
+		_drag_remove = _ctrl_pressed;
+		_drag_ax = MapXAt(_cursor.pos.y);
+		_drag_ay = MapYAt(_cursor.pos.x);
+		/* The tunnel command works out where it surfaces and leaves the tile
+		 * behind for the interface; a stale one would draw a tunnel that is
+		 * not being planned. */
+		_build_tunnel_endtile = TileIndex{};
+		CommitPointTool();
+		if (_build_tunnel_endtile != 0 && (_tool == MiniTool::RailTunnel || _tool == MiniTool::RoadTunnel)) {
+			_est.tunnel_end = _build_tunnel_endtile;
+			TileIndex mouth = TileXY(Clamp<int>((int)std::floor(_drag_ax), 1, Map::SizeX() - 2), Clamp<int>((int)std::floor(_drag_ay), 1, Map::SizeY() - 2));
+			_est.tunnel_len = DistanceManhattan(mouth, _est.tunnel_end);
+		}
+	} else {
+		if (_tool == MiniTool::Rail) CommitRailPlan();
+		if (_tool == MiniTool::Road) CommitRoadPlan();
+		if (IsBridgeTool(_tool)) CommitBridgePlan();
+		if (_tool == MiniTool::Signal) CommitSignalPlan();
+		if (_tool == MiniTool::Station) CommitStationPlan();
+		if (_tool == MiniTool::Demolish) CommitDemolishPlan();
+		if (_tool == MiniTool::Terraform) CommitTerraformPlan();
+		if (_tool == MiniTool::Canal) CommitCanalPlan();
+		if (_tool == MiniTool::Convert) CommitConvertPlan();
+		if (_tool == MiniTool::RoadConvert) CommitRoadConvertPlan();
+		if (_tool == MiniTool::Trees) CommitTreePlan();
+		if (_tool == MiniTool::BuyLand) CommitBuyLandPlan();
+	}
+
+	_shift_pressed = save_shift;
+	_drag_remove = save_remove;
+	_drag_ax = save_ax;
+	_drag_ay = save_ay;
+	_est.probing = false;
+	_est.probed = true;
+	_est.ok = _est.caught;
+}
+
+static bool ProbedOk()
+{
+	bool ok = _est.caught;
+	_est.caught = false;
+	return ok;
+}
+
+/* Area commands build what they can and skip the rest, so asking once for the
+ * whole drag hides exactly the holes the player wants to see coming. Each tile
+ * gets its own question instead. */
+static void ProbeRectFit()
+{
+	if (!_rect_plan.valid) return;
+	size_t n = (size_t)RectPlanWidth() * RectPlanHeight();
+	if (n > MINI_FIT_MAX) return;
+
+	_est.fit.assign(n, false);
+	RailType rt = PickRailType();
+	RoadType rdt = PickRoadType();
+
+	for (int tx = _rect_plan.x0; tx <= _rect_plan.x1; tx++) {
+		for (int ty = _rect_plan.y0; ty <= _rect_plan.y1; ty++) {
+			TileIndex tile = TileXY(tx, ty);
+			if (_tool == MiniTool::Demolish && _clear_mode != MiniClear::All) {
+				_est.fit[RectPlanIndex(tx, ty)] = PostClearTile(tile) && ProbedOk();
+				continue;
+			}
+			if (_drag_remove || _tool == MiniTool::Demolish) {
+				Command<CMD_CLEAR_AREA>::Post(STR_ERROR_CAN_T_CLEAR_THIS_AREA, tile, tile, false);
+			} else {
+				switch (_tool) {
+					case MiniTool::Canal: Command<CMD_BUILD_CANAL>::Post(STR_ERROR_CAN_T_BUILD_CANALS, tile, tile, WaterClass::Canal, false); break;
+					case MiniTool::Trees: Command<CMD_PLANT_TREE>::Post(STR_ERROR_CAN_T_PLANT_TREE_HERE, tile, tile, TREE_INVALID, false); break;
+					case MiniTool::BuyLand: Command<CMD_BUILD_OBJECT_AREA>::Post(STR_ERROR_CAN_T_PURCHASE_THIS_LAND, tile, tile, OBJECT_OWNED_LAND, 0, false); break;
+					case MiniTool::Convert: Command<CMD_CONVERT_RAIL>::Post(STR_ERROR_CAN_T_CONVERT_RAIL, tile, tile, rt, false); break;
+					case MiniTool::RoadConvert: Command<CMD_CONVERT_ROAD>::Post(STR_ERROR_CAN_T_CONVERT_ROAD, tile, tile, rdt, false); break;
+					default: break;
+				}
+			}
+			_est.fit[RectPlanIndex(tx, ty)] = ProbedOk();
+		}
+	}
+}
+
+static void ProbeRailFit()
+{
+	size_t n = _plan.pieces.size();
+	if (n == 0 || n > MINI_FIT_MAX) return;
+
+	_est.fit.assign(n, false);
+	if (_drag_remove) {
+		for (size_t k = 0; k < n; k++) {
+			auto [tile, t] = _plan.pieces[k];
+			Command<CMD_REMOVE_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_REMOVE_RAILROAD_TRACK, tile, tile, t);
+			_est.fit[k] = ProbedOk();
+		}
+		return;
+	}
+
+	RailType rt = PickRailType();
+	for (const MiniRailRun &run : SplitRailPlan()) {
+		if (run.bridge) {
+			/* A bridge stands or falls in one piece, so its span shares one answer. */
+			Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, _plan.pieces[run.b].first, _plan.pieces[run.a].first, TRANSPORT_RAIL, PickBridgeType((uint)(run.b - run.a - 1)), (uint8_t)rt);
+			bool ok = ProbedOk();
+			for (size_t k = run.a; k <= run.b; k++) _est.fit[k] = ok;
+		} else {
+			for (size_t k = run.a; k <= run.b; k++) {
+				TileIndex tile = _plan.pieces[k].first;
+				Command<CMD_BUILD_RAILROAD_TRACK>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tile, tile, rt, run.track, true, false);
+				_est.fit[k] = ProbedOk();
+			}
+		}
+	}
+}
+
+static void ProbeRoadFit()
+{
+	size_t n = _road_plan.tiles.size();
+	if (n == 0 || n > MINI_FIT_MAX) return;
+
+	_est.fit.assign(n, false);
+	RoadType rdt = PickRoadType();
+	Axis axis = _road_plan.axis;
+
+	if (_drag_remove) {
+		for (size_t k = 0; k < n; k++) {
+			TileIndex tile = _road_plan.tiles[k];
+			Command<CMD_REMOVE_LONG_ROAD>::Post(STR_ERROR_CAN_T_REMOVE_ROAD_FROM, tile, tile, rdt, axis, false, false);
+			_est.fit[k] = ProbedOk();
+		}
+		return;
+	}
+
+	MiniSpans spans = SplitWaterSpans(_road_plan.tiles);
+	if (!spans.ok) {
+		for (size_t k = 0; k < n; k++) {
+			TileIndex tile = _road_plan.tiles[k];
+			Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, tile, tile, rdt, axis, DRD_NONE, false, false, false);
+			_est.fit[k] = ProbedOk();
+		}
+		return;
+	}
+
+	for (auto [a, b] : spans.bridges) {
+		Command<CMD_BUILD_BRIDGE>::Post(STR_ERROR_CAN_T_BUILD_BRIDGE_HERE, _road_plan.tiles[b], _road_plan.tiles[a], TRANSPORT_ROAD, PickBridgeType((uint)(b - a - 1)), (uint8_t)rdt);
+		bool ok = ProbedOk();
+		for (size_t k = (size_t)a; k <= (size_t)b; k++) _est.fit[k] = ok;
+	}
+	for (auto [a, b] : spans.land) {
+		for (size_t k = (size_t)a; k <= (size_t)b; k++) {
+			TileIndex tile = _road_plan.tiles[k];
+			Command<CMD_BUILD_LONG_ROAD>::Post(STR_ERROR_CAN_T_BUILD_ROAD_HERE, tile, tile, rdt, axis, DRD_NONE, false, false, false);
+			_est.fit[k] = ProbedOk();
+		}
+	}
+}
+
+/* The cost probe asks the way the tool commits, which for a drag is one range
+ * command. That answers for the run as a whole, so the tools whose run the game
+ * fills in tile by tile get asked again, once per tile. */
+static void ProbeToolFit()
+{
+	_est.fit.clear();
+
+	bool save_shift = _shift_pressed;
+	Money save_cost = _est.cost;
+	_est.probing = true;
+	_est.caught = false;
+	_shift_pressed = true;
+
+	switch (_tool) {
+		case MiniTool::Rail: ProbeRailFit(); break;
+		case MiniTool::Road: ProbeRoadFit(); break;
+		/* A signal run is laid at the density setting's spacing, so most tiles
+		 * in the drag never get one and a per-tile answer would be about
+		 * signals that are not being placed. The run keeps one verdict. */
+		case MiniTool::Demolish:
+		case MiniTool::Canal:
+		case MiniTool::Trees:
+		case MiniTool::BuyLand:
+		case MiniTool::Convert:
+		case MiniTool::RoadConvert:
+			ProbeRectFit();
+			break;
+		default: break;
+	}
+
+	_shift_pressed = save_shift;
+	_est.probing = false;
+	_est.caught = false;
+	_est.cost = save_cost;
+}
+
+/* A tunnel mouth, a dock, a lock and a ship depot each want one shape of
+ * ground, and a blueprint that only answers for the tile under the cursor
+ * leaves the player clicking around to find it. The ground near the cursor is
+ * swept instead and every spot that would take the build is ghosted. */
+static const int MINI_SITE_RADIUS = 10;
+/* Open water passes the shape test everywhere, so the sweep stops asking once
+ * it has offered this many spots. */
+static const size_t MINI_SITE_MAX = 200;
+
+static std::vector<TileIndex> _sites;
+static uint64_t _sites_key = 0;
+
+static bool ToolNeedsSite()
+{
+	switch (_tool) {
+		case MiniTool::RailTunnel:
+		case MiniTool::RoadTunnel:
+		case MiniTool::Dock:
+		case MiniTool::Lock:
+		case MiniTool::Buoy:
+		case MiniTool::ShipDepot:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/* A shape test comes first so the command is only asked where the ground could
+ * plausibly carry the build; the sweep would be far too many commands
+ * otherwise. */
+static bool SiteShapeFits(TileIndex tile)
+{
+	switch (_tool) {
+		case MiniTool::RailTunnel:
+		case MiniTool::RoadTunnel:
+		case MiniTool::Dock:
+		case MiniTool::Lock:
+			return GetInclinedSlopeDirection(GetTileSlope(tile)) != INVALID_DIAGDIR;
+		case MiniTool::Buoy:
+		case MiniTool::ShipDepot:
+			return IsTileType(tile, MP_WATER);
+		default:
+			return false;
+	}
+}
+
+static void ProbeToolSites()
+{
+	_sites.clear();
+
+	int cx = Clamp<int>((int)std::floor(MapXAt(_cursor.pos.y)), 1, Map::SizeX() - 2);
+	int cy = Clamp<int>((int)std::floor(MapYAt(_cursor.pos.x)), 1, Map::SizeY() - 2);
+
+	bool save_remove = _drag_remove;
+	double save_ax = _drag_ax;
+	double save_ay = _drag_ay;
+	bool save_shift = _shift_pressed;
+	Money save_cost = _est.cost;
+
+	_est.probing = true;
+	_est.caught = false;
+	_shift_pressed = true;
+	_drag_remove = false;
+
+	int x_lo = std::max(1, cx - MINI_SITE_RADIUS);
+	int x_hi = std::min<int>(Map::SizeX() - 2, cx + MINI_SITE_RADIUS);
+	int y_lo = std::max(1, cy - MINI_SITE_RADIUS);
+	int y_hi = std::min<int>(Map::SizeY() - 2, cy + MINI_SITE_RADIUS);
+	for (int tx = x_lo; tx <= x_hi && _sites.size() < MINI_SITE_MAX; tx++) {
+		for (int ty = y_lo; ty <= y_hi && _sites.size() < MINI_SITE_MAX; ty++) {
+			TileIndex tile = TileXY(tx, ty);
+			if (!SiteShapeFits(tile)) continue;
+			/* The tool's own placement runs on the candidate, so the sweep
+			 * follows whatever the tool would actually put down. */
+			_drag_ax = tx + 0.5;
+			_drag_ay = ty + 0.5;
+			CommitPointTool();
+			if (ProbedOk()) _sites.push_back(tile);
+		}
+	}
+
+	_shift_pressed = save_shift;
+	_drag_remove = save_remove;
+	_drag_ax = save_ax;
+	_drag_ay = save_ay;
+	_est.probing = false;
+	_est.caught = false;
+	_est.cost = save_cost;
+}
+
+static void UpdateToolSites()
+{
+	if (!ToolNeedsSite() || !_cursor.in_window || _ctrl_pressed || !Company::IsValidID(_local_company)) {
+		_sites.clear();
+		_sites_key = 0;
+		return;
+	}
+
+	int cx = Clamp<int>((int)std::floor(MapXAt(_cursor.pos.y)), 1, Map::SizeX() - 2);
+	int cy = Clamp<int>((int)std::floor(MapYAt(_cursor.pos.x)), 1, Map::SizeY() - 2);
+	uint64_t key = EstMix(0, (uint64_t)_tool);
+	key = EstMix(key, ((uint64_t)cx << 32) | (uint32_t)cy);
+	key = EstMix(key, ((uint64_t)_point_dir << 16) | ((uint64_t)PickRailType() << 8) | (uint64_t)PickRoadType());
+	key |= 1;
+	if (key == _sites_key) return;
+	_sites_key = key;
+	ProbeToolSites();
+}
+
+static void DrawSitePlan(int ppt)
+{
+	if (_sites.empty()) return;
+	int cx = Clamp<int>((int)std::floor(MapXAt(_cursor.pos.y)), 1, Map::SizeX() - 2);
+	int cy = Clamp<int>((int)std::floor(MapYAt(_cursor.pos.x)), 1, Map::SizeY() - 2);
+	TileIndex hover = TileXY(cx, cy);
+	int b = std::max(1, ppt / 10);
+	for (TileIndex tile : _sites) {
+		if (tile == hover) continue;
+		int tx = TileX(tile);
+		int ty = TileY(tile);
+		int x0 = ScrX(ty), y0 = ScrY(tx), x1 = ScrX(ty + 1) - 1, y1 = ScrY(tx + 1) - 1;
+		BlendRect(x0, y0, x1, y1, COL_BP, 35);
+		BlendRect(x0, y0, x1, y0 + b - 1, COL_BP, 130);
+		BlendRect(x0, y1 - b + 1, x1, y1, COL_BP, 130);
+		BlendRect(x0, y0, x0 + b - 1, y1, COL_BP, 130);
+		BlendRect(x1 - b + 1, y0, x1, y1, COL_BP, 130);
+	}
+}
+
+/* The plan has to be settled before anything asks the game about it, and the
+ * camera it is measured against only settles late in the frame. Both the probe
+ * and the blueprint read the plan from here on. */
+static void UpdateToolPlans()
+{
+	if (!_dragging) return;
+
+	double wx = MapXAt(_cursor.pos.y);
+	double wy = MapYAt(_cursor.pos.x);
+	if (_tool == MiniTool::Rail) UpdateRailPlan(wx, wy);
+	if (_tool == MiniTool::Road || IsBridgeTool(_tool)) UpdateRoadPlan(wx, wy);
+	if (_tool == MiniTool::Signal) UpdateSignalPlan(wx, wy);
+	if (IsRectTool(_tool)) UpdateRectPlan(wx, wy, RectPlanLimit());
+}
+
+/* The industry tool prices itself from the spec and signs are free, so neither
+ * is worth a probe. */
+static bool ToolWantsEstimate()
+{
+	if (_tool == MiniTool::None || _tool == MiniTool::Industry || _tool == MiniTool::Sign) return false;
+	if ((!IsPointTool(_tool) || _tool == MiniTool::Signal) && !_dragging) return false;
+	return Company::IsValidID(_local_company);
+}
+
+static void UpdateToolEstimate()
+{
+	if (!ToolWantsEstimate() || !_cursor.in_window) {
+		_est.probed = false;
+		_est.ok = false;
+		_est.unknown = false;
+		_est.fit.clear();
+		_est.tunnel_end = INVALID_TILE;
+		_est.key = 0;
+		return;
+	}
+
+	uint64_t key = EstimateKey();
+	if (key == _est.key) return;
+	_est.key = key;
+	ProbeToolCost();
+	ProbeToolFit();
 }
 
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
@@ -3385,6 +4139,293 @@ static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
 	}
 }
 
+/* Build panel: the tool in hand names itself above the build menu and every
+ * variant it can take is a row that switches to it, so a type is chosen by
+ * pointing at it instead of by walking a hidden cycle. */
+enum class MiniOptKind : uint8_t {
+	RailType,
+	RoadType,
+	SignalType,
+	AirportType,
+	IndustryType,
+	BridgeType,
+	StopShape,
+	Direction,
+	StationAxis,
+};
+
+struct MiniBuildRow {
+	std::string text;
+	MiniOptKind kind = MiniOptKind::RailType;
+	int value = 0;
+	bool active = false;
+	bool head = false;
+	/* A row of glyph squares instead of a label: one per direction, drawn as
+	 * the arrow the blueprint takes on screen. */
+	std::vector<int> cells;
+	bool axis = false;
+	int cur = 0;
+};
+
+static const int MINI_BUILD_VIS_ROWS = 12;
+
+static std::vector<MiniBuildRow> _build_rows;
+static std::vector<std::tuple<Rect, MiniOptKind, int>> _build_hits;
+static Rect _build_panel_rect;
+static bool _build_scrolls = false;
+
+static bool ToolUsesRailType(MiniTool t)
+{
+	return t == MiniTool::Rail || t == MiniTool::Convert || t == MiniTool::Station ||
+			t == MiniTool::TrainDepot || t == MiniTool::RailTunnel || t == MiniTool::RailBridge;
+}
+
+/* A waypoint drops onto road that is already there, so it takes no type. */
+static bool ToolUsesRoadType(MiniTool t)
+{
+	return IsRoadTool(t) && t != MiniTool::RoadWaypoint;
+}
+
+static void AddBuildHead(std::string text)
+{
+	MiniBuildRow row;
+	row.text = std::move(text);
+	row.head = true;
+	_build_rows.push_back(std::move(row));
+}
+
+static void AddBuildOpt(std::string text, MiniOptKind kind, int value, bool active)
+{
+	MiniBuildRow row;
+	row.text = std::move(text);
+	row.kind = kind;
+	row.value = value;
+	row.active = active;
+	_build_rows.push_back(std::move(row));
+}
+
+static void AddBuildDirs(MiniOptKind kind, std::vector<int> cells, int cur, bool axis)
+{
+	MiniBuildRow row;
+	row.kind = kind;
+	row.cells = std::move(cells);
+	row.cur = cur;
+	row.axis = axis;
+	_build_rows.push_back(std::move(row));
+}
+
+static const std::vector<int> MINI_DIR_TURNS = {DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_NW};
+static const std::vector<int> MINI_DIR_AXES = {DIAGDIR_SW, DIAGDIR_SE};
+
+static void CollectBuildRows()
+{
+	_build_rows.clear();
+
+	const Company *c = Company::GetIfValid(_local_company);
+
+	if (c != nullptr && ToolUsesRailType(_tool)) {
+		AddBuildHead("선로");
+		for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
+			if (!c->avail_railtypes.Test(rt)) continue;
+			AddBuildOpt(StrMakeValid(GetString(GetRailTypeInfo(rt)->strings.name), {}), MiniOptKind::RailType, (int)rt, rt == PickRailType());
+		}
+	}
+
+	if (c != nullptr && ToolUsesRoadType(_tool)) {
+		AddBuildHead("도로");
+		for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
+			if (!c->avail_roadtypes.Test(rt)) continue;
+			AddBuildOpt(StrMakeValid(GetString(GetRoadTypeInfo(rt)->strings.name), {}), MiniOptKind::RoadType, (int)rt, rt == PickRoadType());
+		}
+	}
+
+	if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+		AddBuildHead("형태");
+		AddBuildOpt("통과", MiniOptKind::StopShape, 1, StopIsThrough());
+		AddBuildOpt("만입", MiniOptKind::StopShape, 0, !StopIsThrough());
+		AddBuildHead("방향");
+		if (StopIsThrough()) {
+			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_AXES, StopDiagDir(), true);
+		} else {
+			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_TURNS, _stop_dir, false);
+		}
+	}
+
+	if (IsDirPointTool(_tool)) {
+		AddBuildHead("방향");
+		if (_tool == MiniTool::ShipDepot) {
+			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_AXES, AxisToDiagDir(DiagDirToAxis(_point_dir)), true);
+		} else {
+			AddBuildDirs(MiniOptKind::Direction, MINI_DIR_TURNS, _point_dir, false);
+		}
+	}
+
+	if (_tool == MiniTool::Station) {
+		AddBuildHead("승강장");
+		AddBuildDirs(MiniOptKind::StationAxis, MINI_DIR_AXES, AxisToDiagDir(StationPlanAxis()), true);
+	}
+
+	if (_tool == MiniTool::Signal) {
+		AddBuildHead("신호");
+		for (SignalType st : SignalChoices()) {
+			AddBuildOpt(std::string(SignalTypeLabel(st)), MiniOptKind::SignalType, (int)st, st == PickSignalType());
+		}
+	}
+
+	if (IsBridgeTool(_tool)) {
+		uint len = std::max(BridgePlanLength(), 1U);
+		VehicleType vt = _tool == MiniTool::RailBridge ? VEH_TRAIN : VEH_ROAD;
+		AddBuildHead("다리");
+		for (BridgeType bt = 0; bt < MAX_BRIDGES; bt++) {
+			if (!CheckBridgeAvailability(bt, len).Succeeded()) continue;
+			const BridgeSpec *spec = GetBridgeSpec(bt);
+			AddBuildOpt(StrMakeValid(GetString(STR_SELECT_BRIDGE_INFO_NAME_MAX_SPEED, spec->material, PackVelocity(spec->speed, vt)), {}),
+					MiniOptKind::BridgeType, (int)bt, bt == PickBridgeType(len));
+		}
+	}
+
+	if (_tool == MiniTool::Airport) {
+		AddBuildHead("공항");
+		for (uint8_t i = 0; i < NUM_AIRPORTS; i++) {
+			const AirportSpec *as = AirportSpec::Get(i);
+			if (!as->IsAvailable()) continue;
+			AddBuildOpt(StrMakeValid(GetString(as->name), {}), MiniOptKind::AirportType, (int)i, i == PickAirportType());
+		}
+	}
+
+	if (_tool == MiniTool::Industry) {
+		AddBuildHead("산업");
+		for (IndustryType it = 0; it < NUM_INDUSTRYTYPES; it++) {
+			if (!MiniIndustryAvailable(it)) continue;
+			const IndustrySpec *indsp = GetIndustrySpec(it);
+			AddBuildOpt(fmt::format("{}  {}", StrMakeValid(GetString(indsp->name), {}),
+					StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, indsp->GetConstructionCost()), {})),
+					MiniOptKind::IndustryType, (int)it, it == PickIndustryType());
+		}
+	}
+}
+
+static void ApplyBuildOpt(MiniOptKind kind, int value)
+{
+	switch (kind) {
+		case MiniOptKind::RailType: _rail_type_sel = (RailType)value; break;
+		case MiniOptKind::RoadType: _road_type_sel = (RoadType)value; break;
+		case MiniOptKind::SignalType: _signal_type = (SignalType)value; break;
+		case MiniOptKind::AirportType: _airport_type = (uint8_t)value; break;
+		case MiniOptKind::IndustryType: _industry_type = (IndustryType)value; break;
+		case MiniOptKind::BridgeType: _bridge_sel = (BridgeType)value; break;
+		case MiniOptKind::StopShape: _stop_through = value != 0; break;
+
+		case MiniOptKind::Direction:
+			if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
+				_stop_dir = (DiagDirection)value;
+			} else {
+				_point_dir = (DiagDirection)value;
+			}
+			break;
+
+		/* The axis follows the drag, so the flip is what a click can set. */
+		case MiniOptKind::StationAxis:
+			if (StationPlanAxis() != DiagDirToAxis((DiagDirection)value)) _station_flip = !_station_flip;
+			break;
+	}
+}
+
+/* Sits beside the tool list, growing upwards from the bottom edge it is
+ * given, so opening or closing the list never moves it. */
+static void DrawBuildPanel(int px, int bottom)
+{
+	_build_hits.clear();
+	_build_panel_rect = {0, 0, -1, -1};
+	_build_scrolls = false;
+	if (_tool == MiniTool::None) return;
+
+	CollectBuildRows();
+
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int gap = 2 * s;
+	int pad = 4 * s;
+	int row_h = lh + 3 * s;
+	int indent = 3 * s;
+	int cell = row_h - 2 * s;
+
+	std::string title = ToolLabel(_tool);
+	int wmax = (int)GetStringBoundingBox(title).width;
+	for (const MiniBuildRow &r : _build_rows) {
+		int w = r.cells.empty() ? (int)GetStringBoundingBox(r.text).width
+				: (int)r.cells.size() * cell + ((int)r.cells.size() - 1) * gap;
+		wmax = std::max(wmax, w + (r.head ? 0 : indent));
+	}
+
+	int total = (int)_build_rows.size();
+	int room = std::max(1, (bottom - 2 * pad) / row_h - 1);
+	int vis = std::min({total, MINI_BUILD_VIS_ROWS, room});
+	_build_scrolls = vis < total;
+	_build_scroll = Clamp(_build_scroll, 0, total - vis);
+
+	int pw = wmax + 2 * pad + (_build_scrolls ? 2 * s : 0);
+	int ph = row_h * (vis + 1) + 2 * pad;
+	int py = bottom - ph + 1;
+	_build_panel_rect = {px, py, px + pw - 1, py + ph - 1};
+	ChromePanel(_build_panel_rect.left, _build_panel_rect.top, _build_panel_rect.right, _build_panel_rect.bottom);
+
+	int ty = py + pad;
+	if (const MiniTextEntry *e = TextTexture(title); e != nullptr) DrawTextQuad(e, px + pad, ty, COL_CH_ACCENT);
+	ty += row_h;
+
+	for (int i = 0; i < vis; i++) {
+		const MiniBuildRow &row = _build_rows[i + _build_scroll];
+		if (row.head) {
+			if (const MiniTextEntry *e = TextTexture(row.text); e != nullptr) DrawTextQuad(e, px + pad, ty, COL_CH_DIM);
+		} else if (!row.cells.empty()) {
+			int cx = px + pad + indent;
+			for (int d : row.cells) {
+				Rect cr = {cx, ty - s, cx + cell - 1, ty - s + cell - 1};
+				bool on = d == row.cur;
+				ChromeTile(cr, on);
+				int mx = (cr.left + cr.right) / 2;
+				int my = (cr.top + cr.bottom) / 2;
+				int reach = cell / 3;
+				int dx = _diag_dx[d] * reach;
+				int dy = _diag_dy[d] * reach;
+				uint32_t gc = on ? COL_CH_ACCENT : COL_CH_TEXT;
+				ThickLine(mx - dx, my - dy, mx + dx, my + dy, std::max(2, s), gc);
+				if (!row.axis) FillCircle(mx + dx, my + dy, std::max(2, s), gc);
+				_build_hits.emplace_back(cr, row.kind, d);
+				cx += cell + gap;
+			}
+		} else {
+			Rect rr = {px + s, ty - s, px + pw - 1 - s, ty + row_h - s - 1};
+			bool hover = _cursor.in_window && InRect(rr, _cursor.pos.x, _cursor.pos.y);
+			if (row.active || hover) RlwCmdRoundRect(rr.left, rr.top, rr.right, rr.bottom, 2 * s, row.active ? COL_CH_ACTIVE : COL_CH_TILE);
+			if (const MiniTextEntry *e = TextTexture(row.text); e != nullptr) DrawTextQuad(e, px + pad + indent, ty, row.active ? COL_CH_ACCENT : COL_CH_TEXT);
+			_build_hits.emplace_back(rr, row.kind, row.value);
+		}
+		ty += row_h;
+	}
+
+	if (_build_scrolls) {
+		int track_top = py + pad + row_h;
+		int track_h = row_h * vis;
+		int bx1 = px + pw - 1 - s;
+		int bx0 = std::max(px, bx1 - s + 1);
+		int ty0 = track_top + track_h * _build_scroll / total;
+		int ty1 = track_top + track_h * (_build_scroll + vis) / total - 1;
+		ScreenFillRect(bx0, ty0, bx1, ty1, COL_CH_DIM);
+	}
+}
+
+static bool HandleBuildPanelClick(int x, int y)
+{
+	for (const auto &[r, kind, value] : _build_hits) {
+		if (!InRect(r, x, y)) continue;
+		ApplyBuildOpt(kind, value);
+		return true;
+	}
+	return InRect(_build_panel_rect, x, y);
+}
+
 static void DrawMenuTile(const Rect &r, StringID str, std::string_view fallback, MiniTool icon, bool active)
 {
 	ChromeTile(r, active);
@@ -3409,15 +4450,17 @@ static void DrawBuildMenu()
 	int tile = MenuTileSide();
 
 	int bar_top = _fbh - margin - tile;
+	int cols = 3;
+	int list_w = cols * tile + (cols - 1) * gap + 2 * pp;
+	DrawBuildPanel(_menu_open >= 0 ? margin + list_w + gap : margin, bar_top - gap - 1);
 
 	if (_menu_open >= 0) {
 		const MiniMenuCategory &cat = _menu_cats[_menu_open];
 		int n = (int)cat.items.size();
-		int cols = 3;
 		int rows = (n + cols - 1) / cols;
 		int vis = _ms.menu_panel_rows;
 		_menu_scroll = Clamp(_menu_scroll, 0, std::max(0, rows - vis));
-		int pw = cols * tile + (cols - 1) * gap + 2 * pp;
+		int pw = list_w;
 		int ph = vis * tile + (vis - 1) * gap + 2 * pp;
 		int py = bar_top - gap - ph;
 		_menu_panel_rect = {margin, py, margin + pw - 1, py + ph - 1};
@@ -3456,7 +4499,14 @@ static bool HandleMenuClick(int x, int y)
 {
 	for (const auto &[r, c] : _menu_cat_hits) {
 		if (InRect(r, x, y)) {
-			_menu_open = _menu_open == c ? -1 : c;
+			/* The list is where a tool is picked, so closing it puts the tool
+			 * down as well. */
+			if (_menu_open == c) {
+				_menu_open = -1;
+				EnterIdleMode();
+			} else {
+				_menu_open = c;
+			}
 			_menu_scroll = 0;
 			return true;
 		}
@@ -3504,6 +4554,59 @@ static bool HandleCmdClick(int x, int y)
 	return false;
 }
 
+/* Clear filter panel: one row per transport system, so the drag takes that
+ * system off the area and leaves the rest of the map standing. */
+static std::vector<std::pair<Rect, MiniClear>> _clear_hits;
+static Rect _clear_panel_rect;
+
+static void DrawClearPanel()
+{
+	_clear_hits.clear();
+	_clear_panel_rect = {0, 0, -1, -1};
+	if (_tool != MiniTool::Demolish) return;
+
+	int s = _ms.hud_scale;
+	int lh = GetCharacterHeight(FS_NORMAL);
+	int gap = 2 * s;
+	int margin = 6 * s;
+	int pad = 4 * s;
+	int row_h = lh + 3 * s;
+	int tile = MenuTileSide();
+
+	int wmax = 0;
+	for (const MiniClearCategory &cat : _clear_cats) wmax = std::max<int>(wmax, GetStringBoundingBox(cat.label).width);
+
+	int n = (int)std::size(_clear_cats);
+	int pw = wmax + 2 * pad;
+	int ph = n * row_h + 2 * pad;
+	int px = _fbw - margin - pw;
+	int py = _fbh - margin - tile - gap - ph;
+	_clear_panel_rect = {px, py, px + pw - 1, py + ph - 1};
+	ChromePanel(px, py, px + pw - 1, py + ph - 1);
+
+	int ty = py + pad;
+	for (const MiniClearCategory &cat : _clear_cats) {
+		Rect r = {px + s, ty - s, px + pw - 1 - s, ty + row_h - s - 1};
+		bool on = _clear_mode == cat.mode;
+		bool hover = _cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y);
+		if (on || hover) RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, 2 * s, on ? COL_CH_ACTIVE : COL_CH_TILE);
+		if (const MiniTextEntry *e = TextTexture(cat.label); e != nullptr) DrawTextQuad(e, px + pad, ty, on ? COL_CH_ACCENT : COL_CH_TEXT);
+		_clear_hits.emplace_back(r, cat.mode);
+		ty += row_h;
+	}
+}
+
+static bool HandleClearClick(int x, int y)
+{
+	for (const auto &[r, mode] : _clear_hits) {
+		if (!InRect(r, x, y)) continue;
+		_clear_mode = mode;
+		ClearPlans();
+		return true;
+	}
+	return InRect(_clear_panel_rect, x, y);
+}
+
 /* Top-right window bar: category tiles whose panels open native status
  * windows. Same tile language as the build menu. */
 enum class MiniWin : uint8_t {
@@ -3525,6 +4628,12 @@ enum class MiniWin : uint8_t {
 	Groups,
 	Map,
 	Signs,
+	Save,
+	Load,
+	Options,
+	Music,
+	Abandon,
+	Quit,
 };
 
 struct MiniWinItem {
@@ -3567,10 +4676,22 @@ static const MiniWinItem _win_world_items[] = {
 	{INVALID_STRING_ID, "SIGN", MiniWin::Signs},
 };
 
+/* The game's own windows have no mini counterpart and none is wanted: they are
+ * opened straight and the shell wraps whatever comes up. */
+static const MiniWinItem _win_system_items[] = {
+	{STR_FILE_MENU_SAVE_GAME, "SAVE", MiniWin::Save},
+	{STR_FILE_MENU_LOAD_GAME, "LOAD", MiniWin::Load},
+	{STR_SETTINGS_MENU_GAME_OPTIONS, "OPTIONS", MiniWin::Options},
+	{STR_TOOLBAR_SOUND_MUSIC, "MUSIC", MiniWin::Music},
+	{STR_FILE_MENU_QUIT_GAME, "ABANDON", MiniWin::Abandon},
+	{STR_FILE_MENU_EXIT, "EXIT", MiniWin::Quit},
+};
+
 static const MiniWinCategory _win_cats[] = {
 	{STR_CONFIG_SETTING_COMPANY, "COMPANY", MiniWin::Finances, _win_company_items},
 	{STR_CONFIG_SETTING_VEHICLES, "VEHICLES", MiniWin::Trains, _win_vehicle_items},
 	{STR_CONFIG_SETTING_ENVIRONMENT, "WORLD", MiniWin::Map, _win_world_items},
+	{INVALID_STRING_ID, "SYSTEM", MiniWin::Options, _win_system_items},
 };
 
 static int _win_open = -1;
@@ -3680,6 +4801,40 @@ static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
 			ScreenFillRect(cx - h, cy - h, cx + h, cy - is / 6, COL_ST_BUOY);
 			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy - is / 6 - 2, COL_INK);
 			break;
+		case MiniWin::Save:
+			ScreenFillRect(cx - h, cy + h - t, cx + h, cy + h, COL_OBJ);
+			ScreenFillRect(cx - t / 2, cy - h, cx + t / 2, cy + t, COL_ST_BUOY);
+			ScreenThickLine(cx - h / 2, cy - t / 2, cx, cy + t, t / 2 + 1, COL_ST_BUOY);
+			ScreenThickLine(cx + h / 2, cy - t / 2, cx, cy + t, t / 2 + 1, COL_ST_BUOY);
+			break;
+		case MiniWin::Load:
+			ScreenFillRect(cx - h, cy + h - t, cx + h, cy + h, COL_OBJ);
+			ScreenFillRect(cx - t / 2, cy - t, cx + t / 2, cy + h - t, COL_GO);
+			ScreenThickLine(cx - h / 2, cy, cx, cy - t, t / 2 + 1, COL_GO);
+			ScreenThickLine(cx + h / 2, cy, cx, cy - t, t / 2 + 1, COL_GO);
+			break;
+		case MiniWin::Options:
+			ScreenFillRect(cx - t / 2, cy - h, cx + t / 2, cy + h, COL_OBJ);
+			ScreenFillRect(cx - h, cy - t / 2, cx + h, cy + t / 2, COL_OBJ);
+			ScreenFillCircle(cx, cy, std::max(2, h - t / 2), COL_OBJ);
+			ScreenFillCircle(cx, cy, std::max(1, h / 3), COL_INK);
+			break;
+		case MiniWin::Music:
+			ScreenFillCircle(cx - t, cy + h - t, t, COL_ST_AIR);
+			ScreenFillRect(cx, cy - h, cx + t / 2, cy + h - t, COL_ST_AIR);
+			ScreenFillRect(cx, cy - h, cx + h, cy - h + t / 2, COL_ST_AIR);
+			break;
+		case MiniWin::Abandon:
+			ScreenFillRect(cx, cy - h, cx + h, cy + h, COL_OBJ);
+			ScreenFillRect(cx + 1, cy - h + 1, cx + h - 1, cy + h - 1, COL_HOUSE_B);
+			ScreenFillRect(cx - h, cy - t / 2, cx, cy + t / 2, COL_PAPER);
+			ScreenThickLine(cx - h / 2, cy - h / 2, cx - h, cy, t / 2 + 1, COL_PAPER);
+			ScreenThickLine(cx - h / 2, cy + h / 2, cx - h, cy, t / 2 + 1, COL_PAPER);
+			break;
+		case MiniWin::Quit:
+			ScreenThickLine(cx - h, cy - h, cx + h, cy + h, t, COL_STOP);
+			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_STOP);
+			break;
 	}
 }
 
@@ -3731,6 +4886,12 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
 		case MiniWin::Map: OpenMapMiniWnd(); break;
 		case MiniWin::Signs: OpenSignListMiniWnd(SignID::Invalid()); break;
+		case MiniWin::Save: ShowSaveLoadDialog(FT_SAVEGAME, SLO_SAVE); break;
+		case MiniWin::Load: ShowSaveLoadDialog(FT_SAVEGAME, SLO_LOAD); break;
+		case MiniWin::Options: ShowGameOptions(); break;
+		case MiniWin::Music: ShowMusicWindow(); break;
+		case MiniWin::Abandon: AskExitToGameMenu(); break;
+		case MiniWin::Quit: AskExitGame(); break;
 	}
 }
 
@@ -4275,13 +5436,13 @@ static void DrawHud()
 		 * top, action and rotation hints below, live size while dragging. */
 		std::string_view hint;
 		switch (_tool) {
-			case MiniTool::Rail: hint = "DRAG PATH / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Rail: hint = "DRAG PATH / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Convert:
-			case MiniTool::RoadConvert: hint = "DRAG AREA / Q E TYPE / RMB CANCEL"; break;
-			case MiniTool::Road: hint = "DRAG LINE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RoadConvert: hint = "DRAG AREA / RMB CANCEL"; break;
+			case MiniTool::Road: hint = "DRAG LINE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Station: hint = "DRAG AREA / Q E TURN / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::BusStop:
-			case MiniTool::TruckStop: hint = "CLICK ROAD / Q E SHAPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::TruckStop: hint = "CLICK ROAD / Q E TURN / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailWaypoint: hint = "CLICK TRACK / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RoadWaypoint: hint = "CLICK ROAD / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::TrainDepot:
@@ -4289,20 +5450,20 @@ static void DrawHud()
 			case MiniTool::ShipDepot: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Dock: hint = "CLICK SHORE SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Buoy: hint = "CLICK WATER / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Airport: hint = "Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Airport: hint = "CLICK SITE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Canal: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Lock: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
-			case MiniTool::Signal: hint = "DRAG TRACK / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::RailTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Signal: hint = "DRAG TRACK / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::RailTunnel:
+			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::RailBridge:
-			case MiniTool::RoadBridge: hint = "DRAG SPAN / Q E TYPE / RMB CANCEL"; break;
+			case MiniTool::RoadBridge: hint = "DRAG SPAN / RMB CANCEL"; break;
 			case MiniTool::Terraform: hint = "DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
 			case MiniTool::Headquarters: hint = "CLICK 2x2 SPOT / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Trees: hint = "DRAG AREA / CTRL CLEAR / RMB CANCEL"; break;
 			case MiniTool::BuyLand: hint = "DRAG AREA / CTRL SELL / RMB CANCEL"; break;
-			case MiniTool::Industry: hint = "CLICK SITE / Q E TYPE / CTRL REMOVE / RMB CANCEL"; break;
+			case MiniTool::Industry: hint = "CLICK SITE / CTRL REMOVE / RMB CANCEL"; break;
 			case MiniTool::Sign: hint = "CLICK SPOT / CTRL REMOVE / RMB CANCEL"; break;
 			default: break;
 		}
@@ -4322,6 +5483,8 @@ static void DrawHud()
 				title += StopIsThrough() ? "  통과" : "  만입";
 			}
 			if (_tool == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(PickSignalType()));
+			if (_tool == MiniTool::Demolish) title += fmt::format("  {}", ClearModeLabel(_clear_mode));
+			if (_est.tunnel_end != INVALID_TILE) title += fmt::format("  {}칸", _est.tunnel_len);
 			if (IsBridgeTool(_tool)) {
 				uint len = std::max(BridgePlanLength(), 1U);
 				title += fmt::format("  {}", StrMakeValid(GetString(GetBridgeSpec(PickBridgeType(len))->material), {}));
@@ -4347,11 +5510,24 @@ static void DrawHud()
 					title += fmt::format("  {}선 {}칸", along_x ? h : w, along_x ? w : h);
 				}
 			}
-			int wmax = std::max<int>(GetStringBoundingBox(title).width, GetStringBoundingBox(hint).width);
+			/* What the plan under the cursor would charge, red once the
+			 * balance cannot cover it. */
+			std::string cost;
+			TextColour cost_tc = TC_WHITE;
+			if (_est.probed && _est.ok) {
+				bool income = _est.cost < 0;
+				cost = StrMakeValid(GetString(income ? STR_MESSAGE_ESTIMATED_INCOME : STR_MESSAGE_ESTIMATED_COST, income ? -_est.cost : _est.cost), {});
+				const Company *c = Company::GetIfValid(_local_company);
+				if (!income && c != nullptr && c->money < _est.cost) cost_tc = TC_RED;
+			}
+
+			int lines = cost.empty() ? 2 : 3;
+			int wmax = std::max<int>(std::max<int>(GetStringBoundingBox(title).width, GetStringBoundingBox(hint).width), GetStringBoundingBox(cost).width);
 			int tx = std::min(_cursor.pos.x + 9 * s, _fbw - wmax - 4 * s);
-			int ty = std::min(_cursor.pos.y + 11 * s, _fbh - 2 * lh - 8 * s);
+			int ty = std::min(_cursor.pos.y + 11 * s, _fbh - lines * lh - 8 * s);
 			DrawHudText(tx, ty, title);
 			DrawHudText(tx, ty + lh + 4, hint);
+			if (!cost.empty()) DrawHudText(tx, ty + 2 * (lh + 4), cost, 0, cost_tc);
 		}
 	}
 }
@@ -4389,6 +5565,7 @@ enum class MiniWndKind : uint8_t {
 	Waypoint,
 	Map,
 	SignList,
+	Native,
 };
 
 /* Kinds that carry no entity and take no commands: they read the world each
@@ -4415,6 +5592,8 @@ struct MiniWnd {
 	GroupID sel_grp = ALL_GROUP;
 	EngineID sel_eng = EngineID::Invalid();
 	int16_t sel_ord = -1;
+	bool ord_refit = false;
+	bool show_hidden = false;
 	int x = 0, y = 0;
 	uint8_t tab = 0;
 	bool want_raise = false;
@@ -4423,13 +5602,27 @@ struct MiniWnd {
 	bool focus_name = false;
 	GroupID rename_grp = GroupID::Invalid();
 	TileIndex rename_depot = INVALID_TILE;
+	TileIndex sell_arm = INVALID_TILE;
 	SignID rename_sign = SignID::Invalid();
-	bool rename_pres = false;
 	bool want_close = false;
+	int embed_w = 0;
+	int embed_h = 0;
+	bool embed_fix_w = false;
+	bool embed_fix_h = false;
+	int embed_step_w = 1;
+	int embed_step_h = 1;
+	WindowClass nat_wc = WC_NONE;
+	int32_t nat_num = 0;
+	uint32_t focus_seq = 0;
+	Rect shell = {};
 	char name_buf[128] = {};
 };
 
 static std::vector<MiniWnd> _wnds;
+
+/* Mini windows stack by ImGui focus, not by list order, so the native windows
+ * under them are ordered by when each shell last held focus. */
+static uint32_t _wnd_focus_tick = 0;
 
 /* The last focused mini window decides whose order route shows; focus is
  * tracked from the ImGui side each frame. */
@@ -4550,8 +5743,169 @@ static void CloseMiniCarrier(const MiniWnd &mw)
 	CloseWindowById(WC_EXTRA_VIEWPORT, MiniCarrierNum(mw));
 }
 
+/* Native windows pinned under a mini window body. The native paint lands in
+ * the CPU screen buffer below the ImGui layer and the body samples the region
+ * beneath the native caption, so official content arrives inside mini chrome
+ * without a frame of its own. */
+struct MiniEmbedSpec {
+	WindowClass wc;
+	void (*open)(WindowNumber num);
+};
+
+struct MiniEmbed {
+	WindowClass wc;
+	int32_t num;
+	Rect vis;
+	/* Size of the shell's own resize grip in the bottom-right of the slot; the
+	 * native must not take those clicks or both grips would fight. */
+	int grip;
+	bool used;
+	/* Windows the mini UI opened itself go away with their slot; windows it
+	 * merely adopted are handed back where the player can still reach them. */
+	bool owned;
+};
+
+/* A released window keeps the position its slot forced on it, caption and all
+ * above the screen edge; the no-op resize runs the visibility clamp. */
+static void ReleaseMiniEmbed(WindowClass wc, int32_t num)
+{
+	Window *w = FindWindowById(wc, num);
+	if (w != nullptr) ResizeWindow(w, 0, 0, true);
+}
+
+static std::vector<MiniEmbed> _embeds;
+
+static MiniEmbed *FindMiniEmbed(WindowClass wc, int32_t num)
+{
+	for (MiniEmbed &e : _embeds) {
+		if (e.wc == wc && e.num == num) return &e;
+	}
+	return nullptr;
+}
+
+static void CloseAllMiniEmbeds()
+{
+	for (const MiniEmbed &e : _embeds) {
+		if (e.owned) {
+			CloseWindowById(e.wc, e.num);
+		} else {
+			ReleaseMiniEmbed(e.wc, e.num);
+		}
+	}
+	_embeds.clear();
+}
+
+static void EmbedOpenCompany(WindowNumber) { ShowCompany(_local_company); }
+static void EmbedOpenOperatingProfit(WindowNumber) { ShowOperatingProfitGraph(); }
+static void EmbedOpenIncome(WindowNumber) { ShowIncomeGraph(); }
+static void EmbedOpenCompanyValue(WindowNumber) { ShowCompanyValueGraph(); }
+static void EmbedOpenPerformance(WindowNumber) { ShowPerformanceHistoryGraph(); }
+static void EmbedOpenDeliveredCargo(WindowNumber) { ShowDeliveredCargoGraph(); }
+static void EmbedOpenPaymentRates(WindowNumber) { ShowCargoPaymentRates(); }
+static void EmbedOpenLeague(WindowNumber) { ShowPerformanceLeagueTable(); }
+static void EmbedOpenRatingDetail(WindowNumber) { ShowPerformanceRatingDetail(); }
+static void EmbedOpenIndustryChain(WindowNumber) { ShowIndustryCargoesWindow(); }
+static void EmbedOpenIndustryProduction(WindowNumber num) { ShowIndustryProductionGraph(num); }
+static void EmbedOpenTownCargo(WindowNumber num) { ShowTownCargoGraph(num); }
+
+/* Tabs the official window fills better than a rewrite would: the manager
+ * face, the plotted histories, the rating breakdown, the cargo chain. */
+static bool WndEmbedTarget(const MiniWnd &mw, MiniEmbedSpec &spec, WindowNumber &num)
+{
+	static const MiniEmbedSpec graphs[] = {
+		{WC_OPERATING_PROFIT, EmbedOpenOperatingProfit},
+		{WC_INCOME_GRAPH, EmbedOpenIncome},
+		{WC_COMPANY_VALUE, EmbedOpenCompanyValue},
+		{WC_PERFORMANCE_HISTORY, EmbedOpenPerformance},
+		{WC_DELIVERED_CARGO, EmbedOpenDeliveredCargo},
+		{WC_PAYMENT_RATES, EmbedOpenPaymentRates},
+	};
+
+	num = 0;
+	switch (mw.kind) {
+		case MiniWndKind::Native:
+			if (mw.nat_wc == WC_NONE) return false;
+			spec = {mw.nat_wc, nullptr};
+			num = mw.nat_num;
+			return true;
+
+		case MiniWndKind::Company:
+			if (mw.tab != 0 || !Company::IsValidID(_local_company)) return false;
+			spec = {WC_COMPANY, EmbedOpenCompany};
+			num = _local_company;
+			return true;
+
+		case MiniWndKind::Graph:
+			if ((size_t)mw.tab >= lengthof(graphs)) return false;
+			spec = graphs[mw.tab];
+			return true;
+
+		case MiniWndKind::League:
+			spec = mw.tab == 1 ? MiniEmbedSpec{WC_PERFORMANCE_DETAIL, EmbedOpenRatingDetail}
+					: MiniEmbedSpec{WC_COMPANY_LEAGUE, EmbedOpenLeague};
+			return true;
+
+		case MiniWndKind::IndustryList:
+			if (mw.tab != 3) return false;
+			spec = {WC_INDUSTRY_CARGOES, EmbedOpenIndustryChain};
+			return true;
+
+		case MiniWndKind::Industry:
+			if (mw.tab != 3 || !Industry::IsValidID(mw.ind)) return false;
+			spec = {WC_INDUSTRY_PRODUCTION, EmbedOpenIndustryProduction};
+			num = mw.ind;
+			return true;
+
+		case MiniWndKind::Town:
+			if (mw.tab != 3 || !Town::IsValidID(mw.town)) return false;
+			spec = {WC_TOWN_CARGO_GRAPH, EmbedOpenTownCargo};
+			num = mw.town;
+			return true;
+
+		default:
+			return false;
+	}
+}
+
+/* Popups glued to something else keep their own placement and frame; anything
+ * that carries a caption is a standalone window and gets mini chrome. */
+static bool NativeWrappable(const Window *w)
+{
+	switch (w->window_class) {
+		case WC_MAIN_WINDOW:
+		case WC_MAIN_TOOLBAR:
+		case WC_STATUS_BAR:
+		case WC_DROPDOWN_MENU:
+		case WC_TOOLTIPS:
+		case WC_OSK:
+		case WC_CONSOLE:
+		case WC_MODAL_PROGRESS:
+		case WC_HIGHSCORE:
+		case WC_ENDSCREEN:
+			return false;
+		default:
+			break;
+	}
+	if (w->window_class == WC_EXTRA_VIEWPORT && w->window_number >= MW_CARRIER_NUM_BASE) return false;
+	return w->nested_root != nullptr && w->nested_root->GetWidgetOfType(WWT_CAPTION) != nullptr;
+}
+
+static std::string NativeCaption(Window *w)
+{
+	if (w->nested_root == nullptr) return {};
+	const NWidgetCore *cap = dynamic_cast<const NWidgetCore *>(w->nested_root->GetWidgetOfType(WWT_CAPTION));
+	if (cap == nullptr) return {};
+	StringID sid = cap->GetString();
+	if (cap->GetIndex() < 0) return sid == STR_NULL ? std::string() : StrMakeValid(GetString(sid), {});
+	return StrMakeValid(w->GetWidgetString(cap->GetIndex(), sid), {});
+}
+
 static void CloseMiniWnd(size_t i)
 {
+	if (_wnds[i].kind == MiniWndKind::Native) {
+		Window *nw = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num);
+		if (nw != nullptr) nw->Close();
+	}
 	CloseMiniCarrier(_wnds[i]);
 	if (_wnds[i].kind == MiniWndKind::Vehicle && _wnds[i].veh == _front_wnd_veh) _front_wnd_veh = VehicleID::Invalid();
 	_wnds.erase(_wnds.begin() + (ptrdiff_t)i);
@@ -4577,20 +5931,22 @@ struct MiniOpenReq {
 	IndustryID ind;
 	EngineID eng;
 	CompanyID comp;
+	int8_t tab;
 };
 
 static std::vector<MiniOpenReq> _wnd_opens;
 static bool _wnds_drawing = false;
 
-static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), EngineID eng = EngineID::Invalid(), CompanyID comp = CompanyID::Invalid())
+static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), EngineID eng = EngineID::Invalid(), CompanyID comp = CompanyID::Invalid(), int8_t tab = -1)
 {
 	if (_wnds_drawing) {
-		_wnd_opens.push_back({kind, veh, st, town, ind, eng, comp});
+		_wnd_opens.push_back({kind, veh, st, town, ind, eng, comp, tab});
 		return;
 	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
 		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind && _wnds[i].eng == eng && _wnds[i].comp == comp) {
 			RaiseMiniWnd(i);
+			if (tab >= 0) _wnds.back().tab = (uint8_t)tab;
 			return;
 		}
 	}
@@ -4603,6 +5959,7 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	mw.ind = ind;
 	mw.eng = eng;
 	mw.comp = comp;
+	if (tab >= 0) mw.tab = (uint8_t)tab;
 	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
 	mw.y = Clamp(_win_bar_bottom + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
 	_wnds.push_back(mw);
@@ -4611,14 +5968,14 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 static void CloseAllMiniWnds()
 {
 	for (const MiniWnd &mw : _wnds) CloseMiniCarrier(mw);
+	CloseAllMiniEmbeds();
 	_wnds.clear();
 	_wnd_opens.clear();
 }
 
 static void OpenFleetMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), StationID::Invalid());
-	if (vt >= 0) _wnds.back().tab = (uint8_t)vt;
+	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), EngineID::Invalid(), CompanyID::Invalid(), (int8_t)vt);
 }
 
 static void OpenVehicleMiniWnd(VehicleID veh)
@@ -4638,8 +5995,7 @@ static void OpenCompanyMiniWnd()
 
 static void OpenGroupMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid());
-	if (vt >= 0) _wnds.back().tab = (uint8_t)vt;
+	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), EngineID::Invalid(), CompanyID::Invalid(), (int8_t)vt);
 }
 
 static void OpenStationListMiniWnd()
@@ -4744,6 +6100,10 @@ static std::string MiniPriceStr(Money amount)
 
 static int _imrow;
 
+/* Outer window box of the mini window being drawn; a native slot needs it to
+ * report how much window the chrome takes on top of the native size. */
+static ImVec2 _imwnd_outer;
+
 static ImU32 MiniImU32(uint32_t argb)
 {
 	return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >> 24) & 0xFF);
@@ -4841,6 +6201,157 @@ static void ImWndViewSlot(const MiniWnd &mw)
 	} else {
 		ImGui::Dummy(ImVec2(vw, vh));
 	}
+}
+
+/* The caption row never reaches the screen: sampling starts below it so the
+ * mini title bar stays the only title. */
+static int EmbedCrop(Window *w)
+{
+	if (w->nested_root == nullptr) return 0;
+	const NWidgetBase *cap = w->nested_root->GetWidgetOfType(WWT_CAPTION);
+	return cap == nullptr ? 0 : cap->pos_y + (int)cap->current_y;
+}
+
+/* ResizeWindow asserts the delta lands on a whole resize step, so anything
+ * finer than the step is dropped. A pinned axis is left alone. */
+static void EmbedResize(Window *w, int want_w, int want_h, bool fix_w, bool fix_h)
+{
+	int sx = (int)w->nested_root->resize_x;
+	int sy = (int)w->nested_root->resize_y;
+	int dx = (fix_w || sx == 0) ? 0 : want_w - w->width;
+	int dy = (fix_h || sy == 0) ? 0 : want_h - w->height;
+	if (sx != 0) dx -= dx % sx;
+	if (sy != 0) dy -= dy % sy;
+	if (dx != 0 || dy != 0) ResizeWindow(w, dx, dy, false);
+}
+
+/* The native grows in whole resize steps while the shell would drag pixel by
+ * pixel; snapping the shell onto the same grid keeps the two flush instead of
+ * leaving a strip of the body cut off or a strip of empty shell. */
+struct MiniSizeGrid {
+	float base_x, base_y, step_x, step_y;
+};
+
+static MiniSizeGrid _size_grid;
+
+static void RecordShellRect(MiniWnd &mw)
+{
+	ImVec2 p = ImGui::GetWindowPos();
+	ImVec2 sz = ImGui::GetWindowSize();
+	mw.shell = {(int)p.x, (int)p.y, (int)(p.x + sz.x) - 1, (int)(p.y + sz.y) - 1};
+}
+
+static void MiniSizeSnap(ImGuiSizeCallbackData *data)
+{
+	const MiniSizeGrid *g = (const MiniSizeGrid *)data->UserData;
+	if (g->step_x > 1.0f) data->DesiredSize.x = g->base_x + std::floor(std::max(0.0f, data->DesiredSize.x - g->base_x) / g->step_x) * g->step_x;
+	if (g->step_y > 1.0f) data->DesiredSize.y = g->base_y + std::floor(std::max(0.0f, data->DesiredSize.y - g->base_y) / g->step_y) * g->step_y;
+}
+
+/* A native window keeps its own minimum, so the shell grows to what last
+ * frame's slot reported instead of cropping the content. Axes the native cannot
+ * resize are pinned to that size, which the return value reports. */
+static bool MiniShellConstraints(MiniWnd &mw, ImVec2 def_size)
+{
+	ImVec2 min_size(mw.embed_fix_w ? (float)mw.embed_w : std::max(def_size.x, (float)mw.embed_w),
+			mw.embed_fix_h ? (float)mw.embed_h : std::max(def_size.y, (float)mw.embed_h));
+	min_size.x = std::min(min_size.x, (float)_fbw);
+	min_size.y = std::min(min_size.y, (float)_fbh);
+	_size_grid = {min_size.x, min_size.y, (float)mw.embed_step_w, (float)mw.embed_step_h};
+	ImGui::SetNextWindowSizeConstraints(min_size,
+			ImVec2(mw.embed_fix_w ? min_size.x : FLT_MAX, mw.embed_fix_h ? min_size.y : FLT_MAX),
+			(mw.embed_step_w > 1 || mw.embed_step_h > 1) ? MiniSizeSnap : nullptr, &_size_grid);
+
+	bool pinned = mw.embed_fix_w && mw.embed_fix_h;
+	mw.embed_step_w = 1;
+	mw.embed_step_h = 1;
+	mw.embed_w = 0;
+	mw.embed_h = 0;
+	mw.embed_fix_w = false;
+	mw.embed_fix_h = false;
+	return pinned;
+}
+
+/* An embed that grew the window can push it past the framebuffer, where the
+ * native paint under the slot would be clipped away. */
+static void ClampShellToScreen(const MiniWnd &mw)
+{
+	if (mw.embed_w <= 0) return;
+	ImVec2 wp = ImGui::GetWindowPos();
+	ImVec2 ws = ImGui::GetWindowSize();
+	ImVec2 np(Clamp(wp.x, 0.0f, std::max(0.0f, (float)_fbw - ws.x)), Clamp(wp.y, 0.0f, std::max(0.0f, (float)_fbh - ws.y)));
+	if (np.x != wp.x || np.y != wp.y) ImGui::SetWindowPos(np);
+}
+
+static void ImWndNativeSlot(MiniWnd &mw, const MiniEmbedSpec &spec, WindowNumber num)
+{
+	ImVec2 pos = ImGui::GetCursorScreenPos();
+	ImVec2 avail = ImGui::GetContentRegionAvail();
+	if (avail.x < 32.0f || avail.y < 32.0f || _fbw <= 0 || _fbh <= 0) return;
+
+	Window *w = FindWindowById(spec.wc, num);
+	if (w == nullptr) {
+		if (spec.open == nullptr) return;
+		spec.open(num);
+		w = FindWindowById(spec.wc, num);
+		if (w == nullptr) {
+			ImWndText("표시할 내용이 없습니다", COL_CH_DIM);
+			return;
+		}
+	}
+
+	/* Resize steps are no test: a caption puts a horizontal one on every
+	 * window. A resize box is what the player can actually drag. */
+	bool sizable = w->nested_root->GetWidgetOfType(WWT_RESIZEBOX) != nullptr;
+	mw.embed_fix_w = !sizable || w->nested_root->resize_x == 0;
+	mw.embed_fix_h = !sizable || w->nested_root->resize_y == 0;
+	mw.embed_step_w = std::max(1, (int)w->nested_root->resize_x);
+	mw.embed_step_h = std::max(1, (int)w->nested_root->resize_y);
+
+	int crop = EmbedCrop(w);
+	EmbedResize(w, (int)avail.x, (int)avail.y + crop, mw.embed_fix_w, mw.embed_fix_h);
+
+	int nx = (int)pos.x;
+	int ny = (int)pos.y - crop;
+	if (w->left != nx || w->top != ny) {
+		/* The vacated region must repaint too, or its pixels linger in the
+		 * screen buffer and smear through other overlay rects. */
+		w->SetDirty();
+		if (w->viewport != nullptr) {
+			w->viewport->left += nx - w->left;
+			w->viewport->top += ny - w->top;
+		}
+		w->left = nx;
+		w->top = ny;
+		w->SetDirty();
+	}
+
+	float sw = std::min((float)w->width, avail.x);
+	float sh = std::min((float)(w->height - crop), avail.y);
+	/* The floor is the native minimum, not its current size, or every widening
+	 * drag would ratchet the mini window and never let it back. An axis the
+	 * native cannot resize becomes a hard size, so a drag cannot open dead
+	 * space the native will never fill. */
+	mw.embed_w = (int)w->nested_root->smallest_x + (int)(_imwnd_outer.x - avail.x);
+	mw.embed_h = (int)w->nested_root->smallest_y - crop + (int)(_imwnd_outer.y - avail.y);
+
+	MiniEmbed *e = FindMiniEmbed(spec.wc, num);
+	if (e == nullptr) {
+		_embeds.push_back({spec.wc, (int32_t)num, {}, 0, false, spec.open != nullptr});
+		e = &_embeds.back();
+	}
+	e->used = true;
+	e->vis = {(int)pos.x, (int)pos.y, (int)pos.x + (int)sw - 1, (int)pos.y + (int)sh - 1};
+	e->grip = (mw.embed_fix_w && mw.embed_fix_h) ? 0 : (int)ImGui::GetStyle().WindowPadding.x + 8 * _ms.hud_scale;
+
+	/* An item under the cursor keeps ImGui from dragging the mini window, so
+	 * a press inside the slot is free to reach the native widget. */
+	ImGui::InvisibleButton("##native", ImVec2(sw, sh));
+	uintptr_t tid = RlwScreenTexId();
+	if (tid == 0) return;
+	ImVec2 uv0((float)w->left / (float)_fbw, (float)(w->top + crop) / (float)_fbh);
+	ImVec2 uv1(((float)w->left + sw) / (float)_fbw, ((float)(w->top + crop) + sh) / (float)_fbh);
+	ImGui::GetWindowDrawList()->AddImage((ImTextureID)tid, pos, ImVec2(pos.x + sw, pos.y + sh), uv0, uv1);
 }
 
 struct ImStripUnit {
@@ -5070,9 +6581,13 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 						if (o.GetDepotActionType().Test(OrderDepotActionFlag::Halt)) label += " · 정지";
 						if (o.GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) label += " · 필요할 때만";
 					}
+					if (o.IsRefit()) {
+						label += fmt::format(" · 개조 {}", o.IsAutoRefit() ? std::string("자동") : WndOfficial(CargoSpec::Get(o.GetRefitCargo())->name));
+					}
 					bool cur = oi == v->cur_real_order_index;
 					if (ImWndLink(fmt::format("{}{}. {}", cur ? "▶ " : "", oi + 1, label), mw.sel_ord == oi ? COL_CH_ACCENT : (cur ? COL_CH_YELLOW : COL_CH_TEXT))) {
 						mw.sel_ord = mw.sel_ord == oi ? -1 : (int16_t)oi;
+						mw.ord_refit = false;
 					}
 				}
 				oi++;
@@ -5151,6 +6666,36 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 						if (ImWndKVLink("차고 동작", da_names[(int)cur], COL_CH_DIM, COL_CH_TEXT)) {
 							OrderDepotAction next = (OrderDepotAction)(((int)cur + 1) % (int)OrderDepotAction::End);
 							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_DEPOT_ACTION, to_underlying(next));
+						}
+					}
+					/* A route that runs loaded both ways needs the vehicle to
+					 * change what it carries along the way, so the refit rides on
+					 * the order instead of on the vehicle. */
+					if ((so->IsType(OT_GOTO_STATION) || so->IsType(OT_GOTO_DEPOT)) && so->GetLoadType() != OrderLoadType::NoLoad) {
+						CargoTypes mask = 0;
+						for (const Vehicle *u = v; u != nullptr; u = u->Next()) mask |= u->GetEngine()->info.refit_mask;
+						if (mask != 0) {
+							CargoType rc = so->GetRefitCargo();
+							std::string cur = rc == CARGO_NO_REFIT ? std::string("안 함")
+									: (rc == CARGO_AUTO_REFIT ? std::string("자동") : WndOfficial(CargoSpec::Get(rc)->name));
+							if (ImWndKVLink("개조", cur, COL_CH_DIM, mw.ord_refit ? COL_CH_ACCENT : COL_CH_TEXT)) mw.ord_refit = !mw.ord_refit;
+							if (mw.ord_refit) {
+								auto set_refit = [&](CargoType ct) {
+									Command<CMD_ORDER_REFIT>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, ct);
+									mw.ord_refit = false;
+								};
+								bool none = rc == CARGO_NO_REFIT;
+								if (ImWndLink(none ? "▶ 안 함" : "· 안 함", none ? COL_CH_ACCENT : COL_CH_TEXT)) set_refit(CARGO_NO_REFIT);
+								if (so->IsType(OT_GOTO_STATION)) {
+									bool automatic = rc == CARGO_AUTO_REFIT;
+									if (ImWndLink(automatic ? "▶ 자동" : "· 자동", automatic ? COL_CH_ACCENT : COL_CH_TEXT)) set_refit(CARGO_AUTO_REFIT);
+								}
+								for (const CargoSpec *cs : _sorted_cargo_specs) {
+									if (!HasBit(mask, cs->Index())) continue;
+									bool sel = rc == cs->Index();
+									if (ImWndLink(fmt::format("{}{}", sel ? "▶ " : "· ", WndOfficial(cs->name)), sel ? COL_CH_ACCENT : COL_CH_TEXT)) set_refit(cs->Index());
+								}
+							}
 						}
 					}
 					if (ImWndLink("삭제", COL_CH_RED)) {
@@ -5522,10 +7067,17 @@ static void ImFleetBody(MiniWnd &mw)
 			std::string name;
 			Money cost;
 			int64_t score;
+			bool hidden;
 		};
+		int nhidden = 0;
 		std::vector<BuyRow> locos, wags;
 		for (const Engine *e : Engine::IterateType(vt)) {
 			if (!e->IsEnabled() || !e->company_avail.Test(_local_company)) continue;
+			bool hidden = e->IsHidden(_local_company);
+			if (hidden) {
+				nhidden++;
+				if (!mw.show_hidden) continue;
+			}
 			bool wagon = false;
 			int64_t score;
 			switch (vt) {
@@ -5544,14 +7096,20 @@ static void ImFleetBody(MiniWnd &mw)
 			r.name = StrMakeValid(GetString(STR_ENGINE_NAME, e->index), {});
 			r.cost = e->GetCost();
 			r.score = score;
+			r.hidden = hidden;
 			(wagon ? wags : locos).push_back(std::move(r));
 		}
 		auto by_score = [](const BuyRow &a, const BuyRow &b) { return a.score > b.score; };
 		std::sort(locos.begin(), locos.end(), by_score);
 		std::sort(wags.begin(), wags.end(), by_score);
+		if (nhidden > 0 && ImWndLink(mw.show_hidden ? fmt::format("숨긴 엔진 {}종 감추기", nhidden) : fmt::format("숨긴 엔진 {}종 보기", nhidden), COL_CH_DIM)) {
+			mw.show_hidden = !mw.show_hidden;
+		}
 		auto engine_rows = [&](const std::vector<BuyRow> &list) {
 			for (const BuyRow &r : list) {
-				if (ImWndKVLink(r.name, GetString(STR_JUST_CURRENCY_LONG, r.cost), COL_CH_TEXT, COL_CH_TEXT)) {
+				bool clicked = ImWndKVLink(r.name, GetString(STR_JUST_CURRENCY_LONG, r.cost), r.hidden ? COL_CH_DIM : COL_CH_TEXT, r.hidden ? COL_CH_DIM : COL_CH_TEXT);
+				if (ImGui::IsItemHovered()) mw.sel_eng = r.eid;
+				if (clicked) {
 					if (vt == VEH_TRAIN) {
 						draft.push_back(r.eid);
 					} else {
@@ -5575,6 +7133,25 @@ static void ImFleetBody(MiniWnd &mw)
 	ImGui::SameLine();
 	ImGui::BeginChild("yard", ImVec2(0.0f, 0.0f));
 	{
+		/* The buy row under the cursor decides what the spec panel shows, and it
+		 * keeps the last one so the panel does not blank while the cursor leaves
+		 * the list. */
+		const Engine *he = Engine::GetIfValid(mw.sel_eng);
+		if (he != nullptr && (he->type != vt || !he->IsEnabled())) {
+			mw.sel_eng = EngineID::Invalid();
+			he = nullptr;
+		}
+		if (he != nullptr) {
+			ImWndHeader(StrMakeValid(GetString(STR_ENGINE_NAME, he->index), {}));
+			ImWndText(StrMakeValid(GetEngineInfoString(he->index), {}), COL_CH_TEXT);
+			bool wagon = vt == VEH_TRAIN && he->VehInfo<RailVehicleInfo>().railveh_type == RAILVEH_WAGON;
+			if (!wagon) ImWndKV("신뢰도", fmt::format("{}%", ToPercent16(he->reliability)), COL_CH_TEXT);
+			bool hidden = he->IsHidden(_local_company);
+			if (ImWndLink(hidden ? "· 숨김 해제" : "· 구매 목록에서 숨기기", COL_CH_DIM)) {
+				Command<CMD_SET_VEHICLE_VISIBILITY>::Post(he->index, !hidden);
+			}
+		}
+
 		ImWndHeader("설계");
 		if (draft.empty()) {
 			ImWndText(vt == VEH_TRAIN ? "엔진 목록을 눌러 편성 구성" : "엔진 목록을 눌러 선택", COL_CH_DIM);
@@ -5694,6 +7271,23 @@ static void ImFleetBody(MiniWnd &mw)
 					mw.renaming = false;
 				}
 			}
+			/* Emptying a depot cannot be taken back, so the row arms first and
+			 * sells on the next click. */
+			if (!chains.empty() || !wagons.empty()) {
+				bool armed = mw.sell_arm == tile;
+				if (ImWndLink(armed ? "· 전체 매각 · 다시 눌러 확정" : "· 전체 매각", armed ? COL_CH_RED : COL_CH_DIM)) {
+					if (armed) {
+						Command<CMD_DEPOT_SELL_ALL_VEHICLES>::Post(GetCmdSellAllVehMsg(vt), tile, vt);
+						mw.sell_arm = INVALID_TILE;
+						mw.sel = VehicleID::Invalid();
+					} else {
+						mw.sell_arm = tile;
+					}
+				}
+				if (ImWndLink("· 전체 교체", COL_CH_DIM)) {
+					Command<CMD_DEPOT_MASS_AUTOREPLACE>::Post(GetCmdAutoreplaceVehMsg(vt), tile, vt);
+				}
+			}
 			for (const Vehicle *head : chains) chain_rows(head);
 			for (const Vehicle *head : wagons) chain_rows(head);
 		};
@@ -5756,63 +7350,31 @@ static void ImFinanceBody(uint8_t tab)
 	ImWndKV("올해 손익", MiniPriceStr(total), total > 0 ? COL_CH_RED : COL_CH_ACCENT);
 }
 
-static void ImCompanyBody(MiniWnd &mw)
+/* The overview tab embeds the official company window, so only the asset
+ * roll-up is drawn here. */
+static void ImCompanyBody(MiniWnd &)
 {
 	const Company *c = Company::GetIfValid(_local_company);
 	if (c == nullptr) return;
 
-	if (mw.tab == 1) {
-		static const StringID veh_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
-		ImWndHeader(WndOfficial(STR_COMPANY_VIEW_VEHICLES_TITLE));
-		uint fleet = 0;
-		for (VehicleType vt = VEH_BEGIN; vt < VEH_COMPANY_END; vt++) {
-			uint amount = c->group_all[vt].num_vehicle;
-			fleet += amount;
-			ImWndKV(WndOfficial(veh_strs[vt]), fmt::format("{}대", amount), amount > 0 ? COL_CH_TEXT : COL_CH_DIM);
-		}
-		if (fleet == 0) ImWndText(WndOfficial(STR_COMPANY_VIEW_VEHICLES_NONE), COL_CH_DIM);
-
-		ImWndHeader(WndOfficial(STR_COMPANY_VIEW_INFRASTRUCTURE));
-		uint rail = c->infrastructure.GetRailTotal() + c->infrastructure.signal;
-		uint road = c->infrastructure.GetRoadTotal() + c->infrastructure.GetTramTotal();
-		ImWndKV("선로", fmt::format("{}", rail), rail > 0 ? COL_CH_TEXT : COL_CH_DIM);
-		ImWndKV("도로", fmt::format("{}", road), road > 0 ? COL_CH_TEXT : COL_CH_DIM);
-		ImWndKV("수로", fmt::format("{}", c->infrastructure.water), c->infrastructure.water > 0 ? COL_CH_TEXT : COL_CH_DIM);
-		ImWndKV("역 타일", fmt::format("{}", c->infrastructure.station), c->infrastructure.station > 0 ? COL_CH_TEXT : COL_CH_DIM);
-		ImWndKV("공항", fmt::format("{}", c->infrastructure.airport), c->infrastructure.airport > 0 ? COL_CH_TEXT : COL_CH_DIM);
-		return;
+	static const StringID veh_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
+	ImWndHeader(WndOfficial(STR_COMPANY_VIEW_VEHICLES_TITLE));
+	uint fleet = 0;
+	for (VehicleType vt = VEH_BEGIN; vt < VEH_COMPANY_END; vt++) {
+		uint amount = c->group_all[vt].num_vehicle;
+		fleet += amount;
+		ImWndKV(WndOfficial(veh_strs[vt]), fmt::format("{}대", amount), amount > 0 ? COL_CH_TEXT : COL_CH_DIM);
 	}
+	if (fleet == 0) ImWndText(WndOfficial(STR_COMPANY_VIEW_VEHICLES_NONE), COL_CH_DIM);
 
-	/* The manager name is edited on its own row, so the caption stays the
-	 * company name. */
-	if (mw.rename_pres) {
-		ImGui::PushID("pres");
-		int r = ImWndNameEdit(mw, ImGui::GetContentRegionAvail().x);
-		ImGui::PopID();
-		if (r == 1 && mw.name_buf[0] != '\0') Command<CMD_RENAME_PRESIDENT>::Post(STR_ERROR_CAN_T_CHANGE_PRESIDENT, mw.name_buf);
-		if (r != 0) mw.rename_pres = false;
-	} else {
-		std::string pres = StrMakeValid(GetString(STR_PRESIDENT_NAME, c->index), {});
-		ImWndKV("사장", pres, COL_CH_TEXT);
-		if (ImGui::IsItemHovered()) {
-			ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
-			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-				ImWndNameEditBegin(mw, pres);
-				mw.rename_pres = true;
-				mw.renaming = false;
-			}
-		}
-	}
-
-	if (TimerGameEconomy::UsingWallclockUnits()) {
-		ImWndKV("설립", fmt::format("{} · {}년", c->inaugurated_year.base(), c->inaugurated_year_calendar.base()), COL_CH_TEXT);
-	} else {
-		ImWndKV("설립", fmt::format("{}년", c->inaugurated_year.base()), COL_CH_TEXT);
-	}
-	ImWndKV("회사 가치", StrMakeValid(GetString(STR_JUST_CURRENCY_LONG, CalculateCompanyValue(c)), {}), COL_CH_TEXT);
-	int perf = c->old_economy[0].performance_history;
-	ImWndKV("성능 지수", fmt::format("{}/1000", perf), perf >= 500 ? COL_CH_ACCENT : COL_CH_TEXT);
-	ImWndKV("본사", c->location_of_HQ == INVALID_TILE ? "없음" : "있음", c->location_of_HQ == INVALID_TILE ? COL_CH_DIM : COL_CH_TEXT);
+	ImWndHeader(WndOfficial(STR_COMPANY_VIEW_INFRASTRUCTURE));
+	uint rail = c->infrastructure.GetRailTotal() + c->infrastructure.signal;
+	uint road = c->infrastructure.GetRoadTotal() + c->infrastructure.GetTramTotal();
+	ImWndKV("선로", fmt::format("{}", rail), rail > 0 ? COL_CH_TEXT : COL_CH_DIM);
+	ImWndKV("도로", fmt::format("{}", road), road > 0 ? COL_CH_TEXT : COL_CH_DIM);
+	ImWndKV("수로", fmt::format("{}", c->infrastructure.water), c->infrastructure.water > 0 ? COL_CH_TEXT : COL_CH_DIM);
+	ImWndKV("역 타일", fmt::format("{}", c->infrastructure.station), c->infrastructure.station > 0 ? COL_CH_TEXT : COL_CH_DIM);
+	ImWndKV("공항", fmt::format("{}", c->infrastructure.airport), c->infrastructure.airport > 0 ? COL_CH_TEXT : COL_CH_DIM);
 }
 
 static void ImGroupBody(MiniWnd &mw)
@@ -5877,6 +7439,18 @@ static void ImGroupBody(MiniWnd &mw)
 		}
 
 		ImWndHeader("자동 교체");
+		if (sg != nullptr) {
+			bool prot = sg->flags.Test(GroupFlag::ReplaceProtection);
+			if (ImWndKVLink("교체 보호", prot ? "켜짐" : "꺼짐", COL_CH_DIM, prot ? COL_CH_YELLOW : COL_CH_TEXT)) {
+				Command<CMD_SET_GROUP_FLAG>::Post(mw.sel_grp, GroupFlag::ReplaceProtection, !prot, false);
+			}
+			if (vt == VEH_TRAIN) {
+				bool wr = sg->flags.Test(GroupFlag::ReplaceWagonRemoval);
+				if (ImWndKVLink("화차 제거", wr ? "켜짐" : "꺼짐", COL_CH_DIM, wr ? COL_CH_YELLOW : COL_CH_TEXT)) {
+					Command<CMD_SET_GROUP_FLAG>::Post(mw.sel_grp, GroupFlag::ReplaceWagonRemoval, !wr, false);
+				}
+			}
+		}
 		const Company *comp = Company::Get(_local_company);
 		bool any_used = false;
 		for (const Engine *e : Engine::IterateType(vt)) {
@@ -6273,49 +7847,6 @@ static void ImGoalListBody(MiniWnd &mw)
 	if (!any) ImWndText(WndOfficial(STR_GOALS_NONE), COL_CH_DIM);
 }
 
-static const StringID _mini_perf_titles[] = {
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ENGINEER,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ENGINEER,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRAFFIC_MANAGER,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRAFFIC_MANAGER,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRANSPORT_COORDINATOR,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TRANSPORT_COORDINATOR,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ROUTE_SUPERVISOR,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_ROUTE_SUPERVISOR,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_DIRECTOR,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_DIRECTOR,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHIEF_EXECUTIVE,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHIEF_EXECUTIVE,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHAIRMAN,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_CHAIRMAN,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_PRESIDENT,
-	STR_COMPANY_LEAGUE_PERFORMANCE_TITLE_TYCOON,
-};
-
-static void ImLeagueBody()
-{
-	std::vector<const Company *> cs;
-	for (const Company *c : Company::Iterate()) cs.push_back(c);
-	if (cs.empty()) {
-		ImWndText("회사 없음", COL_CH_DIM);
-		return;
-	}
-	std::sort(cs.begin(), cs.end(), [](const Company *a, const Company *b) {
-		return a->old_economy[0].performance_history > b->old_economy[0].performance_history;
-	});
-
-	for (size_t i = 0; i < cs.size(); i++) {
-		const Company *c = cs[i];
-		int perf = c->old_economy[0].performance_history;
-		std::string title = WndOfficial(_mini_perf_titles[std::min<uint>(perf, 1000) >> 6]);
-		std::string label = fmt::format("{}. {} · {}", i + 1, StrMakeValid(GetString(STR_COMPANY_NAME, c->index), {}), title);
-		bool local = c->index == _local_company;
-		if (ImWndKVLink(label, fmt::format("{}", perf), local ? COL_CH_ACCENT : COL_CH_TEXT, COL_CH_TEXT) && local) {
-			OpenMiniWnd(MiniWndKind::Company, VehicleID::Invalid(), StationID::Invalid());
-		}
-	}
-}
-
 static void ImPreviewBody(const MiniWnd &mw)
 {
 	const Engine *e = Engine::GetIfValid(mw.eng);
@@ -6625,157 +8156,6 @@ static void ImMapBody(MiniWnd &mw)
 	}
 }
 
-static int64_t GraphValue(const CompanyEconomyEntry &e, uint8_t tab)
-{
-	switch (tab) {
-		case 1: return (int64_t)e.company_value;
-		case 2: return e.performance_history;
-		case 3: return (int64_t)e.delivered_cargo.GetSum<OverflowSafeInt64>();
-		default: return (int64_t)(e.income + e.expenses);
-	}
-}
-
-static std::string GraphValueStr(int64_t v, uint8_t tab)
-{
-	if (tab == 2 || tab == 3) return fmt::format("{}", v);
-	return StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, v), {});
-}
-
-/* What a haul is worth decides which route is worth building, so the plot
- * runs the same sample the official rates graph does: ten units over twenty
- * tiles, priced against the transit time. */
-static void ImPaymentRatesBody()
-{
-	static const int SAMPLES = 20;
-
-	struct Rate {
-		uint32_t colour;
-		std::string name;
-		std::vector<int64_t> vals;
-	};
-
-	std::vector<Rate> rates;
-	int64_t hi = 1;
-	for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
-		Rate r;
-		r.colour = CargoRgb(cs->Index());
-		r.name = WndOfficial(cs->name);
-		for (int j = 0; j < SAMPLES; j++) {
-			int64_t v = (int64_t)GetTransportedGoodsIncome(10, 20, (uint16_t)(j * 4 + 4), cs->Index());
-			hi = std::max(hi, v);
-			r.vals.push_back(v);
-		}
-		rates.push_back(std::move(r));
-	}
-	if (rates.empty()) {
-		ImWndText("화물 없음", COL_CH_DIM);
-		return;
-	}
-
-	float lh = ImGui::GetFontSize();
-	float legend_h = (float)rates.size() * ImGui::GetTextLineHeightWithSpacing();
-	float w = ImGui::GetContentRegionAvail().x;
-	float h = std::max(ImGui::GetContentRegionAvail().y - legend_h - lh * 2.0f, lh * 5.0f);
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	ImGui::Dummy(ImVec2(w, h));
-
-	ImDrawList *dl = ImGui::GetWindowDrawList();
-	dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), MiniImU32(COL_CH_TILE));
-
-	float step = w / (float)(SAMPLES - 1);
-	for (const Rate &r : rates) {
-		for (int j = 1; j < SAMPLES; j++) {
-			float ya = p.y + h - (float)((double)r.vals[j - 1] / (double)hi * h);
-			float yb = p.y + h - (float)((double)r.vals[j] / (double)hi * h);
-			dl->AddLine(ImVec2(p.x + (float)(j - 1) * step, ya), ImVec2(p.x + (float)j * step, yb), MiniImU32(r.colour), 1.5f);
-		}
-	}
-
-	dl->AddText(ImVec2(p.x + 3.0f, p.y + 2.0f), MiniImU32(COL_CH_DIM), StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, hi), {}).c_str());
-	dl->AddText(ImVec2(p.x + 3.0f, p.y + h - lh - 2.0f), MiniImU32(COL_CH_DIM), fmt::format("수송 시간 4-{}", SAMPLES * 4).c_str());
-
-	for (const Rate &r : rates) {
-		ImWndKV(fmt::format("· {}", r.name), StrMakeValid(GetString(STR_JUST_CURRENCY_SHORT, r.vals.front()), {}), r.colour);
-	}
-}
-
-/* Quarters run oldest to newest from left to right; series shorter than the
- * widest one start further right so the newest quarter always lines up. */
-static void ImGraphBody(MiniWnd &mw)
-{
-	if (mw.tab == 4) {
-		ImPaymentRatesBody();
-		return;
-	}
-
-	struct Series {
-		uint32_t colour;
-		std::string name;
-		std::vector<int64_t> vals;
-		bool local;
-	};
-
-	std::vector<Series> series;
-	size_t span = 0;
-	for (const Company *c : Company::Iterate()) {
-		Series s;
-		s.colour = _company_rgb[_company_colours[c->index]];
-		s.name = StrMakeValid(GetString(STR_COMPANY_NAME, c->index), {});
-		s.local = c->index == _local_company;
-		int cnt = std::min<int>(c->num_valid_stat_ent, MAX_HISTORY_QUARTERS);
-		for (int j = cnt - 1; j >= 0; j--) s.vals.push_back(GraphValue(c->old_economy[j], mw.tab));
-		if (s.vals.empty()) continue;
-		span = std::max(span, s.vals.size());
-		series.push_back(std::move(s));
-	}
-
-	if (span < 2) {
-		ImWndText("기록이 쌓이면 그래프가 나타납니다", COL_CH_DIM);
-		return;
-	}
-
-	int64_t lo = 0;
-	int64_t hi = 0;
-	for (const Series &s : series) {
-		for (int64_t v : s.vals) {
-			lo = std::min(lo, v);
-			hi = std::max(hi, v);
-		}
-	}
-	if (lo == hi) hi = lo + 1;
-
-	float lh = ImGui::GetFontSize();
-	float legend_h = (float)series.size() * ImGui::GetTextLineHeightWithSpacing();
-	float w = ImGui::GetContentRegionAvail().x;
-	float h = std::max(ImGui::GetContentRegionAvail().y - legend_h - lh * 2.0f, lh * 5.0f);
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	ImGui::Dummy(ImVec2(w, h));
-
-	ImDrawList *dl = ImGui::GetWindowDrawList();
-	dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), MiniImU32(COL_CH_TILE));
-
-	auto plot_y = [&](int64_t v) { return p.y + h - (float)((double)(v - lo) / (double)(hi - lo) * h); };
-	float zero_y = plot_y(0);
-	if (lo < 0) dl->AddLine(ImVec2(p.x, zero_y), ImVec2(p.x + w, zero_y), MiniImU32(COL_CH_DIM));
-
-	float step = w / (float)(span - 1);
-	for (const Series &s : series) {
-		size_t off = span - s.vals.size();
-		for (size_t i = 1; i < s.vals.size(); i++) {
-			ImVec2 a(p.x + (float)(off + i - 1) * step, plot_y(s.vals[i - 1]));
-			ImVec2 b(p.x + (float)(off + i) * step, plot_y(s.vals[i]));
-			dl->AddLine(a, b, MiniImU32(s.colour), s.local ? 2.5f : 1.5f);
-		}
-	}
-
-	dl->AddText(ImVec2(p.x + 3.0f, p.y + 2.0f), MiniImU32(COL_CH_DIM), GraphValueStr(hi, mw.tab).c_str());
-	dl->AddText(ImVec2(p.x + 3.0f, p.y + h - lh - 2.0f), MiniImU32(COL_CH_DIM), GraphValueStr(lo, mw.tab).c_str());
-
-	for (const Series &s : series) {
-		ImWndKV(fmt::format("{}{}", s.local ? "▶ " : "· ", s.name), GraphValueStr(s.vals.back(), mw.tab), s.colour);
-	}
-}
-
 static bool ImWndButton(std::string_view label, bool enabled)
 {
 	ImGui::BeginDisabled(!enabled);
@@ -6938,6 +8318,7 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 		case MiniWndKind::Graph:
 		case MiniWndKind::Map:
 		case MiniWndKind::SignList:
+		case MiniWndKind::Native:
 			break;
 	}
 	ImGui::NewLine();
@@ -7026,8 +8407,58 @@ static void ImWndTitle(MiniWnd &mw, const std::string &title, bool renamable, bo
 	ImGui::Separator();
 }
 
+/* An adopted native window wears mini chrome and nothing else: its own caption
+ * with the close box on the left is cropped away and this bar replaces it. */
+static bool DrawImGuiNativeWnd(MiniWnd &mw)
+{
+	Window *nw = FindWindowById(mw.nat_wc, mw.nat_num);
+	if (nw == nullptr) return false;
+
+	int s = _ms.hud_scale;
+	std::string title = NativeCaption(nw);
+	if (title.empty()) title = "창";
+	std::string wid = fmt::format("###nat{}_{}", (int)mw.nat_wc, mw.nat_num);
+
+	ImVec2 def_size((float)(260 * s), (float)(200 * s));
+	ImGui::SetNextWindowPos(ImVec2((float)mw.x, (float)mw.y), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(def_size, ImGuiCond_FirstUseEver);
+	bool pinned = MiniShellConstraints(mw, def_size);
+	if (mw.want_raise) {
+		ImGui::SetNextWindowFocus();
+		mw.want_raise = false;
+	}
+
+	bool open = true;
+	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | (pinned ? ImGuiWindowFlags_NoResize : 0))) {
+		ImGui::End();
+		return open;
+	}
+
+	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) mw.focus_seq = ++_wnd_focus_tick;
+	RecordShellRect(mw);
+
+	_imrow = 0;
+	ImWndTitle(mw, title, false, open, nullptr, nullptr, nullptr);
+
+	MiniEmbedSpec spec;
+	WindowNumber wnum;
+	if (WndEmbedTarget(mw, spec, wnum)) {
+		_imwnd_outer = ImGui::GetWindowSize();
+		ImGui::BeginChild("body", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
+				ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+		ImWndNativeSlot(mw, spec, wnum);
+		ImGui::EndChild();
+	}
+
+	ClampShellToScreen(mw);
+	ImGui::End();
+	return open;
+}
+
 static bool DrawImGuiMiniWnd(MiniWnd &mw)
 {
+	if (mw.kind == MiniWndKind::Native) return DrawImGuiNativeWnd(mw);
+
 	int s = _ms.hud_scale;
 	const Vehicle *v = mw.kind == MiniWndKind::Vehicle ? Vehicle::GetIfValid(mw.veh) : nullptr;
 	const Station *st = mw.kind == MiniWndKind::Station ? (Station::IsValidID(mw.st) ? Station::Get(mw.st) : nullptr) : nullptr;
@@ -7071,19 +8502,21 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	ImVec2 def_size((float)((wide ? 560 : 250) * s), (float)(270 * s));
 	ImGui::SetNextWindowPos(ImVec2((float)mw.x, (float)mw.y), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(def_size, ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSizeConstraints(def_size, ImVec2(FLT_MAX, FLT_MAX));
+	bool pinned = MiniShellConstraints(mw, def_size);
 	if (mw.want_raise) {
 		ImGui::SetNextWindowFocus();
 		mw.want_raise = false;
 	}
 	bool open = true;
-	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse)) {
+	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | (pinned ? ImGuiWindowFlags_NoResize : 0))) {
 		ImGui::End();
 		return open;
 	}
 	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
 		_front_wnd_veh = mw.kind == MiniWndKind::Vehicle ? mw.veh : VehicleID::Invalid();
+		mw.focus_seq = ++_wnd_focus_tick;
 	}
+	RecordShellRect(mw);
 
 	ImWndTitle(mw, title, WndRenamable(mw, v, st, t), open, v, st, t);
 
@@ -7123,10 +8556,11 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[3] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
 			break;
 		case MiniWndKind::Town:
-			ntab = 3;
+			ntab = 4;
 			tl[0] = "상태";
 			tl[1] = "당국";
 			tl[2] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
+			tl[3] = "화물";
 			break;
 		case MiniWndKind::StationList:
 			ntab = 3;
@@ -7141,10 +8575,11 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[2] = "평판";
 			break;
 		case MiniWndKind::IndustryList:
-			ntab = 3;
+			ntab = 4;
 			tl[0] = "이름";
 			tl[1] = "생산";
 			tl[2] = "수송";
+			tl[3] = "연쇄";
 			break;
 		case MiniWndKind::NewsList:
 			ntab = 2;
@@ -7162,8 +8597,9 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[1] = "전체";
 			break;
 		case MiniWndKind::League:
-			ntab = 1;
-			tl[0] = "성능";
+			ntab = 2;
+			tl[0] = "순위";
+			tl[1] = "상세";
 			break;
 		case MiniWndKind::Preview:
 			ntab = 1;
@@ -7182,12 +8618,13 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[0] = "목록";
 			break;
 		case MiniWndKind::Graph:
-			ntab = 5;
-			tl[0] = "수익";
-			tl[1] = "가치";
-			tl[2] = "성능";
-			tl[3] = "화물";
-			tl[4] = "지급률";
+			ntab = 6;
+			tl[0] = "영업 이익";
+			tl[1] = "수입";
+			tl[2] = "가치";
+			tl[3] = "성능";
+			tl[4] = "화물";
+			tl[5] = "지급률";
 			break;
 		case MiniWndKind::Map:
 			ntab = 7;
@@ -7200,10 +8637,11 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[6] = WndOfficial(STR_SMALLMAP_TYPE_OWNERS);
 			break;
 		default:
-			ntab = 3;
+			ntab = 4;
 			tl[0] = "상태";
 			tl[1] = "역";
 			tl[2] = WndOfficial(STR_VEHICLE_DETAIL_TAB_INFORMATION);
+			tl[3] = "생산";
 			break;
 	}
 
@@ -7219,11 +8657,20 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 				}
 				bool has_cmds = !WndIsList(mw.kind);
 				float cmd_h = has_cmds ? ImGui::GetFrameHeightWithSpacing() + 4.0f * s : 0.0f;
-				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h));
+				MiniEmbedSpec spec;
+				WindowNumber wnum;
+				bool embed = WndEmbedTarget(mw, spec, wnum);
+				/* A slot fills the body exactly; a scrollbar appearing on the
+				 * rounding would shrink it and oscillate. */
+				_imwnd_outer = ImGui::GetWindowSize();
+				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h), ImGuiChildFlags_None,
+						embed ? (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse) : 0);
 				if (ti == 0 && has_view && (v != nullptr || st != nullptr || t != nullptr || ind != nullptr)) {
 					ImWndViewSlot(mw);
 				}
-				switch (mw.kind) {
+				if (embed) {
+					ImWndNativeSlot(mw, spec, wnum);
+				} else switch (mw.kind) {
 					case MiniWndKind::Vehicle: if (v != nullptr) ImVehicleBody(mw, v); break;
 					case MiniWndKind::Station: if (st != nullptr) ImStationBody(mw, st); break;
 					case MiniWndKind::Town: if (t != nullptr) ImTownBody(mw, t); break;
@@ -7238,13 +8685,14 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::NewsList: ImNewsListBody(mw); break;
 					case MiniWndKind::SubsidyList: ImSubsidyListBody(mw); break;
 					case MiniWndKind::GoalList: ImGoalListBody(mw); break;
-					case MiniWndKind::League: ImLeagueBody(); break;
-					case MiniWndKind::Graph: ImGraphBody(mw); break;
+					case MiniWndKind::League:
+					case MiniWndKind::Graph: break;
 					case MiniWndKind::Map: ImMapBody(mw); break;
 					case MiniWndKind::SignList: ImSignListBody(mw); break;
 					case MiniWndKind::Preview: ImPreviewBody(mw); break;
 					case MiniWndKind::Takeover: ImTakeoverBody(mw); break;
 					case MiniWndKind::Waypoint: ImWaypointBody(mw); break;
+					case MiniWndKind::Native: break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
@@ -7256,8 +8704,146 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	}
 	mw.want_tab = -1;
 
+	ClampShellToScreen(mw);
 	ImGui::End();
 	return open;
+}
+
+/* Where two slots overlap, the native paint and the click both go to whichever
+ * native window is on top, so native z-order has to follow mini window order.
+ * Re-fronting is only worth doing when the two already disagree. */
+static size_t CarrierOwner(const Window *w);
+
+static void SyncEmbedZOrder()
+{
+	static std::vector<int32_t> want;
+	static std::vector<int32_t> have;
+	want.clear();
+	have.clear();
+
+	static std::vector<std::pair<uint32_t, size_t>> order;
+	order.clear();
+	for (size_t i = 0; i < _wnds.size(); i++) order.emplace_back(_wnds[i].focus_seq, i);
+	std::sort(order.begin(), order.end());
+
+	for (const auto &o : order) {
+		const MiniWnd &mw = _wnds[o.second];
+		WindowNumber cnum = MiniCarrierNum(mw);
+		if (FindWindowById(WC_EXTRA_VIEWPORT, cnum) != nullptr) {
+			want.push_back((int32_t)WC_EXTRA_VIEWPORT);
+			want.push_back((int32_t)cnum);
+		}
+		MiniEmbedSpec spec;
+		WindowNumber num;
+		if (!WndEmbedTarget(mw, spec, num)) continue;
+		if (FindWindowById(spec.wc, num) == nullptr) continue;
+		want.push_back((int32_t)spec.wc);
+		want.push_back((int32_t)num);
+	}
+	if (want.size() <= 2) return;
+
+	for (const Window *w : Window::IterateFromBack()) {
+		if (FindMiniEmbed(w->window_class, w->window_number) == nullptr && CarrierOwner(w) == SIZE_MAX) continue;
+		have.push_back((int32_t)w->window_class);
+		have.push_back((int32_t)w->window_number);
+	}
+	if (have == want) return;
+
+	/* Some classes outrank others in the native z-order, so the wanted order is
+	 * not always reachable. Re-applying is driven by change on either side:
+	 * a new focus order, or the order drifting away from what was achieved. */
+	static std::vector<int32_t> applied;
+	static std::vector<int32_t> settled;
+	if (applied == want && have == settled) return;
+	applied = want;
+
+	for (size_t i = 0; i + 1 < want.size(); i += 2) {
+		Window *w = BringWindowToFrontById((WindowClass)want[i], want[i + 1]);
+		/* The activation flash would blink inside the slot on every reorder. */
+		if (w != nullptr) w->flags.Reset(WindowFlag::WhiteBorder);
+	}
+
+	settled.clear();
+	for (const Window *w : Window::IterateFromBack()) {
+		if (FindMiniEmbed(w->window_class, w->window_number) == nullptr && CarrierOwner(w) == SIZE_MAX) continue;
+		settled.push_back((int32_t)w->window_class);
+		settled.push_back((int32_t)w->window_number);
+	}
+}
+
+/* Two shells that overlap sample each other's pixels out of the shared screen
+ * buffer, so a new one is dropped where it covers none of the others. */
+static void PlaceNativeShell(MiniWnd &mw, int cw, int ch)
+{
+	int gap = 6 * _ms.hud_scale;
+	int right = std::max(0, _fbw - cw - gap);
+	int top = _win_bar_bottom + gap;
+
+	mw.x = right;
+	mw.y = top;
+	for (int x = right; x >= 0; x -= cw + gap) {
+		int y = top;
+		bool moved = true;
+		while (moved) {
+			moved = false;
+			for (const MiniWnd &o : _wnds) {
+				if (o.shell.right <= o.shell.left) continue;
+				if (x <= o.shell.right && o.shell.left <= x + cw && y <= o.shell.bottom && o.shell.top <= y + ch) {
+					y = o.shell.bottom + 1 + gap;
+					moved = true;
+				}
+			}
+		}
+		if (y + ch <= _fbh) {
+			mw.x = std::max(0, x);
+			mw.y = y;
+			break;
+		}
+	}
+
+	/* The guessed rect stands in until the shell first draws itself, so shells
+	 * adopted in the same frame do not all land on the same spot. */
+	mw.shell = {mw.x, mw.y, mw.x + cw - 1, mw.y + ch - 1};
+}
+
+/* Every standalone native window on screen gets a mini shell, so nothing is
+ * left wearing the official frame while the mini UI is up. */
+static void AdoptNativeWnds()
+{
+	static std::vector<std::pair<WindowClass, int32_t>> taken;
+	taken.clear();
+	for (const MiniWnd &mw : _wnds) {
+		MiniEmbedSpec spec;
+		WindowNumber num;
+		if (WndEmbedTarget(mw, spec, num)) taken.emplace_back(spec.wc, (int32_t)num);
+	}
+
+	int s = _ms.hud_scale;
+	for (Window *w : Window::Iterate()) {
+		if (!NativeWrappable(w)) continue;
+		/* A shell closed this frame leaves its window slotted until the sweep
+		 * runs; adopting it here would rebuild the shell the player dismissed. */
+		if (FindMiniEmbed(w->window_class, w->window_number) != nullptr) continue;
+		bool held = false;
+		for (const auto &t : taken) {
+			if (t.first == w->window_class && t.second == (int32_t)w->window_number) {
+				held = true;
+				break;
+			}
+		}
+		if (held) continue;
+
+		MiniWnd mw;
+		mw.kind = MiniWndKind::Native;
+		mw.nat_wc = w->window_class;
+		mw.nat_num = w->window_number;
+		int chrome_x = 2 * (int)ImGui::GetStyle().WindowPadding.x + 2;
+		int chrome_y = 3 * (int)ImGui::GetStyle().WindowPadding.y + GetCharacterHeight(FS_NORMAL) + 8 * s;
+		PlaceNativeShell(mw, w->width + chrome_x, w->height - EmbedCrop(w) + chrome_y);
+		mw.want_raise = true;
+		_wnds.push_back(mw);
+		taken.emplace_back(mw.nat_wc, mw.nat_num);
+	}
 }
 
 static void DrawMiniWndsImGui()
@@ -7280,9 +8866,23 @@ static void DrawMiniWndsImGui()
 			case MiniWndKind::Waypoint: alive = Waypoint::IsValidID(_wnds[i].st); break;
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::StationList: alive = Company::IsValidID(_local_company); break;
+			case MiniWndKind::Native: alive = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num) != nullptr; break;
 			default: alive = true; break;
 		}
 		if (!alive) CloseMiniWnd(i);
+	}
+
+	AdoptNativeWnds();
+
+	/* Mark before drawing: a shell whose Begin is skipped still owns its
+	 * window, and releasing it here would re-adopt it the very next frame. */
+	for (MiniEmbed &e : _embeds) e.used = false;
+	for (const MiniWnd &mw : _wnds) {
+		MiniEmbedSpec spec;
+		WindowNumber num;
+		if (!WndEmbedTarget(mw, spec, num)) continue;
+		MiniEmbed *e = FindMiniEmbed(spec.wc, num);
+		if (e != nullptr) e->used = true;
 	}
 
 	_wnds_drawing = true;
@@ -7292,15 +8892,40 @@ static void DrawMiniWndsImGui()
 	}
 	_wnds_drawing = false;
 
+	/* An embed whose tab went away this frame has no slot left to draw into.
+	 * A window the mini UI opened goes with it; an adopted one is handed back. */
+	for (size_t i = _embeds.size(); i-- > 0;) {
+		if (_embeds[i].used) continue;
+		if (_embeds[i].owned) {
+			CloseWindowById(_embeds[i].wc, _embeds[i].num);
+		} else {
+			ReleaseMiniEmbed(_embeds[i].wc, _embeds[i].num);
+		}
+		_embeds.erase(_embeds.begin() + (ptrdiff_t)i);
+	}
+
 	for (size_t i = closed.size(); i-- > 0;) CloseMiniWnd(closed[i]);
+
+	SyncEmbedZOrder();
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
-	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.eng, r.comp);
+	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.eng, r.comp, r.tab);
+}
+
+bool MiniUiCatchEstimate(Money cost)
+{
+	if (!_est.probing) return false;
+
+	_est.cost += cost;
+	_est.caught = true;
+	return true;
 }
 
 bool MiniUiShowError(std::string summary, std::string detail, bool warn)
 {
+	/* A probe asks what a plan would cost; a refusal is the answer, not news. */
+	if (_est.probing) return true;
 	if (!_mini_active || summary.empty()) return false;
 
 	uint life = std::max<uint>(_settings_client.gui.errmsg_duration, 1) * 1000;
@@ -7416,6 +9041,7 @@ static void Present()
 	DrawStatusStream();
 	DrawToasts();
 	DrawBuildMenu();
+	DrawClearPanel();
 	DrawCmdBar();
 	DrawWinBar();
 	DrawMiniWndsImGui();
@@ -7561,9 +9187,11 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 	if (!_mini_active) return;
 	for (const Window *w : Window::IterateFromBack()) {
 		if (MiniUiHidesWindow(w->window_class)) continue;
-		/* Carriers stay below the ImGui layer; their pixels surface through
-		 * the view-slot image, so window z-order needs no rect clipping. */
-		rects.push_back({w->left, w->top, w->width, w->height, CarrierOwner(w) != SIZE_MAX});
+		/* Carriers and embeds stay below the ImGui layer; their pixels surface
+		 * through the slot image. An embed is never blitted on its own: the
+		 * part of it that reaches past its slot would show through the chrome. */
+		bool under = FindMiniEmbed(w->window_class, w->window_number) != nullptr || CarrierOwner(w) != SIZE_MAX;
+		rects.push_back({w->left, w->top, w->width, w->height, under, under});
 	}
 }
 
@@ -7578,24 +9206,61 @@ void MiniUiScrollTo(int x, int y)
 	_dest_ppt = std::max(_dest_ppt, _ms.jump_ppt);
 }
 
+/* Whoever the press started on keeps the mouse until every button is up.
+ * Re-deciding each frame would press the widgets a dragged mini window is
+ * carried across. */
+enum class MiniPressOwner : uint8_t {
+	None,
+	Native,
+	Mini,
+	Map,
+};
+
+static MiniPressOwner _press_owner = MiniPressOwner::None;
+
 bool MiniUiHandleMouseEvents(bool native_capture)
 {
 	if (!_mini_active) return false;
 
-	if (!_dragging && !_middle_button_down) {
+	bool any_down = _left_button_down || _right_button_down || _middle_button_down;
+	if (!any_down) _press_owner = MiniPressOwner::None;
+
+	if (_press_owner == MiniPressOwner::Native) return false;
+	if (_press_owner == MiniPressOwner::Mini) {
+		_cursor.wheel = 0;
+		return true;
+	}
+
+	if (_press_owner == MiniPressOwner::None && !_dragging && !_middle_button_down) {
 		if (native_capture) return false;
 		/* Native windows float above the ImGui layer and take the click;
-		 * carriers sit below it, so ImGui gets those instead. */
+		 * carriers sit below it, so ImGui gets those instead. An embed takes
+		 * the click only inside its visible slot, so the cropped caption
+		 * hiding under the mini tab strip cannot start a native drag. */
 		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
-		if (w != nullptr && !MiniUiHidesWindow(w->window_class) && CarrierOwner(w) == SIZE_MAX) return false;
+		if (w != nullptr && !MiniUiHidesWindow(w->window_class) && CarrierOwner(w) == SIZE_MAX) {
+			const MiniEmbed *e = FindMiniEmbed(w->window_class, w->window_number);
+			bool inside = e == nullptr || e->vis.Contains({_cursor.pos.x, _cursor.pos.y});
+			if (inside && e != nullptr && e->grip > 0 &&
+					_cursor.pos.x > e->vis.right - e->grip && _cursor.pos.y > e->vis.bottom - e->grip) {
+				inside = false;
+			}
+			if (inside) {
+				if (any_down) _press_owner = MiniPressOwner::Native;
+				return false;
+			}
+		}
 		/* ImGui reads the wheel from the driver itself. Leaving the pending
 		 * notch here would zoom the map the moment the cursor leaves the
 		 * window and the map starts consuming events again. */
 		if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse) {
 			_cursor.wheel = 0;
+			if (any_down) _press_owner = MiniPressOwner::Mini;
 			return true;
 		}
 	}
+
+	if (any_down && _press_owner == MiniPressOwner::None) _press_owner = MiniPressOwner::Map;
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) {
 		_zoom_anchored = false;
@@ -7610,6 +9275,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (_cursor.wheel != 0) {
 		if (_menu_open >= 0 && InRect(_menu_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
 			_menu_scroll += _cursor.wheel > 0 ? 1 : -1;
+		} else if (_build_scrolls && InRect(_build_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
+			_build_scroll += _cursor.wheel > 0 ? 1 : -1;
 		} else {
 			ZoomAt(_cursor.pos.x, _cursor.pos.y, _cursor.wheel < 0);
 		}
@@ -7618,7 +9285,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleToastClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleToastClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool == MiniTool::None) {
 				if (_order_pick_veh != VehicleID::Invalid()) {
 					OrderPickClick(_cursor.pos.x, _cursor.pos.y);
@@ -7700,6 +9367,10 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 	 * would rotate blueprints while typing a name. */
 	if (kc != WKC_F9 && ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput) return true;
 
+	/* A native edit box holding the game focus owns the keyboard too, or a
+	 * wrapped popup could never be typed into. */
+	if (kc != WKC_F9 && EditBoxInGlobalFocus()) return false;
+
 	switch (kc) {
 		case WKC_F9:
 			Deactivate();
@@ -7713,55 +9384,37 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			} else if (_tool != MiniTool::None || _follow_veh != VehicleID::Invalid() || _order_pick_veh != VehicleID::Invalid()) {
 				EnterIdleMode();
 			} else if (!_wnds.empty()) {
-				CloseMiniWnd(_wnds.size() - 1);
+				/* Windows stack by focus, so the one on top is the one the
+				 * player last worked in, not the one opened last. */
+				size_t top = _wnds.size() - 1;
+				for (size_t i = 0; i < _wnds.size(); i++) {
+					if (_wnds[i].focus_seq > _wnds[top].focus_seq) top = i;
+				}
+				CloseMiniWnd(top);
 			} else if (_menu_open >= 0 || _win_open >= 0) {
 				_menu_open = -1;
 				_win_open = -1;
 			}
 			break;
 
-		/* Blueprint rotation is modal, not a global shortcut: it only lives
-		 * while a directional placement tool is in hand. The airport tool
-		 * reuses the pair to walk the available airport types. */
+		/* The pair turns the blueprint and nothing else: every type choice
+		 * belongs to the build panel. It is modal, not a global shortcut, so
+		 * it only lives while a placement tool is in hand. */
 		case 'E':
-			if (_tool == MiniTool::Airport) {
-				CycleAirportType(1);
-			} else if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
-				CycleRailType(1);
-			} else if (_tool == MiniTool::Signal) {
-				CycleSignalType(1);
-			} else if (_tool == MiniTool::Industry) {
-				CycleIndustryType(1);
-			} else if (IsBridgeTool(_tool)) {
-				CycleBridgeType(1);
-			} else if (_tool == MiniTool::Station) {
+			if (_tool == MiniTool::Station) {
 				_station_flip = !_station_flip;
 			} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-				_stop_state = (uint8_t)((_stop_state + 1) % MINI_STOP_STATES);
-			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
-				CycleRoadType(1);
+				_stop_dir = ChangeDiagDir(_stop_dir, DIAGDIRDIFF_90RIGHT);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90RIGHT);
 			}
 			break;
 
 		case 'Q':
-			if (_tool == MiniTool::Airport) {
-				CycleAirportType(-1);
-			} else if (_tool == MiniTool::Rail || _tool == MiniTool::Convert) {
-				CycleRailType(-1);
-			} else if (_tool == MiniTool::Signal) {
-				CycleSignalType(-1);
-			} else if (_tool == MiniTool::Industry) {
-				CycleIndustryType(-1);
-			} else if (IsBridgeTool(_tool)) {
-				CycleBridgeType(-1);
-			} else if (_tool == MiniTool::Station) {
+			if (_tool == MiniTool::Station) {
 				_station_flip = !_station_flip;
 			} else if (_tool == MiniTool::BusStop || _tool == MiniTool::TruckStop) {
-				_stop_state = (uint8_t)((_stop_state + MINI_STOP_STATES - 1) % MINI_STOP_STATES);
-			} else if (_tool == MiniTool::Road || _tool == MiniTool::RoadTunnel || _tool == MiniTool::RoadConvert) {
-				CycleRoadType(-1);
+				_stop_dir = ChangeDiagDir(_stop_dir, DIAGDIRDIFF_90LEFT);
 			} else if (IsDirPointTool(_tool)) {
 				_point_dir = ChangeDiagDir(_point_dir, DIAGDIRDIFF_90LEFT);
 			}
@@ -7897,6 +9550,10 @@ void MiniUiFrame(uint delta_ms)
 	int ppt = std::max(1, (int)std::lround(_cam_ppt));
 	ComputeZoomDetail(ppt);
 
+	UpdateToolPlans();
+	UpdateToolEstimate();
+	UpdateToolSites();
+
 	MiniLayer tool_layer = ToolLayer(_tool);
 	if (tool_layer != _last_tool_layer) {
 		if (tool_layer != MiniLayer::None) {
@@ -7991,28 +9648,27 @@ void MiniUiFrame(uint delta_ms)
 
 	if (_dragging) {
 		if (_tool == MiniTool::Rail) {
-			UpdateRailPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawRailPlan(ppt);
 		} else if (_tool == MiniTool::Road) {
-			UpdateRoadPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawRoadPlan(ppt);
 		} else if (IsBridgeTool(_tool)) {
-			UpdateRoadPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawBridgePlan(ppt);
 		} else if (_tool == MiniTool::Signal) {
-			UpdateSignalPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x));
 			DrawSignalPlan(ppt);
 		} else if (IsRectTool(_tool)) {
-			UpdateRectPlan(MapXAt(_cursor.pos.y), MapYAt(_cursor.pos.x), RectPlanLimit());
 			DrawRectPlan(ppt);
 		}
 	} else if (IsPointTool(_tool)) {
+		DrawSitePlan(ppt);
 		DrawPointToolPlan(ppt);
 	} else if (_tool != MiniTool::None) {
 		int htx = (int)std::floor(MapXAt(_cursor.pos.y));
 		int hty = (int)std::floor(MapYAt(_cursor.pos.x));
 		if (htx >= 0 && hty >= 0 && htx < (int)Map::SizeX() && hty < (int)Map::SizeY()) {
 			uint32_t c = _tool == MiniTool::Demolish ? COL_BP_RM : COL_BP;
+			/* The filter would take nothing here, so the cue stays but drops the
+			 * removal red. */
+			if (ClearFilterActive() && !ClearTileMatches(TileXY(htx, hty))) c = COL_BP_NO;
 			BlendRect(ScrX(hty), ScrY(htx), ScrX(hty + 1) - 1, ScrY(htx + 1) - 1, c, 70);
 		}
 	}

@@ -37,10 +37,15 @@ public:
 
 	void Draw(const Rect &full, const Rect &, bool, int, Colours bg_colour) const override
 	{
+		int mid = CentreBounds(full.top, full.bottom, 0);
+		if (MiniUiActive()) {
+			GfxFillRect(full.WithY(mid - WidgetDimensions::scaled.bevel.bottom, mid + WidgetDimensions::scaled.bevel.top - 1), MiniUiSkinTone(MINI_CH_EDGE));
+			return;
+		}
+
 		PixelColour c1 = GetColourGradient(bg_colour, SHADE_DARK);
 		PixelColour c2 = GetColourGradient(bg_colour, SHADE_LIGHTEST);
 
-		int mid = CentreBounds(full.top, full.bottom, 0);
 		GfxFillRect(full.WithY(mid - WidgetDimensions::scaled.bevel.bottom, mid - 1), c1);
 		GfxFillRect(full.WithY(mid, mid + WidgetDimensions::scaled.bevel.top - 1), c2);
 	}
