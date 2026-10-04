@@ -31,6 +31,7 @@ struct Scene {
 	float dp = 2.0f;
 	Rml::Colourb backdrop{110, 150, 90, 255};
 	std::optional<Rml::Vector2f> pointer;
+	bool press = false;
 	std::vector<SceneDocument> documents;
 	nlohmann::json models;
 	nlohmann::json styles;

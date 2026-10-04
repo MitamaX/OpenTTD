@@ -48,6 +48,7 @@ static Scene ReadScene(const Json &root)
 	scene.dp = root.value("dp", scene.dp);
 	if (root.contains("backdrop")) scene.backdrop = ReadColour(root["backdrop"].get<std::string>());
 	if (root.contains("pointer")) scene.pointer = ReadPoint(root["pointer"]);
+	scene.press = root.value("press", false);
 	for (const Json &entry : root.at("documents")) scene.documents.push_back(ReadDocument(entry));
 	scene.models = root.value("models", Json::object());
 	scene.styles = root.value("styles", Json::object());

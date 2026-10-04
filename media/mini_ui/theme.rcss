@@ -32,6 +32,7 @@ body {
 	--float: #00000080 0dp 4dp 10dp 0dp, #ffffff17 0dp 1dp 0dp 0dp inset;
 	--lift: #00000073 0dp 2dp 0dp 0dp, #ffffff29 0dp 1dp 0dp 0dp inset;
 	--glow: #7fe3ef66 0dp 0dp 6dp 1dp, #00000073 0dp 2dp 0dp 0dp, #ffffff29 0dp 1dp 0dp 0dp inset;
+	--sink: #00000073 0dp 2dp 4dp 0dp inset, #ffffff12 0dp -1dp 0dp 0dp inset;
 
 	--radius: 8dp;
 	--radius-tile: 7dp;
@@ -63,20 +64,15 @@ div, handle {
 }
 
 .press {
-	transform: translateY(0dp);
-	transition: background-color color image-color var(--snap), transform var(--spring);
+	transition: background-color color image-color var(--snap);
 }
 
-.press:hover {
-	transform: translateY(-1dp);
+.press:active, .press.active:active {
+	box-shadow: var(--sink);
 }
 
-.press:active {
-	transform: translateY(1dp);
-}
-
-.press.off:hover, .press.off:active {
-	transform: translateY(0dp);
+.press.off:active {
+	box-shadow: var(--lift);
 }
 
 .scroll-list {

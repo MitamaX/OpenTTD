@@ -117,7 +117,15 @@ static void Browse(PreviewHost &host, const std::vector<std::filesystem::path> &
 	}
 }
 
-/* Each scene runs long enough for its animations to finish before it is saved, with the pointer where the scene puts it. */
+/* The pointer goes where the scene puts it, and presses once the documents have a layout to hit. */
+static void Point(Rml::Context &context, const Scene &scene, bool press_now)
+{
+	if (!scene.pointer.has_value()) return;
+	context.ProcessMouseMove(static_cast<int>(scene.pointer->x), static_cast<int>(scene.pointer->y), 0);
+	if (press_now && scene.press) context.ProcessMouseButtonDown(MOUSE_BUTTON_LEFT, 0);
+}
+
+/* Each scene runs long enough for its animations to finish before it is saved. */
 static bool Shoot(PreviewHost &host, const std::vector<std::filesystem::path> &files, const std::filesystem::path &directory, double settle)
 {
 	std::filesystem::create_directories(directory);
@@ -129,8 +137,9 @@ static bool Shoot(PreviewHost &host, const std::vector<std::filesystem::path> &f
 			continue;
 		}
 
-		for (double start = GetTime(); GetTime() - start < settle;) {
-			if (scene->pointer.has_value()) host.Context()->ProcessMouseMove(static_cast<int>(scene->pointer->x), static_cast<int>(scene->pointer->y), 0);
+		double start = GetTime();
+		for (int frame = 0; GetTime() - start < settle; frame++) {
+			Point(*host.Context(), *scene, frame == 1);
 			DrawFrame(host, *scene);
 		}
 
