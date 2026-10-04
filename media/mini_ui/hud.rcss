@@ -116,6 +116,21 @@ body {
 	animation: 0.22s back-out rise-in;
 }
 
+.shelf.drop.open {
+	animation: 0.22s back-out drop-in;
+}
+
+@keyframes drop-in {
+	from {
+		opacity: 0;
+		transform: translateY(-10dp) scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0dp) scale(1);
+	}
+}
+
 @keyframes rise-in {
 	from {
 		opacity: 0;
@@ -378,6 +393,31 @@ body {
 .stage-end {
 	left: auto;
 	right: 0dp;
+}
+
+.stage-drop {
+	top: 100%;
+	bottom: auto;
+	margin-top: var(--tile-gap);
+	margin-bottom: 0dp;
+	align-items: flex-start;
+}
+
+.dock-right {
+	right: var(--hud-margin);
+	top: var(--hud-margin);
+	align-items: flex-end;
+}
+
+.window-base {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--tile-gap);
+}
+
+.overlay-strip {
+	padding: 4dp;
 }
 
 .tool-grid {

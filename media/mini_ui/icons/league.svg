@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+	<g stroke="#1d1b29" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+		<path d="M9 9 H5.8 Q4.2 9 4.6 11 Q5.6 15 10 16" fill="none" stroke="#1d1b29" stroke-width="4.4"/><path d="M9 9 H5.8 Q4.2 9 4.6 11 Q5.6 15 10 16" fill="none" stroke="#c99a22" stroke-width="1.8"/>
+		<path d="M23 9 H26.2 Q27.8 9 27.4 11 Q26.4 15 22 16" fill="none" stroke="#1d1b29" stroke-width="4.4"/><path d="M23 9 H26.2 Q27.8 9 27.4 11 Q26.4 15 22 16" fill="none" stroke="#c99a22" stroke-width="1.8"/>
+		<rect x="14.5" y="18" width="3" height="5.5" fill="#c99a22"/>
+		<rect x="10" y="23" width="12" height="5.5" rx="1" fill="#b5793f"/>
+		<rect x="13" y="24.7" width="6" height="2" rx="0.4" fill="#fbe08a" stroke-width="1"/>
+		<path d="M8.5 5 H23.5 V11 A7.5 7.5 0 0 1 8.5 11 Z" fill="#f4c542"/>
+		<rect x="7.8" y="4" width="16.4" height="2.2" rx="1" fill="#c99a22"/>
+		<path d="M11 7.2 V11.5 Q11 14 12.6 15.3 Q10.4 14.6 10.2 11.5 V7.2 Z" fill="#fff" stroke="none" fill-opacity="0.5"/>
+		<path d="M16.00 8.20 L16.71 10.03 L18.66 10.13 L17.14 11.37 L17.65 13.27 L16.00 12.20 L14.35 13.27 L14.86 11.37 L13.34 10.13 L15.29 10.03 Z" fill="#fbe08a" stroke-width="1"/>
+	</g>
+</svg>

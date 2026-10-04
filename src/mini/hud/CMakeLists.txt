@@ -22,4 +22,8 @@ add_files(
     toast_feed.h
     toast_stack.cpp
     toast_stack.h
+    window_bar.cpp
+    window_bar.h
+    window_catalog.cpp
+    window_catalog.h
 )

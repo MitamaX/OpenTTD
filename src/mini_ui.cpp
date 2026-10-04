@@ -70,6 +70,7 @@
 #include "mini/hud/status_stream.h"
 #include "mini/hud/toast_feed.h"
 #include "mini/hud/toast_stack.h"
+#include "mini/hud/window_bar.h"
 #include "mini/input/input_mode.h"
 #include "mini/input/press_owner.h"
 #include "mini/map/ground.h"
@@ -246,18 +247,6 @@ bool MiniUiActive()
 	return _mini_active;
 }
 
-static void ScreenFillRect(int x0, int y0, int x1, int y1, uint32_t c)
-{
-	_canvas.FillRect(x0, y0, x1, y1, c);
-}
-
-static void ChromePanel(int x0, int y0, int x1, int y1)
-{
-	int r = 2 * _tuning.hud_scale;
-	RlwCmdRoundRect(x0, y0, x1, y1, r, COL_CH_EDGE);
-	RlwCmdRoundRect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, r, COL_CH_PANEL);
-}
-
 /* Any unit of a consist opens its head's window, so the window always
  * describes the whole vehicle. */
 static bool OpenVehicleWndAt(int sx, int sy)
@@ -367,274 +356,6 @@ static bool HandleLabelClick(int x, int y)
 	return true;
 }
 
-static bool InRect(const Rect &r, int x, int y)
-{
-	return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-}
-
-/* Reference button cycle: dark tile, teal when active, cyan edge on hover. */
-static void ChromeTile(const Rect &r, bool active)
-{
-	bool hover = _cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y);
-	int rad = 2 * _tuning.hud_scale;
-	int b = hover ? 2 : 1;
-	RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, rad, hover ? COL_CH_ACCENT : COL_CH_EDGE);
-	RlwCmdRoundRect(r.left + b, r.top + b, r.right - b, r.bottom - b, rad, active ? COL_CH_ACTIVE : COL_CH_TILE);
-}
-
-static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
-{
-	_canvas.ThickLine(x0, y0, x1, y1, width, c);
-}
-
-static void ScreenFillCircle(int cx, int cy, int r, uint32_t c)
-{
-	_canvas.FillCircle(cx, cy, r, c);
-}
-
-/* Top-right window bar: category tiles whose panels open native status
- * windows. Same tile language as the build menu. */
-enum class MiniWin : uint8_t {
-	Finances,
-	CompanyInfo,
-	Goals,
-	League,
-	Graph,
-	Stations,
-	Trains,
-	RoadVehicles,
-	Ships,
-	Aircraft,
-	News,
-	Towns,
-	Industries,
-	Subsidies,
-	Buy,
-	Groups,
-	Map,
-	Signs,
-	Save,
-	Load,
-	Options,
-	Music,
-	Abandon,
-	Quit,
-};
-
-struct MiniWinItem {
-	StringID str;
-	std::string_view fallback;
-	MiniWin win;
-};
-
-struct MiniWinCategory {
-	StringID str;
-	std::string_view fallback;
-	MiniWin icon;
-	std::span<const MiniWinItem> items;
-};
-
-static const MiniWinItem _win_company_items[] = {
-	{INVALID_STRING_ID, "FINANCES", MiniWin::Finances},
-	{INVALID_STRING_ID, "INFO", MiniWin::CompanyInfo},
-	{INVALID_STRING_ID, "GOALS", MiniWin::Goals},
-	{STR_GRAPH_MENU_COMPANY_LEAGUE_TABLE, "LEAGUE", MiniWin::League},
-	{STR_GRAPH_MENU_OPERATING_PROFIT_GRAPH, "GRAPH", MiniWin::Graph},
-};
-
-static const MiniWinItem _win_vehicle_items[] = {
-	{INVALID_STRING_ID, "DEPOT", MiniWin::Buy},
-	{INVALID_STRING_ID, "GROUPS", MiniWin::Groups},
-	{INVALID_STRING_ID, "STATIONS", MiniWin::Stations},
-	{STR_REPLACE_VEHICLE_TRAIN, "TRAIN", MiniWin::Trains},
-	{STR_REPLACE_VEHICLE_ROAD_VEHICLE, "ROAD", MiniWin::RoadVehicles},
-	{STR_REPLACE_VEHICLE_SHIP, "SHIP", MiniWin::Ships},
-	{STR_REPLACE_VEHICLE_AIRCRAFT, "AIRCRAFT", MiniWin::Aircraft},
-};
-
-static const MiniWinItem _win_world_items[] = {
-	{INVALID_STRING_ID, "MAP", MiniWin::Map},
-	{STR_NEWS_MENU_MESSAGE_HISTORY_MENU, "NEWS", MiniWin::News},
-	{STR_TOWN_MENU_TOWN_DIRECTORY, "TOWNS", MiniWin::Towns},
-	{STR_INDUSTRY_MENU_INDUSTRY_DIRECTORY, "INDUSTRY", MiniWin::Industries},
-	{STR_SUBSIDIES_MENU_SUBSIDIES, "SUBSIDY", MiniWin::Subsidies},
-	{INVALID_STRING_ID, "SIGN", MiniWin::Signs},
-};
-
-/* The game's own windows have no mini counterpart and none is wanted: they are
- * opened straight and the shell wraps whatever comes up. */
-static const MiniWinItem _win_system_items[] = {
-	{STR_FILE_MENU_SAVE_GAME, "SAVE", MiniWin::Save},
-	{STR_FILE_MENU_LOAD_GAME, "LOAD", MiniWin::Load},
-	{STR_SETTINGS_MENU_GAME_OPTIONS, "OPTIONS", MiniWin::Options},
-	{STR_TOOLBAR_SOUND_MUSIC, "MUSIC", MiniWin::Music},
-	{STR_FILE_MENU_QUIT_GAME, "ABANDON", MiniWin::Abandon},
-	{STR_FILE_MENU_EXIT, "EXIT", MiniWin::Quit},
-};
-
-static const MiniWinCategory _win_cats[] = {
-	{STR_CONFIG_SETTING_COMPANY, "COMPANY", MiniWin::Finances, _win_company_items},
-	{STR_CONFIG_SETTING_VEHICLES, "VEHICLES", MiniWin::Trains, _win_vehicle_items},
-	{STR_CONFIG_SETTING_ENVIRONMENT, "WORLD", MiniWin::Map, _win_world_items},
-	{INVALID_STRING_ID, "SYSTEM", MiniWin::Options, _win_system_items},
-};
-
-static int _win_open = -1;
-static int _win_bar_bottom = 0;
-static Rect _win_panel_rect;
-static std::vector<std::pair<Rect, int>> _win_cat_hits;
-static std::vector<std::pair<Rect, MiniWin>> _win_item_hits;
-static std::vector<std::pair<Rect, MiniLayer>> _ovl_hits;
-
-static int WinTileSide()
-{
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int tw = 0;
-	for (const MiniWinCategory &c : _win_cats) {
-		tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(c.str, c.fallback)).width);
-		for (const MiniWinItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(it.str, it.fallback)).width);
-	}
-	return std::max(tw + 10, 3 * lh);
-}
-
-static void DrawWinIcon(MiniWin win, int cx, int cy, int is)
-{
-	int h = is / 2;
-	int t = std::max(2, is / 5);
-	uint32_t cc = Company::IsValidID(_local_company) ? _company_rgb[_company_colours[_local_company]] : COL_OBJ;
-	switch (win) {
-		case MiniWin::Finances:
-			ScreenFillCircle(cx, cy, h, COL_ST_BUOY);
-			ScreenFillCircle(cx, cy, std::max(1, h - t), Darken(COL_ST_BUOY));
-			break;
-		case MiniWin::CompanyInfo:
-			ScreenFillRect(cx - h, cy - h, cx - h + 1, cy + h, COL_PAPER);
-			ScreenFillRect(cx - h + 2, cy - h, cx + h, cy, cc);
-			break;
-		case MiniWin::Goals:
-			ScreenFillCircle(cx, cy, h, COL_STOP);
-			ScreenFillCircle(cx, cy, std::max(2, h - t), COL_PAPER);
-			ScreenFillCircle(cx, cy, std::max(1, h - 2 * t), COL_STOP);
-			break;
-		case MiniWin::League:
-			ScreenFillRect(cx - h, cy, cx - h / 3 - 1, cy + h, COL_OBJ);
-			ScreenFillRect(cx - h / 3 + 1, cy - h, cx + h / 3 - 1, cy + h, COL_ST_BUOY);
-			ScreenFillRect(cx + h / 3 + 1, cy - h / 3, cx + h, cy + h, COL_OBJ);
-			break;
-		case MiniWin::Graph:
-			ScreenThickLine(cx - h, cy + h, cx - h / 4, cy, t, COL_GO);
-			ScreenThickLine(cx - h / 4, cy, cx + h / 4, cy + h / 3, t, COL_GO);
-			ScreenThickLine(cx + h / 4, cy + h / 3, cx + h, cy - h, t, COL_GO);
-			break;
-		case MiniWin::Stations:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_RAIL_B);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_RAIL);
-			break;
-		case MiniWin::Trains:
-			ScreenThickLine(cx - h, cy, cx + h - t, cy, t + 1, cc);
-			ScreenFillCircle(cx + h - t, cy, t, COL_PAPER);
-			break;
-		case MiniWin::RoadVehicles:
-			ScreenFillCircle(cx, cy, h, COL_INK);
-			ScreenFillCircle(cx, cy, h - 1, cc);
-			break;
-		case MiniWin::Ships:
-			_canvas.FillDiamond(cx, cy, h, COL_INK);
-			_canvas.FillDiamond(cx, cy, h - 1, cc);
-			break;
-		case MiniWin::Aircraft:
-			_canvas.FillTriangle(cx, cy, h, COL_INK);
-			_canvas.FillTriangle(cx, cy, h - 1, cc);
-			break;
-		case MiniWin::News:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_PAPER);
-			for (int i = -1; i <= 1; i++) ScreenFillRect(cx - h + 2, cy + i * (is / 4) - 1, cx + h - 2, cy + i * (is / 4), COL_INK);
-			break;
-		case MiniWin::Towns:
-			ScreenFillRect(cx - h, cy - is / 6, cx - 1, cy + h, COL_HOUSE_B);
-			ScreenFillRect(cx - h + 1, cy - is / 6 + 1, cx - 2, cy + h - 1, COL_HOUSE);
-			ScreenFillRect(cx + 1, cy - h, cx + h, cy + h, COL_HOUSE_B);
-			ScreenFillRect(cx + 2, cy - h + 1, cx + h - 1, cy + h - 1, COL_HOUSE);
-			break;
-		case MiniWin::Industries:
-			ScreenFillRect(cx - h, cy - is / 6, cx + h, cy + h, COL_IND_B);
-			ScreenFillRect(cx - h + 2, cy - is / 6 + 2, cx + h - 2, cy + h - 2, COL_IND);
-			ScreenFillRect(cx + h / 4, cy - h, cx + h / 4 + t, cy - is / 6, COL_IND_B);
-			break;
-		case MiniWin::Subsidies:
-			ScreenFillCircle(cx - h + t, cy + h - t, t, COL_HOUSE);
-			ScreenFillCircle(cx + h - t, cy - h + t, t, COL_IND);
-			ScreenThickLine(cx - h + 2 * t, cy + h - 2 * t, cx + h - 2 * t, cy - h + 2 * t, std::max(2, t - 1), COL_PAPER);
-			break;
-		case MiniWin::Buy:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_DEPOT);
-			ScreenFillRect(cx - t, cy - h, cx + t, cy - h + t + 1, COL_PAPER);
-			break;
-		case MiniWin::Groups:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy - h + t, cc);
-			ScreenFillRect(cx - h, cy - t / 2, cx + h, cy - t / 2 + t, cc);
-			ScreenFillRect(cx - h, cy + h - t, cx + h, cy + h, cc);
-			break;
-		case MiniWin::Map:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, _height_ramp[5]);
-			ScreenThickLine(cx - h, cy + h / 2, cx + h, cy - h / 2, t, COL_WATER);
-			ScreenFillRect(cx - h, cy - h, cx + h, cy - h + 1, COL_INK);
-			ScreenFillRect(cx - h, cy + h - 1, cx + h, cy + h, COL_INK);
-			break;
-		case MiniWin::Signs:
-			ScreenFillRect(cx - t / 2, cy - is / 6, cx + t / 2, cy + h, COL_ROAD);
-			ScreenFillRect(cx - h, cy - h, cx + h, cy - is / 6, COL_ST_BUOY);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy - is / 6 - 2, COL_INK);
-			break;
-		case MiniWin::Save:
-			ScreenFillRect(cx - h, cy + h - t, cx + h, cy + h, COL_OBJ);
-			ScreenFillRect(cx - t / 2, cy - h, cx + t / 2, cy + t, COL_ST_BUOY);
-			ScreenThickLine(cx - h / 2, cy - t / 2, cx, cy + t, t / 2 + 1, COL_ST_BUOY);
-			ScreenThickLine(cx + h / 2, cy - t / 2, cx, cy + t, t / 2 + 1, COL_ST_BUOY);
-			break;
-		case MiniWin::Load:
-			ScreenFillRect(cx - h, cy + h - t, cx + h, cy + h, COL_OBJ);
-			ScreenFillRect(cx - t / 2, cy - t, cx + t / 2, cy + h - t, COL_GO);
-			ScreenThickLine(cx - h / 2, cy, cx, cy - t, t / 2 + 1, COL_GO);
-			ScreenThickLine(cx + h / 2, cy, cx, cy - t, t / 2 + 1, COL_GO);
-			break;
-		case MiniWin::Options:
-			ScreenFillRect(cx - t / 2, cy - h, cx + t / 2, cy + h, COL_OBJ);
-			ScreenFillRect(cx - h, cy - t / 2, cx + h, cy + t / 2, COL_OBJ);
-			ScreenFillCircle(cx, cy, std::max(2, h - t / 2), COL_OBJ);
-			ScreenFillCircle(cx, cy, std::max(1, h / 3), COL_INK);
-			break;
-		case MiniWin::Music:
-			ScreenFillCircle(cx - t, cy + h - t, t, COL_ST_AIR);
-			ScreenFillRect(cx, cy - h, cx + t / 2, cy + h - t, COL_ST_AIR);
-			ScreenFillRect(cx, cy - h, cx + h, cy - h + t / 2, COL_ST_AIR);
-			break;
-		case MiniWin::Abandon:
-			ScreenFillRect(cx, cy - h, cx + h, cy + h, COL_OBJ);
-			ScreenFillRect(cx + 1, cy - h + 1, cx + h - 1, cy + h - 1, COL_HOUSE_B);
-			ScreenFillRect(cx - h, cy - t / 2, cx, cy + t / 2, COL_PAPER);
-			ScreenThickLine(cx - h / 2, cy - h / 2, cx - h, cy, t / 2 + 1, COL_PAPER);
-			ScreenThickLine(cx - h / 2, cy + h / 2, cx - h, cy, t / 2 + 1, COL_PAPER);
-			break;
-		case MiniWin::Quit:
-			ScreenThickLine(cx - h, cy - h, cx + h, cy + h, t, COL_STOP);
-			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_STOP);
-			break;
-	}
-}
-
-static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, MiniWin icon, bool active)
-{
-	ChromeTile(r, active);
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int cx = (r.left + r.right) / 2;
-	int icon_h = r.bottom - r.top + 1 - lh - 9;
-	DrawWinIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
-	if (const CanvasText *e = _canvas.Text(GameTextOr(str, fallback)); e != nullptr) {
-		_canvas.DrawText(*e, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
-	}
-}
-
 static void OpenFleetMiniWnd(int vt);
 static void OpenFinanceMiniWnd();
 static void OpenCompanyMiniWnd();
@@ -678,125 +399,6 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Abandon: AskExitToGameMenu(); break;
 		case MiniWin::Quit: AskExitGame(); break;
 	}
-}
-
-static void DrawOverlayGlyph(MiniLayer layer, int cx, int cy, int os, bool active)
-{
-	uint32_t g = active ? COL_CH_ACCENT : COL_CH_TEXT;
-	uint32_t bg = active ? COL_CH_ACTIVE : COL_CH_TILE;
-	int gl = os / 2 - 2;
-	if (layer == MiniLayer::Rail) {
-		ScreenThickLine(cx - gl, cy, cx + gl, cy, std::max(2, os / 8), g);
-		int th = std::max(2, os / 6);
-		for (int i = -1; i <= 1; i++) {
-			int px = cx + i * (gl - 1);
-			ScreenFillRect(px, cy - th, px + 1, cy + th, g);
-		}
-	} else {
-		int bh = std::max(2, os / 5);
-		ScreenFillRect(cx - gl, cy - bh, cx + gl, cy + bh, g);
-		for (int i = -1; i <= 1; i++) {
-			int px = cx + i * (gl - 1);
-			ScreenFillRect(px - 1, cy, px + 1, cy, bg);
-		}
-	}
-}
-
-static void DrawWinBar()
-{
-	_win_cat_hits.clear();
-	_win_item_hits.clear();
-	_ovl_hits.clear();
-
-	int s = _tuning.hud_scale;
-	int gap = 2 * s;
-	int margin = 6 * s;
-	int pp = 4 * s;
-	int tile = WinTileSide();
-
-	int ncats = (int)std::size(_win_cats);
-	int bar_left = _fbw - margin - ncats * tile - (ncats - 1) * gap;
-	_win_bar_bottom = margin + tile - 1;
-
-	for (int c = 0; c < ncats; c++) {
-		const MiniWinCategory &cat = _win_cats[c];
-		int x = bar_left + c * (tile + gap);
-		Rect r = {x, margin, x + tile - 1, margin + tile - 1};
-		DrawWinTile(r, cat.str, cat.fallback, cat.icon, _win_open == c);
-		_win_cat_hits.emplace_back(r, c);
-	}
-
-	/* Second row under the window bar: the overlay strip. Compact icon
-	 * toggles, same click cycle as the reference: re-click clears, another
-	 * button switches. */
-	if (_tuning.filter_alpha > 0) {
-		static const MiniLayer layers[] = {MiniLayer::Rail, MiniLayer::Road};
-		int os = 12 * s;
-		int op = 2 * s;
-		int n = (int)std::size(layers);
-		int sw = n * os + (n - 1) * gap + 2 * op;
-		int sh = os + 2 * op;
-		int sx = _fbw - margin - sw;
-		int sy = _win_bar_bottom + 1 + gap;
-		ChromePanel(sx, sy, sx + sw - 1, sy + sh - 1);
-		for (int i = 0; i < n; i++) {
-			int x = sx + op + i * (os + gap);
-			Rect r = {x, sy + op, x + os - 1, sy + op + os - 1};
-			bool active = _overlay.Shown() == layers[i];
-			ChromeTile(r, active);
-			DrawOverlayGlyph(layers[i], (r.left + r.right) / 2, (r.top + r.bottom) / 2, os, active);
-			_ovl_hits.emplace_back(r, layers[i]);
-		}
-		_win_bar_bottom = sy + sh - 1;
-	}
-
-	if (_win_open >= 0) {
-		const MiniWinCategory &cat = _win_cats[_win_open];
-		int n = (int)cat.items.size();
-		int cols = 3;
-		int rows = (n + cols - 1) / cols;
-		int pw = cols * tile + (cols - 1) * gap + 2 * pp;
-		int ph = rows * tile + (rows - 1) * gap + 2 * pp;
-		int px = _fbw - margin - pw;
-		int py = _win_bar_bottom + 1 + gap;
-		_win_panel_rect = {px, py, px + pw - 1, py + ph - 1};
-		ChromePanel(px, py, px + pw - 1, py + ph - 1);
-		for (int i = 0; i < n; i++) {
-			const MiniWinItem &it = cat.items[i];
-			int ix = px + pp + (i % cols) * (tile + gap);
-			int iy = py + pp + (i / cols) * (tile + gap);
-			Rect ir = {ix, iy, ix + tile - 1, iy + tile - 1};
-			DrawWinTile(ir, it.str, it.fallback, it.win, false);
-			_win_item_hits.emplace_back(ir, it.win);
-		}
-	}
-}
-
-static bool HandleWinClick(int x, int y)
-{
-	for (const auto &[r, l] : _ovl_hits) {
-		if (InRect(r, x, y)) {
-			_overlay.Toggle(l);
-			return true;
-		}
-	}
-	for (const auto &[r, c] : _win_cat_hits) {
-		if (InRect(r, x, y)) {
-			_win_open = _win_open == c ? -1 : c;
-			return true;
-		}
-	}
-	if (_win_open >= 0) {
-		for (const auto &[r, w] : _win_item_hits) {
-			if (InRect(r, x, y)) {
-				OpenMiniWindow(w);
-				_win_open = -1;
-				return true;
-			}
-		}
-		if (InRect(_win_panel_rect, x, y)) return true;
-	}
-	return false;
 }
 
 /* Mini windows: ONI-structured chrome windows on the GPU layer. A window has
@@ -895,6 +497,7 @@ static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 	parts.push_back(std::make_unique<ToastStack>(NewsRefFollow));
 	parts.push_back(std::make_unique<ClearPanel>());
 	parts.push_back(std::make_unique<CommandBar>());
+	parts.push_back(std::make_unique<WindowBar>(OpenMiniWindow));
 	parts.push_back(std::make_unique<NoteLayer>());
 	return parts;
 }
@@ -1117,7 +720,7 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	mw.comp = comp;
 	if (tab >= 0) mw.tab = (uint8_t)tab;
 	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
-	mw.y = Clamp(_win_bar_bottom + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
+	mw.y = Clamp(WindowBarBottom() + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
 	_wnds.push_back(mw);
 }
 
@@ -3723,7 +3326,7 @@ static void PlaceNativeShell(MiniWnd &mw, int cw, int ch)
 {
 	int gap = 6 * _tuning.hud_scale;
 	int right = std::max(0, _fbw - cw - gap);
-	int top = _win_bar_bottom + gap;
+	int top = WindowBarBottom() + gap;
 
 	mw.x = right;
 	mw.y = top;
@@ -3938,9 +3541,8 @@ bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
-	DrawWinBar();
 	DrawMiniWndsImGui();
-	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, _win_bar_bottom);
+	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, WindowBarBottom());
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -3951,7 +3553,7 @@ static void Deactivate()
 	_mode.Idle();
 	_overlay.Reset();
 	_build_shelf.Close();
-	_win_open = -1;
+	_window_shelf.Close();
 	_tool.Abort();
 	_camera.Halt();
 	_vehicle_motion.Clear();
@@ -4014,7 +3616,7 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	if (!_mini_active) return false;
 
 	int right = std::max(0, _screen.width - width);
-	int y0 = _win_bar_bottom + 1;
+	int y0 = WindowBarBottom() + 1;
 	for (int x = right; x >= 0; x -= width) {
 		int y = y0;
 		bool moved = true;
@@ -4124,17 +3726,15 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
-			if (_tool.Kind() == MiniTool::None) {
-				if (_mode.PickingOrders()) {
-					_mode.PickOrderAt(CursorPoint());
-				} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y) &&
-						!OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y)) {
-					OpenWaypointWndAt(_cursor.pos.x, _cursor.pos.y);
-				}
-			} else {
-				_tool.Press(CursorPoint(), _ctrl_pressed);
+		if (_tool.Kind() == MiniTool::None) {
+			if (_mode.PickingOrders()) {
+				_mode.PickOrderAt(CursorPoint());
+			} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y) &&
+					!OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y)) {
+				OpenWaypointWndAt(_cursor.pos.x, _cursor.pos.y);
 			}
+		} else {
+			_tool.Press(CursorPoint(), _ctrl_pressed);
 		}
 	}
 
@@ -4168,7 +3768,7 @@ static void UnwindEscape()
 		return;
 	}
 	_build_shelf.Close();
-	_win_open = -1;
+	_window_shelf.Close();
 }
 
 bool MiniUiHandleKeypress(uint keycode, char32_t)
