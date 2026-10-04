@@ -27,6 +27,10 @@ public:
 	void TrackPointer();
 	bool CapturePointer();
 
+	bool IsTyping() const { return this->layer.IsTyping(); }
+	bool ProcessKey(uint keycode);
+	bool ProcessText(char32_t character);
+
 private:
 	bool Attach();
 	void Sync();

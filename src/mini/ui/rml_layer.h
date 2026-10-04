@@ -14,19 +14,11 @@
 #include <memory>
 
 #include "../../video/raylib_wrap.h"
+#include "rml_input.h"
 #include "rml_interfaces.h"
 
 namespace Rml { class Context; }
 class RenderInterface_GL3;
-
-struct RmlPointer {
-	int x = 0;
-	int y = 0;
-	std::array<bool, 3> buttons{};
-	int wheel = 0;
-	bool ctrl = false;
-	bool shift = false;
-};
 
 class RmlLayer final : public RlwLayer {
 public:
@@ -42,11 +34,17 @@ public:
 	void TrackPointer(const RmlPointer &pointer);
 	bool CapturePointer(const RmlPointer &pointer);
 
+	bool IsTyping() const { return this->text_input.IsActive(); }
+	void ProcessKey(const RmlKey &key);
+	void ProcessText(char32_t character);
+
 private:
 	void Start();
+	void ReleaseFocus();
 
 	RmlFileInterface files;
 	RmlSystemInterface system;
+	RmlTextInputHandler text_input;
 	std::unique_ptr<RenderInterface_GL3> renderer;
 	Rml::Context *context = nullptr;
 	bool unavailable = false;

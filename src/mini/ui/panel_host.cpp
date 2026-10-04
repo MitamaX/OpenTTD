@@ -14,7 +14,6 @@
 
 #include "../../core/format.hpp"
 #include "../../core/math_func.hpp"
-#include "../../gfx_func.h"
 #include "ledger.h"
 
 #include "../../safeguards.h"
@@ -47,18 +46,6 @@ static void RegisterPanelTypes(Rml::Context &context)
 	types.RegisterArray<Rml::Vector<Rml::String>>();
 
 	context.RemoveDataModel(PANEL_TYPES_MODEL);
-}
-
-static RmlPointer CurrentPointer()
-{
-	RmlPointer pointer;
-	pointer.x = _cursor.pos.x;
-	pointer.y = _cursor.pos.y;
-	pointer.buttons = {_left_button_down, _right_button_down, _middle_button_down};
-	pointer.wheel = _cursor.wheel;
-	pointer.ctrl = _ctrl_pressed;
-	pointer.shift = _shift_pressed;
-	return pointer;
 }
 
 void PanelHost::Frame(int width, int height, float dp_ratio, int dock_top)
@@ -119,12 +106,26 @@ void PanelHost::ReloadDesign()
 
 void PanelHost::TrackPointer()
 {
-	this->layer.TrackPointer(CurrentPointer());
+	this->layer.TrackPointer(RmlPointer::Current());
 }
 
 bool PanelHost::CapturePointer()
 {
-	return this->layer.CapturePointer(CurrentPointer());
+	return this->layer.CapturePointer(RmlPointer::Current());
+}
+
+bool PanelHost::ProcessKey(uint keycode)
+{
+	if (!this->IsTyping()) return false;
+	this->layer.ProcessKey(RmlKey::FromKeycode(keycode));
+	return true;
+}
+
+bool PanelHost::ProcessText(char32_t character)
+{
+	if (!this->IsTyping()) return false;
+	this->layer.ProcessText(character);
+	return true;
 }
 
 bool PanelHost::Attach()

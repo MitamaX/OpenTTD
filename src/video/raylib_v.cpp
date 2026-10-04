@@ -155,6 +155,25 @@ static bool IsEditBoxControlKey(uint32_t keycode)
 	}
 }
 
+static uint8_t DirKeys(const RlwInput &in)
+{
+	if (MiniUiTyping()) return 0;
+
+	uint8_t keys =
+		(in.dir_left  ? 1 : 0) |
+		(in.dir_up    ? 2 : 0) |
+		(in.dir_right ? 4 : 0) |
+		(in.dir_down  ? 8 : 0);
+	if (MiniUiActive() && !EditBoxInGlobalFocus()) {
+		keys |=
+			(in.key_a ? 1 : 0) |
+			(in.key_w ? 2 : 0) |
+			(in.key_d ? 4 : 0) |
+			(in.key_s ? 8 : 0);
+	}
+	return keys;
+}
+
 void VideoDriver_Raylib::InputLoop()
 {
 	RlwInput in;
@@ -171,18 +190,7 @@ void VideoDriver_Raylib::InputLoop()
 	_ctrl_pressed = in.ctrl;
 	_shift_pressed = in.shift;
 	this->fast_forward_key_pressed = in.tab && !in.alt;
-	_dirkeys =
-		(in.dir_left  ? 1 : 0) |
-		(in.dir_up    ? 2 : 0) |
-		(in.dir_right ? 4 : 0) |
-		(in.dir_down  ? 8 : 0);
-	if (MiniUiActive() && !EditBoxInGlobalFocus()) {
-		_dirkeys |=
-			(in.key_a ? 1 : 0) |
-			(in.key_w ? 2 : 0) |
-			(in.key_d ? 4 : 0) |
-			(in.key_s ? 8 : 0);
-	}
+	_dirkeys = DirKeys(in);
 	if (old_ctrl_pressed != _ctrl_pressed) HandleCtrlChanged();
 
 	if (_cursor.UpdateCursorPosition(in.mouse_x, in.mouse_y)) {
@@ -222,7 +230,7 @@ void VideoDriver_Raylib::InputLoop()
 	}
 
 	for (char32_t c; (c = RlwNextChar()) != 0; ) {
-		if (!this->edit_box_focused) continue;
+		if (MiniUiHandleTextInput(c) || !this->edit_box_focused) continue;
 		auto [buf, len] = EncodeUtf8(c);
 		HandleTextInput(std::string_view(buf, len));
 	}

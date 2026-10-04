@@ -10,6 +10,8 @@ add_files(
     panel.h
     panel_host.cpp
     panel_host.h
+    rml_input.cpp
+    rml_input.h
     rml_interfaces.cpp
     rml_interfaces.h
     rml_layer.cpp

@@ -9318,6 +9318,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 	/* An open rename field owns the keyboard; letting the shortcuts through
 	 * would rotate blueprints while typing a name. */
+	if (kc != WKC_F9 && _panels.ProcessKey(keycode)) return true;
 	if (kc != WKC_F9 && ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput) return true;
 
 	/* A native edit box holding the game focus owns the keyboard too, or a
@@ -9360,6 +9361,16 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 			break;
 	}
 	return true;
+}
+
+bool MiniUiTyping()
+{
+	return _mini_active && _panels.IsTyping();
+}
+
+bool MiniUiHandleTextInput(char32_t character)
+{
+	return _mini_active && _panels.ProcessText(character);
 }
 
 void MiniUiFrame(uint delta_ms)

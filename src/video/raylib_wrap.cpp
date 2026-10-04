@@ -550,3 +550,14 @@ bool RlwMonitorSize(int &w, int &h)
 	h = GetMonitorHeight(m);
 	return w > 0 && h > 0;
 }
+
+const char *RlwClipboardText()
+{
+	const char *text = GetClipboardText();
+	return text != nullptr ? text : "";
+}
+
+void RlwSetClipboardText(const char *text)
+{
+	SetClipboardText(text);
+}

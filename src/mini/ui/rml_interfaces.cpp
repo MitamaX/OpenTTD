@@ -5,13 +5,14 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file rml_interfaces.cpp RmlUi file access and system services backed by OpenTTD. */
+/** @file rml_interfaces.cpp The services RmlUi asks of its host: file access, system calls and text input focus. */
 
 #include "../../stdafx.h"
 #include "rml_interfaces.h"
 
 #include "../../debug.h"
 #include "../../fileio_func.h"
+#include "../../video/raylib_wrap.h"
 
 #include "../../safeguards.h"
 
@@ -60,4 +61,34 @@ bool RmlSystemInterface::LogMessage(Rml::Log::Type type, const Rml::String &mess
 {
 	Debug(misc, type <= Rml::Log::LT_WARNING ? 0 : 3, "[rmlui] {}", message);
 	return true;
+}
+
+void RmlSystemInterface::SetClipboardText(const Rml::String &text)
+{
+	RlwSetClipboardText(text.c_str());
+}
+
+void RmlSystemInterface::GetClipboardText(Rml::String &text)
+{
+	text = RlwClipboardText();
+}
+
+void RmlTextInputHandler::OnActivate(Rml::TextInputContext *input_context)
+{
+	this->active = input_context;
+}
+
+void RmlTextInputHandler::OnDeactivate(Rml::TextInputContext *input_context)
+{
+	this->Release(input_context);
+}
+
+void RmlTextInputHandler::OnDestroy(Rml::TextInputContext *input_context)
+{
+	this->Release(input_context);
+}
+
+void RmlTextInputHandler::Release(const Rml::TextInputContext *input_context)
+{
+	if (this->active == input_context) this->active = nullptr;
 }

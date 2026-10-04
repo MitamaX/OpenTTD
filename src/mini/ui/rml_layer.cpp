@@ -17,11 +17,6 @@
 
 #include "../../safeguards.h"
 
-static int KeyModifiers(const RmlPointer &pointer)
-{
-	return (pointer.ctrl ? Rml::Input::KM_CTRL : 0) | (pointer.shift ? Rml::Input::KM_SHIFT : 0);
-}
-
 RmlLayer::RmlLayer() = default;
 RmlLayer::~RmlLayer() = default;
 
@@ -47,7 +42,7 @@ void RmlLayer::Start()
 	Rml::Initialise();
 	for (const char *font : MINI_FONTS) Rml::LoadFontFace(font);
 
-	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1));
+	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1), nullptr, &this->text_input);
 	RlwAttachLayer(this);
 }
 
@@ -79,25 +74,45 @@ void RmlLayer::TrackPointer(const RmlPointer &pointer)
 {
 	if (this->context == nullptr) return;
 
-	int modifiers = KeyModifiers(pointer);
-	this->context->ProcessMouseMove(pointer.x, pointer.y, modifiers);
+	this->context->ProcessMouseMove(pointer.x, pointer.y, pointer.modifiers);
 	for (int button = 0; button < static_cast<int>(this->held.size()); button++) {
 		if (!this->held[button] || pointer.buttons[button]) continue;
 		this->held[button] = false;
-		this->context->ProcessMouseButtonUp(button, modifiers);
+		this->context->ProcessMouseButtonUp(button, pointer.modifiers);
 	}
+
+	bool pressed_elsewhere = !this->context->IsMouseInteracting() && std::ranges::any_of(pointer.buttons, std::identity{});
+	if (this->IsTyping() && pressed_elsewhere) this->ReleaseFocus();
 }
 
 bool RmlLayer::CapturePointer(const RmlPointer &pointer)
 {
 	if (this->context == nullptr || !this->context->IsMouseInteracting()) return false;
 
-	int modifiers = KeyModifiers(pointer);
 	for (int button = 0; button < static_cast<int>(this->held.size()); button++) {
 		if (this->held[button] || !pointer.buttons[button]) continue;
 		this->held[button] = true;
-		this->context->ProcessMouseButtonDown(button, modifiers);
+		this->context->ProcessMouseButtonDown(button, pointer.modifiers);
 	}
-	if (pointer.wheel != 0) this->context->ProcessMouseWheel(Rml::Vector2f(0.0f, static_cast<float>(pointer.wheel)), modifiers);
+	if (pointer.wheel != 0) this->context->ProcessMouseWheel(Rml::Vector2f(0.0f, static_cast<float>(pointer.wheel)), pointer.modifiers);
 	return true;
+}
+
+void RmlLayer::ProcessKey(const RmlKey &key)
+{
+	if (key.identifier == Rml::Input::KI_ESCAPE) {
+		this->ReleaseFocus();
+		return;
+	}
+	this->context->ProcessKeyDown(key.identifier, key.modifiers);
+}
+
+void RmlLayer::ProcessText(char32_t character)
+{
+	this->context->ProcessTextInput(static_cast<Rml::Character>(character));
+}
+
+void RmlLayer::ReleaseFocus()
+{
+	if (Rml::Element *focus = this->context->GetFocusElement(); focus != nullptr) focus->Blur();
 }

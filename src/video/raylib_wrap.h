@@ -61,6 +61,8 @@ void RlwSetVsync(bool on);
 void RlwWarpMouse(int x, int y);
 void RlwToggleBorderless();
 bool RlwMonitorSize(int &w, int &h);
+const char *RlwClipboardText();
+void RlwSetClipboardText(const char *text);
 
 /* 2D command buffer: recorded during the game tick, replayed inside the
  * frame that RlwPresentMini draws. Colours are 0xAARRGGBB. */
