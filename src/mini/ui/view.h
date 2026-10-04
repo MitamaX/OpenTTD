@@ -10,10 +10,26 @@
 #ifndef MINI_UI_VIEW_H
 #define MINI_UI_VIEW_H
 
+#include <span>
+
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>
 
 int ArgumentIndex(const Rml::VariantList &arguments);
+
+template <typename T>
+int ArgumentSlot(std::span<const T> items, const Rml::VariantList &arguments)
+{
+	int index = ArgumentIndex(arguments);
+	return index >= 0 && static_cast<size_t>(index) < items.size() ? index : -1;
+}
+
+template <typename T>
+const T *ArgumentItem(std::span<const T> items, const Rml::VariantList &arguments)
+{
+	int slot = ArgumentSlot(items, arguments);
+	return slot < 0 ? nullptr : &items[slot];
+}
 
 class View {
 public:

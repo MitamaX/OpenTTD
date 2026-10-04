@@ -1,10 +1,41 @@
 set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/hud.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/hud.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/airport.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/arrow.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/axis.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/buoy.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/bus-stop.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/buy-land.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/canal.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/close.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/demolish.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/dock.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/fast.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/headquarters.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/industry.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/lock.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/pause.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/play.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/rail-bridge.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/rail-convert.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/rail-tunnel.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/rail-waypoint.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/rail.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/road-bridge.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/road-convert.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/road-depot.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/road-tunnel.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/road-waypoint.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/road.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/ship-depot.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/sign.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/signal.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/station.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/terraform.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/train-depot.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/trees.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/truck-stop.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/ledger.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rml

@@ -10,6 +10,8 @@ add_files(
     ledger.h
     ledger_panel.cpp
     ledger_panel.h
+    menu_tile.cpp
+    menu_tile.h
     native_slot.cpp
     native_slot.h
     panel.cpp

@@ -1,10 +1,17 @@
 add_files(
     build_catalog.cpp
     build_catalog.h
+    build_dock.cpp
+    build_dock.h
+    build_rows.cpp
+    build_rows.h
     clear_panel.cpp
     clear_panel.h
     colony_panel.cpp
     colony_panel.h
+    command_bar.cpp
+    command_bar.h
+    menu_shelf.h
     note_layer.cpp
     note_layer.h
     status_board.cpp

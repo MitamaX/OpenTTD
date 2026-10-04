@@ -18,7 +18,6 @@ struct MiniTuning {
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
 	int hud_scale = 2;
-	int menu_panel_rows = 4;
 	int grid_alpha = 32;
 	int contour_alpha = 120;
 	int relief_strength = 22;

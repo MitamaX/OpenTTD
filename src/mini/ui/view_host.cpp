@@ -13,6 +13,7 @@
 #include <RmlUi/Core.h>
 
 #include "ledger.h"
+#include "menu_tile.h"
 
 #include "../../safeguards.h"
 
@@ -40,6 +41,12 @@ static void RegisterViewTypes(Rml::Context &context)
 	types.RegisterArray<Rml::Vector<LedgerSection>>();
 
 	types.RegisterArray<Rml::Vector<Rml::String>>();
+
+	Rml::StructHandle<MenuTile> tile = types.RegisterStruct<MenuTile>();
+	tile.RegisterMember("label", &MenuTile::label);
+	tile.RegisterMember("icon", &MenuTile::icon);
+	tile.RegisterMember("active", &MenuTile::active);
+	types.RegisterArray<Rml::Vector<MenuTile>>();
 
 	context.RemoveDataModel(VIEW_TYPES_MODEL);
 }

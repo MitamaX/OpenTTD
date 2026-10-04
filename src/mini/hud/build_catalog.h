@@ -16,22 +16,26 @@
 
 #include "../../strings_type.h"
 #include "../tools/tool_kind.h"
+#include "../ui/menu_tile.h"
 
 struct MiniMenuItem {
 	StringID str;
 	std::string_view fallback;
 	MiniTool tool;
+	std::string_view icon;
 };
 
 struct MiniMenuCategory {
 	StringID str;
 	std::string_view fallback;
-	MiniTool icon;
+	std::string_view icon;
 	std::span<const MiniMenuItem> items;
 };
 
 std::span<const MiniMenuCategory> BuildCategories();
 std::span<const MiniMenuItem> CommandItems();
 std::string ToolLabel(MiniTool tool);
+MenuTile ToolTile(const MiniMenuItem &item);
+MenuTile CategoryTile(const MiniMenuCategory &category, bool open);
 
 #endif /* MINI_HUD_BUILD_CATALOG_H */

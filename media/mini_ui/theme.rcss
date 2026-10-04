@@ -38,7 +38,10 @@ body {
 	--radius-chip: 5dp;
 	--icon: 10dp;
 	--hud-margin: 8dp;
-	--bar-clearance: 64dp;
+	--tile-size: 62dp;
+	--tile-gap: 3dp;
+	--shelf-width: 192dp;
+	--art: 30dp;
 
 	--snap: 0.12s cubic-out;
 	--spring: 0.35s back-out;
@@ -74,6 +77,34 @@ div, handle {
 
 .press.off:hover, .press.off:active {
 	transform: translateY(0dp);
+}
+
+.scroll-list {
+	overflow-y: scroll;
+}
+
+scrollbarvertical {
+	width: 6dp;
+}
+
+scrollbarvertical slidertrack {
+	background-color: #00000040;
+	border-radius: 3dp;
+}
+
+scrollbarvertical sliderbar {
+	min-height: 18dp;
+	background-color: var(--tile-hover);
+	border-radius: 3dp;
+}
+
+scrollbarvertical sliderbar:hover, scrollbarvertical sliderbar:active {
+	background-color: var(--accent);
+}
+
+scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
+	width: 0dp;
+	height: 0dp;
 }
 
 [tone=plain] {

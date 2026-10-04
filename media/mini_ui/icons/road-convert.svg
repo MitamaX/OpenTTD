@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+	<g stroke="#1d1b29" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+		<rect x="2" y="3" width="28" height="10" rx="1.5" fill="#5d6275"/>
+		<rect x="4" y="7.3" width="3.5" height="1.4" rx="0.4" fill="#f6cd4c" stroke="none"/>
+		<rect x="10" y="7.3" width="3.5" height="1.4" rx="0.4" fill="#f6cd4c" stroke="none"/>
+		<rect x="16" y="7.3" width="3.5" height="1.4" rx="0.4" fill="#f6cd4c" stroke="none"/>
+		<rect x="22" y="7.3" width="3.5" height="1.4" rx="0.4" fill="#f6cd4c" stroke="none"/>
+		<rect x="27.5" y="7.3" width="3.5" height="1.4" rx="0.4" fill="#f6cd4c" stroke="none"/>
+		<path d="M10.8 19 A6 6 0 0 1 21.2 19" fill="none" stroke="#1d1b29" stroke-width="4.6"/><path d="M10.8 19 A6 6 0 0 1 21.2 19" fill="none" stroke="#f08a3c" stroke-width="2"/><path d="M21.2 25 A6 6 0 0 1 10.8 25" fill="none" stroke="#1d1b29" stroke-width="4.6"/><path d="M21.2 25 A6 6 0 0 1 10.8 25" fill="none" stroke="#f08a3c" stroke-width="2"/><path d="M23.3 17.8 L22.5 21.3 L19.1 20.2 Z" fill="#f08a3c"/><path d="M8.7 26.2 L9.5 22.8 L12.9 23.8 Z" fill="#f08a3c"/>
+	</g>
+</svg>

@@ -61,9 +61,10 @@
 #include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
-#include "mini/hud/build_catalog.h"
+#include "mini/hud/build_dock.h"
 #include "mini/hud/clear_panel.h"
 #include "mini/hud/colony_panel.h"
+#include "mini/hud/command_bar.h"
 #include "mini/hud/note_layer.h"
 #include "mini/hud/status_board.h"
 #include "mini/hud/status_stream.h"
@@ -151,9 +152,6 @@ static bool _mini_active = false;
 /* Mini UI frame size in pixels; drawing goes through the raylib command
  * buffer, so this only mirrors the screen dimensions. */
 static int _fbw, _fbh;
-
-static int _build_scroll = 0;
-static MiniTool _build_scroll_tool = MiniTool::None;
 
 static bool _prev_left = false;
 static PressOwner _press_owner;
@@ -369,15 +367,6 @@ static bool HandleLabelClick(int x, int y)
 	return true;
 }
 
-/* Bottom-left build menu: a category bar with one panel of square icon tiles
- * above it, three per row. Drawn in screen space after Present(), so hit
- * rects live in screen pixels. */
-static int _menu_open = -1;
-static int _menu_scroll = 0;
-static Rect _menu_panel_rect;
-static std::vector<std::pair<Rect, int>> _menu_cat_hits;
-static std::vector<std::pair<Rect, MiniTool>> _menu_item_hits;
-
 static bool InRect(const Rect &r, int x, int y)
 {
 	return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
@@ -393,18 +382,6 @@ static void ChromeTile(const Rect &r, bool active)
 	RlwCmdRoundRect(r.left + b, r.top + b, r.right - b, r.bottom - b, rad, active ? COL_CH_ACTIVE : COL_CH_TILE);
 }
 
-static int MenuTileSide()
-{
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int tw = 0;
-	for (const MiniMenuCategory &c : BuildCategories()) {
-		tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(c.str, c.fallback)).width);
-		for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(it.str, it.fallback)).width);
-	}
-	for (const MiniMenuItem &it : CommandItems()) tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(it.str, it.fallback)).width);
-	return std::max(tw + 10, 3 * lh);
-}
-
 static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
 	_canvas.ThickLine(x0, y0, x1, y1, width, c);
@@ -413,505 +390,6 @@ static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t 
 static void ScreenFillCircle(int cx, int cy, int r, uint32_t c)
 {
 	_canvas.FillCircle(cx, cy, r, c);
-}
-
-/* Tile icons reuse the map's colour language so the menu previews what the
- * tool paints on the terrain. */
-static void DrawToolIcon(MiniTool tool, int cx, int cy, int is)
-{
-	int h = is / 2;
-	int t = std::max(2, is / 5);
-	switch (tool) {
-		case MiniTool::Rail:
-			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_PAPER);
-			break;
-		case MiniTool::Convert:
-			ScreenThickLine(cx - h, cy + h - 2, cx + h, cy - 2, t, COL_BRIDGE);
-			ScreenThickLine(cx - h, cy + 2, cx + h, cy - h + 2, t, COL_GO);
-			break;
-		case MiniTool::RoadConvert:
-			ScreenFillRect(cx - h, cy - is / 4 - 2, cx + h, cy - 2, COL_ROAD);
-			ScreenFillRect(cx - h, cy + 2, cx + h, cy + is / 4 + 2, COL_GO);
-			break;
-		case MiniTool::Road:
-			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_ROAD);
-			for (int i = -1; i <= 1; i++) ScreenFillRect(cx + i * (is / 3) - 1, cy - 1, cx + i * (is / 3) + 1, cy + 1, COL_PAPER);
-			break;
-		case MiniTool::Station:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_RAIL_B);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_RAIL);
-			break;
-		case MiniTool::RailWaypoint:
-			ScreenThickLine(cx - h, cy, cx + h, cy, t, COL_PAPER);
-			ScreenFillRect(cx - t, cy - h + 2, cx + t, cy + h - 2, COL_ST_RAIL);
-			break;
-		case MiniTool::RoadWaypoint:
-			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_ROAD);
-			ScreenFillRect(cx - t, cy - h + 2, cx + t, cy + h - 2, COL_ST_ROAD);
-			break;
-		case MiniTool::BusStop:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_ROAD_B);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_ROAD);
-			ScreenFillCircle(cx, cy, t, COL_PAPER);
-			break;
-		case MiniTool::TruckStop:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_ROAD_B);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_ROAD);
-			ScreenFillRect(cx - t, cy - t, cx + t, cy + t, COL_PAPER);
-			break;
-		case MiniTool::TrainDepot:
-		case MiniTool::RoadDepot:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ROAD);
-			ScreenFillRect(cx + h - 2, cy - is / 4, cx + h, cy + is / 4, COL_PAPER);
-			break;
-		case MiniTool::Signal:
-			ScreenFillCircle(cx - is / 4, cy + is / 4, t, COL_STOP);
-			ScreenFillCircle(cx + is / 4, cy - is / 4, t, COL_GO);
-			break;
-		case MiniTool::ShipDepot:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
-			ScreenFillRect(cx + h - 2, cy - is / 4, cx + h, cy + is / 4, COL_PAPER);
-			break;
-		case MiniTool::Dock:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
-			ScreenFillRect(cx - t, cy - h, cx + t, cy + h, COL_BRIDGE);
-			break;
-		case MiniTool::Buoy:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
-			ScreenFillCircle(cx, cy, t + 1, COL_STOP);
-			break;
-		case MiniTool::Airport:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_ST_AIR_B);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_ST_AIR);
-			ScreenFillRect(cx - h + 2, cy - 1, cx + h - 2, cy + 1, COL_PAPER);
-			break;
-		case MiniTool::Canal:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_BRIDGE);
-			ScreenFillRect(cx - h, cy - is / 4, cx + h, cy + is / 4, COL_WATER);
-			break;
-		case MiniTool::Lock:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_WATER);
-			ScreenFillRect(cx - is / 4 - 1, cy - h, cx - is / 4 + 1, cy + h, COL_PAPER);
-			ScreenFillRect(cx + is / 4 - 1, cy - h, cx + is / 4 + 1, cy + h, COL_PAPER);
-			break;
-		case MiniTool::RailTunnel:
-		case MiniTool::RoadTunnel:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, tool == MiniTool::RailTunnel ? COL_PAPER : COL_BRIDGE);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_TUNNEL);
-			break;
-		case MiniTool::RailBridge:
-		case MiniTool::RoadBridge:
-			ScreenFillRect(cx - h, cy + is / 5, cx + h, cy + h, COL_WATER);
-			ScreenFillRect(cx - h, cy - t, cx + h, cy, COL_BRIDGE);
-			ScreenFillRect(cx - h, cy, cx - h + t, cy + is / 5, COL_BRIDGE);
-			ScreenFillRect(cx + h - t, cy, cx + h, cy + is / 5, COL_BRIDGE);
-			ScreenFillRect(cx - h, cy - t - 2, cx + h, cy - t - 1, tool == MiniTool::RailBridge ? COL_PAPER : COL_CATENARY);
-			break;
-		case MiniTool::Terraform:
-			ScreenFillRect(cx - h, cy + is / 6, cx + h, cy + h, _height_ramp[3]);
-			ScreenFillRect(cx - h + is / 5, cy - is / 6, cx + h - is / 5, cy + is / 6, _height_ramp[6]);
-			ScreenFillRect(cx - h + 2 * is / 5, cy - h, cx + h - 2 * is / 5, cy - is / 6, _height_ramp[9]);
-			break;
-		case MiniTool::Demolish:
-			ScreenThickLine(cx - h, cy - h, cx + h, cy + h, t, COL_STOP);
-			ScreenThickLine(cx - h, cy + h, cx + h, cy - h, t, COL_STOP);
-			break;
-		case MiniTool::Headquarters: {
-			uint32_t cc = Company::IsValidID(_local_company) ? _company_rgb[_company_colours[_local_company]] : COL_OBJ;
-			ScreenFillRect(cx - h, cy - is / 6, cx + h, cy + h, COL_OBJ_B);
-			ScreenFillRect(cx - h + 2, cy - is / 6 + 2, cx + h - 2, cy + h - 2, cc);
-			ScreenFillRect(cx - t, cy - h, cx + t, cy - is / 6, COL_OBJ);
-			break;
-		}
-		case MiniTool::Trees:
-			ScreenFillRect(cx - 1, cy, cx + 1, cy + h, COL_ROAD);
-			ScreenFillCircle(cx, cy - is / 6, h - 1, COL_TREE);
-			break;
-		case MiniTool::BuyLand:
-			ScreenFillRect(cx - h, cy - h, cx + h, cy + h, COL_FIELDS);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy + h - 2, COL_OBJ);
-			ScreenFillCircle(cx, cy, t, COL_ST_BUOY);
-			break;
-		case MiniTool::Industry:
-			ScreenFillRect(cx - h, cy - is / 6, cx + h, cy + h, COL_IND_B);
-			ScreenFillRect(cx - h + 2, cy - is / 6 + 2, cx + h - 2, cy + h - 2, COL_IND);
-			ScreenFillRect(cx + h / 4, cy - h, cx + h / 4 + t, cy - is / 6, COL_IND_B);
-			break;
-		case MiniTool::Sign:
-			ScreenFillRect(cx - t / 2, cy - is / 6, cx + t / 2, cy + h, COL_ROAD);
-			ScreenFillRect(cx - h, cy - h, cx + h, cy - is / 6, COL_PAPER);
-			ScreenFillRect(cx - h + 2, cy - h + 2, cx + h - 2, cy - is / 6 - 2, COL_INK);
-			break;
-		default:
-			break;
-	}
-}
-
-/* Build panel: the tool in hand names itself above the build menu and every
- * variant it can take is a row that switches to it, so a type is chosen by
- * pointing at it instead of by walking a hidden cycle. */
-struct MiniBuildRow {
-	std::string text;
-	ToolOption kind = ToolOption::RailType;
-	int value = 0;
-	bool active = false;
-	bool head = false;
-	/* A row of glyph squares instead of a label: one per direction, drawn as
-	 * the arrow the blueprint takes on screen. */
-	std::vector<int> cells;
-	bool axis = false;
-	int cur = 0;
-};
-
-static const int MINI_BUILD_VIS_ROWS = 12;
-
-static std::vector<MiniBuildRow> _build_rows;
-static std::vector<std::tuple<Rect, ToolOption, int>> _build_hits;
-static Rect _build_panel_rect;
-static bool _build_scrolls = false;
-
-static void AddBuildHead(std::string text)
-{
-	MiniBuildRow row;
-	row.text = std::move(text);
-	row.head = true;
-	_build_rows.push_back(std::move(row));
-}
-
-static void AddBuildOpt(std::string text, ToolOption kind, int value, bool active)
-{
-	MiniBuildRow row;
-	row.text = std::move(text);
-	row.kind = kind;
-	row.value = value;
-	row.active = active;
-	_build_rows.push_back(std::move(row));
-}
-
-static void AddBuildDirs(ToolOption kind, std::vector<int> cells, int cur, bool axis)
-{
-	MiniBuildRow row;
-	row.kind = kind;
-	row.cells = std::move(cells);
-	row.cur = cur;
-	row.axis = axis;
-	_build_rows.push_back(std::move(row));
-}
-
-static const std::vector<int> MINI_DIR_TURNS = {DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_NW};
-static const std::vector<int> MINI_DIR_AXES = {DIAGDIR_SW, DIAGDIR_SE};
-
-static void CollectBuildRows()
-{
-	_build_rows.clear();
-
-	const Company *c = Company::GetIfValid(_local_company);
-	MiniTool kind = _tool.Kind();
-
-	if (c != nullptr && ToolUsesRailType(kind)) {
-		AddBuildHead("선로");
-		for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
-			if (!c->avail_railtypes.Test(rt)) continue;
-			AddBuildOpt(GameText(GetRailTypeInfo(rt)->strings.name), ToolOption::RailType, (int)rt, rt == _choices.Rail());
-		}
-	}
-
-	if (c != nullptr && ToolUsesRoadType(kind)) {
-		AddBuildHead("도로");
-		for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
-			if (!c->avail_roadtypes.Test(rt)) continue;
-			AddBuildOpt(GameText(GetRoadTypeInfo(rt)->strings.name), ToolOption::RoadType, (int)rt, rt == _choices.Road());
-		}
-	}
-
-	if (IsRoadStopTool(kind)) {
-		AddBuildHead("형태");
-		AddBuildOpt("통과", ToolOption::StopShape, 1, _choices.StopThrough());
-		AddBuildOpt("만입", ToolOption::StopShape, 0, !_choices.StopThrough());
-		AddBuildHead("방향");
-		bool through = _choices.StopThrough();
-		AddBuildDirs(ToolOption::Direction, through ? MINI_DIR_AXES : MINI_DIR_TURNS, _choices.StopFacing(), through);
-	}
-
-	if (IsDirPointTool(kind)) {
-		AddBuildHead("방향");
-		if (kind == MiniTool::ShipDepot) {
-			AddBuildDirs(ToolOption::Direction, MINI_DIR_AXES, AxisToDiagDir(DiagDirToAxis(_choices.PointFacing())), true);
-		} else {
-			AddBuildDirs(ToolOption::Direction, MINI_DIR_TURNS, _choices.PointFacing(), false);
-		}
-	}
-
-	if (kind == MiniTool::Station) {
-		AddBuildHead("승강장");
-		AddBuildDirs(ToolOption::StationAxis, MINI_DIR_AXES, AxisToDiagDir(_choices.StationAxis()), true);
-	}
-
-	if (kind == MiniTool::Signal) {
-		AddBuildHead("신호");
-		for (SignalType st : _choices.Signals()) {
-			AddBuildOpt(std::string(SignalTypeLabel(st)), ToolOption::SignalType, (int)st, st == _choices.Signal());
-		}
-	}
-
-	if (IsBridgeTool(kind)) {
-		uint len = std::max(_tool.Plans().line.BridgeLength(), 1U);
-		VehicleType vt = kind == MiniTool::RailBridge ? VEH_TRAIN : VEH_ROAD;
-		AddBuildHead("다리");
-		for (BridgeType bt = 0; bt < MAX_BRIDGES; bt++) {
-			if (!CheckBridgeAvailability(bt, len).Succeeded()) continue;
-			const BridgeSpec *spec = GetBridgeSpec(bt);
-			AddBuildOpt(GameText(STR_SELECT_BRIDGE_INFO_NAME_MAX_SPEED, spec->material, PackVelocity(spec->speed, vt)),
-					ToolOption::BridgeType, (int)bt, bt == _choices.Bridge(len));
-		}
-	}
-
-	if (kind == MiniTool::Airport) {
-		AddBuildHead("공항");
-		for (uint8_t i = 0; i < NUM_AIRPORTS; i++) {
-			const AirportSpec *as = AirportSpec::Get(i);
-			if (!as->IsAvailable()) continue;
-			AddBuildOpt(GameText(as->name), ToolOption::AirportType, (int)i, i == _choices.Airport());
-		}
-	}
-
-	if (kind == MiniTool::Industry) {
-		AddBuildHead("산업");
-		for (IndustryType it = 0; it < NUM_INDUSTRYTYPES; it++) {
-			if (!IndustryFundable(it)) continue;
-			const IndustrySpec *indsp = GetIndustrySpec(it);
-			AddBuildOpt(fmt::format("{}  {}", GameText(indsp->name),
-					GameText(STR_JUST_CURRENCY_LONG, indsp->GetConstructionCost())),
-					ToolOption::IndustryType, (int)it, it == _choices.Industry());
-		}
-	}
-}
-
-/* Sits beside the tool list, growing upwards from the bottom edge it is
- * given, so opening or closing the list never moves it. */
-static void DrawBuildPanel(int px, int bottom)
-{
-	_build_hits.clear();
-	_build_panel_rect = {0, 0, -1, -1};
-	_build_scrolls = false;
-	if (_tool.Kind() != _build_scroll_tool) {
-		_build_scroll_tool = _tool.Kind();
-		_build_scroll = 0;
-	}
-	if (_tool.Kind() == MiniTool::None) return;
-
-	CollectBuildRows();
-
-	int s = _tuning.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int gap = 2 * s;
-	int pad = 4 * s;
-	int row_h = lh + 3 * s;
-	int indent = 3 * s;
-	int cell = row_h - 2 * s;
-
-	std::string title = ToolLabel(_tool.Kind());
-	int wmax = (int)GetStringBoundingBox(title).width;
-	for (const MiniBuildRow &r : _build_rows) {
-		int w = r.cells.empty() ? (int)GetStringBoundingBox(r.text).width
-				: (int)r.cells.size() * cell + ((int)r.cells.size() - 1) * gap;
-		wmax = std::max(wmax, w + (r.head ? 0 : indent));
-	}
-
-	int total = (int)_build_rows.size();
-	int room = std::max(1, (bottom - 2 * pad) / row_h - 1);
-	int vis = std::min({total, MINI_BUILD_VIS_ROWS, room});
-	_build_scrolls = vis < total;
-	_build_scroll = Clamp(_build_scroll, 0, total - vis);
-
-	int pw = wmax + 2 * pad + (_build_scrolls ? 2 * s : 0);
-	int ph = row_h * (vis + 1) + 2 * pad;
-	int py = bottom - ph + 1;
-	_build_panel_rect = {px, py, px + pw - 1, py + ph - 1};
-	ChromePanel(_build_panel_rect.left, _build_panel_rect.top, _build_panel_rect.right, _build_panel_rect.bottom);
-
-	int ty = py + pad;
-	_canvas.DrawText(title, px + pad, ty, COL_CH_ACCENT);
-	ty += row_h;
-
-	for (int i = 0; i < vis; i++) {
-		const MiniBuildRow &row = _build_rows[i + _build_scroll];
-		if (row.head) {
-			_canvas.DrawText(row.text, px + pad, ty, COL_CH_DIM);
-		} else if (!row.cells.empty()) {
-			int cx = px + pad + indent;
-			for (int d : row.cells) {
-				Rect cr = {cx, ty - s, cx + cell - 1, ty - s + cell - 1};
-				bool on = d == row.cur;
-				ChromeTile(cr, on);
-				int mx = (cr.left + cr.right) / 2;
-				int my = (cr.top + cr.bottom) / 2;
-				int reach = cell / 3;
-				int dx = _diag_dx[d] * reach;
-				int dy = _diag_dy[d] * reach;
-				uint32_t gc = on ? COL_CH_ACCENT : COL_CH_TEXT;
-				_canvas.ThickLine(mx - dx, my - dy, mx + dx, my + dy, std::max(2, s), gc);
-				if (!row.axis) _canvas.FillCircle(mx + dx, my + dy, std::max(2, s), gc);
-				_build_hits.emplace_back(cr, row.kind, d);
-				cx += cell + gap;
-			}
-		} else {
-			Rect rr = {px + s, ty - s, px + pw - 1 - s, ty + row_h - s - 1};
-			bool hover = _cursor.in_window && InRect(rr, _cursor.pos.x, _cursor.pos.y);
-			if (row.active || hover) RlwCmdRoundRect(rr.left, rr.top, rr.right, rr.bottom, 2 * s, row.active ? COL_CH_ACTIVE : COL_CH_TILE);
-			_canvas.DrawText(row.text, px + pad + indent, ty, row.active ? COL_CH_ACCENT : COL_CH_TEXT);
-			_build_hits.emplace_back(rr, row.kind, row.value);
-		}
-		ty += row_h;
-	}
-
-	if (_build_scrolls) {
-		int track_top = py + pad + row_h;
-		int track_h = row_h * vis;
-		int bx1 = px + pw - 1 - s;
-		int bx0 = std::max(px, bx1 - s + 1);
-		int ty0 = track_top + track_h * _build_scroll / total;
-		int ty1 = track_top + track_h * (_build_scroll + vis) / total - 1;
-		ScreenFillRect(bx0, ty0, bx1, ty1, COL_CH_DIM);
-	}
-}
-
-static bool HandleBuildPanelClick(int x, int y)
-{
-	for (const auto &[r, kind, value] : _build_hits) {
-		if (!InRect(r, x, y)) continue;
-		_choices.Apply(kind, value);
-		return true;
-	}
-	return InRect(_build_panel_rect, x, y);
-}
-
-static void DrawMenuTile(const Rect &r, StringID str, std::string_view fallback, MiniTool icon, bool active)
-{
-	ChromeTile(r, active);
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int cx = (r.left + r.right) / 2;
-	int icon_h = r.bottom - r.top + 1 - lh - 9;
-	DrawToolIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
-	if (const CanvasText *e = _canvas.Text(GameTextOr(str, fallback)); e != nullptr) {
-		_canvas.DrawText(*e, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
-	}
-}
-
-static void DrawBuildMenu()
-{
-	_menu_cat_hits.clear();
-	_menu_item_hits.clear();
-
-	int s = _tuning.hud_scale;
-	int gap = 2 * s;
-	int margin = 6 * s;
-	int pp = 4 * s;
-	int tile = MenuTileSide();
-
-	int bar_top = _fbh - margin - tile;
-	int cols = 3;
-	int list_w = cols * tile + (cols - 1) * gap + 2 * pp;
-	DrawBuildPanel(_menu_open >= 0 ? margin + list_w + gap : margin, bar_top - gap - 1);
-
-	if (_menu_open >= 0) {
-		const MiniMenuCategory &cat = BuildCategories()[_menu_open];
-		int n = (int)cat.items.size();
-		int rows = (n + cols - 1) / cols;
-		int vis = _tuning.menu_panel_rows;
-		_menu_scroll = Clamp(_menu_scroll, 0, std::max(0, rows - vis));
-		int pw = list_w;
-		int ph = vis * tile + (vis - 1) * gap + 2 * pp;
-		int py = bar_top - gap - ph;
-		_menu_panel_rect = {margin, py, margin + pw - 1, py + ph - 1};
-		ChromePanel(margin, py, margin + pw - 1, py + ph - 1);
-		for (int i = 0; i < n; i++) {
-			int row = i / cols - _menu_scroll;
-			if (row < 0 || row >= vis) continue;
-			const MiniMenuItem &it = cat.items[i];
-			int ix = margin + pp + (i % cols) * (tile + gap);
-			int iy = py + pp + row * (tile + gap);
-			Rect ir = {ix, iy, ix + tile - 1, iy + tile - 1};
-			DrawMenuTile(ir, it.str, it.fallback, it.tool, _tool.Kind() == it.tool);
-			_menu_item_hits.emplace_back(ir, it.tool);
-		}
-		if (rows > vis) {
-			int track_top = py + pp;
-			int track_h = ph - 2 * pp;
-			int bx1 = margin + pw - 1 - s;
-			int bx0 = std::max(margin, bx1 - s + 1);
-			int ty0 = track_top + track_h * _menu_scroll / rows;
-			int ty1 = track_top + track_h * (_menu_scroll + vis) / rows - 1;
-			ScreenFillRect(bx0, ty0, bx1, ty1, COL_CH_DIM);
-		}
-	}
-
-	for (int c = 0; c < (int)BuildCategories().size(); c++) {
-		const MiniMenuCategory &cat = BuildCategories()[c];
-		int x = margin + c * (tile + gap);
-		Rect r = {x, bar_top, x + tile - 1, bar_top + tile - 1};
-		DrawMenuTile(r, cat.str, cat.fallback, cat.icon, _menu_open == c);
-		_menu_cat_hits.emplace_back(r, c);
-	}
-}
-
-static bool HandleMenuClick(int x, int y)
-{
-	for (const auto &[r, c] : _menu_cat_hits) {
-		if (InRect(r, x, y)) {
-			/* The list is where a tool is picked, so closing it puts the tool
-			 * down as well. */
-			if (_menu_open == c) {
-				_menu_open = -1;
-				_mode.Idle();
-			} else {
-				_menu_open = c;
-			}
-			_menu_scroll = 0;
-			return true;
-		}
-	}
-	for (const auto &[r, t] : _menu_item_hits) {
-		if (InRect(r, x, y)) {
-			_mode.ToggleBuild(t);
-			return true;
-		}
-	}
-	return false;
-}
-
-static std::vector<std::pair<Rect, MiniTool>> _cmd_hits;
-
-static void DrawCmdBar()
-{
-	_cmd_hits.clear();
-
-	int s = _tuning.hud_scale;
-	int gap = 2 * s;
-	int margin = 6 * s;
-	int tile = MenuTileSide();
-
-	int n = (int)CommandItems().size();
-	int x0 = _fbw - margin - n * tile - (n - 1) * gap;
-	int y = _fbh - margin - tile;
-	for (int i = 0; i < n; i++) {
-		const MiniMenuItem &it = CommandItems()[i];
-		int x = x0 + i * (tile + gap);
-		Rect r = {x, y, x + tile - 1, y + tile - 1};
-		DrawMenuTile(r, it.str, it.fallback, it.tool, _tool.Kind() == it.tool);
-		_cmd_hits.emplace_back(r, it.tool);
-	}
-}
-
-static bool HandleCmdClick(int x, int y)
-{
-	for (const auto &[r, t] : _cmd_hits) {
-		if (InRect(r, x, y)) {
-			_mode.ToggleBuild(t);
-			return true;
-		}
-	}
-	return false;
 }
 
 /* Top-right window bar: category tiles whose panels open native status
@@ -1413,8 +891,10 @@ static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 	std::vector<std::unique_ptr<HudPart>> parts;
 	parts.push_back(std::make_unique<ColonyPanel>());
 	parts.push_back(std::make_unique<StatusStream>());
+	parts.push_back(std::make_unique<BuildDock>());
 	parts.push_back(std::make_unique<ToastStack>(NewsRefFollow));
 	parts.push_back(std::make_unique<ClearPanel>());
+	parts.push_back(std::make_unique<CommandBar>());
 	parts.push_back(std::make_unique<NoteLayer>());
 	return parts;
 }
@@ -4458,8 +3938,6 @@ bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
-	DrawBuildMenu();
-	DrawCmdBar();
 	DrawWinBar();
 	DrawMiniWndsImGui();
 	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, _win_bar_bottom);
@@ -4472,7 +3950,7 @@ static void Deactivate()
 	_mini_active = false;
 	_mode.Idle();
 	_overlay.Reset();
-	_menu_open = -1;
+	_build_shelf.Close();
 	_win_open = -1;
 	_tool.Abort();
 	_camera.Halt();
@@ -4634,11 +4112,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) _camera.Drag(_cursor.delta.x, _cursor.delta.y);
 
 	if (_cursor.wheel != 0) {
-		if (_menu_open >= 0 && InRect(_menu_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
-			_menu_scroll += _cursor.wheel > 0 ? 1 : -1;
-		} else if (_build_scrolls && InRect(_build_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
-			_build_scroll += _cursor.wheel > 0 ? 1 : -1;
-		} else if (_mode.Following()) {
+		if (_mode.Following()) {
 			/* While following, zooming keeps the vehicle centred instead of
 			 * anchoring the cursor point. */
 			_camera.Zoom(_cursor.wheel < 0);
@@ -4650,7 +4124,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool.Kind() == MiniTool::None) {
 				if (_mode.PickingOrders()) {
 					_mode.PickOrderAt(CursorPoint());
@@ -4693,7 +4167,7 @@ static void UnwindEscape()
 		CloseMiniWnd(top);
 		return;
 	}
-	_menu_open = -1;
+	_build_shelf.Close();
 	_win_open = -1;
 }
 

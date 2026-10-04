@@ -42,7 +42,5 @@ void ClearPanel::Collect()
 
 void ClearPanel::Pick(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
 {
-	std::span<const MiniClearCategory> cats = ClearCategories();
-	int index = ArgumentIndex(arguments);
-	if (index >= 0 && static_cast<size_t>(index) < cats.size()) _clear_filter.Select(cats[index].mode);
+	if (const MiniClearCategory *cat = ArgumentItem(ClearCategories(), arguments); cat != nullptr) _clear_filter.Select(cat->mode);
 }
