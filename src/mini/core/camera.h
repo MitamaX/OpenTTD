@@ -13,6 +13,9 @@
 #include <optional>
 #include <utility>
 
+#include "../../core/geometry_type.hpp"
+#include "../../tile_type.h"
+
 inline constexpr double MIN_PPT = 4.0;
 inline constexpr double MAX_PPT = 64.0;
 
@@ -35,6 +38,10 @@ public:
 	int ScreenY(double tx) const;
 	double MapXAt(int sy) const;
 	double MapYAt(int sx) const;
+	TilePoint MapAt(int sx, int sy) const;
+	Rect AreaRect(int tx0, int ty0, int tx1, int ty1) const;
+	Rect TileRect(int tx, int ty) const;
+	Rect TileRect(TileIndex tile) const;
 
 	void CentreOn(double tx, double ty);
 	void GlideTo(double tx, double ty);

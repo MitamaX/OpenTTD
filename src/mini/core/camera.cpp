@@ -97,6 +97,26 @@ double Camera::MapYAt(int sx) const
 	return (sx - this->BaseX()) / this->ppt;
 }
 
+TilePoint Camera::MapAt(int sx, int sy) const
+{
+	return {this->MapXAt(sy), this->MapYAt(sx)};
+}
+
+Rect Camera::AreaRect(int tx0, int ty0, int tx1, int ty1) const
+{
+	return {this->ScreenX(ty0), this->ScreenY(tx0), this->ScreenX(ty1 + 1) - 1, this->ScreenY(tx1 + 1) - 1};
+}
+
+Rect Camera::TileRect(int tx, int ty) const
+{
+	return this->AreaRect(tx, ty, tx, ty);
+}
+
+Rect Camera::TileRect(TileIndex tile) const
+{
+	return this->TileRect(TileX(tile), TileY(tile));
+}
+
 void Camera::CentreOn(double tx, double ty)
 {
 	this->x = tx;
@@ -137,7 +157,7 @@ void Camera::ZoomAt(int sx, int sy, bool in)
 	this->Zoom(in);
 	this->anchor_sx = sx;
 	this->anchor_sy = sy;
-	this->anchor = {this->MapXAt(sy), this->MapYAt(sx)};
+	this->anchor = this->MapAt(sx, sy);
 	this->anchored = true;
 }
 

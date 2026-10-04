@@ -758,10 +758,7 @@ static void DrawVehicleRing(int ppt)
 	int cx = _camera.ScreenX(wy);
 	int cy = _camera.ScreenY(wx);
 	int r = std::max(6, ppt / 2 + 3);
-	_canvas.FillRect(cx - r, cy - r, cx + r, cy - r + 1, COL_PAPER);
-	_canvas.FillRect(cx - r, cy + r - 1, cx + r, cy + r, COL_PAPER);
-	_canvas.FillRect(cx - r, cy - r, cx - r + 1, cy + r, COL_PAPER);
-	_canvas.FillRect(cx + r - 1, cy - r, cx + r, cy + r, COL_PAPER);
+	_canvas.Frame({cx - r, cy - r, cx + r, cy + r}, 2, COL_PAPER);
 }
 
 void ShowIndustryViewWindow(IndustryID industry);

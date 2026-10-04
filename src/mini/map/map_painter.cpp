@@ -66,7 +66,7 @@ void MapPainter::PaintRow(const TileSpan &span, int ty, int ppt, bool layered)
 	MiniSprite run_art = MiniSprite::End;
 	auto flush = [&](int tx_end) {
 		if (run_start < 0) return;
-		int x0 = _camera.ScreenX(ty), y0 = _camera.ScreenY(run_start), x1 = _camera.ScreenX(ty + 1) - 1, y1 = _camera.ScreenY(tx_end) - 1;
+		auto [x0, y0, x1, y1] = _camera.AreaRect(run_start, ty, tx_end - 1, ty);
 		if (run_art == MiniSprite::End || !MiniAtlasTileRun(run_art, x0, y0, x1, y1, tx_end - run_start, _canvas.Tone(run_c))) {
 			_canvas.FillRect(x0, y0, x1, y1, run_c);
 		}
@@ -220,10 +220,7 @@ static void DrawWater(int x0, int y0, int x1, int y1, int ppt)
 
 void MapPainter::DrawTile(TileIndex tile, int tx, int ty, int ppt)
 {
-	int x0 = _camera.ScreenX(ty);
-	int y0 = _camera.ScreenY(tx);
-	int x1 = _camera.ScreenX(ty + 1) - 1;
-	int y1 = _camera.ScreenY(tx + 1) - 1;
+	auto [x0, y0, x1, y1] = _camera.TileRect(tx, ty);
 	if (x1 < 0 || y1 < 0 || x0 >= _camera.Width() || y0 >= _camera.Height()) return;
 
 	int rail_w = std::max(1, ppt / 6);
@@ -370,10 +367,7 @@ void MapPainter::DrawTile(TileIndex tile, int tx, int ty, int ppt)
  * the frame. Rail reads as paper-white lines, road as catenary-yellow. */
 void MapPainter::DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer layer)
 {
-	int x0 = _camera.ScreenX(ty);
-	int y0 = _camera.ScreenY(tx);
-	int x1 = _camera.ScreenX(ty + 1) - 1;
-	int y1 = _camera.ScreenY(tx + 1) - 1;
+	auto [x0, y0, x1, y1] = _camera.TileRect(tx, ty);
 	if (x1 < 0 || y1 < 0 || x0 >= _camera.Width() || y0 >= _camera.Height()) return;
 
 	int rail_w = std::max(1, ppt / 6);

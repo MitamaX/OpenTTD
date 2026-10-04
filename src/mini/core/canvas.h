@@ -15,6 +15,7 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "../../core/geometry_type.hpp"
 #include "../../gfx_type.h"
 #include "../../mini_atlas.h"
 
@@ -33,6 +34,8 @@ constexpr uint32_t TextTint(TextColour colour)
 
 class Canvas {
 public:
+	static constexpr uint OPAQUE_ALPHA = 0xFF;
+
 	void BeginFrame();
 	void SetGrey(bool grey) { this->grey = grey; }
 	uint32_t Greyed(uint32_t c) const;
@@ -40,6 +43,8 @@ public:
 
 	void FillRect(int x0, int y0, int x1, int y1, uint32_t c);
 	void BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha);
+	void BlendRect(const Rect &r, uint32_t c, uint alpha) { this->BlendRect(r.left, r.top, r.right, r.bottom, c, alpha); }
+	void Frame(const Rect &r, int width, uint32_t c, uint alpha = OPAQUE_ALPHA);
 	void ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c);
 	void FillCircle(int cx, int cy, int r, uint32_t c);
 	void FillDiamond(int cx, int cy, int r, uint32_t c);

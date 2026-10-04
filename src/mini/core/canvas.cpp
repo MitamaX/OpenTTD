@@ -57,6 +57,14 @@ void Canvas::BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
 	RlwCmdRect(x0, y0, x1, y1, (this->Tone(c) & 0x00FFFFFFU) | (static_cast<uint32_t>(Clamp<uint>(alpha, 0, 255)) << 24));
 }
 
+void Canvas::Frame(const Rect &r, int width, uint32_t c, uint alpha)
+{
+	this->BlendRect(r.left, r.top, r.right, r.top + width - 1, c, alpha);
+	this->BlendRect(r.left, r.bottom - width + 1, r.right, r.bottom, c, alpha);
+	this->BlendRect(r.left, r.top, r.left + width - 1, r.bottom, c, alpha);
+	this->BlendRect(r.right - width + 1, r.top, r.right, r.bottom, c, alpha);
+}
+
 void Canvas::ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
 	RlwCmdLine(x0, y0, x1, y1, std::max(width, 1), this->Tone(c));
