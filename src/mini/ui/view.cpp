@@ -14,6 +14,11 @@
 
 #include "../../safeguards.h"
 
+int ArgumentIndex(const Rml::VariantList &arguments)
+{
+	return arguments.empty() ? -1 : arguments[0].Get<int>(-1);
+}
+
 void View::Refresh()
 {
 	this->Collect();

@@ -19,12 +19,14 @@ namespace Rml { class ElementDocument; }
 
 class Hud {
 public:
+	explicit Hud(std::vector<std::unique_ptr<HudPart>> parts);
+
 	void Reset(Rml::Context *context);
 	void Refresh();
 	void ReloadStyleSheet();
 
 private:
-	std::vector<std::unique_ptr<HudPart>> parts;
+	const std::vector<std::unique_ptr<HudPart>> parts;
 	Rml::ElementDocument *document = nullptr;
 };
 

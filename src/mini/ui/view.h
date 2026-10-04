@@ -13,6 +13,8 @@
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>
 
+int ArgumentIndex(const Rml::VariantList &arguments);
+
 class View {
 public:
 	virtual ~View() = default;

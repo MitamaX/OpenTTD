@@ -12,11 +12,17 @@ body {
 	--ink-dim: #6e6a5e;
 	--accent: #8fe0e8;
 	--warn: #e0b64a;
+	--warn-ground: #453a1e;
+	--warn-ink: #ebd9a8;
 	--loss: #e05f4a;
+	--loss-ground: #4a2320;
+	--loss-ink: #f2d9d2;
 	--shadow: #0000008c;
 	--radius: 4dp;
 	--radius-tile: 3dp;
 	--icon: 10dp;
+	--hud-margin: 6dp;
+	--bar-clearance: 56dp;
 
 	font-family: "Malgun Gothic";
 	font-weight: normal;

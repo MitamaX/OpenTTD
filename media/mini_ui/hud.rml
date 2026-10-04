@@ -4,5 +4,11 @@
 	<link type="text/rcss" href="hud.rcss"/>
 </head>
 <body>
+	<div class="region toasts" data-model="toasts">
+		<div class="alert" data-for="card, index : cards" data-attr-tone="card.tone" data-style-opacity="card.opacity" data-event-click="open(index)">
+			<div class="alert-head">{{card.head}}</div>
+			<div class="alert-detail" data-if="card.detail != ''">{{card.detail}}</div>
+		</div>
+	</div>
 </body>
 </rml>

@@ -16,6 +16,10 @@
 
 static constexpr const char HUD_DOCUMENT[] = "mini_ui/hud.rml";
 
+Hud::Hud(std::vector<std::unique_ptr<HudPart>> parts) : parts(std::move(parts))
+{
+}
+
 /* RmlUi binds the regions to their data models while parsing, so every model has to exist before the document loads. */
 void Hud::Reset(Rml::Context *context)
 {

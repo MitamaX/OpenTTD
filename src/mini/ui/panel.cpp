@@ -91,8 +91,7 @@ void Panel::BindSheet(Rml::DataModelConstructor &)
 
 void Panel::Run(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
 {
-	if (arguments.empty()) return;
-	int index = arguments[0].Get<int>(-1);
+	int index = ArgumentIndex(arguments);
 	if (index < 0 || static_cast<size_t>(index) >= this->commands.size()) return;
 
 	const PanelCommand &command = this->commands[index];

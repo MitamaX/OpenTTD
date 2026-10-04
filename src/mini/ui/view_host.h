@@ -16,6 +16,8 @@
 
 class ViewHost {
 public:
+	explicit ViewHost(std::vector<std::unique_ptr<HudPart>> hud_parts);
+
 	void Frame(int width, int height, float dp_ratio, int dock_top);
 	void Show(std::unique_ptr<Panel> panel);
 	bool CloseFront();

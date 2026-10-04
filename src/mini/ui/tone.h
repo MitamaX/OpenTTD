@@ -5,21 +5,21 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file ledger.cpp Label and value rows grouped under headings, the common body of mini panels. */
+/** @file tone.h The emphasis a piece of text carries, named the way the stylesheets match it. */
 
-#include "../../stdafx.h"
-#include "ledger.h"
+#ifndef MINI_UI_TONE_H
+#define MINI_UI_TONE_H
 
-#include "../../safeguards.h"
+#include <RmlUi/Core/Types.h>
 
-LedgerLine::LedgerLine(Rml::String label, Rml::String value, Tone tone) :
-	label(std::move(label)), value(std::move(value)), tone(ToneName(tone))
-{
-}
+enum class Tone : uint8_t {
+	Plain,
+	Accent,
+	Warn,
+	Loss,
+	Dim,
+};
 
-LedgerLine LedgerLine::Total(Rml::String label, Rml::String value, Tone tone)
-{
-	LedgerLine line(std::move(label), std::move(value), tone);
-	line.total = true;
-	return line;
-}
+Rml::String ToneName(Tone tone);
+
+#endif /* MINI_UI_TONE_H */

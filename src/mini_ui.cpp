@@ -61,6 +61,8 @@
 #include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
+#include "mini/hud/toast_feed.h"
+#include "mini/hud/toast_stack.h"
 #include "mini/input/input_mode.h"
 #include "mini/input/press_owner.h"
 #include "mini/map/ground.h"
@@ -1799,90 +1801,6 @@ static bool HandleStatusClick(int x, int y)
 	return false;
 }
 
-/* Command failures land here instead of the stock modal: a stack of cards
- * above the command bar that ages out on its own. */
-struct MiniToast {
-	std::string summary;
-	std::string detail;
-	uint repeat = 1;
-	uint left_ms = 0;
-	uint full_ms = 0;
-	bool warn = false;
-	NewsReference ref{};
-};
-
-static std::vector<MiniToast> _toasts;
-static std::vector<Rect> _toast_rows;
-
-static constexpr size_t MINI_TOAST_MAX = 4;
-static constexpr uint MINI_TOAST_FADE_MS = 400;
-
-static void UpdateToasts(uint delta_ms)
-{
-	for (MiniToast &t : _toasts) t.left_ms = t.left_ms > delta_ms ? t.left_ms - delta_ms : 0;
-	std::erase_if(_toasts, [](const MiniToast &t) { return t.left_ms == 0; });
-}
-
-static void DrawToasts()
-{
-	_toast_rows.clear();
-	if (_toasts.empty()) return;
-
-	int s = _tuning.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int margin = 6 * s;
-	int pad = 5 * s;
-	int bar_w = 3 * s;
-	int card_w = std::min(340 * s, _fbw - 2 * margin);
-	int maxw = card_w - bar_w - 2 * pad;
-	int y = _fbh - margin - MenuTileSide() - 4 * s;
-
-	for (size_t i = _toasts.size(); i-- > 0;) {
-		const MiniToast &t = _toasts[i];
-		std::string head = t.repeat > 1 ? fmt::format("{} ×{}", t.summary, t.repeat) : t.summary;
-		std::string line0{TruncateText(head, maxw)};
-		std::string line1 = t.detail.empty() ? std::string{} : std::string{TruncateText(t.detail, maxw)};
-		int lines = line1.empty() ? 1 : 2;
-		int ch = lines * lh + (lines - 1) * 2 * s + 2 * pad;
-		int top = y - ch + 1;
-		if (top < 0) break;
-
-		uint a = t.left_ms >= MINI_TOAST_FADE_MS ? 255 : t.left_ms * 255 / MINI_TOAST_FADE_MS;
-		uint32_t am = a << 24;
-		uint32_t bar = (t.warn ? 0x00E05F4AU : 0x00E0B64AU) | am;
-		uint32_t bg = (t.warn ? 0x004A2320U : 0x00453A1EU) | am;
-		uint32_t tcol = (t.warn ? 0x00F2D9D2U : 0x00EBD9A8U) | am;
-
-		int x0 = (_fbw - card_w) / 2;
-		Rect r = {x0, top, x0 + card_w - 1, y};
-		ScreenFillRect(r.left, r.top, r.left + bar_w - 1, r.bottom, bar);
-		ScreenFillRect(r.left + bar_w, r.top, r.right, r.bottom, bg);
-		int tx = r.left + bar_w + pad;
-		_canvas.DrawText(line0, tx, top + pad, tcol);
-		if (!line1.empty()) {
-			_canvas.DrawText(line1, tx, top + pad + lh + 2 * s, (tcol & 0x00FFFFFFU) | ((a * 7 / 10) << 24));
-		}
-		_toast_rows.push_back(r);
-		y = top - 3 * s;
-	}
-}
-
-static void NewsRefFollow(const NewsReference &ref);
-
-static bool HandleToastClick(int x, int y)
-{
-	for (size_t i = 0; i < _toast_rows.size(); i++) {
-		if (!InRect(_toast_rows[i], x, y)) continue;
-		size_t idx = _toasts.size() - 1 - i;
-		if (idx >= _toasts.size()) return true;
-		NewsReference ref = _toasts[idx].ref;
-		_toasts.erase(_toasts.begin() + (ptrdiff_t)idx);
-		NewsRefFollow(ref);
-		return true;
-	}
-	return false;
-}
-
 static void DrawHud()
 {
 	int s = _tuning.hud_scale;
@@ -2079,7 +1997,16 @@ struct MiniWnd {
 };
 
 static std::vector<MiniWnd> _wnds;
-static ViewHost _views;
+static void NewsRefFollow(const NewsReference &ref);
+
+static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
+{
+	std::vector<std::unique_ptr<HudPart>> parts;
+	parts.push_back(std::make_unique<ToastStack>(NewsRefFollow));
+	return parts;
+}
+
+static ViewHost _views(CreateHudParts());
 
 /* Mini windows stack by ImGui focus, not by list order, so the native windows
  * under them are ordered by when each shell last held focus. */
@@ -5039,31 +4966,11 @@ bool MiniUiShowError(std::string summary, std::string detail, bool warn)
 	if (CommandProbe::Open()) return true;
 	if (!_mini_active || summary.empty()) return false;
 
-	uint life = std::max<uint>(_settings_client.gui.errmsg_duration, 1) * 1000;
-	if (!_toasts.empty()) {
-		MiniToast &last = _toasts.back();
-		if (last.summary == summary && last.detail == detail) {
-			last.repeat++;
-			last.left_ms = life;
-			last.full_ms = life;
-			last.warn = last.warn || warn;
-			return true;
-		}
-	}
-
-	MiniToast t;
-	t.summary = std::move(summary);
-	t.detail = std::move(detail);
-	t.left_ms = life;
-	t.full_ms = life;
-	t.warn = warn;
-	_toasts.push_back(std::move(t));
-	if (_toasts.size() > MINI_TOAST_MAX) _toasts.erase(_toasts.begin());
+	_toast_feed.Report(std::move(summary), std::move(detail), warn);
 	return true;
 }
 
-/* The newspaper is replaced by a toast that keeps the item's reference, so a
- * click lands on what the message is about. The item itself stays in the news
+/* The newspaper is replaced by a toast; the item itself stays in the news
  * history either way. */
 bool MiniUiShowNews(const NewsItem *ni)
 {
@@ -5072,16 +4979,7 @@ bool MiniUiShowNews(const NewsItem *ni)
 	std::string headline = StrMakeValid(ni->headline.GetDecodedString(), {});
 	if (headline.empty()) return true;
 
-	uint life = std::max<uint>(_settings_client.gui.errmsg_duration, 1) * 2000;
-	MiniToast t;
-	t.summary = std::move(headline);
-	t.detail = GameText(STR_JUST_DATE_TINY, ni->date);
-	t.left_ms = life;
-	t.full_ms = life;
-	t.warn = ni->type == NewsType::Advice;
-	t.ref = ni->ref1;
-	_toasts.push_back(std::move(t));
-	if (_toasts.size() > MINI_TOAST_MAX) _toasts.erase(_toasts.begin());
+	_toast_feed.Announce(std::move(headline), GameText(STR_JUST_DATE_TINY, ni->date), ni->type == NewsType::Advice, ni->ref1);
 	return true;
 }
 
@@ -5150,7 +5048,6 @@ static void Present()
 	DrawHud();
 	DrawColonyPanel();
 	DrawStatusStream();
-	DrawToasts();
 	DrawBuildMenu();
 	DrawClearPanel();
 	DrawCmdBar();
@@ -5185,8 +5082,7 @@ void MiniUiResetGameState()
 	for (auto &l : _status_veh) l.clear();
 	ClearFleetDrafts();
 	_deploy.Reset();
-	_toasts.clear();
-	_toast_rows.clear();
+	_toast_feed.Clear();
 }
 
 void MiniUiToggle()
@@ -5346,7 +5242,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleToastClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool.Kind() == MiniTool::None) {
 				if (_mode.PickingOrders()) {
 					_mode.PickOrderAt(CursorPoint());
@@ -5476,7 +5372,7 @@ void MiniUiFrame(uint delta_ms)
 	_canvas.BeginFrame();
 	MiniAtlasEnsure();
 	_vehicle_motion.Advance(delta_ms);
-	UpdateToasts(delta_ms);
+	_toast_feed.Age(delta_ms);
 	if (VehicleID built = _deploy.Step(); built != VehicleID::Invalid()) OpenVehicleMiniWnd(built);
 	RlwCmdClear();
 	MiniImGuiEnsureSetup();

@@ -10,3 +10,44 @@ body {
 	position: absolute;
 	pointer-events: auto;
 }
+
+.alert {
+	padding: 4dp 6dp;
+	border-left: 3dp var(--warn);
+	background-color: var(--warn-ground);
+	color: var(--warn-ink);
+	pointer-events: auto;
+}
+
+.alert[tone=loss] {
+	border-left-color: var(--loss);
+	background-color: var(--loss-ground);
+	color: var(--loss-ink);
+}
+
+.alert-head, .alert-detail {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.alert-detail {
+	margin-top: 2dp;
+	opacity: 0.7;
+}
+
+.toasts {
+	left: 0dp;
+	right: 0dp;
+	bottom: var(--bar-clearance);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3dp;
+	pointer-events: none;
+}
+
+.toasts .alert {
+	width: 340dp;
+	max-width: 100%;
+}

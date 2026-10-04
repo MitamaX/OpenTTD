@@ -12,13 +12,7 @@
 
 #include <RmlUi/Core/Types.h>
 
-enum class Tone : uint8_t {
-	Plain,
-	Accent,
-	Warn,
-	Loss,
-	Dim,
-};
+#include "tone.h"
 
 struct LedgerLine {
 	LedgerLine(Rml::String label, Rml::String value = {}, Tone tone = Tone::Plain);

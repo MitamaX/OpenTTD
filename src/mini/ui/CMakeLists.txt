@@ -28,6 +28,8 @@ add_files(
     rml_renderer.h
     texture_box.cpp
     texture_box.h
+    tone.cpp
+    tone.h
     ui_text.cpp
     ui_text.h
     view.cpp

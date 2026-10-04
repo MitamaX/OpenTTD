@@ -44,6 +44,10 @@ static void RegisterViewTypes(Rml::Context &context)
 	context.RemoveDataModel(VIEW_TYPES_MODEL);
 }
 
+ViewHost::ViewHost(std::vector<std::unique_ptr<HudPart>> hud_parts) : hud(std::move(hud_parts))
+{
+}
+
 void ViewHost::Frame(int width, int height, float dp_ratio, int dock_top)
 {
 	this->panels.SetBounds({Rml::Vector2f(static_cast<float>(width), static_cast<float>(height)), dp_ratio, static_cast<float>(dock_top)});
