@@ -14,10 +14,12 @@ body {
 }
 
 .chrome {
-	padding: 5dp;
+	padding: 6dp;
 	background-color: var(--panel);
+	decorator: var(--surface);
 	border: 1dp var(--panel-edge);
-	border-radius: var(--radius-tile);
+	border-radius: var(--radius);
+	box-shadow: var(--float);
 	pointer-events: auto;
 }
 
@@ -26,17 +28,30 @@ body {
 	align-items: center;
 	justify-content: center;
 	background-color: var(--tile);
+	decorator: var(--sheen);
 	border: 1dp var(--panel-edge);
 	border-radius: var(--radius-tile);
+	box-shadow: var(--lift);
+	color: var(--tile-ink);
 	pointer-events: auto;
 }
 
 .tile:hover {
-	border-color: var(--accent);
+	background-color: var(--tile-hover);
+}
+
+.tile:active {
+	background-color: var(--tile-press);
 }
 
 .tile.active {
 	background-color: var(--tile-active);
+	color: var(--ink-strong);
+	box-shadow: var(--glow);
+}
+
+.tile.active:hover {
+	background-color: var(--tile-active-hover);
 }
 
 .tile .icon {
@@ -44,24 +59,32 @@ body {
 }
 
 .tile.active .icon {
-	image-color: var(--accent);
+	image-color: var(--ink-strong);
 }
 
-.tile.off .icon {
-	image-color: var(--ink-dim);
+.tile.off {
+	opacity: 0.45;
+}
+
+.tile.off:hover {
+	background-color: var(--tile);
 }
 
 .tile-row {
 	display: flex;
-	gap: 2dp;
+	gap: 3dp;
 }
 
 .alert {
-	padding: 4dp 6dp;
-	border-left: 3dp var(--warn);
+	padding: 5dp 8dp;
 	background-color: var(--warn-ground);
+	decorator: var(--sheen);
+	border-left: 3dp var(--warn);
+	border-radius: var(--radius-chip);
+	box-shadow: var(--lift);
 	color: var(--warn-ink);
 	pointer-events: auto;
+	transition: background-color var(--snap);
 }
 
 .alert[tone=loss] {
@@ -86,7 +109,7 @@ body {
 	right: 0dp;
 	bottom: var(--bar-clearance);
 	align-items: center;
-	gap: 3dp;
+	gap: 4dp;
 }
 
 .toasts .alert {
@@ -104,26 +127,29 @@ body {
 .colony {
 	display: flex;
 	flex-direction: column;
-	gap: 2dp;
+	gap: 4dp;
 }
 
 .colony-head {
 	display: flex;
 	align-items: center;
-	gap: 4dp;
+	gap: 6dp;
 }
 
 .gauge {
 	position: relative;
 	flex-shrink: 0;
-	width: 28dp;
-	height: 28dp;
+	width: 30dp;
+	height: 30dp;
+	border-radius: 15dp;
+	background-color: var(--caption);
+	box-shadow: #00000059 0dp 1dp 2dp 0dp inset;
 }
 
 .gauge-arm {
 	position: absolute;
-	left: 14dp;
-	top: 14dp;
+	left: 15dp;
+	top: 15dp;
 	width: 0dp;
 	height: 0dp;
 }
@@ -133,7 +159,8 @@ body {
 	left: -1.5dp;
 	top: -14dp;
 	width: 3dp;
-	height: 2dp;
+	height: 4dp;
+	border-radius: 1dp;
 	background-color: var(--tile);
 }
 
@@ -148,6 +175,11 @@ body {
 	white-space: nowrap;
 }
 
+.colony-title div:first-child {
+	font-weight: bold;
+	color: var(--ink-strong);
+}
+
 .colony-funds {
 	display: flex;
 	column-gap: 12dp;
@@ -155,19 +187,19 @@ body {
 }
 
 .speed {
-	width: 12dp;
-	height: 10dp;
+	width: 22dp;
+	height: 16dp;
 }
 
 .speed .icon {
-	width: 7dp;
-	height: 7dp;
+	width: 8dp;
+	height: 8dp;
 }
 
 .status {
 	display: flex;
 	flex-direction: column;
-	gap: 2dp;
+	gap: 3dp;
 }
 
 .status-row {
@@ -175,11 +207,11 @@ body {
 }
 
 .status .alert {
-	width: 84dp;
+	width: 92dp;
 }
 
 .status .alert:hover {
-	decorator: linear-gradient(var(--veil), var(--veil));
+	decorator: linear-gradient(var(--veil), var(--veil)), var(--sheen);
 }
 
 .names {
@@ -200,9 +232,12 @@ body {
 }
 
 .chip {
-	padding: 4dp;
+	padding: 4dp 7dp;
 	background-color: var(--panel);
-	border-radius: var(--radius);
+	decorator: var(--sheen);
+	border: 1dp var(--panel-edge);
+	border-radius: var(--radius-chip);
+	box-shadow: var(--lift);
 	white-space: pre;
 }
 
@@ -218,6 +253,8 @@ body {
 	top: var(--hud-margin);
 	left: 50%;
 	transform: translateX(-50%);
+	color: var(--warn);
+	font-weight: bold;
 }
 
 .tool-note {
@@ -225,17 +262,20 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
+	gap: 2dp;
 }
 
 .option-list {
 	display: flex;
 	flex-direction: column;
+	gap: 1dp;
 }
 
 .option {
-	padding: 1dp 4dp;
-	border-radius: var(--radius-tile);
+	padding: 3dp 8dp;
+	border-radius: var(--radius-chip);
 	white-space: pre;
+	transition: background-color color var(--snap);
 }
 
 .option:hover {
@@ -244,7 +284,8 @@ body {
 
 .option.active {
 	background-color: var(--tile-active);
-	color: var(--accent);
+	decorator: var(--sheen);
+	color: var(--ink-strong);
 }
 
 .dock-clear {

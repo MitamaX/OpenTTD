@@ -1,30 +1,47 @@
 body {
-	--panel: #262624f7;
-	--panel-edge: #191916;
-	--caption: #33332f;
-	--tile: #2e2e2b;
-	--tile-active: #3d5a5c;
-	--tile-ink: #c5c0b2;
-	--ink: #d7d2c4;
-	--ink-strong: #e6e1d3;
-	--ink-soft: #a8a294;
-	--ink-muted: #8d8878;
-	--ink-dim: #6e6a5e;
-	--accent: #8fe0e8;
-	--gauge: #e8b94d;
-	--veil: #edf2f71c;
-	--warn: #e0b64a;
-	--warn-ground: #453a1e;
-	--warn-ink: #ebd9a8;
-	--loss: #e05f4a;
-	--loss-ground: #4a2320;
-	--loss-ink: #f2d9d2;
-	--shadow: #0000008c;
-	--radius: 4dp;
-	--radius-tile: 3dp;
+	--panel: #31354a;
+	--panel-top: #3d425b;
+	--panel-edge: #171925;
+	--caption: #262a3d;
+	--tile: #4b5272;
+	--tile-hover: #5b6388;
+	--tile-press: #3e4460;
+	--tile-active: #2b8b96;
+	--tile-active-hover: #33a0ab;
+	--tile-ink: #d6d4e4;
+	--ink: #e4e2ee;
+	--ink-strong: #f6f4fb;
+	--ink-soft: #b5b3c8;
+	--ink-muted: #9391aa;
+	--ink-dim: #6f6d88;
+	--accent: #7fe3ef;
+	--primary: #b9477f;
+	--primary-hover: #cf5891;
+	--primary-press: #9a3a69;
+	--gauge: #f2c14e;
+	--veil: #ffffff1c;
+	--warn: #f0b84a;
+	--warn-ground: #4d3d1f;
+	--warn-ink: #f5e2b0;
+	--loss: #ef6a5a;
+	--loss-ground: #55242a;
+	--loss-ink: #f7dad5;
+
+	--sheen: linear-gradient(#ffffff2b, #ffffff00 55%, #00000024);
+	--surface: repeating-linear-gradient(135deg, #ffffff06, #ffffff06 1dp, #ffffff00 1dp, #ffffff00 4dp), linear-gradient(var(--panel-top), var(--panel));
+	--float: #00000080 0dp 4dp 10dp 0dp, #ffffff17 0dp 1dp 0dp 0dp inset;
+	--lift: #00000073 0dp 2dp 0dp 0dp, #ffffff29 0dp 1dp 0dp 0dp inset;
+	--glow: #7fe3ef66 0dp 0dp 6dp 1dp, #00000073 0dp 2dp 0dp 0dp, #ffffff29 0dp 1dp 0dp 0dp inset;
+
+	--radius: 8dp;
+	--radius-tile: 7dp;
+	--radius-chip: 5dp;
 	--icon: 10dp;
-	--hud-margin: 6dp;
-	--bar-clearance: 56dp;
+	--hud-margin: 8dp;
+	--bar-clearance: 64dp;
+
+	--snap: 0.12s cubic-out;
+	--spring: 0.35s back-out;
 
 	font-family: "Malgun Gothic";
 	font-weight: normal;
@@ -40,6 +57,23 @@ div, handle {
 	width: var(--icon);
 	height: var(--icon);
 	image-color: var(--ink);
+}
+
+.press {
+	transform: translateY(0dp);
+	transition: background-color color image-color var(--snap), transform var(--spring);
+}
+
+.press:hover {
+	transform: translateY(-1dp);
+}
+
+.press:active {
+	transform: translateY(1dp);
+}
+
+.press.off:hover, .press.off:active {
+	transform: translateY(0dp);
 }
 
 [tone=plain] {

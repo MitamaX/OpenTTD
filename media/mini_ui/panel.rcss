@@ -4,17 +4,32 @@ body {
 	flex-direction: column;
 	width: 250dp;
 	background-color: var(--panel);
+	decorator: var(--surface);
 	border: 1dp var(--panel-edge);
 	border-radius: var(--radius);
-	box-shadow: var(--shadow) 0dp 6dp 18dp 0dp;
+	box-shadow: var(--float);
+	animation: 0.22s back-out panel-in;
+}
+
+@keyframes panel-in {
+	from {
+		opacity: 0;
+		transform: scale(0.94);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
 }
 
 .caption {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	padding: 6dp 10dp;
+	padding: 7dp 8dp 7dp 12dp;
 	background-color: var(--caption);
+	decorator: var(--sheen);
+	border-bottom: 1dp var(--panel-edge);
 	border-radius: var(--radius) var(--radius) 0dp 0dp;
 }
 
@@ -26,11 +41,19 @@ body {
 
 .close {
 	display: flex;
-	padding: 3dp 4dp;
+	align-items: center;
+	justify-content: center;
+	width: 18dp;
+	height: 18dp;
+	border-radius: 9dp;
 }
 
 .close .icon {
 	image-color: var(--ink-muted);
+}
+
+.close:hover {
+	background-color: var(--loss);
 }
 
 .close:hover .icon {
@@ -39,35 +62,36 @@ body {
 
 .tabs {
 	display: flex;
-	border-bottom: 1dp var(--panel-edge);
+	gap: 3dp;
+	padding: 8dp 10dp 0dp;
 }
 
 .tab {
 	flex: 1;
-	padding: 5dp 0dp;
+	padding: 4dp 0dp;
 	text-align: center;
 	background-color: var(--tile);
+	decorator: var(--sheen);
+	border: 1dp var(--panel-edge);
+	border-radius: var(--radius-chip);
+	box-shadow: var(--lift);
 	color: var(--tile-ink);
-	border-right: 1dp var(--panel-edge);
 }
 
-.tab:last-child {
-	border-right-width: 0dp;
+.tab:hover {
+	background-color: var(--tile-hover);
 }
 
 .tab.active {
 	background-color: var(--tile-active);
-}
-
-.tab:hover, .tab.active {
-	color: var(--accent);
+	color: var(--ink-strong);
 }
 
 .sheet {
 	display: flex;
 	flex-direction: column;
 	gap: 8dp;
-	padding: 8dp 10dp;
+	padding: 10dp 12dp;
 }
 
 .section {
@@ -77,7 +101,7 @@ body {
 }
 
 .heading {
-	padding-bottom: 2dp;
+	padding-bottom: 3dp;
 	border-bottom: 1dp var(--panel-edge);
 	font-weight: bold;
 	color: var(--ink-strong);
@@ -93,6 +117,7 @@ body {
 .line.total {
 	padding-top: 3dp;
 	border-top: 1dp var(--panel-edge);
+	color: var(--ink);
 }
 
 .value {
@@ -103,23 +128,30 @@ body {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 5dp;
-	padding: 8dp 10dp;
+	padding: 8dp 10dp 10dp;
 	border-top: 1dp var(--panel-edge);
 }
 
 .command {
-	padding: 3dp 8dp;
-	background-color: var(--tile);
+	padding: 4dp 10dp;
+	background-color: var(--primary);
+	decorator: var(--sheen);
 	border: 1dp var(--panel-edge);
-	border-radius: var(--radius-tile);
-	color: var(--ink);
+	border-radius: var(--radius-chip);
+	box-shadow: var(--lift);
+	color: var(--ink-strong);
 }
 
 .command:hover {
-	color: var(--accent);
+	background-color: var(--primary-hover);
 }
 
-.command.off, .command.off:hover {
+.command:active {
+	background-color: var(--primary-press);
+}
+
+.command.off, .command.off:hover, .command.off:active {
+	background-color: var(--tile);
 	color: var(--ink-dim);
 }
 

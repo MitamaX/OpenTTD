@@ -23,7 +23,7 @@
 				<span data-if="warning != ''">{{warning}}</span>
 			</div>
 			<div class="tile-row">
-				<div class="tile speed" data-for="speed, index : speeds" data-class-active="speed.active" data-class-off="speed.off" data-event-click="speed(index)">
+				<div class="tile speed press" data-for="speed, index : speeds" data-class-active="speed.active" data-class-off="speed.off" data-event-click="speed(index)">
 					<svg class="icon" data-attr-src="speed.icon"/>
 				</div>
 			</div>

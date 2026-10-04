@@ -6,14 +6,14 @@
 <body>
 	<handle class="caption" move_target="#document">
 		<span class="title">{{title}}</span>
-		<span class="close" data-event-click="close"><svg class="icon" src="icons/close.svg"/></span>
+		<span class="close press" data-event-click="close"><svg class="icon" src="icons/close.svg"/></span>
 	</handle>
 	<div class="tabs" data-if="tabs.size > 0">
-		<span class="tab" data-for="name, index : tabs" data-class-active="index == tab" data-event-click="tab = index">{{name}}</span>
+		<span class="tab press" data-for="name, index : tabs" data-class-active="index == tab" data-event-click="tab = index">{{name}}</span>
 	</div>
 	<div id="sheet" class="sheet"></div>
 	<div class="commands" data-if="commands.size > 0">
-		<span class="command" data-for="command, index : commands" data-class-off="!command.enabled" data-event-click="run(index)">{{command.label}}</span>
+		<span class="command press" data-for="command, index : commands" data-class-off="!command.enabled" data-event-click="run(index)">{{command.label}}</span>
 	</div>
 </body>
 </template>
