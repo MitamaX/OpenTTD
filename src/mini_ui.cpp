@@ -56,6 +56,8 @@
 #include "mini/core/canvas.h"
 #include "mini/core/tones.h"
 #include "mini/core/tuning.h"
+#include "mini/input/input_mode.h"
+#include "mini/input/press_owner.h"
 #include "mini/map/ground.h"
 #include "mini/map/map_labels.h"
 #include "mini/map/map_overlay.h"
@@ -137,10 +139,6 @@ static bool _mini_active = false;
  * buffer, so this only mirrors the screen dimensions. */
 static int _fbw, _fbh;
 
-static VehicleID _follow_veh = VehicleID::Invalid();
-
-static VehicleID _order_pick_veh = VehicleID::Invalid();
-
 /* Consist drafts for the fleet window, one per vehicle type. A draft is
  * assembled in the window and produced whole at a depot. */
 static std::vector<EngineID> _fleet_draft[4];
@@ -163,36 +161,10 @@ struct FleetDeploy {
 static FleetDeploy _deploy;
 
 static int _build_scroll = 0;
-
-/* The screen has exactly one input mode: idle, building or following a
- * vehicle. Entering one drops the others. */
-static void EnterIdleMode()
-{
-	_tool.Select(MiniTool::None);
-	_follow_veh = VehicleID::Invalid();
-	_order_pick_veh = VehicleID::Invalid();
-	_build_scroll = 0;
-}
-
-static void EnterBuildMode(MiniTool t)
-{
-	EnterIdleMode();
-	_tool.Select(t);
-}
-
-static void EnterFollowMode(VehicleID v)
-{
-	EnterIdleMode();
-	_follow_veh = v;
-}
-
-static void EnterOrderPickMode(VehicleID v)
-{
-	EnterIdleMode();
-	_order_pick_veh = v;
-}
+static MiniTool _build_scroll_tool = MiniTool::None;
 
 static bool _prev_left = false;
+static PressOwner _press_owner;
 
 /* Screen chrome follows the reference HUD: warm dark panels with a thin
  * darker edge, teal active state, cyan accent, warm off-white text. */
@@ -338,12 +310,9 @@ static bool OpenVehicleWndAt(int sx, int sy)
 
 static bool OpenDepotWndAt(int sx, int sy)
 {
-	int tx = (int)std::floor(_camera.MapXAt(sy));
-	int ty = (int)std::floor(_camera.MapYAt(sx));
-	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return false;
-	TileIndex tile = TileXY(tx, ty);
-	if (!IsDepotTile(tile)) return false;
-	ShowDepotWindow(tile, GetDepotVehicleType(tile));
+	std::optional<TileIndex> tile = TileUnder(_camera.MapAt(sx, sy));
+	if (!tile.has_value() || !IsDepotTile(*tile)) return false;
+	ShowDepotWindow(*tile, GetDepotVehicleType(*tile));
 	return true;
 }
 
@@ -351,81 +320,9 @@ static bool OpenDepotWndAt(int sx, int sy)
  * their window. */
 static bool OpenWaypointWndAt(int sx, int sy)
 {
-	int tx = (int)std::floor(_camera.MapXAt(sy));
-	int ty = (int)std::floor(_camera.MapYAt(sx));
-	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return false;
-	TileIndex tile = TileXY(tx, ty);
-	if (!IsRailWaypointTile(tile) && !IsRoadWaypointTile(tile) && !IsBuoyTile(tile)) return false;
-	return ShowMiniWaypointWindow(GetStationIndex(tile));
-}
-
-/* Stock order-window map picking, trimmed to the plain cases: a click
- * resolves to a depot, waypoint or station order for the picked vehicle. */
-static Order OrderFromTile(const Vehicle *v, TileIndex tile)
-{
-	Order order{};
-
-	if (IsDepotTypeTile(tile, (TransportType)(uint)v->type) && IsTileOwner(tile, _local_company)) {
-		order.MakeGoToDepot(GetDepotDestinationIndex(tile),
-				OrderDepotTypeFlag::PartOfOrders,
-				(_settings_client.gui.new_nonstop && v->IsGroundVehicle()) ? OrderNonStopFlag::NoIntermediate : OrderNonStopFlags{});
-		return order;
-	}
-
-	if ((IsRailWaypointTile(tile) && v->type == VEH_TRAIN && IsTileOwner(tile, _local_company)) ||
-			(IsRoadWaypointTile(tile) && v->type == VEH_ROAD && IsTileOwner(tile, _local_company)) ||
-			(IsBuoyTile(tile) && v->type == VEH_SHIP)) {
-		order.MakeGoToWaypoint(GetStationIndex(tile));
-		if (!IsBuoyTile(tile) && _settings_client.gui.new_nonstop) order.SetNonStopType({OrderNonStopFlag::NoIntermediate, OrderNonStopFlag::NoDestination});
-		return order;
-	}
-
-	if (IsTileType(tile, MP_STATION) || IsTileType(tile, MP_INDUSTRY)) {
-		const Station *st = IsTileType(tile, MP_STATION) ? Station::GetByTile(tile) : Industry::GetByTile(tile)->neutral_station;
-		if (st != nullptr && (st->owner == _local_company || st->owner == OWNER_NONE)) {
-			StationFacilities facil;
-			switch (v->type) {
-				case VEH_SHIP:     facil = StationFacility::Dock;    break;
-				case VEH_TRAIN:    facil = StationFacility::Train;   break;
-				case VEH_AIRCRAFT: facil = StationFacility::Airport; break;
-				default:           facil = {StationFacility::BusStop, StationFacility::TruckStop}; break;
-			}
-			if (st->facilities.Any(facil)) {
-				order.MakeGoToStation(st->index);
-				if (_settings_client.gui.new_nonstop && v->IsGroundVehicle()) order.SetNonStopType(OrderNonStopFlag::NoIntermediate);
-				order.SetStopLocation(v->type == VEH_TRAIN ? (OrderStopLocation)(_settings_client.gui.stop_location) : OrderStopLocation::FarEnd);
-				return order;
-			}
-		}
-	}
-
-	order.Free();
-	return order;
-}
-
-/* Returns false when the tile carries nothing the vehicle can be sent to, so
- * a list row can fall back to opening its own window. */
-static bool OrderPickAppend(TileIndex tile)
-{
-	const Vehicle *v = Vehicle::GetIfValid(_order_pick_veh);
-	if (v == nullptr || v->owner != _local_company) return false;
-	Order order = OrderFromTile(v, tile);
-	if (order.IsType(OT_NOTHING)) return false;
-	Command<CMD_INSERT_ORDER>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, v->tile, v->index, (VehicleOrderID)v->GetNumOrders(), order);
-	return true;
-}
-
-static void OrderPickClick(int sx, int sy)
-{
-	const Vehicle *v = Vehicle::GetIfValid(_order_pick_veh);
-	if (v == nullptr || v->owner != _local_company) {
-		EnterIdleMode();
-		return;
-	}
-	int tx = (int)std::floor(_camera.MapXAt(sy));
-	int ty = (int)std::floor(_camera.MapYAt(sx));
-	if (tx < 0 || ty < 0 || tx >= (int)Map::SizeX() || ty >= (int)Map::SizeY()) return;
-	OrderPickAppend(TileXY(tx, ty));
+	std::optional<TileIndex> tile = TileUnder(_camera.MapAt(sx, sy));
+	if (!tile.has_value() || (!IsRailWaypointTile(*tile) && !IsRoadWaypointTile(*tile) && !IsBuoyTile(*tile))) return false;
+	return ShowMiniWaypointWindow(GetStationIndex(*tile));
 }
 
 /* Stage 0 issues the next build, stage 1 spots the new vehicle among the
@@ -1005,6 +902,10 @@ static void DrawBuildPanel(int px, int bottom)
 	_build_hits.clear();
 	_build_panel_rect = {0, 0, -1, -1};
 	_build_scrolls = false;
+	if (_tool.Kind() != _build_scroll_tool) {
+		_build_scroll_tool = _tool.Kind();
+		_build_scroll = 0;
+	}
 	if (_tool.Kind() == MiniTool::None) return;
 
 	CollectBuildRows();
@@ -1170,7 +1071,7 @@ static bool HandleMenuClick(int x, int y)
 			 * down as well. */
 			if (_menu_open == c) {
 				_menu_open = -1;
-				EnterIdleMode();
+				_mode.Idle();
 			} else {
 				_menu_open = c;
 			}
@@ -1180,7 +1081,7 @@ static bool HandleMenuClick(int x, int y)
 	}
 	for (const auto &[r, t] : _menu_item_hits) {
 		if (InRect(r, x, y)) {
-			if (_tool.Kind() == t) EnterIdleMode(); else EnterBuildMode(t);
+			_mode.ToggleBuild(t);
 			return true;
 		}
 	}
@@ -1214,7 +1115,7 @@ static bool HandleCmdClick(int x, int y)
 {
 	for (const auto &[r, t] : _cmd_hits) {
 		if (InRect(r, x, y)) {
-			if (_tool.Kind() == t) EnterIdleMode(); else EnterBuildMode(t);
+			_mode.ToggleBuild(t);
 			return true;
 		}
 	}
@@ -3354,10 +3255,8 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 				}
 			}
 			if (own) {
-				bool picking = _order_pick_veh == v->index;
-				if (ImWndLink(picking ? "추가 중. 지도에서 목적지 클릭, ESC 종료" : "+ 목적지 추가", COL_CH_ACCENT)) {
-					if (picking) EnterIdleMode(); else EnterOrderPickMode(v->index);
-				}
+				bool picking = _mode.OrderVehicle() == v->index;
+				if (ImWndLink(picking ? "추가 중. 지도에서 목적지 클릭, ESC 종료" : "+ 목적지 추가", COL_CH_ACCENT)) _mode.TogglePickOrders(v->index);
 
 				/* A fleet runs one route, so taking the list off a vehicle that
 				 * already has it beats typing the stops in again per vehicle. */
@@ -4204,12 +4103,12 @@ static void ImStationListBody(MiniWnd &mw)
 		/* While a vehicle is collecting destinations the directory doubles as
 		 * the stop picker, so a far station needs no map hunting. */
 		if (ImWndKVLink(r.name, value, COL_CH_TEXT, tint)) {
-			if (!Station::IsValidID(r.id) || !OrderPickAppend(Station::Get(r.id)->xy)) {
+			if (!Station::IsValidID(r.id) || !_mode.AppendOrder(Station::Get(r.id)->xy)) {
 				OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), r.id);
 			}
 		}
 	}
-	if (_order_pick_veh != VehicleID::Invalid()) ImWndText("행 클릭으로 목적지 추가", COL_CH_ACCENT);
+	if (_mode.PickingOrders()) ImWndText("행 클릭으로 목적지 추가", COL_CH_ACCENT);
 }
 
 static void ImSignListBody(MiniWnd &mw)
@@ -4787,10 +4686,8 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			}
 			if (ImWndButton("개조", own)) mw.want_tab = 1;
 			if (ImWndButton("주문", own)) mw.want_tab = 2;
-			bool following = v != nullptr && _follow_veh == v->index;
-			if (ImWndButton(following ? "추적 해제" : "따라가기", v != nullptr)) {
-				if (following) EnterIdleMode(); else EnterFollowMode(v->index);
-			}
+			bool following = v != nullptr && _mode.FollowedVehicle() == v->index;
+			if (ImWndButton(following ? "추적 해제" : "따라가기", v != nullptr)) _mode.ToggleFollow(v->index);
 			break;
 		}
 
@@ -5637,7 +5534,7 @@ static void Deactivate()
 {
 	CloseAllMiniWnds();
 	_mini_active = false;
-	EnterIdleMode();
+	_mode.Idle();
 	_overlay.Reset();
 	_menu_open = -1;
 	_win_open = -1;
@@ -5651,7 +5548,7 @@ static void Deactivate()
 void MiniUiResetGameState()
 {
 	CloseAllMiniWnds();
-	EnterIdleMode();
+	_mode.Idle();
 	_tool.Abort();
 	_vehicle_motion.Clear();
 	_stuck_long.clear();
@@ -5753,67 +5650,61 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 
 void MiniUiScrollTo(int x, int y)
 {
-	_follow_veh = VehicleID::Invalid();
+	_mode.Unfollow();
 	if (!_mini_active) return;
 	_camera.GlideTo(x / (double)TILE_SIZE, y / (double)TILE_SIZE);
 }
 
-/* Whoever the press started on keeps the mouse until every button is up.
- * Re-deciding each frame would press the widgets a dragged mini window is
- * carried across. */
-enum class MiniPressOwner : uint8_t {
-	None,
-	Native,
-	Mini,
-	Map,
-};
+/* Native windows float above the ImGui layer and take the click; carriers
+ * sit below it, so ImGui gets those instead. An embed takes the click only
+ * inside its visible slot, so the cropped caption hiding under the mini tab
+ * strip cannot start a native drag. */
+static bool NativeWindowTakesPointer()
+{
+	Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
+	if (w == nullptr || MiniUiHidesWindow(w->window_class) || CarrierOwner(w) != SIZE_MAX) return false;
 
-static MiniPressOwner _press_owner = MiniPressOwner::None;
+	const MiniEmbed *e = FindMiniEmbed(w->window_class, w->window_number);
+	if (e == nullptr) return true;
+	if (!e->vis.Contains({_cursor.pos.x, _cursor.pos.y})) return false;
+	return e->grip <= 0 || _cursor.pos.x <= e->vis.right - e->grip || _cursor.pos.y <= e->vis.bottom - e->grip;
+}
+
+static bool MiniLayerTakesPointer()
+{
+	return _views.CapturePointer() || (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse);
+}
 
 bool MiniUiHandleMouseEvents(bool native_capture)
 {
 	if (!_mini_active) return false;
 
-	bool any_down = _left_button_down || _right_button_down || _middle_button_down;
-	if (!any_down) _press_owner = MiniPressOwner::None;
+	PressSide held = _press_owner.Held();
 	_views.TrackPointer();
 
-	if (_press_owner == MiniPressOwner::Native) return false;
-	if (_press_owner == MiniPressOwner::Mini) {
+	if (held == PressSide::Native) return false;
+	if (held == PressSide::Mini) {
 		_cursor.wheel = 0;
 		return true;
 	}
 
-	if (_press_owner == MiniPressOwner::None && !_tool.Dragging() && !_middle_button_down) {
+	if (held == PressSide::None && !_tool.Dragging() && !_middle_button_down) {
 		if (native_capture) return false;
-		/* Native windows float above the ImGui layer and take the click;
-		 * carriers sit below it, so ImGui gets those instead. An embed takes
-		 * the click only inside its visible slot, so the cropped caption
-		 * hiding under the mini tab strip cannot start a native drag. */
-		Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
-		if (w != nullptr && !MiniUiHidesWindow(w->window_class) && CarrierOwner(w) == SIZE_MAX) {
-			const MiniEmbed *e = FindMiniEmbed(w->window_class, w->window_number);
-			bool inside = e == nullptr || e->vis.Contains({_cursor.pos.x, _cursor.pos.y});
-			if (inside && e != nullptr && e->grip > 0 &&
-					_cursor.pos.x > e->vis.right - e->grip && _cursor.pos.y > e->vis.bottom - e->grip) {
-				inside = false;
-			}
-			if (inside) {
-				if (any_down) _press_owner = MiniPressOwner::Native;
-				return false;
-			}
+		if (NativeWindowTakesPointer()) {
+			_press_owner.Claim(PressSide::Native);
+			return false;
 		}
 		/* The panels and ImGui have the wheel already. Leaving the pending
 		 * notch here would zoom the map the moment the cursor leaves the
 		 * window and the map starts consuming events again. */
-		if (_views.CapturePointer() || (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)) {
+		if (MiniLayerTakesPointer()) {
 			_cursor.wheel = 0;
-			if (any_down) _press_owner = MiniPressOwner::Mini;
+			_press_owner.Claim(PressSide::Mini);
 			return true;
 		}
 	}
 
-	if (any_down && _press_owner == MiniPressOwner::None) _press_owner = MiniPressOwner::Map;
+	_press_owner.Claim(PressSide::Map);
 
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) _camera.Drag(_cursor.delta.x, _cursor.delta.y);
 
@@ -5822,7 +5713,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 			_menu_scroll += _cursor.wheel > 0 ? 1 : -1;
 		} else if (_build_scrolls && InRect(_build_panel_rect, _cursor.pos.x, _cursor.pos.y)) {
 			_build_scroll += _cursor.wheel > 0 ? 1 : -1;
-		} else if (_follow_veh != VehicleID::Invalid()) {
+		} else if (_mode.Following()) {
 			/* While following, zooming keeps the vehicle centred instead of
 			 * anchoring the cursor point. */
 			_camera.Zoom(_cursor.wheel < 0);
@@ -5836,8 +5727,8 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		_left_button_clicked = true;
 		if (!HandleToastClick(_cursor.pos.x, _cursor.pos.y) && !HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool.Kind() == MiniTool::None) {
-				if (_order_pick_veh != VehicleID::Invalid()) {
-					OrderPickClick(_cursor.pos.x, _cursor.pos.y);
+				if (_mode.PickingOrders()) {
+					_mode.PickOrderAt(CursorPoint());
 				} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y) &&
 						!OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y)) {
 					OpenWaypointWndAt(_cursor.pos.x, _cursor.pos.y);
@@ -5853,7 +5744,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_right_button_clicked) {
 		_right_button_clicked = false;
-		if (!_tool.Abort()) EnterIdleMode();
+		_mode.Unwind();
 	}
 
 	_cursor.delta.x = 0;
@@ -5865,11 +5756,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 /* Escape only unwinds mini UI state, one layer per press; leaving the mini UI is F9 alone. */
 static void UnwindEscape()
 {
-	if (_tool.Abort()) return;
-	if (_tool.Kind() != MiniTool::None || _follow_veh != VehicleID::Invalid() || _order_pick_veh != VehicleID::Invalid()) {
-		EnterIdleMode();
-		return;
-	}
+	if (_mode.Unwind()) return;
 	if (_views.CloseFront()) return;
 	if (!_wnds.empty()) {
 		/* Windows stack by focus, so the one on top is the one the
@@ -5942,17 +5829,6 @@ bool MiniUiHandleTextInput(char32_t character)
 	return _mini_active && _views.ProcessText(character);
 }
 
-static std::optional<TilePoint> FollowTarget()
-{
-	if (_follow_veh == VehicleID::Invalid()) return std::nullopt;
-	const Vehicle *v = Vehicle::GetIfValid(_follow_veh);
-	if (v == nullptr || _dirkeys != 0 || _middle_button_down) {
-		_follow_veh = VehicleID::Invalid();
-		return std::nullopt;
-	}
-	return _vehicle_motion.Position(v);
-}
-
 void MiniUiFrame(uint delta_ms)
 {
 	/* Entering a game activates the mini UI unless the config opts out. */
@@ -5986,7 +5862,7 @@ void MiniUiFrame(uint delta_ms)
 	RlwImGuiNewFrame();
 	if (_tuning.imgui_demo != 0) ImGui::ShowDemoWindow();
 
-	_camera.Update(delta_ms, FollowTarget());
+	_camera.Update(delta_ms, _mode.FollowTarget());
 
 	int ppt = _camera.TilePixels();
 
