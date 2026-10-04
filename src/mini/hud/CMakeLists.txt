@@ -1,6 +1,8 @@
 add_files(
     build_catalog.cpp
     build_catalog.h
+    clear_panel.cpp
+    clear_panel.h
     colony_panel.cpp
     colony_panel.h
     note_layer.cpp

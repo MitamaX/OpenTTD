@@ -62,6 +62,7 @@
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
 #include "mini/hud/build_catalog.h"
+#include "mini/hud/clear_panel.h"
 #include "mini/hud/colony_panel.h"
 #include "mini/hud/note_layer.h"
 #include "mini/hud/status_board.h"
@@ -913,58 +914,6 @@ static bool HandleCmdClick(int x, int y)
 	return false;
 }
 
-/* Clear filter panel: one row per transport system, so the drag takes that
- * system off the area and leaves the rest of the map standing. */
-static std::vector<std::pair<Rect, MiniClear>> _clear_hits;
-static Rect _clear_panel_rect;
-
-static void DrawClearPanel()
-{
-	_clear_hits.clear();
-	_clear_panel_rect = {0, 0, -1, -1};
-	if (_tool.Kind() != MiniTool::Demolish) return;
-
-	int s = _tuning.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int gap = 2 * s;
-	int margin = 6 * s;
-	int pad = 4 * s;
-	int row_h = lh + 3 * s;
-	int tile = MenuTileSide();
-
-	int wmax = 0;
-	for (const MiniClearCategory &cat : ClearCategories()) wmax = std::max<int>(wmax, GetStringBoundingBox(cat.label).width);
-
-	int n = (int)ClearCategories().size();
-	int pw = wmax + 2 * pad;
-	int ph = n * row_h + 2 * pad;
-	int px = _fbw - margin - pw;
-	int py = _fbh - margin - tile - gap - ph;
-	_clear_panel_rect = {px, py, px + pw - 1, py + ph - 1};
-	ChromePanel(px, py, px + pw - 1, py + ph - 1);
-
-	int ty = py + pad;
-	for (const MiniClearCategory &cat : ClearCategories()) {
-		Rect r = {px + s, ty - s, px + pw - 1 - s, ty + row_h - s - 1};
-		bool on = _clear_filter.Mode() == cat.mode;
-		bool hover = _cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y);
-		if (on || hover) RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, 2 * s, on ? COL_CH_ACTIVE : COL_CH_TILE);
-		_canvas.DrawText(cat.label, px + pad, ty, on ? COL_CH_ACCENT : COL_CH_TEXT);
-		_clear_hits.emplace_back(r, cat.mode);
-		ty += row_h;
-	}
-}
-
-static bool HandleClearClick(int x, int y)
-{
-	for (const auto &[r, mode] : _clear_hits) {
-		if (!InRect(r, x, y)) continue;
-		_clear_filter.Select(mode);
-		return true;
-	}
-	return InRect(_clear_panel_rect, x, y);
-}
-
 /* Top-right window bar: category tiles whose panels open native status
  * windows. Same tile language as the build menu. */
 enum class MiniWin : uint8_t {
@@ -1465,6 +1414,7 @@ static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 	parts.push_back(std::make_unique<ColonyPanel>());
 	parts.push_back(std::make_unique<StatusStream>());
 	parts.push_back(std::make_unique<ToastStack>(NewsRefFollow));
+	parts.push_back(std::make_unique<ClearPanel>());
 	parts.push_back(std::make_unique<NoteLayer>());
 	return parts;
 }
@@ -4509,7 +4459,6 @@ static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
 	DrawBuildMenu();
-	DrawClearPanel();
 	DrawCmdBar();
 	DrawWinBar();
 	DrawMiniWndsImGui();
@@ -4701,7 +4650,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool.Kind() == MiniTool::None) {
 				if (_mode.PickingOrders()) {
 					_mode.PickOrderAt(CursorPoint());

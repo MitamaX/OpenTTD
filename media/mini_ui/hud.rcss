@@ -226,3 +226,29 @@ body {
 	flex-direction: column;
 	align-items: flex-start;
 }
+
+.option-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.option {
+	padding: 1dp 4dp;
+	border-radius: var(--radius-tile);
+	white-space: pre;
+}
+
+.option:hover {
+	background-color: var(--tile);
+}
+
+.option.active {
+	background-color: var(--tile-active);
+	color: var(--accent);
+}
+
+.dock-clear {
+	right: var(--hud-margin);
+	bottom: var(--bar-clearance);
+	align-items: flex-end;
+}
