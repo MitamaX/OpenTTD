@@ -10,11 +10,10 @@
 #ifndef MINI_UI_PANEL_H
 #define MINI_UI_PANEL_H
 
-#include <RmlUi/Core/DataModelHandle.h>
-#include <RmlUi/Core/Types.h>
-
 #include <functional>
 #include <string>
+
+#include "view.h"
 
 namespace Rml { class ElementDocument; }
 
@@ -24,12 +23,9 @@ struct PanelCommand {
 	std::function<void()> action;
 };
 
-class Panel {
+class Panel : public View {
 public:
-	virtual ~Panel() = default;
-
 	const std::string &Key() const { return this->key; }
-	const Rml::String &ModelName() const { return this->model_name; }
 	bool IsOpen() const { return this->document != nullptr; }
 	bool Owns(const Rml::ElementDocument *document) const { return this->document == document; }
 	virtual bool IsAlive() const { return true; }
@@ -37,7 +33,6 @@ public:
 	bool Open(Rml::Context &context, Rml::String model_name);
 	void Close();
 	void Raise();
-	void Refresh();
 
 	Rml::Vector2f Size() const;
 	Rml::Vector2f Position() const;
@@ -46,8 +41,8 @@ public:
 protected:
 	Panel(std::string key, std::string document_path, Rml::String title, Rml::Vector<Rml::String> tabs);
 
-	virtual void Collect() = 0;
-	virtual void Bind(Rml::DataModelConstructor &model);
+	void Bind(Rml::DataModelConstructor &model) final;
+	virtual void BindSheet(Rml::DataModelConstructor &model);
 
 	Rml::String title;
 	int tab = 0;
@@ -60,9 +55,7 @@ private:
 	const std::string key;
 	const std::string document_path;
 	Rml::Vector<Rml::String> tabs;
-	Rml::String model_name;
 	Rml::ElementDocument *document = nullptr;
-	Rml::DataModelHandle model;
 };
 
 #endif /* MINI_UI_PANEL_H */

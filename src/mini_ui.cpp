@@ -60,8 +60,8 @@
 #include "mini_atlas.h"
 #include "mini/ui/finance_panel.h"
 #include "mini/ui/fonts.h"
-#include "mini/ui/panel_host.h"
 #include "mini/ui/ui_text.h"
+#include "mini/ui/view_host.h"
 #include "economy_cmd.h"
 #include "economy_func.h"
 #include "misc_cmd.h"
@@ -5621,7 +5621,7 @@ struct MiniWnd {
 };
 
 static std::vector<MiniWnd> _wnds;
-static PanelHost _panels;
+static ViewHost _views;
 
 /* Mini windows stack by ImGui focus, not by list order, so the native windows
  * under them are ordered by when each shell last held focus. */
@@ -5974,7 +5974,7 @@ static void CloseAllMiniWnds()
 	CloseAllMiniEmbeds();
 	_wnds.clear();
 	_wnd_opens.clear();
-	_panels.CloseAll();
+	_views.CloseAll();
 }
 
 static void OpenFleetMiniWnd(int vt)
@@ -5989,7 +5989,7 @@ static void OpenVehicleMiniWnd(VehicleID veh)
 
 static void OpenFinanceMiniWnd()
 {
-	_panels.Show(std::make_unique<FinancePanel>());
+	_views.Show(std::make_unique<FinancePanel>());
 }
 
 static void OpenCompanyMiniWnd()
@@ -8968,7 +8968,7 @@ static void Present()
 	DrawCmdBar();
 	DrawWinBar();
 	DrawMiniWndsImGui();
-	_panels.Frame(_fbw, _fbh, (float)_ms.hud_scale, _win_bar_bottom);
+	_views.Frame(_fbw, _fbh, (float)_ms.hud_scale, _win_bar_bottom);
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -9040,7 +9040,7 @@ void MiniUiToggle()
 
 	LoadMiniSettings();
 	MiniAtlasReload();
-	_panels.ReloadDesign();
+	_views.ReloadDesign();
 	UndrawMouseCursor();
 	/* One palette-driven fill resets the 32bpp-anim mapping buffer, so later
 	 * direct framebuffer writes are not overwritten by palette animation. */
@@ -9149,7 +9149,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	bool any_down = _left_button_down || _right_button_down || _middle_button_down;
 	if (!any_down) _press_owner = MiniPressOwner::None;
-	_panels.TrackPointer();
+	_views.TrackPointer();
 
 	if (_press_owner == MiniPressOwner::Native) return false;
 	if (_press_owner == MiniPressOwner::Mini) {
@@ -9179,7 +9179,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		/* The panels and ImGui have the wheel already. Leaving the pending
 		 * notch here would zoom the map the moment the cursor leaves the
 		 * window and the map starts consuming events again. */
-		if (_panels.CapturePointer() || (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)) {
+		if (_views.CapturePointer() || (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)) {
 			_cursor.wheel = 0;
 			if (any_down) _press_owner = MiniPressOwner::Mini;
 			return true;
@@ -9289,7 +9289,7 @@ static void UnwindEscape()
 		EnterIdleMode();
 		return;
 	}
-	if (_panels.CloseFront()) return;
+	if (_views.CloseFront()) return;
 	if (!_wnds.empty()) {
 		/* Windows stack by focus, so the one on top is the one the
 		 * player last worked in, not the one opened last. */
@@ -9318,7 +9318,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 	/* An open rename field owns the keyboard; letting the shortcuts through
 	 * would rotate blueprints while typing a name. */
-	if (kc != WKC_F9 && _panels.ProcessKey(keycode)) return true;
+	if (kc != WKC_F9 && _views.ProcessKey(keycode)) return true;
 	if (kc != WKC_F9 && ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput) return true;
 
 	/* A native edit box holding the game focus owns the keyboard too, or a
@@ -9365,12 +9365,12 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 bool MiniUiTyping()
 {
-	return _mini_active && _panels.IsTyping();
+	return _mini_active && _views.IsTyping();
 }
 
 bool MiniUiHandleTextInput(char32_t character)
 {
-	return _mini_active && _panels.ProcessText(character);
+	return _mini_active && _views.ProcessText(character);
 }
 
 void MiniUiFrame(uint delta_ms)

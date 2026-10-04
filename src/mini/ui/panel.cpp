@@ -35,23 +35,11 @@ bool Panel::Open(Rml::Context &context, Rml::String model_name)
 {
 	Rml::String rml;
 	if (!Rml::GetFileInterface()->LoadFile(this->document_path, rml)) return false;
+	if (!this->CreateModel(context, std::move(model_name))) return false;
 
-	Rml::DataModelConstructor constructor = context.CreateDataModel(model_name);
-	if (!constructor) return false;
-	constructor.Bind("title", &this->title);
-	constructor.Bind("tabs", &this->tabs);
-	constructor.Bind("tab", &this->tab);
-	constructor.Bind("commands", &this->commands);
-	constructor.BindEventCallback("run", &Panel::Run, this);
-	constructor.BindEventCallback("close", &Panel::Dismiss, this);
-	this->Bind(constructor);
-	this->model = constructor.GetModelHandle();
-	this->model_name = std::move(model_name);
-	this->Refresh();
-
-	this->document = context.LoadDocumentFromMemory(BindBodyToModel(std::move(rml), this->model_name), this->document_path);
+	this->document = context.LoadDocumentFromMemory(BindBodyToModel(std::move(rml), this->ModelName()), this->document_path);
 	if (this->document == nullptr) {
-		context.RemoveDataModel(this->model_name);
+		this->RemoveModel(context);
 		return false;
 	}
 	this->document->Show();
@@ -70,12 +58,6 @@ void Panel::Raise()
 	if (this->document != nullptr) this->document->PullToFront();
 }
 
-void Panel::Refresh()
-{
-	this->Collect();
-	this->model.DirtyAllVariables();
-}
-
 Rml::Vector2f Panel::Size() const
 {
 	return this->document->GetBox().GetSize(Rml::BoxArea::Border);
@@ -92,7 +74,18 @@ void Panel::MoveTo(Rml::Vector2f position)
 	this->document->SetProperty(Rml::PropertyId::Top, Rml::Property(position.y, Rml::Unit::PX));
 }
 
-void Panel::Bind(Rml::DataModelConstructor &)
+void Panel::Bind(Rml::DataModelConstructor &model)
+{
+	model.Bind("title", &this->title);
+	model.Bind("tabs", &this->tabs);
+	model.Bind("tab", &this->tab);
+	model.Bind("commands", &this->commands);
+	model.BindEventCallback("run", &Panel::Run, this);
+	model.BindEventCallback("close", &Panel::Dismiss, this);
+	this->BindSheet(model);
+}
+
+void Panel::BindSheet(Rml::DataModelConstructor &)
 {
 }
 

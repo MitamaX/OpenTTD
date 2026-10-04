@@ -5,21 +5,32 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file ledger_panel.h A mini window whose body is a ledger of sections. */
+/** @file view.h Game state bound to RmlUi through a data model of its own. */
 
-#ifndef MINI_UI_LEDGER_PANEL_H
-#define MINI_UI_LEDGER_PANEL_H
+#ifndef MINI_UI_VIEW_H
+#define MINI_UI_VIEW_H
 
-#include "ledger.h"
-#include "panel.h"
+#include <RmlUi/Core/DataModelHandle.h>
+#include <RmlUi/Core/Types.h>
 
-class LedgerPanel : public Panel {
+class View {
+public:
+	virtual ~View() = default;
+
+	const Rml::String &ModelName() const { return this->model_name; }
+
+	void Refresh();
+	void RemoveModel(Rml::Context &context);
+
 protected:
-	LedgerPanel(std::string key, Rml::String title, Rml::Vector<Rml::String> tabs);
+	bool CreateModel(Rml::Context &context, Rml::String model_name);
 
-	void BindSheet(Rml::DataModelConstructor &model) override;
+	virtual void Bind(Rml::DataModelConstructor &model) = 0;
+	virtual void Collect() = 0;
 
-	Rml::Vector<LedgerSection> sections;
+private:
+	Rml::String model_name;
+	Rml::DataModelHandle model;
 };
 
-#endif /* MINI_UI_LEDGER_PANEL_H */
+#endif /* MINI_UI_VIEW_H */

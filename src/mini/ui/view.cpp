@@ -5,21 +5,35 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file ledger_panel.cpp A mini window whose body is a ledger of sections. */
+/** @file view.cpp Game state bound to RmlUi through a data model of its own. */
 
 #include "../../stdafx.h"
-#include "ledger_panel.h"
+#include "view.h"
+
+#include <RmlUi/Core.h>
 
 #include "../../safeguards.h"
 
-static constexpr const char LEDGER_DOCUMENT[] = "mini_ui/ledger.rml";
-
-LedgerPanel::LedgerPanel(std::string key, Rml::String title, Rml::Vector<Rml::String> tabs) :
-	Panel(std::move(key), LEDGER_DOCUMENT, std::move(title), std::move(tabs))
+void View::Refresh()
 {
+	this->Collect();
+	this->model.DirtyAllVariables();
 }
 
-void LedgerPanel::BindSheet(Rml::DataModelConstructor &model)
+void View::RemoveModel(Rml::Context &context)
 {
-	model.Bind("sections", &this->sections);
+	context.RemoveDataModel(this->model_name);
+	this->model = {};
+}
+
+bool View::CreateModel(Rml::Context &context, Rml::String model_name)
+{
+	Rml::DataModelConstructor constructor = context.CreateDataModel(model_name);
+	if (!constructor) return false;
+
+	this->Bind(constructor);
+	this->model = constructor.GetModelHandle();
+	this->model_name = std::move(model_name);
+	this->Refresh();
+	return true;
 }

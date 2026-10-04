@@ -2,6 +2,10 @@ add_files(
     finance_panel.cpp
     finance_panel.h
     fonts.h
+    hud.cpp
+    hud.h
+    hud_part.cpp
+    hud_part.h
     ledger.cpp
     ledger.h
     ledger_panel.cpp
@@ -10,8 +14,8 @@ add_files(
     native_slot.h
     panel.cpp
     panel.h
-    panel_host.cpp
-    panel_host.h
+    panel_stack.cpp
+    panel_stack.h
     raster_image.cpp
     raster_image.h
     rml_input.cpp
@@ -26,4 +30,8 @@ add_files(
     texture_box.h
     ui_text.cpp
     ui_text.h
+    view.cpp
+    view.h
+    view_host.cpp
+    view_host.h
 )

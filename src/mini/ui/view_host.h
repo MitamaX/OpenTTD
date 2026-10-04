@@ -5,18 +5,16 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file panel_host.h Opens, stacks, places and feeds the mini panels on the RmlUi layer. */
+/** @file view_host.h The RmlUi layer with everything drawn on it: the HUD below, the panels above. */
 
-#ifndef MINI_UI_PANEL_HOST_H
-#define MINI_UI_PANEL_HOST_H
+#ifndef MINI_UI_VIEW_HOST_H
+#define MINI_UI_VIEW_HOST_H
 
-#include <memory>
-#include <vector>
-
-#include "panel.h"
+#include "hud.h"
+#include "panel_stack.h"
 #include "rml_layer.h"
 
-class PanelHost {
+class ViewHost {
 public:
 	void Frame(int width, int height, float dp_ratio, int dock_top);
 	void Show(std::unique_ptr<Panel> panel);
@@ -34,21 +32,11 @@ public:
 private:
 	bool Attach();
 	void Sync();
-	Panel *Find(const std::string &key) const;
-	Panel *Front() const;
-	size_t CountOpen() const;
-	void Place(Panel &panel) const;
-	void Confine(Panel &panel) const;
-	Rml::Vector2f Confined(Rml::Vector2f size, Rml::Vector2f position) const;
-	void Retire();
 
 	RmlLayer layer;
 	Rml::Context *context = nullptr;
-	std::vector<std::unique_ptr<Panel>> panels;
-	uint32_t serial = 0;
-	Rml::Vector2f screen;
-	float dp_ratio = 1.0f;
-	float dock_top = 0.0f;
+	Hud hud;
+	PanelStack panels;
 };
 
-#endif /* MINI_UI_PANEL_HOST_H */
+#endif /* MINI_UI_VIEW_HOST_H */

@@ -5,21 +5,27 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file ledger_panel.h A mini window whose body is a ledger of sections. */
+/** @file hud.h The screen-wide RmlUi document holding every HUD region. */
 
-#ifndef MINI_UI_LEDGER_PANEL_H
-#define MINI_UI_LEDGER_PANEL_H
+#ifndef MINI_UI_HUD_H
+#define MINI_UI_HUD_H
 
-#include "ledger.h"
-#include "panel.h"
+#include <memory>
+#include <vector>
 
-class LedgerPanel : public Panel {
-protected:
-	LedgerPanel(std::string key, Rml::String title, Rml::Vector<Rml::String> tabs);
+#include "hud_part.h"
 
-	void BindSheet(Rml::DataModelConstructor &model) override;
+namespace Rml { class ElementDocument; }
 
-	Rml::Vector<LedgerSection> sections;
+class Hud {
+public:
+	void Reset(Rml::Context *context);
+	void Refresh();
+	void ReloadStyleSheet();
+
+private:
+	std::vector<std::unique_ptr<HudPart>> parts;
+	Rml::ElementDocument *document = nullptr;
 };
 
-#endif /* MINI_UI_LEDGER_PANEL_H */
+#endif /* MINI_UI_HUD_H */
