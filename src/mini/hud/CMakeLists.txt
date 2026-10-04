@@ -1,6 +1,10 @@
 add_files(
+    build_catalog.cpp
+    build_catalog.h
     colony_panel.cpp
     colony_panel.h
+    note_layer.cpp
+    note_layer.h
     status_board.cpp
     status_board.h
     status_stream.cpp

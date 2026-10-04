@@ -5,25 +5,33 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file ui_text.h Official language strings rendered as plain display text for the mini UI. */
+/** @file build_catalog.h The build tools as the menus list them, and what each one is called. */
 
-#ifndef MINI_UI_UI_TEXT_H
-#define MINI_UI_UI_TEXT_H
+#ifndef MINI_HUD_BUILD_CATALOG_H
+#define MINI_HUD_BUILD_CATALOG_H
 
+#include <span>
 #include <string>
 #include <string_view>
 
-#include "../../economy_type.h"
-#include "../../string_func.h"
-#include "../../strings_func.h"
+#include "../../strings_type.h"
+#include "../tools/tool_kind.h"
 
-template <typename... Args>
-std::string GameText(StringID str, Args &&... args)
-{
-	return StrMakeValid(GetString(str, std::forward<Args>(args)...), {});
-}
+struct MiniMenuItem {
+	StringID str;
+	std::string_view fallback;
+	MiniTool tool;
+};
 
-std::string GameTextOr(StringID str, std::string_view fallback);
-std::string CashFlowText(Money amount);
+struct MiniMenuCategory {
+	StringID str;
+	std::string_view fallback;
+	MiniTool icon;
+	std::span<const MiniMenuItem> items;
+};
 
-#endif /* MINI_UI_UI_TEXT_H */
+std::span<const MiniMenuCategory> BuildCategories();
+std::span<const MiniMenuItem> CommandItems();
+std::string ToolLabel(MiniTool tool);
+
+#endif /* MINI_HUD_BUILD_CATALOG_H */

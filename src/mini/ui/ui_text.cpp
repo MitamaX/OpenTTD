@@ -14,6 +14,13 @@
 
 #include "../../safeguards.h"
 
+/* Labels come from the official language files so translations apply; the
+ * fallback covers what has no concise official string. */
+std::string GameTextOr(StringID str, std::string_view fallback)
+{
+	return str == INVALID_STRING_ID ? std::string(fallback) : GameText(str);
+}
+
 /* Stock finance sign convention: positive table values are outgo, negative are income and show with a plus sign. */
 std::string CashFlowText(Money amount)
 {

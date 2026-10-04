@@ -61,7 +61,9 @@
 #include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
+#include "mini/hud/build_catalog.h"
 #include "mini/hud/colony_panel.h"
+#include "mini/hud/note_layer.h"
 #include "mini/hud/status_board.h"
 #include "mini/hud/status_stream.h"
 #include "mini/hud/toast_feed.h"
@@ -245,11 +247,6 @@ bool MiniUiActive()
 	return _mini_active;
 }
 
-static void DrawScreenText(int x, int y, std::string_view text, TextColour colour = TC_WHITE)
-{
-	_canvas.DrawText(text, x, y, TextTint(colour));
-}
-
 static void ScreenFillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
 	_canvas.FillRect(x0, y0, x1, y1, c);
@@ -260,20 +257,6 @@ static void ChromePanel(int x0, int y0, int x1, int y1)
 	int r = 2 * _tuning.hud_scale;
 	RlwCmdRoundRect(x0, y0, x1, y1, r, COL_CH_EDGE);
 	RlwCmdRoundRect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, r, COL_CH_PANEL);
-}
-
-static void DrawHudText(int x, int y, std::string_view text, int min_w = 0, TextColour colour = TC_WHITE)
-{
-	int pad = 4;
-	int w = std::max<int>(GetStringBoundingBox(text).width, min_w);
-	int lh = GetCharacterHeight(FS_NORMAL);
-	RlwCmdRoundRect(x - pad, y - pad, x + w + pad, y + lh + pad - 1, pad, (COL_CH_PANEL & 0x00FFFFFFU) | 0xF0000000U);
-	DrawScreenText(x, y, text, colour);
-}
-
-static void DrawHudTextCentred(int cx, int y, std::string_view text)
-{
-	DrawHudText(cx - GetStringBoundingBox(text).width / 2, y, text);
 }
 
 /* Any unit of a consist opens its head's window, so the window always
@@ -388,83 +371,6 @@ static bool HandleLabelClick(int x, int y)
 /* Bottom-left build menu: a category bar with one panel of square icon tiles
  * above it, three per row. Drawn in screen space after Present(), so hit
  * rects live in screen pixels. */
-struct MiniMenuItem {
-	StringID str;
-	std::string_view fallback;
-	MiniTool tool;
-};
-
-struct MiniMenuCategory {
-	StringID str;
-	std::string_view fallback;
-	MiniTool icon;
-	std::span<const MiniMenuItem> items;
-};
-
-/* Labels come from the official language files so translations apply; the
- * fallback covers tools with no concise official string. */
-static std::string MenuLabel(StringID str, std::string_view fallback)
-{
-	return str == INVALID_STRING_ID ? std::string(fallback) : GameText(str);
-}
-
-static const MiniMenuItem _menu_rail_items[] = {
-	{STR_LAI_RAIL_DESCRIPTION_TRACK, "TRACK", MiniTool::Rail},
-	{STR_LAI_STATION_DESCRIPTION_RAILROAD_STATION, "STATION", MiniTool::Station},
-	{STR_LAI_STATION_DESCRIPTION_WAYPOINT, "WAYPOINT", MiniTool::RailWaypoint},
-	{STR_COMPANY_INFRASTRUCTURE_VIEW_SIGNALS, "SIGNAL", MiniTool::Signal},
-	{STR_LAI_RAIL_DESCRIPTION_TRAIN_DEPOT, "DEPOT", MiniTool::TrainDepot},
-	{STR_LAI_TUNNEL_DESCRIPTION_RAILROAD, "TUNNEL", MiniTool::RailTunnel},
-	{INVALID_STRING_ID, "BRIDGE", MiniTool::RailBridge},
-	{INVALID_STRING_ID, "CONVERT", MiniTool::Convert},
-};
-
-static const MiniMenuItem _menu_road_items[] = {
-	{STR_LAI_ROAD_DESCRIPTION_ROAD, "ROAD", MiniTool::Road},
-	{STR_LAI_STATION_DESCRIPTION_BUS_STATION, "BUS", MiniTool::BusStop},
-	{STR_LAI_STATION_DESCRIPTION_TRUCK_LOADING_AREA, "TRUCK", MiniTool::TruckStop},
-	{STR_LAI_STATION_DESCRIPTION_WAYPOINT, "WAYPOINT", MiniTool::RoadWaypoint},
-	{STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT, "DEPOT", MiniTool::RoadDepot},
-	{STR_LAI_TUNNEL_DESCRIPTION_ROAD, "TUNNEL", MiniTool::RoadTunnel},
-	{INVALID_STRING_ID, "BRIDGE", MiniTool::RoadBridge},
-	{INVALID_STRING_ID, "CONVERT", MiniTool::RoadConvert},
-};
-
-static const MiniMenuItem _menu_water_items[] = {
-	{STR_LAI_STATION_DESCRIPTION_SHIP_DOCK, "DOCK", MiniTool::Dock},
-	{STR_LAI_WATER_DESCRIPTION_SHIP_DEPOT, "DEPOT", MiniTool::ShipDepot},
-	{STR_LAI_STATION_DESCRIPTION_BUOY, "BUOY", MiniTool::Buoy},
-	{STR_LAI_WATER_DESCRIPTION_CANAL, "CANAL", MiniTool::Canal},
-	{STR_LAI_WATER_DESCRIPTION_LOCK, "LOCK", MiniTool::Lock},
-};
-
-static const MiniMenuItem _menu_air_items[] = {
-	{STR_LAI_STATION_DESCRIPTION_AIRPORT, "AIRPORT", MiniTool::Airport},
-};
-
-static const MiniMenuItem _menu_land_items[] = {
-	{STR_LAI_OBJECT_DESCRIPTION_COMPANY_HEADQUARTERS, "HQ", MiniTool::Headquarters},
-	{STR_LAI_TREE_NAME_TREES, "TREES", MiniTool::Trees},
-	{STR_LAI_OBJECT_DESCRIPTION_COMPANY_OWNED_LAND, "LAND", MiniTool::BuyLand},
-	{INVALID_STRING_ID, "INDUSTRY", MiniTool::Industry},
-	{INVALID_STRING_ID, "SIGN", MiniTool::Sign},
-};
-
-/* Area-command tools live apart from construction: the bottom-right corner
- * is the command corner in the reference layout. */
-static const MiniMenuItem _cmd_items[] = {
-	{INVALID_STRING_ID, "LEVEL", MiniTool::Terraform},
-	{INVALID_STRING_ID, "CLEAR", MiniTool::Demolish},
-};
-
-static const MiniMenuCategory _menu_cats[] = {
-	{STR_RAIL_NAME_RAILROAD, "RAIL", MiniTool::Rail, _menu_rail_items},
-	{STR_ROAD_NAME_ROAD, "ROAD", MiniTool::Road, _menu_road_items},
-	{STR_LAI_WATER_DESCRIPTION_WATER, "WATER", MiniTool::Dock, _menu_water_items},
-	{STR_REPLACE_VEHICLE_AIRCRAFT, "AIR", MiniTool::Airport, _menu_air_items},
-	{INVALID_STRING_ID, "LAND", MiniTool::Headquarters, _menu_land_items},
-};
-
 static int _menu_open = -1;
 static int _menu_scroll = 0;
 static Rect _menu_panel_rect;
@@ -490,25 +396,12 @@ static int MenuTileSide()
 {
 	int lh = GetCharacterHeight(FS_NORMAL);
 	int tw = 0;
-	for (const MiniMenuCategory &c : _menu_cats) {
-		tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(c.str, c.fallback)).width);
-		for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
+	for (const MiniMenuCategory &c : BuildCategories()) {
+		tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(c.str, c.fallback)).width);
+		for (const MiniMenuItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(it.str, it.fallback)).width);
 	}
-	for (const MiniMenuItem &it : _cmd_items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
+	for (const MiniMenuItem &it : CommandItems()) tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(it.str, it.fallback)).width);
 	return std::max(tw + 10, 3 * lh);
-}
-
-static std::string ToolLabel(MiniTool tool)
-{
-	for (const MiniMenuCategory &c : _menu_cats) {
-		for (const MiniMenuItem &it : c.items) {
-			if (it.tool == tool) return MenuLabel(it.str, it.fallback);
-		}
-	}
-	for (const MiniMenuItem &it : _cmd_items) {
-		if (it.tool == tool) return MenuLabel(it.str, it.fallback);
-	}
-	return std::string();
 }
 
 static void ScreenThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
@@ -899,7 +792,7 @@ static void DrawMenuTile(const Rect &r, StringID str, std::string_view fallback,
 	int cx = (r.left + r.right) / 2;
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawToolIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
-	if (const CanvasText *e = _canvas.Text(MenuLabel(str, fallback)); e != nullptr) {
+	if (const CanvasText *e = _canvas.Text(GameTextOr(str, fallback)); e != nullptr) {
 		_canvas.DrawText(*e, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
 	}
 }
@@ -921,7 +814,7 @@ static void DrawBuildMenu()
 	DrawBuildPanel(_menu_open >= 0 ? margin + list_w + gap : margin, bar_top - gap - 1);
 
 	if (_menu_open >= 0) {
-		const MiniMenuCategory &cat = _menu_cats[_menu_open];
+		const MiniMenuCategory &cat = BuildCategories()[_menu_open];
 		int n = (int)cat.items.size();
 		int rows = (n + cols - 1) / cols;
 		int vis = _tuning.menu_panel_rows;
@@ -952,8 +845,8 @@ static void DrawBuildMenu()
 		}
 	}
 
-	for (int c = 0; c < (int)std::size(_menu_cats); c++) {
-		const MiniMenuCategory &cat = _menu_cats[c];
+	for (int c = 0; c < (int)BuildCategories().size(); c++) {
+		const MiniMenuCategory &cat = BuildCategories()[c];
 		int x = margin + c * (tile + gap);
 		Rect r = {x, bar_top, x + tile - 1, bar_top + tile - 1};
 		DrawMenuTile(r, cat.str, cat.fallback, cat.icon, _menu_open == c);
@@ -997,11 +890,11 @@ static void DrawCmdBar()
 	int margin = 6 * s;
 	int tile = MenuTileSide();
 
-	int n = (int)std::size(_cmd_items);
+	int n = (int)CommandItems().size();
 	int x0 = _fbw - margin - n * tile - (n - 1) * gap;
 	int y = _fbh - margin - tile;
 	for (int i = 0; i < n; i++) {
-		const MiniMenuItem &it = _cmd_items[i];
+		const MiniMenuItem &it = CommandItems()[i];
 		int x = x0 + i * (tile + gap);
 		Rect r = {x, y, x + tile - 1, y + tile - 1};
 		DrawMenuTile(r, it.str, it.fallback, it.tool, _tool.Kind() == it.tool);
@@ -1171,8 +1064,8 @@ static int WinTileSide()
 	int lh = GetCharacterHeight(FS_NORMAL);
 	int tw = 0;
 	for (const MiniWinCategory &c : _win_cats) {
-		tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(c.str, c.fallback)).width);
-		for (const MiniWinItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(MenuLabel(it.str, it.fallback)).width);
+		tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(c.str, c.fallback)).width);
+		for (const MiniWinItem &it : c.items) tw = std::max<int>(tw, GetStringBoundingBox(GameTextOr(it.str, it.fallback)).width);
 	}
 	return std::max(tw + 10, 3 * lh);
 }
@@ -1310,7 +1203,7 @@ static void DrawWinTile(const Rect &r, StringID str, std::string_view fallback, 
 	int cx = (r.left + r.right) / 2;
 	int icon_h = r.bottom - r.top + 1 - lh - 9;
 	DrawWinIcon(icon, cx, r.top + 3 + icon_h / 2, icon_h * 2 / 3);
-	if (const CanvasText *e = _canvas.Text(MenuLabel(str, fallback)); e != nullptr) {
+	if (const CanvasText *e = _canvas.Text(GameTextOr(str, fallback)); e != nullptr) {
 		_canvas.DrawText(*e, cx - e->w / 2, r.bottom - lh - 3, active ? COL_CH_ACCENT : COL_CH_TEXT);
 	}
 }
@@ -1479,117 +1372,6 @@ static bool HandleWinClick(int x, int y)
 	return false;
 }
 
-static void DrawHud()
-{
-	int s = _tuning.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	MiniTool kind = _tool.Kind();
-
-	if (_pause_mode.Any()) DrawHudTextCentred(_fbw / 2, 6 * s, GameText(STR_STATUSBAR_PAUSED));
-
-	if (kind != MiniTool::None) {
-		/* The active tool announces itself beside the cursor: official name on
-		 * top, action and rotation hints below, live size while dragging. */
-		std::string_view hint;
-		switch (kind) {
-			case MiniTool::Rail: hint = "DRAG PATH / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Convert:
-			case MiniTool::RoadConvert: hint = "DRAG AREA / RMB CANCEL"; break;
-			case MiniTool::Road: hint = "DRAG LINE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Station: hint = "DRAG AREA / Q E TURN / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::BusStop:
-			case MiniTool::TruckStop: hint = "CLICK ROAD / Q E TURN / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::RailWaypoint: hint = "CLICK TRACK / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::RoadWaypoint: hint = "CLICK ROAD / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::TrainDepot:
-			case MiniTool::RoadDepot: hint = "Q E ROTATE EXIT / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::ShipDepot: hint = "Q E ROTATE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Dock: hint = "CLICK SHORE SLOPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Buoy: hint = "CLICK WATER / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Airport: hint = "CLICK SITE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Canal: hint = "DRAG AREA / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Lock: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Demolish: hint = "DRAG AREA / RMB CANCEL"; break;
-			case MiniTool::Signal: hint = "DRAG TRACK / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::RailTunnel:
-			case MiniTool::RoadTunnel: hint = "CLICK SLOPE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::RailBridge:
-			case MiniTool::RoadBridge: hint = "DRAG SPAN / RMB CANCEL"; break;
-			case MiniTool::Terraform: hint = "DRAG LEVEL / CLICK RAISE / CTRL LOWER / RMB CANCEL"; break;
-			case MiniTool::Headquarters: hint = "CLICK 2x2 SPOT / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Trees: hint = "DRAG AREA / CTRL CLEAR / RMB CANCEL"; break;
-			case MiniTool::BuyLand: hint = "DRAG AREA / CTRL SELL / RMB CANCEL"; break;
-			case MiniTool::Industry: hint = "CLICK SITE / CTRL REMOVE / RMB CANCEL"; break;
-			case MiniTool::Sign: hint = "CLICK SPOT / CTRL REMOVE / RMB CANCEL"; break;
-			default: break;
-		}
-		if (_cursor.in_window) {
-			std::string title = ToolLabel(kind);
-			if (kind == MiniTool::Airport) {
-				const AirportSpec *as = AirportSpec::Get(_choices.Airport());
-				if (as->IsAvailable()) title += fmt::format("  {}", GameText(as->name));
-			}
-			if (kind == MiniTool::Rail || kind == MiniTool::Convert) {
-				title += fmt::format("  {}", GameText(GetRailTypeInfo(_choices.Rail())->strings.name));
-			}
-			if (IsRoadTool(kind)) {
-				title += fmt::format("  {}", GameText(GetRoadTypeInfo(_choices.Road())->strings.name));
-			}
-			if (IsRoadStopTool(kind)) {
-				title += _choices.StopThrough() ? "  통과" : "  만입";
-			}
-			if (kind == MiniTool::Signal) title += fmt::format("  {}", SignalTypeLabel(_choices.Signal()));
-			if (kind == MiniTool::Demolish) title += fmt::format("  {}", _clear_filter.Label());
-			if (_estimate.TunnelEnd() != INVALID_TILE) title += fmt::format("  {}칸", _estimate.TunnelLength());
-			if (IsBridgeTool(kind)) {
-				uint len = std::max(_tool.Plans().line.BridgeLength(), 1U);
-				title += fmt::format("  {}", GameText(GetBridgeSpec(_choices.Bridge(len))->material));
-			}
-			if (kind == MiniTool::Industry) {
-				IndustryType it = _choices.Industry();
-				if (it != IT_INVALID) {
-					const IndustrySpec *indsp = GetIndustrySpec(it);
-					title += fmt::format("  {}  {}", GameText(indsp->name),
-							GameText(STR_JUST_CURRENCY_LONG, indsp->GetConstructionCost()));
-				}
-			}
-			if (_tool.Dragging()) {
-				const ToolPlans &plans = _tool.Plans();
-				if (kind == MiniTool::Rail && !plans.rail.pieces.empty()) title += fmt::format("  {}", plans.rail.pieces.size());
-				if (kind == MiniTool::Road && !plans.line.tiles.empty()) title += fmt::format("  {}", plans.line.tiles.size());
-				if (IsBridgeTool(kind)) title += fmt::format("  {}", plans.line.BridgeLength());
-				if (kind == MiniTool::Signal && !plans.signal.tiles.empty()) title += fmt::format("  {}", plans.signal.tiles.size());
-				if (IsRectTool(kind) && plans.area.valid) title += fmt::format("  {}x{}", plans.area.Width(), plans.area.Height());
-				if (kind == MiniTool::Station && plans.area.valid && !_tool.Removing()) {
-					int w = plans.area.Width();
-					int h = plans.area.Height();
-					bool along_x = _choices.StationAxis() == AXIS_X;
-					title += fmt::format("  {}선 {}칸", along_x ? h : w, along_x ? w : h);
-				}
-			}
-			/* What the plan under the cursor would charge, red once the
-			 * balance cannot cover it. */
-			std::string cost;
-			TextColour cost_tc = TC_WHITE;
-			if (_estimate.Priced()) {
-				Money price = _estimate.Cost();
-				bool income = price < 0;
-				cost = GameText(income ? STR_MESSAGE_ESTIMATED_INCOME : STR_MESSAGE_ESTIMATED_COST, income ? -price : price);
-				const Company *c = Company::GetIfValid(_local_company);
-				if (!income && c != nullptr && c->money < price) cost_tc = TC_RED;
-			}
-
-			int lines = cost.empty() ? 2 : 3;
-			int wmax = std::max<int>(std::max<int>(GetStringBoundingBox(title).width, GetStringBoundingBox(hint).width), GetStringBoundingBox(cost).width);
-			int tx = std::min(_cursor.pos.x + 9 * s, _fbw - wmax - 4 * s);
-			int ty = std::min(_cursor.pos.y + 11 * s, _fbh - lines * lh - 8 * s);
-			DrawHudText(tx, ty, title);
-			DrawHudText(tx, ty + lh + 4, hint);
-			if (!cost.empty()) DrawHudText(tx, ty + 2 * (lh + 4), cost, 0, cost_tc);
-		}
-	}
-}
-
 /* Mini windows: ONI-structured chrome windows on the GPU layer. A window has
  * a title bar with a rename pen and a close box, a uniform-width tab strip,
  * label-value body rows and square icon commands at the bottom. Every
@@ -1683,6 +1465,7 @@ static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 	parts.push_back(std::make_unique<ColonyPanel>());
 	parts.push_back(std::make_unique<StatusStream>());
 	parts.push_back(std::make_unique<ToastStack>(NewsRefFollow));
+	parts.push_back(std::make_unique<NoteLayer>());
 	return parts;
 }
 
@@ -4725,7 +4508,6 @@ bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
-	DrawHud();
 	DrawBuildMenu();
 	DrawClearPanel();
 	DrawCmdBar();
