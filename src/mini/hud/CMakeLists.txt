@@ -1,4 +1,10 @@
 add_files(
+    colony_panel.cpp
+    colony_panel.h
+    status_board.cpp
+    status_board.h
+    status_stream.cpp
+    status_stream.h
     toast_feed.cpp
     toast_feed.h
     toast_stack.cpp

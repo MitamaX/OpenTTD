@@ -24,13 +24,17 @@ Hud::Hud(std::vector<std::unique_ptr<HudPart>> parts) : parts(std::move(parts))
 void Hud::Reset(Rml::Context *context)
 {
 	this->document = nullptr;
+	for (const auto &part : this->parts) part->Place(nullptr);
 	if (context == nullptr) return;
 
 	for (const auto &part : this->parts) {
 		if (!part->Attach(*context)) return;
 	}
 	this->document = context->LoadDocument(HUD_DOCUMENT);
-	if (this->document != nullptr) this->document->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
+	if (this->document == nullptr) return;
+
+	for (const auto &part : this->parts) part->Place(this->document->GetElementById(part->ModelName()));
+	this->document->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
 }
 
 void Hud::Refresh()

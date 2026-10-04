@@ -11,6 +11,8 @@ body {
 	--ink-muted: #8d8878;
 	--ink-dim: #6e6a5e;
 	--accent: #8fe0e8;
+	--gauge: #e8b94d;
+	--veil: #edf2f71c;
 	--warn: #e0b64a;
 	--warn-ground: #453a1e;
 	--warn-ink: #ebd9a8;
@@ -38,4 +40,24 @@ div, handle {
 	width: var(--icon);
 	height: var(--icon);
 	image-color: var(--ink);
+}
+
+[tone=plain] {
+	color: var(--ink);
+}
+
+[tone=accent] {
+	color: var(--accent);
+}
+
+[tone=warn] {
+	color: var(--warn);
+}
+
+[tone=loss] {
+	color: var(--loss);
+}
+
+[tone=dim] {
+	color: var(--ink-dim);
 }

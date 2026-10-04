@@ -97,23 +97,6 @@ body {
 
 .value {
 	text-align: right;
-	color: var(--ink);
-}
-
-.value[tone=accent] {
-	color: var(--accent);
-}
-
-.value[tone=warn] {
-	color: var(--warn);
-}
-
-.value[tone=loss] {
-	color: var(--loss);
-}
-
-.value[tone=dim] {
-	color: var(--ink-dim);
 }
 
 .commands {

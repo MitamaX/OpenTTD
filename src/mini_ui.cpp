@@ -61,6 +61,9 @@
 #include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
+#include "mini/hud/colony_panel.h"
+#include "mini/hud/status_board.h"
+#include "mini/hud/status_stream.h"
 #include "mini/hud/toast_feed.h"
 #include "mini/hud/toast_stack.h"
 #include "mini/input/input_mode.h"
@@ -1476,331 +1479,6 @@ static bool HandleWinClick(int x, int y)
 	return false;
 }
 
-/* Top-left status corner in the reference layout: a panel docked flush to
- * the corner carrying the year gauge, company identity, money and the time
- * controls, with the status rows hanging below it. */
-static std::vector<std::pair<Rect, int>> _speed_hits;
-static int _colony_bottom = 0;
-static const uint32_t COL_CH_GAUGE = 0xFFE8B94DU;
-
-static void DrawPlayTriangle(int x0, int cy, int w, int hh, uint32_t c)
-{
-	for (int i = 0; i < w; i++) {
-		int h = hh * (w - i) / w;
-		if (h <= 0) break;
-		ScreenFillRect(x0 + i, cy - h, x0 + i, cy + h, c);
-	}
-}
-
-static void DrawColonyPanel()
-{
-	_speed_hits.clear();
-
-	int s = _tuning.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int pad = 5 * s;
-	int gap = 2 * s;
-	int ring = lh;
-
-	const Company *c = Company::GetIfValid(_local_company);
-	std::string name = c != nullptr ? GameText(STR_COMPANY_NAME, c->index) : std::string();
-	std::string date = GetString(STR_JUST_DATE_LONG, TimerGameCalendar::date);
-	std::string funds;
-	/* Running out of money ends the game, so the panel says so rather than
-	 * leaving the balance to be read as just another number. */
-	TextColour funds_tc = TC_WHITE;
-	if (c != nullptr) {
-		uint veh = 0;
-		for (int t = 0; t < VEH_COMPANY_END; t++) veh += c->group_all[t].num_vehicle;
-		funds = fmt::format("{}   VEH {}", GetString(STR_JUST_CURRENCY_LONG, c->money), veh);
-		if (c->months_of_bankruptcy > 0) funds += fmt::format("   경고 {}", c->months_of_bankruptcy);
-		funds_tc = c->money < 0 ? TC_RED : (c->months_of_bankruptcy > 0 ? TC_YELLOW : TC_WHITE);
-	}
-
-	int bw = 12 * s, bh = 10 * s;
-	int text_x = pad + 2 * ring + 4 * s;
-	int w = std::max({text_x + std::max<int>(GetStringBoundingBox(name).width, GetStringBoundingBox(date).width),
-			pad + (int)GetStringBoundingBox(funds).width,
-			pad + 3 * bw + 2 * gap}) + pad;
-	/* Text widths shift every tick; quantised and monotonic width keeps the
-	 * panel from breathing. */
-	w = (w + 8 * s - 1) / (8 * s) * (8 * s);
-	static int stable_w = 0;
-	w = std::max(w, stable_w);
-	stable_w = w;
-	int rows_bottom = pad + std::max(2 * ring, 2 * lh + gap);
-	int funds_y = rows_bottom + 2 * s;
-	int btn_y = funds.empty() ? funds_y : funds_y + lh + 3 * s;
-	int h = btn_y + bh + pad;
-
-	int m = 6 * s;
-	ChromePanel(m, m, m + w - 1, m + h - 1);
-
-	/* Year gauge: segmented ring, elapsed part in the reference cycle gold. */
-	TimerGameCalendar::YearMonthDay ymd = TimerGameCalendar::ConvertDateToYMD(TimerGameCalendar::date);
-	double frac = (ymd.month + (ymd.day - 1) / 31.0) / 12.0;
-	int cx = m + pad + ring, cy = m + pad + ring;
-	const int N = 28;
-	const double TAU = 6.283185307179586;
-	int rr = ring - s;
-	for (int i = 0; i < N; i++) {
-		double a0 = -TAU / 4 + TAU * i / N;
-		double a1 = -TAU / 4 + TAU * (i + 1) / N;
-		uint32_t col = ((double)i + 0.5) / N < frac ? COL_CH_GAUGE : COL_CH_TILE;
-		RlwCmdLine(cx + (int)std::lround(cos(a0) * rr), cy + (int)std::lround(sin(a0) * rr),
-				cx + (int)std::lround(cos(a1) * rr), cy + (int)std::lround(sin(a1) * rr), 2 * s, col);
-	}
-
-	if (!name.empty()) DrawScreenText(m + text_x, m + pad, name);
-	DrawScreenText(m + text_x, m + pad + lh + gap, date);
-	if (!funds.empty()) DrawScreenText(m + pad, m + funds_y, funds, funds_tc);
-
-	int active = _pause_mode.Any() ? 0 : (_game_speed == 100 ? 1 : 2);
-	for (int i = 0; i < 3; i++) {
-		int bx = m + pad + i * (bw + gap);
-		Rect r = {bx, m + btn_y, bx + bw - 1, m + btn_y + bh - 1};
-		ChromeTile(r, active == i);
-		uint32_t gc = active == i ? COL_CH_ACCENT : (i == 2 && _networking ? COL_CH_DIM : COL_CH_TEXT);
-		int gcx = (r.left + r.right) / 2, gcy = (r.top + r.bottom) / 2;
-		int gh = std::max(2, (bh - 4 * s) / 2);
-		switch (i) {
-			case 0:
-				ScreenFillRect(gcx - 2 * s, gcy - gh, gcx - s, gcy + gh, gc);
-				ScreenFillRect(gcx + s, gcy - gh, gcx + 2 * s, gcy + gh, gc);
-				break;
-			case 1:
-				DrawPlayTriangle(gcx - (gh + 2 * s) / 2, gcy, gh + 2 * s, gh, gc);
-				break;
-			case 2:
-				DrawPlayTriangle(gcx - (gh + s), gcy, gh + s, gh, gc);
-				DrawPlayTriangle(gcx, gcy, gh + s, gh, gc);
-				break;
-		}
-		_speed_hits.emplace_back(r, i);
-	}
-	_colony_bottom = m + h;
-}
-
-static bool HandleSpeedClick(int x, int y)
-{
-	for (const auto &[r, i] : _speed_hits) {
-		if (!InRect(r, x, y)) continue;
-		switch (i) {
-			case 0:
-				Command<CMD_PAUSE>::Post(PauseMode::Normal, !_pause_mode.Test(PauseMode::Normal));
-				break;
-			case 1:
-				if (_pause_mode.Test(PauseMode::Normal)) Command<CMD_PAUSE>::Post(PauseMode::Normal, false);
-				ChangeGameSpeed(false);
-				break;
-			case 2:
-				if (_networking) break;
-				if (_pause_mode.Test(PauseMode::Normal)) Command<CMD_PAUSE>::Post(PauseMode::Normal, false);
-				ChangeGameSpeed(true);
-				break;
-		}
-		return true;
-	}
-	return false;
-}
-
-/* Left-edge status stream like the reference: no event cards, only live
- * aggregated problem states. A row shows the category and count, hovering
- * lists the affected vehicles, clicking cycles the camera through them. */
-enum class MiniStatus : uint8_t {
-	Crashed,
-	Lost,
-	Stuck,
-	Broken,
-	NoOrders,
-	BadOrders,
-	OldAge,
-	Unprofitable,
-	End,
-};
-
-static const int MINI_STATUS_COUNT = (int)MiniStatus::End;
-static std::vector<VehicleID> _status_veh[MINI_STATUS_COUNT];
-static std::vector<std::pair<Rect, int>> _status_rows;
-static uint32_t _status_cursor[MINI_STATUS_COUNT];
-static std::unordered_map<std::string, std::string> _news_trunc;
-
-static std::string StatusLabel(int st)
-{
-	switch ((MiniStatus)st) {
-		case MiniStatus::Crashed: return MenuLabel(STR_VEHICLE_STATUS_CRASHED, "CRASHED");
-		case MiniStatus::Lost: return MenuLabel(INVALID_STRING_ID, "LOST");
-		case MiniStatus::Stuck: return MenuLabel(INVALID_STRING_ID, "STUCK");
-		case MiniStatus::Broken: return MenuLabel(STR_VEHICLE_STATUS_BROKEN_DOWN, "BROKEN DOWN");
-		case MiniStatus::NoOrders: return MenuLabel(INVALID_STRING_ID, "NO ORDERS");
-		case MiniStatus::BadOrders: return MenuLabel(INVALID_STRING_ID, "BAD ORDERS");
-		case MiniStatus::OldAge: return MenuLabel(INVALID_STRING_ID, "OLD AGE");
-		default: return MenuLabel(INVALID_STRING_ID, "IN THE RED");
-	}
-}
-
-/* A persistent row needs a hard error: void orders or a station the vehicle
- * cannot use. The softer advice cases of the native order review, too few
- * stations and a duplicate first and last entry, also flag valid schedules
- * like waypoint loops, so they stay with the one-shot native news. */
-static bool HasBadOrders(const Vehicle *v)
-{
-	for (const Order &order : v->Orders()) {
-		if (order.IsType(OT_DUMMY)) return true;
-		if (order.IsType(OT_GOTO_STATION) && !CanVehicleUseStation(v, Station::Get(order.GetDestination().ToStationID()))) return true;
-	}
-	return false;
-}
-
-/* Waiting at a signal is normal traffic; a stuck train only becomes a status
- * row past the same wait the stuck news uses, and stays one until it moves. */
-static std::unordered_set<uint32_t> _stuck_long;
-
-static void ScanStatuses()
-{
-	for (auto &l : _status_veh) l.clear();
-	static std::unordered_set<uint32_t> keep;
-	keep.clear();
-	for (const Vehicle *v : Vehicle::Iterate()) {
-		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
-		if (v->vehstatus.Test(VehState::Crashed)) {
-			_status_veh[(int)MiniStatus::Crashed].push_back(v->index);
-			continue;
-		}
-		if (v->vehicle_flags.Test(VehicleFlag::PathfinderLost)) _status_veh[(int)MiniStatus::Lost].push_back(v->index);
-		if (v->type == VEH_TRAIN) {
-			const Train *t = Train::From(v);
-			if (t->flags.Test(VehicleRailFlag::Stuck)) {
-				uint32_t id = v->index.base();
-				if (t->wait_counter >= _settings_game.pf.wait_for_pbs_path * Ticks::DAY_TICKS || _stuck_long.contains(id)) {
-					keep.insert(id);
-					_status_veh[(int)MiniStatus::Stuck].push_back(v->index);
-				}
-			}
-		}
-		if (v->type != VEH_AIRCRAFT && v->breakdown_ctr == 1) _status_veh[(int)MiniStatus::Broken].push_back(v->index);
-		if (v->GetNumOrders() == 0 && !v->vehstatus.Test(VehState::Stopped)) _status_veh[(int)MiniStatus::NoOrders].push_back(v->index);
-		if (HasBadOrders(v)) _status_veh[(int)MiniStatus::BadOrders].push_back(v->index);
-		if (v->age > v->max_age) _status_veh[(int)MiniStatus::OldAge].push_back(v->index);
-		/* Last year alone would pin the row until new year even after the route
-		 * was fixed; earning anything this year clears it. */
-		if (v->economy_age >= VEHICLE_PROFIT_MIN_AGE && v->GetDisplayProfitLastYear() < 0 && v->GetDisplayProfitThisYear() < 0) _status_veh[(int)MiniStatus::Unprofitable].push_back(v->index);
-	}
-	std::swap(_stuck_long, keep);
-}
-
-static std::string_view TruncateText(const std::string &text, int maxw)
-{
-	if ((int)GetStringBoundingBox(text).width <= maxw) return text;
-	auto it = _news_trunc.find(text);
-	if (it == _news_trunc.end()) {
-		if (_news_trunc.size() > 128) _news_trunc.clear();
-		std::string best;
-		Utf8View view(text);
-		for (auto vit = view.begin(); vit != view.end();) {
-			++vit;
-			std::string cand = text.substr(0, vit.GetByteOffset()) + "...";
-			if ((int)GetStringBoundingBox(cand).width > maxw) break;
-			best = std::move(cand);
-		}
-		it = _news_trunc.emplace(text, std::move(best)).first;
-	}
-	return it->second;
-}
-
-static void DrawStatusStream()
-{
-	ScanStatuses();
-	_status_rows.clear();
-
-	int s = _tuning.hud_scale;
-	int lh = GetCharacterHeight(FS_NORMAL);
-	int margin = 6 * s;
-	int bar_w = 3 * s;
-	int card_w = 84 * s;
-	int maxw = card_w - bar_w - 8 * s;
-	int y = _colony_bottom + margin;
-
-	int hover = -1;
-	Rect hover_r{};
-	for (int st = 0; st < MINI_STATUS_COUNT; st++) {
-		const auto &list = _status_veh[st];
-		if (list.empty()) continue;
-
-		bool crit = st <= (int)MiniStatus::Broken;
-		uint32_t bar = crit ? 0xFFE05F4AU : 0xFFE0B64AU;
-		uint32_t bg = crit ? 0xFF4A2320U : 0xFF453A1EU;
-		uint32_t tcol = crit ? 0xFFF2D9D2U : 0xFFEBD9A8U;
-
-		std::string text = fmt::format("{} ({})", StatusLabel(st), list.size());
-		std::string_view t = TruncateText(text, maxw);
-		if (t.empty()) continue;
-		int ch = lh + 5 * s;
-		Rect r = {margin, y, margin + card_w - 1, y + ch - 1};
-		ScreenFillRect(r.left, r.top, r.left + bar_w - 1, r.bottom, bar);
-		ScreenFillRect(r.left + bar_w, r.top, r.right, r.bottom, bg);
-		if (_cursor.in_window && InRect(r, _cursor.pos.x, _cursor.pos.y)) {
-			_canvas.BlendRect(r.left, r.top, r.right, r.bottom, COL_PAPER, 28);
-			hover = st;
-			hover_r = r;
-		}
-		_canvas.DrawText(t, r.left + bar_w + 4 * s, y + (ch - lh) / 2, tcol);
-		_status_rows.push_back({r, st});
-		y += ch + 2 * s;
-	}
-
-	/* Hover panel: the affected vehicles by name, capped at eight. */
-	if (hover >= 0) {
-		const auto &list = _status_veh[hover];
-		static std::vector<std::string> names;
-		names.clear();
-		int wmax = 0;
-		for (size_t i = 0; i < list.size() && i < 8; i++) {
-			const Vehicle *v = Vehicle::GetIfValid(list[i]);
-			if (v == nullptr) continue;
-			names.push_back(GameText(STR_VEHICLE_NAME, v->index));
-			wmax = std::max(wmax, (int)GetStringBoundingBox(names.back()).width);
-		}
-		if (list.size() > names.size()) {
-			names.push_back(fmt::format("+{}", list.size() - names.size()));
-			wmax = std::max(wmax, (int)GetStringBoundingBox(names.back()).width);
-		}
-		if (!names.empty()) {
-			int pad = 4 * s;
-			int x0 = hover_r.right + 4 * s;
-			int y0 = hover_r.top;
-			int w = wmax + 2 * pad;
-			int h = (int)names.size() * (lh + 2 * s) + 2 * pad - 2 * s;
-			if (y0 + h >= _fbh) y0 = std::max(0, _fbh - h - 1);
-			ChromePanel(x0, y0, x0 + w - 1, y0 + h - 1);
-			int ty = y0 + pad;
-			for (const std::string &n : names) {
-				DrawScreenText(x0 + pad, ty, n);
-				ty += lh + 2 * s;
-			}
-		}
-	}
-}
-
-static bool HandleStatusClick(int x, int y)
-{
-	for (const auto &[r, st] : _status_rows) {
-		if (!InRect(r, x, y)) continue;
-		const auto &list = _status_veh[st];
-		for (size_t i = 0; i < list.size(); i++) {
-			size_t idx = _status_cursor[st] % list.size();
-			_status_cursor[st]++;
-			const Vehicle *v = Vehicle::GetIfValid(list[idx]);
-			if (v == nullptr) continue;
-			ShowVehicleViewWindow(v->First());
-			MiniUiScrollTo(v->x_pos, v->y_pos);
-			return true;
-		}
-		return true;
-	}
-	return false;
-}
-
 static void DrawHud()
 {
 	int s = _tuning.hud_scale;
@@ -2002,6 +1680,8 @@ static void NewsRefFollow(const NewsReference &ref);
 static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 {
 	std::vector<std::unique_ptr<HudPart>> parts;
+	parts.push_back(std::make_unique<ColonyPanel>());
+	parts.push_back(std::make_unique<StatusStream>());
 	parts.push_back(std::make_unique<ToastStack>(NewsRefFollow));
 	return parts;
 }
@@ -5046,8 +4726,6 @@ static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
 	DrawHud();
-	DrawColonyPanel();
-	DrawStatusStream();
 	DrawBuildMenu();
 	DrawClearPanel();
 	DrawCmdBar();
@@ -5078,8 +4756,7 @@ void MiniUiResetGameState()
 	_mode.Idle();
 	_tool.Abort();
 	_vehicle_motion.Clear();
-	_stuck_long.clear();
-	for (auto &l : _status_veh) l.clear();
+	_status_board.Clear();
 	ClearFleetDrafts();
 	_deploy.Reset();
 	_toast_feed.Clear();
@@ -5242,7 +4919,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 
 	if (_left_button_down && !_left_button_clicked) {
 		_left_button_clicked = true;
-		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y) && !HandleSpeedClick(_cursor.pos.x, _cursor.pos.y) && !HandleStatusClick(_cursor.pos.x, _cursor.pos.y)) {
+		if (!HandleMenuClick(_cursor.pos.x, _cursor.pos.y) && !HandleBuildPanelClick(_cursor.pos.x, _cursor.pos.y) && !HandleClearClick(_cursor.pos.x, _cursor.pos.y) && !HandleCmdClick(_cursor.pos.x, _cursor.pos.y) && !HandleWinClick(_cursor.pos.x, _cursor.pos.y)) {
 			if (_tool.Kind() == MiniTool::None) {
 				if (_mode.PickingOrders()) {
 					_mode.PickOrderAt(CursorPoint());

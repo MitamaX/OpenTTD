@@ -6,9 +6,54 @@ body {
 	pointer-events: none;
 }
 
-.region {
+.dock {
 	position: absolute;
+	display: flex;
+	flex-direction: column;
+	pointer-events: none;
+}
+
+.chrome {
+	padding: 5dp;
+	background-color: var(--panel);
+	border: 1dp var(--panel-edge);
+	border-radius: var(--radius-tile);
 	pointer-events: auto;
+}
+
+.tile {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--tile);
+	border: 1dp var(--panel-edge);
+	border-radius: var(--radius-tile);
+	pointer-events: auto;
+}
+
+.tile:hover {
+	border-color: var(--accent);
+}
+
+.tile.active {
+	background-color: var(--tile-active);
+}
+
+.tile .icon {
+	image-color: var(--tile-ink);
+}
+
+.tile.active .icon {
+	image-color: var(--accent);
+}
+
+.tile.off .icon {
+	image-color: var(--ink-dim);
+}
+
+.tile-row {
+	display: flex;
+	gap: 2dp;
 }
 
 .alert {
@@ -40,14 +85,116 @@ body {
 	left: 0dp;
 	right: 0dp;
 	bottom: var(--bar-clearance);
-	display: flex;
-	flex-direction: column;
 	align-items: center;
 	gap: 3dp;
-	pointer-events: none;
 }
 
 .toasts .alert {
 	width: 340dp;
 	max-width: 100%;
+}
+
+.dock-left {
+	left: var(--hud-margin);
+	top: var(--hud-margin);
+	align-items: flex-start;
+	gap: var(--hud-margin);
+}
+
+.colony {
+	display: flex;
+	flex-direction: column;
+	gap: 2dp;
+}
+
+.colony-head {
+	display: flex;
+	align-items: center;
+	gap: 4dp;
+}
+
+.gauge {
+	position: relative;
+	flex-shrink: 0;
+	width: 28dp;
+	height: 28dp;
+}
+
+.gauge-arm {
+	position: absolute;
+	left: 14dp;
+	top: 14dp;
+	width: 0dp;
+	height: 0dp;
+}
+
+.gauge-segment {
+	position: absolute;
+	left: -1.5dp;
+	top: -14dp;
+	width: 3dp;
+	height: 2dp;
+	background-color: var(--tile);
+}
+
+.gauge-segment.done {
+	background-color: var(--gauge);
+}
+
+.colony-title {
+	display: flex;
+	flex-direction: column;
+	gap: 2dp;
+	white-space: nowrap;
+}
+
+.colony-funds {
+	display: flex;
+	column-gap: 12dp;
+	white-space: nowrap;
+}
+
+.speed {
+	width: 12dp;
+	height: 10dp;
+}
+
+.speed .icon {
+	width: 7dp;
+	height: 7dp;
+}
+
+.status {
+	display: flex;
+	flex-direction: column;
+	gap: 2dp;
+}
+
+.status-row {
+	position: relative;
+}
+
+.status .alert {
+	width: 84dp;
+}
+
+.status .alert:hover {
+	decorator: linear-gradient(var(--veil), var(--veil));
+}
+
+.names {
+	display: none;
+	position: absolute;
+	left: 100%;
+	top: 0dp;
+	margin-left: 4dp;
+	white-space: nowrap;
+}
+
+.names div + div {
+	margin-top: 2dp;
+}
+
+.status-row:hover .names {
+	display: block;
 }

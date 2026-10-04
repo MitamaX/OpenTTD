@@ -2,6 +2,9 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/hud.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/hud.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/close.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/fast.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/pause.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/play.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/ledger.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rml

@@ -4,7 +4,42 @@
 	<link type="text/rcss" href="hud.rcss"/>
 </head>
 <body>
-	<div class="region toasts" data-model="toasts">
+	<div class="dock dock-left">
+		<div id="colony" class="chrome colony" data-model="colony">
+			<div class="colony-head">
+				<div class="gauge">
+					<div class="gauge-arm" data-for="segment : gauge" data-style-transform="segment.angle">
+						<div class="gauge-segment" data-class-done="segment.done"></div>
+					</div>
+				</div>
+				<div class="colony-title">
+					<div data-if="name != ''">{{name}}</div>
+					<div>{{date}}</div>
+				</div>
+			</div>
+			<div class="colony-funds" data-if="money != ''" data-attr-tone="funds_tone">
+				<span>{{money}}</span>
+				<span>{{vehicles}}</span>
+				<span data-if="warning != ''">{{warning}}</span>
+			</div>
+			<div class="tile-row">
+				<div class="tile speed" data-for="speed, index : speeds" data-class-active="speed.active" data-class-off="speed.off" data-event-click="speed(index)">
+					<svg class="icon" data-attr-src="speed.icon"/>
+				</div>
+			</div>
+		</div>
+		<div id="status" class="status" data-model="status">
+			<div class="status-row" data-for="row : rows">
+				<div class="alert" data-attr-tone="row.tone" data-event-click="cycle(row.status)">
+					<div class="alert-head">{{row.text}}</div>
+				</div>
+				<div class="chrome names">
+					<div data-for="name : row.names">{{name}}</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="toasts" class="dock toasts" data-model="toasts">
 		<div class="alert" data-for="card, index : cards" data-attr-tone="card.tone" data-style-opacity="card.opacity" data-event-click="open(index)">
 			<div class="alert-head">{{card.head}}</div>
 			<div class="alert-detail" data-if="card.detail != ''">{{card.detail}}</div>

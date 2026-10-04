@@ -12,15 +12,21 @@
 
 #include "view.h"
 
+namespace Rml { class Element; }
+
 class HudPart : public View {
 public:
 	bool Attach(Rml::Context &context);
+	void Place(Rml::Element *root) { this->root = root; }
 
 protected:
 	explicit HudPart(Rml::String region);
 
+	Rml::Element *Root() const { return this->root; }
+
 private:
 	const Rml::String region;
+	Rml::Element *root = nullptr;
 };
 
 #endif /* MINI_UI_HUD_PART_H */
