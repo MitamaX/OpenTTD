@@ -5,25 +5,19 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file finance_panel.h The company's money: standing, yearly ledger and the loan. */
+/** @file goal_list_panel.h The company's goals and the global ones; a row opens what the goal points at. */
 
-#ifndef MINI_UI_FINANCE_PANEL_H
-#define MINI_UI_FINANCE_PANEL_H
+#ifndef MINI_WINDOWS_GOAL_LIST_PANEL_H
+#define MINI_WINDOWS_GOAL_LIST_PANEL_H
 
-#include "ledger_panel.h"
+#include "../ui/ledger_panel.h"
 
-struct Company;
-
-class FinancePanel final : public LedgerPanel {
+class GoalListPanel final : public LedgerPanel {
 public:
-	FinancePanel();
-
-	bool IsAlive() const override;
+	GoalListPanel();
 
 private:
 	void Collect() override;
-	void CollectStanding(const Company &company);
-	void CollectYear(const Company &company);
 };
 
-#endif /* MINI_UI_FINANCE_PANEL_H */
+#endif /* MINI_WINDOWS_GOAL_LIST_PANEL_H */

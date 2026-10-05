@@ -1,6 +1,4 @@
 add_files(
-    finance_panel.cpp
-    finance_panel.h
     fonts.h
     hud.cpp
     hud.h

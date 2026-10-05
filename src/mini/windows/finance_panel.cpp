@@ -15,7 +15,7 @@
 #include "../../company_func.h"
 #include "../../economy_func.h"
 #include "../../misc_cmd.h"
-#include "ui_text.h"
+#include "../ui/ui_text.h"
 
 #include "../../table/strings.h"
 

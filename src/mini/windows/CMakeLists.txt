@@ -1,0 +1,21 @@
+add_files(
+    directory_panel.cpp
+    directory_panel.h
+    finance_panel.cpp
+    finance_panel.h
+    goal_list_panel.cpp
+    goal_list_panel.h
+    grades.cpp
+    grades.h
+    news_list_panel.cpp
+    news_list_panel.h
+    sign_list_panel.cpp
+    sign_list_panel.h
+    station_list_panel.cpp
+    station_list_panel.h
+    subsidy_list_panel.cpp
+    subsidy_list_panel.h
+    town_list_panel.cpp
+    town_list_panel.h
+    window_links.h
+)
