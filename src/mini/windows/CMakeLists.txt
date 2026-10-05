@@ -1,6 +1,8 @@
 add_files(
     directory_panel.cpp
     directory_panel.h
+    engine_preview_panel.cpp
+    engine_preview_panel.h
     finance_panel.cpp
     finance_panel.h
     goal_list_panel.cpp
@@ -15,7 +17,11 @@ add_files(
     station_list_panel.h
     subsidy_list_panel.cpp
     subsidy_list_panel.h
+    takeover_panel.cpp
+    takeover_panel.h
     town_list_panel.cpp
     town_list_panel.h
+    waypoint_panel.cpp
+    waypoint_panel.h
     window_links.h
 )

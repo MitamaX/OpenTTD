@@ -91,6 +91,7 @@
 #include "mini/ui/fonts.h"
 #include "mini/ui/ui_text.h"
 #include "mini/ui/view_host.h"
+#include "mini/windows/engine_preview_panel.h"
 #include "mini/windows/finance_panel.h"
 #include "mini/windows/goal_list_panel.h"
 #include "mini/windows/grades.h"
@@ -98,7 +99,9 @@
 #include "mini/windows/sign_list_panel.h"
 #include "mini/windows/station_list_panel.h"
 #include "mini/windows/subsidy_list_panel.h"
+#include "mini/windows/takeover_panel.h"
 #include "mini/windows/town_list_panel.h"
+#include "mini/windows/waypoint_panel.h"
 #include "mini/windows/window_links.h"
 #include "economy_cmd.h"
 #include "economy_func.h"
@@ -429,9 +432,6 @@ enum class MiniWndKind : uint8_t {
 	IndustryList,
 	League,
 	Graph,
-	Preview,
-	Takeover,
-	Waypoint,
 	Map,
 	Native,
 };
@@ -450,9 +450,6 @@ struct MiniWnd {
 	StationID st = StationID::Invalid();
 	TownID town = TownID::Invalid();
 	IndustryID ind = IndustryID::Invalid();
-	EngineID eng = EngineID::Invalid();
-	CompanyID comp = CompanyID::Invalid();
-	bool hostile = false;
 	VehicleID sel = VehicleID::Invalid();
 	GroupID sel_grp = ALL_GROUP;
 	EngineID sel_eng = EngineID::Invalid();
@@ -468,7 +465,6 @@ struct MiniWnd {
 	GroupID rename_grp = GroupID::Invalid();
 	TileIndex rename_depot = INVALID_TILE;
 	TileIndex sell_arm = INVALID_TILE;
-	bool want_close = false;
 	int embed_w = 0;
 	int embed_h = 0;
 	bool embed_fix_w = false;
@@ -684,22 +680,20 @@ struct MiniOpenReq {
 	StationID st;
 	TownID town;
 	IndustryID ind;
-	EngineID eng;
-	CompanyID comp;
 	int8_t tab;
 };
 
 static std::vector<MiniOpenReq> _wnd_opens;
 static bool _wnds_drawing = false;
 
-static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), EngineID eng = EngineID::Invalid(), CompanyID comp = CompanyID::Invalid(), int8_t tab = -1)
+static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), int8_t tab = -1)
 {
 	if (_wnds_drawing) {
-		_wnd_opens.push_back({kind, veh, st, town, ind, eng, comp, tab});
+		_wnd_opens.push_back({kind, veh, st, town, ind, tab});
 		return;
 	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind && _wnds[i].eng == eng && _wnds[i].comp == comp) {
+		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind) {
 			RaiseMiniWnd(i);
 			if (tab >= 0) _wnds.back().tab = (uint8_t)tab;
 			return;
@@ -712,8 +706,6 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	mw.st = st;
 	mw.town = town;
 	mw.ind = ind;
-	mw.eng = eng;
-	mw.comp = comp;
 	if (tab >= 0) mw.tab = (uint8_t)tab;
 	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
 	mw.y = Clamp(WindowBarBottom() + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
@@ -731,7 +723,7 @@ static void CloseAllMiniWnds()
 
 static void OpenFleetMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), EngineID::Invalid(), CompanyID::Invalid(), (int8_t)vt);
+	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), (int8_t)vt);
 }
 
 void OpenVehicleWindow(VehicleID vehicle)
@@ -771,7 +763,7 @@ void OpenCompanyWindow()
 
 static void OpenGroupMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), EngineID::Invalid(), CompanyID::Invalid(), (int8_t)vt);
+	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), (int8_t)vt);
 }
 
 static void OpenStationListMiniWnd()
@@ -2221,56 +2213,6 @@ void FollowNews(const NewsReference &ref)
 	std::visit(visitor{}, ref);
 }
 
-static void ImPreviewBody(const MiniWnd &mw)
-{
-	const Engine *e = Engine::GetIfValid(mw.eng);
-	if (e == nullptr) return;
-
-	ImWndText(GameText(STR_ENGINE_PREVIEW_MESSAGE, GetEngineCategoryName(mw.eng)), COL_CH_TEXT);
-	ImWndHeader(GameText(STR_ENGINE_NAME, PackEngineNameDParam(mw.eng, EngineNameContext::PreviewNews)));
-	ImWndText(StrMakeValid(GetEngineInfoString(mw.eng), {}), COL_CH_TEXT);
-}
-
-static void ImWaypointBody(const MiniWnd &mw)
-{
-	const Waypoint *wp = Waypoint::GetIfValid(mw.st);
-	if (wp == nullptr) return;
-
-	std::string_view kind = "부표";
-	if (wp->facilities.Test(StationFacility::Train)) {
-		kind = "철도 대기점";
-	} else if (wp->facilities.Test(StationFacility::TruckStop) || wp->facilities.Test(StationFacility::BusStop)) {
-		kind = "도로 대기점";
-	}
-	ImWndKV("종류", kind, COL_CH_TEXT);
-	if (Company::IsValidID(wp->owner)) {
-		ImWndKV("소유", GameText(STR_COMPANY_NAME, wp->owner), COL_CH_TEXT);
-	}
-	if (wp->town != nullptr) {
-		ImWndKV("도시", GameText(STR_TOWN_NAME, wp->town->index), COL_CH_TEXT);
-	}
-	ImWndKV("좌표", fmt::format("{} · {}", TileX(wp->xy), TileY(wp->xy)), COL_CH_TEXT);
-}
-
-static Money TakeoverPrice(const MiniWnd &mw)
-{
-	const Company *c = Company::GetIfValid(mw.comp);
-	if (c == nullptr) return 0;
-	return mw.hostile ? CalculateHostileTakeoverValue(c) : c->bankrupt_value;
-}
-
-static void ImTakeoverBody(const MiniWnd &mw)
-{
-	const Company *c = Company::GetIfValid(mw.comp);
-	if (c == nullptr) return;
-
-	StringID str = mw.hostile ? STR_BUY_COMPANY_HOSTILE_TAKEOVER : STR_BUY_COMPANY_MESSAGE;
-	ImWndText(GameText(str, c->index, TakeoverPrice(mw)), COL_CH_TEXT);
-	ImWndKV("성능 지수", fmt::format("{}/1000", c->old_economy[0].performance_history), COL_CH_TEXT);
-	ImWndKV("보유 현금", GameText(STR_JUST_CURRENCY_LONG, c->money), COL_CH_TEXT);
-	ImWndKV("대출", GameText(STR_JUST_CURRENCY_LONG, c->current_loan), c->current_loan > 0 ? COL_CH_YELLOW : COL_CH_TEXT);
-}
-
 enum class MiniMapMode : uint8_t {
 	Contour,
 	Vehicles,
@@ -2609,34 +2551,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			break;
 		}
 
-		case MiniWndKind::Takeover: {
-			const Company *tc = Company::GetIfValid(mw.comp);
-			const Company *own = Company::GetIfValid(_local_company);
-			bool affordable = tc != nullptr && own != nullptr && own->money >= TakeoverPrice(mw);
-			if (ImWndButton("매수", affordable)) {
-				Command<CMD_BUY_COMPANY>::Post(STR_ERROR_CAN_T_BUY_COMPANY, mw.comp, mw.hostile);
-				mw.want_close = true;
-			}
-			if (ImWndButton("거절", true)) mw.want_close = true;
-			break;
-		}
-
-		case MiniWndKind::Waypoint: {
-			const Waypoint *wp = Waypoint::GetIfValid(mw.st);
-			if (ImWndButton("지도에서 보기", wp != nullptr)) {
-				MiniUiScrollTo(TileX(wp->xy) * TILE_SIZE, TileY(wp->xy) * TILE_SIZE);
-			}
-			break;
-		}
-
-		case MiniWndKind::Preview:
-			if (ImWndButton("수락", Engine::GetIfValid(mw.eng) != nullptr)) {
-				Command<CMD_WANT_ENGINE_PREVIEW>::Post(mw.eng);
-				mw.want_close = true;
-			}
-			if (ImWndButton("거절", true)) mw.want_close = true;
-			break;
-
 		case MiniWndKind::Company: {
 			const Company *cc = Company::GetIfValid(_local_company);
 			bool has_hq = cc != nullptr && cc->location_of_HQ != INVALID_TILE;
@@ -2685,10 +2599,6 @@ static bool WndRenamable(const MiniWnd &mw, const Vehicle *v, const Station *st,
 		case MiniWndKind::Station: return st != nullptr && st->owner == _local_company;
 		case MiniWndKind::Town: return t != nullptr;
 		case MiniWndKind::Company: return Company::IsValidID(_local_company);
-		case MiniWndKind::Waypoint: {
-			const Waypoint *wp = Waypoint::GetIfValid(mw.st);
-			return wp != nullptr && wp->owner == _local_company;
-		}
 		default: return false;
 	}
 }
@@ -2708,9 +2618,6 @@ static void WndPostRename(const MiniWnd &mw, const Vehicle *v, const Station *st
 			break;
 		case MiniWndKind::Company:
 			Command<CMD_RENAME_COMPANY>::Post(STR_ERROR_CAN_T_CHANGE_COMPANY_NAME, std::move(name));
-			break;
-		case MiniWndKind::Waypoint:
-			Command<CMD_RENAME_WAYPOINT>::Post(STR_ERROR_CAN_T_CHANGE_WAYPOINT_NAME, mw.st, std::move(name));
 			break;
 		default: break;
 	}
@@ -2832,15 +2739,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::League: title = "순위"; break;
 		case MiniWndKind::Graph: title = "그래프"; break;
 		case MiniWndKind::Map: title = "지도"; break;
-		case MiniWndKind::Preview: title = "신형 차량"; idnum = mw.eng.base(); break;
-		case MiniWndKind::Takeover:
-			if (Company::IsValidID(mw.comp)) title = GameText(STR_COMPANY_NAME, mw.comp);
-			idnum = mw.comp.base();
-			break;
-		case MiniWndKind::Waypoint:
-			if (Waypoint::IsValidID(mw.st)) title = GameText(STR_WAYPOINT_NAME, mw.st);
-			idnum = mw.st.base();
-			break;
 		default: if (ind != nullptr) title = GameText(STR_INDUSTRY_NAME, ind->index); idnum = mw.ind.base(); break;
 	}
 	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
@@ -2916,18 +2814,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[0] = "순위";
 			tl[1] = "상세";
 			break;
-		case MiniWndKind::Preview:
-			ntab = 1;
-			tl[0] = "제안";
-			break;
-		case MiniWndKind::Takeover:
-			ntab = 1;
-			tl[0] = "인수";
-			break;
-		case MiniWndKind::Waypoint:
-			ntab = 1;
-			tl[0] = "상태";
-			break;
 		case MiniWndKind::Graph:
 			ntab = 6;
 			tl[0] = "영업 이익";
@@ -2993,14 +2879,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 					case MiniWndKind::League:
 					case MiniWndKind::Graph: break;
 					case MiniWndKind::Map: ImMapBody(mw); break;
-					case MiniWndKind::Preview: ImPreviewBody(mw); break;
-					case MiniWndKind::Takeover: ImTakeoverBody(mw); break;
-					case MiniWndKind::Waypoint: ImWaypointBody(mw); break;
 					case MiniWndKind::Native: break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
-				if (mw.want_close) open = false;
 				ImGui::EndTabItem();
 			}
 		}
@@ -3116,13 +2998,6 @@ static void DrawMiniWndsImGui()
 			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
 			case MiniWndKind::Industry: alive = Industry::IsValidID(_wnds[i].ind); break;
 			case MiniWndKind::Company: alive = Company::IsValidID(_local_company); break;
-			case MiniWndKind::Preview: {
-				const Engine *pe = Engine::GetIfValid(_wnds[i].eng);
-				alive = pe != nullptr && pe->preview_company == _local_company;
-				break;
-			}
-			case MiniWndKind::Takeover: alive = Company::IsValidID(_wnds[i].comp) && Company::IsValidID(_local_company); break;
-			case MiniWndKind::Waypoint: alive = Waypoint::IsValidID(_wnds[i].st); break;
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Native: alive = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num) != nullptr; break;
 			default: alive = true; break;
@@ -3158,7 +3033,7 @@ static void DrawMiniWndsImGui()
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
-	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.eng, r.comp, r.tab);
+	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.tab);
 }
 
 bool MiniUiCatchEstimate(Money cost)
@@ -3192,17 +3067,14 @@ bool MiniUiShowNews(const NewsItem *ni)
 bool ShowMiniEnginePreview(EngineID engine)
 {
 	if (!_mini_active) return false;
-	OpenMiniWnd(MiniWndKind::Preview, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), engine);
+	_views.Show(std::make_unique<EnginePreviewPanel>(engine));
 	return true;
 }
 
 bool ShowMiniBuyCompany(CompanyID company, bool hostile_takeover)
 {
 	if (!_mini_active) return false;
-	OpenMiniWnd(MiniWndKind::Takeover, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), EngineID::Invalid(), company);
-	for (MiniWnd &mw : _wnds) {
-		if (mw.kind == MiniWndKind::Takeover && mw.comp == company) mw.hostile = hostile_takeover;
-	}
+	_views.Show(std::make_unique<TakeoverPanel>(company, hostile_takeover));
 	return true;
 }
 
@@ -3216,7 +3088,7 @@ bool ShowMiniVehicleWindow(const Vehicle *v)
 bool ShowMiniWaypointWindow(StationID waypoint)
 {
 	if (!_mini_active || !Waypoint::IsValidID(waypoint)) return false;
-	OpenMiniWnd(MiniWndKind::Waypoint, VehicleID::Invalid(), waypoint);
+	_views.Show(std::make_unique<WaypointPanel>(waypoint));
 	return true;
 }
 
