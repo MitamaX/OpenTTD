@@ -24,14 +24,20 @@ protected:
 	virtual void Fill() = 0;
 
 	LedgerSection &Section(Rml::String title = {});
+	Rml::Vector<LedgerSection> &Sections() { return this->columns.back().sections; }
+	void NextColumn() { this->columns.emplace_back(); }
+	void DropEmptySection();
 
-	Rml::Vector<LedgerSection> sections;
 	bool camera = false;
 
 private:
 	const LedgerLine *LineAt(const Rml::VariantList &arguments) const;
 	void Pick(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void Edit(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void Hover(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void PickBlock(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+
+	Rml::Vector<LedgerColumn> columns;
 };
 
 #endif /* MINI_UI_LEDGER_PANEL_H */

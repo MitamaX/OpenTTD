@@ -315,64 +315,73 @@
 			"embedded": false,
 			"sizable": false,
 			"camera": false,
-			"sections": [
+			"columns": [
 				{
-					"title": "수입",
-					"lines": [
+					"sections": [
 						{
-							"label": "열차 수입",
-							"value": "$1,204,500",
-							"tone": "plain",
-							"label_tone": "",
-							"key": "",
-							"total": false,
-							"link": false,
-							"active": false
+							"title": "수입",
+							"lines": [
+								{
+									"label": "열차 수입",
+									"value": "$1,204,500",
+									"tone": "plain",
+									"label_tone": "",
+									"key": "",
+									"total": false,
+									"link": false,
+									"active": false,
+									"blocks": []
+								},
+								{
+									"label": "자동차 수입",
+									"value": "$84,200",
+									"tone": "plain",
+									"label_tone": "",
+									"key": "",
+									"total": false,
+									"link": false,
+									"active": false,
+									"blocks": []
+								}
+							]
 						},
 						{
-							"label": "자동차 수입",
-							"value": "$84,200",
-							"tone": "plain",
-							"label_tone": "",
-							"key": "",
-							"total": false,
-							"link": false,
-							"active": false
-						}
-					]
-				},
-				{
-					"title": "지출",
-					"lines": [
-						{
-							"label": "건설비",
-							"value": "-$402,100",
-							"tone": "loss",
-							"label_tone": "",
-							"key": "",
-							"total": false,
-							"link": false,
-							"active": false
-						},
-						{
-							"label": "차량 운행비",
-							"value": "-$210,050",
-							"tone": "loss",
-							"label_tone": "",
-							"key": "",
-							"total": false,
-							"link": false,
-							"active": false
-						},
-						{
-							"label": "합계",
-							"value": "$676,550",
-							"tone": "accent",
-							"label_tone": "",
-							"key": "",
-							"total": true,
-							"link": false,
-							"active": false
+							"title": "지출",
+							"lines": [
+								{
+									"label": "건설비",
+									"value": "-$402,100",
+									"tone": "loss",
+									"label_tone": "",
+									"key": "",
+									"total": false,
+									"link": false,
+									"active": false,
+									"blocks": []
+								},
+								{
+									"label": "차량 운행비",
+									"value": "-$210,050",
+									"tone": "loss",
+									"label_tone": "",
+									"key": "",
+									"total": false,
+									"link": false,
+									"active": false,
+									"blocks": []
+								},
+								{
+									"label": "합계",
+									"value": "$676,550",
+									"tone": "accent",
+									"label_tone": "",
+									"key": "",
+									"total": true,
+									"link": false,
+									"active": false,
+									"blocks": []
+								}
+							]
 						}
 					]
 				}

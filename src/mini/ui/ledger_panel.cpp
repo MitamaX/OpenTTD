@@ -23,26 +23,31 @@ LedgerPanel::LedgerPanel(std::string key, Rml::String title, Rml::Vector<Rml::St
 
 void LedgerPanel::BindSheet(Rml::DataModelConstructor &model)
 {
-	model.Bind("sections", &this->sections);
+	model.Bind("columns", &this->columns);
 	model.Bind("camera", &this->camera);
 	model.BindEventCallback("pick", &LedgerPanel::Pick, this);
 	model.BindEventCallback("edit", &LedgerPanel::Edit, this);
+	model.BindEventCallback("hover", &LedgerPanel::Hover, this);
+	model.BindEventCallback("block", &LedgerPanel::PickBlock, this);
 }
 
 void LedgerPanel::Collect()
 {
-	this->sections.clear();
+	this->columns.clear();
+	this->NextColumn();
 	this->commands.clear();
 	this->Fill();
 }
 
 void LedgerPanel::Apply(const Rml::String &key, std::string text)
 {
-	for (const LedgerSection &section : this->sections) {
-		for (const LedgerLine &line : section.lines) {
-			if (line.key != key || !line.renamer) continue;
-			line.renamer(std::move(text));
-			return;
+	for (const LedgerColumn &column : this->columns) {
+		for (const LedgerSection &section : column.sections) {
+			for (const LedgerLine &line : section.lines) {
+				if (line.key != key || !line.renamer) continue;
+				line.renamer(std::move(text));
+				return;
+			}
 		}
 	}
 	Panel::Apply(key, std::move(text));
@@ -50,16 +55,28 @@ void LedgerPanel::Apply(const Rml::String &key, std::string text)
 
 LedgerSection &LedgerPanel::Section(Rml::String title)
 {
-	return this->sections.emplace_back(LedgerSection{std::move(title), {}});
+	return this->Sections().emplace_back(LedgerSection{std::move(title), {}});
 }
 
+/* A heading over nothing reads as a mistake, so a section left without rows goes. */
+void LedgerPanel::DropEmptySection()
+{
+	Rml::Vector<LedgerSection> &sections = this->Sections();
+	if (!sections.empty() && sections.back().lines.empty()) sections.pop_back();
+}
+
+/* Rows are addressed by column, section and line, in that order. */
 const LedgerLine *LedgerPanel::LineAt(const Rml::VariantList &arguments) const
 {
-	const LedgerSection *section = ArgumentItem(std::span<const LedgerSection>(this->sections), arguments);
-	if (section == nullptr) return nullptr;
+	const LedgerColumn *column = ArgumentItem(std::span<const LedgerColumn>(this->columns), arguments);
+	if (column == nullptr) return nullptr;
 
-	int line = ArgumentIndex(arguments, 1);
-	return line >= 0 && static_cast<size_t>(line) < section->lines.size() ? &section->lines[line] : nullptr;
+	int section = ArgumentIndex(arguments, 1);
+	if (section < 0 || static_cast<size_t>(section) >= column->sections.size()) return nullptr;
+
+	const Rml::Vector<LedgerLine> &lines = column->sections[section].lines;
+	int line = ArgumentIndex(arguments, 2);
+	return line >= 0 && static_cast<size_t>(line) < lines.size() ? &lines[line] : nullptr;
 }
 
 void LedgerPanel::Pick(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
@@ -70,4 +87,16 @@ void LedgerPanel::Pick(Rml::DataModelHandle, Rml::Event &, const Rml::VariantLis
 void LedgerPanel::Edit(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
 {
 	if (const LedgerLine *line = this->LineAt(arguments); line != nullptr && line->renamer) this->BeginEdit(line->key, line->label);
+}
+
+void LedgerPanel::Hover(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
+{
+	if (const LedgerLine *line = this->LineAt(arguments); line != nullptr && line->hover) line->hover();
+}
+
+void LedgerPanel::PickBlock(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
+{
+	const LedgerLine *line = this->LineAt(arguments);
+	int block = ArgumentIndex(arguments, 3);
+	if (line != nullptr && line->on_block && block >= 0 && static_cast<size_t>(block) < line->blocks.size()) line->on_block(block);
 }

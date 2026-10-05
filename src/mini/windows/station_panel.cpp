@@ -163,7 +163,7 @@ void StationPanel::FillIndustries(const Station &st)
 		LedgerSection &delivery = this->Section("납품처");
 		for (const IndustryListEntry &entry : st.industries_near) delivery.Add(IndustryLine(*entry.industry));
 	}
-	if (this->sections.empty()) this->Section().Add(LedgerLine::Text("주변 산업 없음", Tone::Dim));
+	if (this->Sections().empty()) this->Section().Add(LedgerLine::Text("주변 산업 없음", Tone::Dim));
 }
 
 void StationPanel::FillVehicles(const Station &st)
@@ -203,7 +203,7 @@ void StationPanel::FillFacts(const Station &st)
 		uint percent = ToPercent8(goods.rating);
 		ratings.Add({GameText(cs->name), fmt::format("{} {}%", GameText(STR_CARGO_RATING_APPALLING + (goods.rating >> 5)), percent), ShareTone(percent)});
 	}
-	if (ratings.lines.empty()) this->sections.pop_back();
+	this->DropEmptySection();
 }
 
 void StationPanel::FillCommands(const Station &st)

@@ -78,14 +78,14 @@ void FinancePanel::Fill()
 
 void FinancePanel::FillStanding(const Company &company)
 {
-	this->sections.push_back({{}, {
+	this->Section().lines = {
 		{GameText(STR_FINANCES_BANK_BALANCE_TITLE), Currency(company.money), Tone::Accent},
 		{GameText(STR_FINANCES_OWN_FUNDS_TITLE), Currency(company.money - company.current_loan)},
 		{GameText(STR_FINANCES_LOAN_TITLE), Currency(company.current_loan), company.current_loan > 0 ? Tone::Warn : Tone::Plain},
 		{GameText(STR_FINANCES_MAX_LOAN, company.GetMaxLoan())},
 		{GameText(STR_FINANCES_INTEREST_RATE, _economy.interest_rate)},
 		{"회사 가치", Currency(CalculateCompanyValue(&company))},
-	}});
+	};
 }
 
 void FinancePanel::FillYear(const Company &company)
@@ -93,8 +93,7 @@ void FinancePanel::FillYear(const Company &company)
 	const Expenses &expenses = company.yearly_expenses[0];
 	Money year = 0;
 	for (const ExpenseGroup &group : EXPENSE_GROUPS) {
-		LedgerSection &section = this->sections.emplace_back();
-		section.title = GameText(group.title);
+		LedgerSection &section = this->Section(GameText(group.title));
 		Money sum = 0;
 		for (ExpensesType type : group.types) {
 			Money amount = expenses[type];
@@ -105,7 +104,5 @@ void FinancePanel::FillYear(const Company &company)
 		year += sum;
 	}
 
-	this->sections.push_back({GameText(STR_FINANCES_TOTAL_CAPTION), {
-		{"올해 손익", CashFlowText(year), year > 0 ? Tone::Loss : Tone::Accent},
-	}});
+	this->Section(GameText(STR_FINANCES_TOTAL_CAPTION)).Add({"올해 손익", CashFlowText(year), year > 0 ? Tone::Loss : Tone::Accent});
 }

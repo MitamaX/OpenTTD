@@ -194,7 +194,7 @@ void TownPanel::FillCargo(const Town &town)
 		if (!NeedsGrowthCargo(town, town.goal[effect])) continue;
 		if (const CargoSpec *cargo = FindFirstCargoWithTownAcceptanceEffect(effect); cargo != nullptr) growth.Add(GrowthCargoLine(town, effect, *cargo));
 	}
-	if (growth.lines.empty()) this->sections.pop_back();
+	this->DropEmptySection();
 }
 
 void TownPanel::FillCommands(const Town &town)

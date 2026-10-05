@@ -114,7 +114,7 @@ void IndustryPanel::FillNeeds(const Industry &industry)
 		if (!IsValidCargoType(accepted.cargo)) continue;
 		needs.Add({GameText(CargoSpec::Get(accepted.cargo)->name), accepted.waiting > 0 ? fmt::format("{}", accepted.waiting) : std::string("-")});
 	}
-	if (needs.lines.empty()) this->sections.pop_back();
+	this->DropEmptySection();
 }
 
 void IndustryPanel::FillCommands(const Industry &industry)

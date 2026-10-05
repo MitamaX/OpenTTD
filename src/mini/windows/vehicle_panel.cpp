@@ -347,7 +347,7 @@ void VehiclePanel::FillRefits(const Vehicle &v)
 			Command<CMD_REFIT_VEHICLE>::Post(GetCmdRefitVehMsg(u.type), u.tile, u.index, cargo, 0xFF, false, false, 0);
 		})));
 	}
-	if (refits.lines.empty()) this->sections.pop_back();
+	this->DropEmptySection();
 }
 
 void VehiclePanel::FillOrders(const Vehicle &v)

@@ -30,6 +30,13 @@ static void RegisterViewTypes(Rml::Context &context)
 	command.RegisterMember("active", &PanelCommand::active);
 	types.RegisterArray<Rml::Vector<PanelCommand>>();
 
+	Rml::StructHandle<StripBlock> block = types.RegisterStruct<StripBlock>();
+	block.RegisterMember("width", &StripBlock::width);
+	block.RegisterMember("colour", &StripBlock::colour);
+	block.RegisterMember("engine", &StripBlock::engine);
+	block.RegisterMember("active", &StripBlock::active);
+	types.RegisterArray<Rml::Vector<StripBlock>>();
+
 	Rml::StructHandle<LedgerLine> line = types.RegisterStruct<LedgerLine>();
 	line.RegisterMember("label", &LedgerLine::label);
 	line.RegisterMember("value", &LedgerLine::value);
@@ -39,12 +46,17 @@ static void RegisterViewTypes(Rml::Context &context)
 	line.RegisterMember("total", &LedgerLine::total);
 	line.RegisterMember("link", &LedgerLine::link);
 	line.RegisterMember("active", &LedgerLine::active);
+	line.RegisterMember("blocks", &LedgerLine::blocks);
 	types.RegisterArray<Rml::Vector<LedgerLine>>();
 
 	Rml::StructHandle<LedgerSection> section = types.RegisterStruct<LedgerSection>();
 	section.RegisterMember("title", &LedgerSection::title);
 	section.RegisterMember("lines", &LedgerSection::lines);
 	types.RegisterArray<Rml::Vector<LedgerSection>>();
+
+	Rml::StructHandle<LedgerColumn> column = types.RegisterStruct<LedgerColumn>();
+	column.RegisterMember("sections", &LedgerColumn::sections);
+	types.RegisterArray<Rml::Vector<LedgerColumn>>();
 
 	types.RegisterArray<Rml::Vector<Rml::String>>();
 

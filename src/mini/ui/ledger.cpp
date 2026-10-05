@@ -31,6 +31,14 @@ LedgerLine LedgerLine::Text(Rml::String text, Tone tone)
 	return line;
 }
 
+LedgerLine LedgerLine::Strip(Rml::Vector<StripBlock> blocks, BlockAction on_block)
+{
+	LedgerLine line{Rml::String()};
+	line.blocks = std::move(blocks);
+	line.on_block = std::move(on_block);
+	return line;
+}
+
 LedgerLine &LedgerLine::Tint(Tone tone)
 {
 	this->label_tone = ToneName(tone);
@@ -54,6 +62,12 @@ LedgerLine &LedgerLine::Renames(Rml::String key, Renamer renamer)
 {
 	this->key = std::move(key);
 	this->renamer = std::move(renamer);
+	return *this;
+}
+
+LedgerLine &LedgerLine::OnHover(Action hover)
+{
+	this->hover = std::move(hover);
 	return *this;
 }
 

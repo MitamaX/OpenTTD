@@ -5,12 +5,19 @@
 <body template="panel">
 	<native-slot id="camera" class="camera" data-if="camera"/>
 	<native-slot id="embed" class="embed" data-if="embedded"/>
-	<div class="section" data-for="section, s : sections">
-		<div class="heading" data-if="section.title != ''">{{section.title}}</div>
-		<div class="row line" data-for="line, l : section.lines" data-class-total="line.total" data-class-link="line.link" data-class-active="line.active" data-class-editing="line.key != '' &amp;&amp; line.key == editing" data-event-click="pick(s, l)" data-event-dblclick="edit(s, l)">
-			<input type="text" class="edit" data-value="draft" data-event-change="commit(line.key)" data-event-blur="cancel(line.key)"/>
-			<span class="label" data-attr-tone="line.label_tone">{{line.label}}</span>
-			<span class="value" data-if="line.value != ''" data-attr-tone="line.tone">{{line.value}}</span>
+	<div class="columns" data-if="!embedded">
+		<div class="column scroll-list" data-for="column, c : columns">
+			<div class="section" data-for="section, s : column.sections">
+				<div class="heading" data-if="section.title != ''">{{section.title}}</div>
+				<div class="row line" data-for="line, l : section.lines" data-class-total="line.total" data-class-link="line.link" data-class-active="line.active" data-class-editing="line.key != '' &amp;&amp; line.key == editing" data-event-click="pick(c, s, l)" data-event-dblclick="edit(c, s, l)" data-event-mouseover="hover(c, s, l)">
+					<input type="text" class="edit" data-value="draft" data-event-change="commit(line.key)" data-event-blur="cancel(line.key)"/>
+					<span class="label" data-if="line.blocks.size == 0" data-attr-tone="line.label_tone">{{line.label}}</span>
+					<span class="value" data-if="line.value != ''" data-attr-tone="line.tone">{{line.value}}</span>
+					<div class="strip" data-if="line.blocks.size > 0">
+						<span class="block" data-for="block, b : line.blocks" data-style-width="block.width" data-style-background-color="block.colour" data-class-engine="block.engine" data-class-active="block.active" data-event-click="block(c, s, l, b)"></span>
+					</div>
+				</div>
+			</div>
 		</div>
 	</div>
 </body>

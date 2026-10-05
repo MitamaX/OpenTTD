@@ -17,19 +17,29 @@
 
 #include "tone.h"
 
+struct StripBlock {
+	Rml::String width;
+	Rml::String colour;
+	bool engine = false;
+	bool active = false;
+};
+
 struct LedgerLine {
 	using Action = std::function<void()>;
 	using Renamer = std::function<void(std::string name)>;
+	using BlockAction = std::function<void(size_t block)>;
 
 	LedgerLine(Rml::String label, Rml::String value = {}, Tone tone = Tone::Plain);
 
 	static LedgerLine Total(Rml::String label, Rml::String value, Tone tone = Tone::Plain);
 	static LedgerLine Text(Rml::String text, Tone tone = Tone::Plain);
+	static LedgerLine Strip(Rml::Vector<StripBlock> blocks, BlockAction on_block);
 
 	LedgerLine &Tint(Tone tone);
 	LedgerLine &OnClick(Action action);
 	LedgerLine &Mark(bool active = true);
 	LedgerLine &Renames(Rml::String key, Renamer renamer);
+	LedgerLine &OnHover(Action hover);
 
 	Rml::String label;
 	Rml::String value;
@@ -39,8 +49,11 @@ struct LedgerLine {
 	bool total = false;
 	bool link = false;
 	bool active = false;
+	Rml::Vector<StripBlock> blocks;
 	Action action;
 	Renamer renamer;
+	Action hover;
+	BlockAction on_block;
 };
 
 struct LedgerSection {
@@ -48,6 +61,10 @@ struct LedgerSection {
 	Rml::Vector<LedgerLine> lines;
 
 	LedgerLine &Add(LedgerLine line);
+};
+
+struct LedgerColumn {
+	Rml::Vector<LedgerSection> sections;
 };
 
 #endif /* MINI_UI_LEDGER_H */

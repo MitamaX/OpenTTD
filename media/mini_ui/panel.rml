@@ -12,7 +12,7 @@
 	<div class="tabs" data-if="tabs.size > 0">
 		<span class="tab press" data-for="name, index : tabs" data-class-active="index == tab" data-event-click="tab = index">{{name}}</span>
 	</div>
-	<div id="sheet" class="sheet scroll-list" data-class-embedding="embedded"></div>
+	<div id="sheet" class="sheet" data-class-embedding="embedded"></div>
 	<div class="commands" data-if="commands.size > 0">
 		<span class="command press" data-for="command, index : commands" data-class-off="!command.enabled" data-class-active="command.active" data-event-click="run(index)">{{command.label}}</span>
 	</div>

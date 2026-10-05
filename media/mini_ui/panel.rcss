@@ -106,15 +106,25 @@ body.wide {
 	display: flex;
 	flex-direction: column;
 	gap: 8dp;
-	max-height: 360dp;
 	padding: 10dp 4dp;
 }
 
 .sheet.embedding {
 	flex: 1;
-	max-height: none;
 	padding: 0dp;
-	overflow-y: hidden;
+}
+
+.columns {
+	display: flex;
+	gap: 8dp;
+}
+
+.column {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 8dp;
+	max-height: 360dp;
 }
 
 .camera {
@@ -177,6 +187,34 @@ body.wide {
 .value {
 	flex-shrink: 0;
 	text-align: right;
+}
+
+.strip {
+	flex: 1;
+	display: flex;
+	gap: 1dp;
+	height: 16dp;
+	overflow: hidden;
+}
+
+.block {
+	flex-shrink: 0;
+	min-width: 4dp;
+	border-radius: 2dp;
+	box-shadow: var(--lift);
+	transition: opacity var(--snap);
+}
+
+.block.engine {
+	border-bottom: 3dp var(--accent);
+}
+
+.block.active {
+	border: 1dp var(--accent);
+}
+
+.block:hover {
+	opacity: 0.75;
 }
 
 .commands {
