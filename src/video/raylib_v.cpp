@@ -46,7 +46,6 @@ std::optional<std::string_view> VideoDriver_Raylib::Start(const StringList &para
 
 	std::string caption = VideoDriver::GetCaption();
 	if (!RlwInit(_cur_resolution.width, _cur_resolution.height, caption.c_str(), _video_vsync)) return "Failed to create raylib window";
-	RlwImGuiInit();
 
 	_resolutions.assign(std::begin(_raylib_default_resolutions), std::end(_raylib_default_resolutions));
 	SortResolutions();

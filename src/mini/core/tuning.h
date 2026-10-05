@@ -28,7 +28,6 @@ struct MiniTuning {
 	double drag_pan_multiplier = 2.0;
 	double jump_ppt = 32.0;
 	double glide_ms = 250.0;
-	int imgui_demo = 0;
 
 	void Load();
 };

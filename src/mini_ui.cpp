@@ -88,7 +88,6 @@
 #include "mini/tools/tool_choices.h"
 #include "mini/tools/tool_estimate.h"
 #include "mini/tools/tool_sites.h"
-#include "mini/ui/fonts.h"
 #include "mini/ui/ui_text.h"
 #include "mini/ui/view_host.h"
 #include "mini/windows/company_panel.h"
@@ -165,8 +164,6 @@
 
 #include "table/strings.h"
 
-#include "imgui.h"
-
 #include "safeguards.h"
 
 static bool _mini_active = false;
@@ -177,91 +174,6 @@ static int _fbw, _fbh;
 
 static bool _prev_left = false;
 static PressOwner _press_owner;
-
-/* Screen chrome follows the reference HUD: warm dark panels with a thin
- * darker edge, teal active state, cyan accent, warm off-white text. */
-static const uint32_t COL_CH_PANEL = MINI_CH_PANEL;
-static const uint32_t COL_CH_EDGE = MINI_CH_EDGE;
-static const uint32_t COL_CH_TILE = MINI_CH_TILE;
-static const uint32_t COL_CH_ACTIVE = MINI_CH_ACTIVE;
-static const uint32_t COL_CH_TEXT = MINI_CH_TEXT;
-static const uint32_t COL_CH_DIM = MINI_CH_DIM;
-static const uint32_t COL_CH_ACCENT = MINI_CH_ACCENT;
-
-static ImVec4 ImGuiCol32(uint32_t argb)
-{
-	return ImVec4(((argb >> 16) & 0xFF) / 255.0f, ((argb >> 8) & 0xFF) / 255.0f, (argb & 0xFF) / 255.0f, ((argb >> 24) & 0xFF) / 255.0f);
-}
-
-/* The 1.92 dynamic atlas pulls glyphs on demand, so one Korean-capable font
- * covers every string without range tables. */
-static void MiniImGuiEnsureSetup()
-{
-	static bool done = false;
-	if (done) return;
-	done = true;
-
-	ImGuiIO &io = ImGui::GetIO();
-	if (FileExists(MINI_FONT_REGULAR)) {
-		ImFont *font = io.Fonts->AddFontFromFileTTF(MINI_FONT_REGULAR, (float)std::max(13, GetCharacterHeight(FS_NORMAL)));
-		if (font != nullptr) io.FontDefault = font;
-	}
-
-	ImGuiStyle &style = ImGui::GetStyle();
-	style.WindowRounding = 4.0f;
-	style.ChildRounding = 3.0f;
-	style.FrameRounding = 3.0f;
-	style.PopupRounding = 3.0f;
-	style.TabRounding = 3.0f;
-	style.ScrollbarRounding = 3.0f;
-	style.GrabRounding = 3.0f;
-	style.WindowBorderSize = 1.0f;
-
-	ImVec4 *c = style.Colors;
-	c[ImGuiCol_Text] = ImGuiCol32(COL_CH_TEXT);
-	c[ImGuiCol_TextDisabled] = ImGuiCol32(COL_CH_DIM);
-	c[ImGuiCol_WindowBg] = ImGuiCol32(COL_CH_PANEL);
-	c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-	c[ImGuiCol_PopupBg] = ImGuiCol32(COL_CH_PANEL);
-	c[ImGuiCol_Border] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-	c[ImGuiCol_FrameBg] = ImGuiCol32(COL_CH_TILE);
-	c[ImGuiCol_FrameBgHovered] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_FrameBgActive] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_TitleBg] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_TitleBgActive] = ImGuiCol32(COL_CH_TILE);
-	c[ImGuiCol_TitleBgCollapsed] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_MenuBarBg] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_ScrollbarBg] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_ScrollbarGrab] = ImGuiCol32(COL_CH_DIM);
-	c[ImGuiCol_ScrollbarGrabHovered] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_ScrollbarGrabActive] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_CheckMark] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_SliderGrab] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_SliderGrabActive] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_Button] = ImGuiCol32(COL_CH_TILE);
-	c[ImGuiCol_ButtonHovered] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_ButtonActive] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_Header] = ImGuiCol32(COL_CH_TILE);
-	c[ImGuiCol_HeaderHovered] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_HeaderActive] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_Separator] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_SeparatorHovered] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_SeparatorActive] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_ResizeGrip] = ImGuiCol32(COL_CH_DIM);
-	c[ImGuiCol_ResizeGripHovered] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_ResizeGripActive] = ImGuiCol32(COL_CH_ACCENT);
-	c[ImGuiCol_Tab] = ImGuiCol32(COL_CH_TILE);
-	c[ImGuiCol_TabHovered] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_TabSelected] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_TabDimmed] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_TabDimmedSelected] = ImGuiCol32(COL_CH_TILE);
-	c[ImGuiCol_TableHeaderBg] = ImGuiCol32(COL_CH_TILE);
-	c[ImGuiCol_TableBorderStrong] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_TableBorderLight] = ImGuiCol32(COL_CH_EDGE);
-	c[ImGuiCol_TextSelectedBg] = ImGuiCol32(COL_CH_ACTIVE);
-	c[ImGuiCol_NavCursor] = ImGuiCol32(COL_CH_ACCENT);
-}
 
 bool MiniUiActive()
 {
@@ -719,11 +631,9 @@ void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
 	if (!_mini_active) return;
 	for (const Window *w : Window::IterateFromBack()) {
 		if (MiniUiHidesWindow(w->window_class)) continue;
-		/* Carriers and embeds stay below the ImGui layer; their pixels surface
-		 * through the slot image. An embed is never blitted on its own: the
-		 * part of it that reaches past its slot would show through the chrome. */
-		bool under = _dock.Docks(w);
-		rects.push_back({w->left, w->top, w->width, w->height, under, under});
+		/* A docked window reaches the screen only through its panel slot; blitting
+		 * it would show the part that reaches past the slot through the chrome. */
+		rects.push_back({w->left, w->top, w->width, w->height, _dock.Docks(w)});
 	}
 }
 
@@ -734,8 +644,8 @@ void MiniUiScrollTo(int x, int y)
 	_camera.GlideTo(x / (double)TILE_SIZE, y / (double)TILE_SIZE);
 }
 
-/* Native windows float above the ImGui layer and take the click; carriers
- * sit below it, so ImGui gets those instead. An embed takes the click only
+/* Native windows float above the panels and take the click; carriers sit
+ * below them, so the panel gets those instead. An embed takes the click only
  * inside its visible slot, so the cropped caption hiding under the mini tab
  * strip cannot start a native drag, and only where no panel covers the slot. */
 static bool NativeWindowTakesPointer()
@@ -752,7 +662,7 @@ static bool NativeWindowTakesPointer()
 
 static bool MiniLayerTakesPointer()
 {
-	return _views.CapturePointer() || (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse);
+	return _views.CapturePointer();
 }
 
 bool MiniUiHandleMouseEvents(bool native_capture)
@@ -774,7 +684,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 			_press_owner.Claim(PressSide::Native);
 			return false;
 		}
-		/* The panels and ImGui have the wheel already. Leaving the pending
+		/* The panels have the wheel already. Leaving the pending
 		 * notch here would zoom the map the moment the cursor leaves the
 		 * window and the map starts consuming events again. */
 		if (MiniLayerTakesPointer()) {
@@ -851,7 +761,6 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 	/* An open rename field owns the keyboard; letting the shortcuts through
 	 * would rotate blueprints while typing a name. */
 	if (kc != WKC_F9 && _views.ProcessKey(keycode)) return true;
-	if (kc != WKC_F9 && ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput) return true;
 
 	/* A native edit box holding the game focus owns the keyboard too, or a
 	 * wrapped popup could never be typed into. */
@@ -922,9 +831,6 @@ void MiniUiFrame(uint delta_ms)
 	_toast_feed.Age(delta_ms);
 	if (VehicleID built = _deploy.Step(); built != VehicleID::Invalid()) OpenVehicleWindow(built);
 	RlwCmdClear();
-	MiniImGuiEnsureSetup();
-	RlwImGuiNewFrame();
-	if (_tuning.imgui_demo != 0) ImGui::ShowDemoWindow();
 
 	_camera.Update(delta_ms, _mode.FollowTarget());
 

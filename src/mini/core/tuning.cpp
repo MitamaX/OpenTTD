@@ -64,7 +64,6 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "drag_pan_multiplier", this->drag_pan_multiplier);
 	ReadIniNumber(group, "jump_ppt", this->jump_ppt);
 	ReadIniNumber(group, "glide_ms", this->glide_ms);
-	ReadIniNumber(group, "imgui_demo", this->imgui_demo);
 
 	this->pan_speed = Clamp(this->pan_speed, 100.0, 10000.0);
 	this->pan_speed_fast = Clamp(this->pan_speed_fast, 100.0, 20000.0);

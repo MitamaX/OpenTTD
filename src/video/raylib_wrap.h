@@ -41,13 +41,10 @@ struct RlwInput {
 
 struct RlwRectI {
 	int x, y, w, h;
-	/* Overlays normally draw above the ImGui layer; carrier viewports draw
-	 * below it and reach the screen through an ImGui image instead. */
-	bool under = false;
 	/* Embedded windows reach the screen only through their slot image. Their
 	 * region is still refreshed, but blitting it would show the parts that
 	 * reach past the slot. */
-	bool sample_only = false;
+	bool docked = false;
 };
 
 bool RlwInit(int w, int h, const char *title, bool vsync);
@@ -83,13 +80,6 @@ bool RlwLoadImageInto(const char *path, uint32_t *rgba, int w, int h);
 void RlwFreeTexture(int tex);
 void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRectI *overlays, size_t count);
 
-/* Dear ImGui rides on top of the command buffer: a frame opened during the
- * game tick is composited by RlwPresentMini, or dropped if the native screen
- * presents instead. */
-void RlwImGuiInit();
-void RlwImGuiShutdown();
-void RlwImGuiNewFrame();
-
 struct RlwTextureInfo {
 	uintptr_t id = 0;
 	int width = 0;
@@ -102,7 +92,7 @@ struct RlwTextureInfo {
  * the GPU layers. Its id is 0 while the texture does not exist yet. */
 RlwTextureInfo RlwScreenTexture();
 
-/* A GPU layer composited above the ImGui layer and below the native windows.
+/* A GPU layer composited above the command buffer and below the native windows.
  * It is detached before the window closes, while its GL resources can still be freed. */
 class RlwLayer {
 public:

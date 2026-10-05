@@ -13,9 +13,6 @@
 #include <rlgl.h>
 #include <unordered_map>
 #include <vector>
-#include "imgui.h"
-#include "../3rdparty/rlimgui/rlImGui.h"
-#include "../3rdparty/rlimgui/imgui_impl_raylib.h"
 #include "raylib_wrap.h"
 
 #include "../safeguards.h"
@@ -71,59 +68,6 @@ void RlwSetVsync(bool on)
 	}
 }
 
-static bool _rlw_imgui_ready = false;
-static bool _rlw_imgui_frame = false;
-static bool _rlw_imgui_drawn = false;
-
-void RlwImGuiInit()
-{
-	rlImGuiSetup(true);
-	ImGui::GetIO().IniFilename = nullptr;
-	_rlw_imgui_ready = true;
-}
-
-void RlwImGuiShutdown()
-{
-	if (!_rlw_imgui_ready) return;
-	if (_rlw_imgui_frame) ImGui::EndFrame();
-	_rlw_imgui_frame = false;
-	_rlw_imgui_drawn = false;
-	rlImGuiShutdown();
-	_rlw_imgui_ready = false;
-}
-
-void RlwImGuiNewFrame()
-{
-	if (!_rlw_imgui_ready) return;
-	if (_rlw_imgui_frame) ImGui::EndFrame();
-	rlImGuiBegin();
-	_rlw_imgui_frame = true;
-}
-
-/* A present can arrive without a fresh ImGui frame, e.g. while a mode switch
- * suppresses window updates; re-submitting the last draw data keeps the layer
- * from blinking out on those frames. */
-static void RlwImGuiRender()
-{
-	if (!_rlw_imgui_ready) return;
-	if (_rlw_imgui_frame) {
-		ImGui::Render();
-		_rlw_imgui_frame = false;
-		_rlw_imgui_drawn = true;
-	}
-	if (!_rlw_imgui_drawn) return;
-	ImDrawData *dd = ImGui::GetDrawData();
-	if (dd == nullptr) return;
-	ImGui_ImplRaylib_RenderDrawData(dd);
-}
-
-static void RlwImGuiDropFrame()
-{
-	if (!_rlw_imgui_frame) return;
-	ImGui::EndFrame();
-	_rlw_imgui_frame = false;
-}
-
 RlwTextureInfo RlwScreenTexture()
 {
 	if (!_rlw_tex_ok) return {};
@@ -154,7 +98,6 @@ static void RlwLayerDetach()
 void RlwClose()
 {
 	RlwLayerDetach();
-	RlwImGuiShutdown();
 	if (_rlw_tex_ok) {
 		UnloadTexture(_rlw_tex);
 		_rlw_tex_ok = false;
@@ -300,7 +243,6 @@ static bool RlwEnsureScreenTexture(const uint32_t *rgba, int w, int h)
 
 void RlwPresent(const uint32_t *rgba, int w, int h)
 {
-	RlwImGuiDropFrame();
 	if (!RlwEnsureScreenTexture(rgba, w, h)) UpdateTexture(_rlw_tex, rgba);
 
 	BeginDrawing();
@@ -506,24 +448,16 @@ void RlwPresentMini(const uint32_t *argb, int pitch, int w, int h, const RlwRect
 	BeginDrawing();
 	ClearBackground(BLACK);
 	RlwReplayCommands();
-	/* Two passes around the ImGui layer: carrier viewports below it, every
-	 * other native window above it. */
-	for (int pass = 0; pass < 2; pass++) {
-		if (pass == 1) {
-			RlwImGuiRender();
-			RlwLayerRender(w, h);
-		}
-		for (size_t i = 0; i < count; i++) {
-			RlwRectI r = overlays[i];
-			if (r.under != (pass == 0)) continue;
-			if (r.sample_only) continue;
-			if (r.x < 0) { r.w += r.x; r.x = 0; }
-			if (r.y < 0) { r.h += r.y; r.y = 0; }
-			if (r.x + r.w > w) r.w = w - r.x;
-			if (r.y + r.h > h) r.h = h - r.y;
-			if (r.w <= 0 || r.h <= 0) continue;
-			DrawTextureRec(_rlw_tex, {(float)r.x, (float)r.y, (float)r.w, (float)r.h}, {(float)r.x, (float)r.y}, WHITE);
-		}
+	RlwLayerRender(w, h);
+	for (size_t i = 0; i < count; i++) {
+		RlwRectI r = overlays[i];
+		if (r.docked) continue;
+		if (r.x < 0) { r.w += r.x; r.x = 0; }
+		if (r.y < 0) { r.h += r.y; r.y = 0; }
+		if (r.x + r.w > w) r.w = w - r.x;
+		if (r.y + r.h > h) r.h = h - r.y;
+		if (r.w <= 0 || r.h <= 0) continue;
+		DrawTextureRec(_rlw_tex, {(float)r.x, (float)r.y, (float)r.w, (float)r.h}, {(float)r.x, (float)r.y}, WHITE);
 	}
 	EndDrawing();
 }
