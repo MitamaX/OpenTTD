@@ -10,24 +10,44 @@
 #ifndef MINI_UI_LEDGER_H
 #define MINI_UI_LEDGER_H
 
+#include <functional>
+#include <string>
+
 #include <RmlUi/Core/Types.h>
 
 #include "tone.h"
 
 struct LedgerLine {
+	using Action = std::function<void()>;
+	using Renamer = std::function<void(std::string name)>;
+
 	LedgerLine(Rml::String label, Rml::String value = {}, Tone tone = Tone::Plain);
 
 	static LedgerLine Total(Rml::String label, Rml::String value, Tone tone = Tone::Plain);
+	static LedgerLine Text(Rml::String text, Tone tone = Tone::Plain);
+
+	LedgerLine &Tint(Tone tone);
+	LedgerLine &OnClick(Action action);
+	LedgerLine &Mark(bool active = true);
+	LedgerLine &Renames(Rml::String key, Renamer renamer);
 
 	Rml::String label;
 	Rml::String value;
 	Rml::String tone;
+	Rml::String label_tone;
+	Rml::String key;
 	bool total = false;
+	bool link = false;
+	bool active = false;
+	Action action;
+	Renamer renamer;
 };
 
 struct LedgerSection {
 	Rml::String title;
 	Rml::Vector<LedgerLine> lines;
+
+	LedgerLine &Add(LedgerLine line);
 };
 
 #endif /* MINI_UI_LEDGER_H */

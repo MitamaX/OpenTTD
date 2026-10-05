@@ -16,6 +16,13 @@
 
 #include "../../safeguards.h"
 
+static constexpr const char EDIT_FIELD[] = ".editing .edit";
+
+static Rml::String KeyArgument(const Rml::VariantList &arguments)
+{
+	return arguments.empty() ? Rml::String() : arguments[0].Get<Rml::String>();
+}
+
 Panel::Panel(std::string key, std::string document_path, Rml::String title, Rml::Vector<Rml::String> tabs) :
 	title(std::move(title)), key(std::move(key)), document_path(std::move(document_path)), tabs(std::move(tabs))
 {
@@ -48,6 +55,20 @@ void Panel::Raise()
 	if (this->document != nullptr) this->document->PullToFront();
 }
 
+/* Runs once the document has been laid out, when element boxes are final for the frame. */
+void Panel::Settle()
+{
+	if (this->focus_pending) this->FocusEdit();
+	this->AfterLayout();
+}
+
+void Panel::BeginEdit(Rml::String key, Rml::String text)
+{
+	this->editing = std::move(key);
+	this->draft = std::move(text);
+	this->focus_pending = true;
+}
+
 Rml::Vector2f Panel::Size() const
 {
 	return this->document->GetBox().GetSize(Rml::BoxArea::Border);
@@ -70,13 +91,31 @@ void Panel::Bind(Rml::DataModelConstructor &model)
 	model.Bind("tabs", &this->tabs);
 	model.Bind("tab", &this->tab);
 	model.Bind("commands", &this->commands);
+	model.Bind("editing", &this->editing);
+	model.Bind("draft", &this->draft);
 	model.BindEventCallback("run", &Panel::Run, this);
 	model.BindEventCallback("close", &Panel::Dismiss, this);
+	model.BindEventCallback("edit_title", &Panel::EditTitle, this);
+	model.BindEventCallback("commit", &Panel::Commit, this);
+	model.BindEventCallback("cancel", &Panel::Cancel, this);
 	this->BindSheet(model);
 }
 
 void Panel::BindSheet(Rml::DataModelConstructor &)
 {
+}
+
+void Panel::AfterLayout()
+{
+}
+
+void Panel::Rename(std::string)
+{
+}
+
+void Panel::Apply(const Rml::String &key, std::string text)
+{
+	if (key == TITLE_KEY && this->Renamable() && !text.empty()) this->Rename(std::move(text));
 }
 
 void Panel::Run(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
@@ -91,4 +130,39 @@ void Panel::Run(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &argu
 void Panel::Dismiss(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &)
 {
 	this->Close();
+}
+
+void Panel::EditTitle(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &)
+{
+	if (this->Renamable()) this->BeginEdit(TITLE_KEY, this->title);
+}
+
+/* A text field reports every keystroke as a change; only the one Enter sends carries a line break. */
+void Panel::Commit(Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &arguments)
+{
+	if (!event.GetParameter<bool>("linebreak", false)) return;
+
+	Rml::String key = KeyArgument(arguments);
+	if (key != this->editing) return;
+
+	this->editing.clear();
+	event.GetTargetElement()->Blur();
+	this->Apply(key, event.GetParameter<Rml::String>("value", ""));
+}
+
+/* Leaving the field abandons the edit; a field left behind by a newer edit must not end that one. */
+void Panel::Cancel(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &arguments)
+{
+	if (KeyArgument(arguments) == this->editing) this->editing.clear();
+}
+
+/* The field only exists once the layout after BeginEdit has shown it. */
+void Panel::FocusEdit()
+{
+	auto *field = rmlui_dynamic_cast<Rml::ElementFormControlInput *>(this->document->QuerySelector(EDIT_FIELD));
+	if (field == nullptr) return;
+
+	field->Focus();
+	field->Select();
+	this->focus_pending = false;
 }

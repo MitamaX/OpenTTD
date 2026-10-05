@@ -84,7 +84,7 @@
 										<svg class="mark" data-attr-src="row.mark" data-style-transform="cell.turn"/>
 									</div>
 								</div>
-								<div class="option" data-if="row.cells.size == 0" data-class-active="row.active" data-event-click="apply(row.option, row.value)">{{row.text}}</div>
+								<div class="row link option" data-if="row.cells.size == 0" data-class-active="row.active" data-event-click="apply(row.option, row.value)">{{row.text}}</div>
 							</div>
 						</div>
 					</div>
@@ -106,7 +106,7 @@
 		<div class="corner">
 			<div id="clear" class="stage stage-end" data-model="clear">
 				<div class="chrome shelf option-list" data-class-open="shown">
-					<div class="option" data-for="row, index : rows" data-class-active="row.active" data-event-click="pick(index)">{{row.label}}</div>
+					<div class="row link option" data-for="row, index : rows" data-class-active="row.active" data-event-click="pick(index)">{{row.label}}</div>
 				</div>
 			</div>
 			<div id="commands" class="tile-row" data-model="commands">

@@ -26,12 +26,13 @@ public:
 	void Reset(Rml::Context *context);
 	void SetBounds(const PanelBounds &bounds) { this->bounds = bounds; }
 
-	void Show(std::unique_ptr<Panel> panel);
+	Panel *Show(std::unique_ptr<Panel> panel);
 	bool CloseFront();
 	void CloseAll();
 
 	void Refresh();
 	void Confine();
+	void Settle();
 	void Retire();
 
 private:

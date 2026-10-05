@@ -24,8 +24,8 @@ body {
 
 .caption {
 	display: flex;
-	justify-content: space-between;
 	align-items: center;
+	gap: 6dp;
 	padding: 7dp 8dp 7dp 12dp;
 	background-color: var(--caption);
 	decorator: var(--sheen);
@@ -34,12 +34,18 @@ body {
 }
 
 .title {
+	flex: 1;
 	font-size: 13dp;
 	font-weight: bold;
 	color: var(--accent);
 }
 
+.editing .title, .editing .label {
+	display: none;
+}
+
 .close {
+	flex-shrink: 0;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -91,16 +97,18 @@ body {
 	display: flex;
 	flex-direction: column;
 	gap: 8dp;
-	padding: 10dp 12dp;
+	max-height: 360dp;
+	padding: 10dp 4dp;
 }
 
 .section {
 	display: flex;
 	flex-direction: column;
-	gap: 4dp;
+	gap: 1dp;
 }
 
 .heading {
+	margin: 0dp 8dp 2dp;
 	padding-bottom: 3dp;
 	border-bottom: 1dp var(--panel-edge);
 	font-weight: bold;
@@ -109,31 +117,42 @@ body {
 
 .line {
 	display: flex;
-	justify-content: space-between;
+	align-items: flex-start;
 	column-gap: 14dp;
 	color: var(--ink-soft);
 }
 
 .line.total {
-	padding-top: 3dp;
+	margin-top: 2dp;
 	border-top: 1dp var(--panel-edge);
+	border-radius: 0dp;
 	color: var(--ink);
 }
 
+.label {
+	flex: 1;
+	white-space: pre-line;
+}
+
 .value {
+	flex-shrink: 0;
 	text-align: right;
 }
 
 .commands {
 	display: flex;
-	flex-wrap: wrap;
 	gap: 5dp;
 	padding: 8dp 10dp 10dp;
 	border-top: 1dp var(--panel-edge);
 }
 
 .command {
-	padding: 4dp 10dp;
+	flex: 1;
+	padding: 4dp 2dp;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	background-color: var(--primary);
 	decorator: var(--sheen);
 	border: 1dp var(--panel-edge);

@@ -15,7 +15,7 @@
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>
 
-int ArgumentIndex(const Rml::VariantList &arguments);
+int ArgumentIndex(const Rml::VariantList &arguments, size_t position = 0);
 
 template <typename T>
 int ArgumentSlot(std::span<const T> items, const Rml::VariantList &arguments)

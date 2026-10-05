@@ -33,16 +33,29 @@ public:
 	bool Open(Rml::Context &context, Rml::String model_name);
 	void Close();
 	void Raise();
+	void Settle();
+
+	void SelectTab(int tab) { this->tab = tab; }
+	void BeginEdit(Rml::String key, Rml::String text);
 
 	Rml::Vector2f Size() const;
 	Rml::Vector2f Position() const;
 	void MoveTo(Rml::Vector2f position);
 
 protected:
+	static constexpr const char TITLE_KEY[] = "title";
+
 	Panel(std::string key, std::string document_path, Rml::String title, Rml::Vector<Rml::String> tabs);
 
 	void Bind(Rml::DataModelConstructor &model) final;
 	virtual void BindSheet(Rml::DataModelConstructor &model);
+	virtual void AfterLayout();
+
+	virtual bool Renamable() const { return false; }
+	virtual void Rename(std::string name);
+	virtual void Apply(const Rml::String &key, std::string text);
+
+	Rml::ElementDocument *Document() const { return this->document; }
 
 	Rml::String title;
 	int tab = 0;
@@ -51,11 +64,18 @@ protected:
 private:
 	void Run(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void Dismiss(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void EditTitle(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void Commit(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void Cancel(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void FocusEdit();
 
 	const std::string key;
 	const std::string document_path;
 	Rml::Vector<Rml::String> tabs;
 	Rml::ElementDocument *document = nullptr;
+	Rml::String editing;
+	Rml::String draft;
+	bool focus_pending = false;
 };
 
 #endif /* MINI_UI_PANEL_H */

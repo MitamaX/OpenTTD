@@ -308,6 +308,8 @@
 					"enabled": false
 				}
 			],
+			"editing": "",
+			"draft": "",
 			"sections": [
 				{
 					"title": "수입",
@@ -316,13 +318,21 @@
 							"label": "열차 수입",
 							"value": "$1,204,500",
 							"tone": "plain",
-							"total": false
+							"label_tone": "",
+							"key": "",
+							"total": false,
+							"link": false,
+							"active": false
 						},
 						{
 							"label": "자동차 수입",
 							"value": "$84,200",
 							"tone": "plain",
-							"total": false
+							"label_tone": "",
+							"key": "",
+							"total": false,
+							"link": false,
+							"active": false
 						}
 					]
 				},
@@ -333,19 +343,31 @@
 							"label": "건설비",
 							"value": "-$402,100",
 							"tone": "loss",
-							"total": false
+							"label_tone": "",
+							"key": "",
+							"total": false,
+							"link": false,
+							"active": false
 						},
 						{
 							"label": "차량 운행비",
 							"value": "-$210,050",
 							"tone": "loss",
-							"total": false
+							"label_tone": "",
+							"key": "",
+							"total": false,
+							"link": false,
+							"active": false
 						},
 						{
 							"label": "합계",
 							"value": "$676,550",
 							"tone": "accent",
-							"total": true
+							"label_tone": "",
+							"key": "",
+							"total": true,
+							"link": false,
+							"active": false
 						}
 					]
 				}

@@ -23,3 +23,41 @@ LedgerLine LedgerLine::Total(Rml::String label, Rml::String value, Tone tone)
 	line.total = true;
 	return line;
 }
+
+LedgerLine LedgerLine::Text(Rml::String text, Tone tone)
+{
+	LedgerLine line(std::move(text));
+	line.Tint(tone);
+	return line;
+}
+
+LedgerLine &LedgerLine::Tint(Tone tone)
+{
+	this->label_tone = ToneName(tone);
+	return *this;
+}
+
+LedgerLine &LedgerLine::OnClick(Action action)
+{
+	this->action = std::move(action);
+	this->link = true;
+	return *this;
+}
+
+LedgerLine &LedgerLine::Mark(bool active)
+{
+	this->active = active;
+	return *this;
+}
+
+LedgerLine &LedgerLine::Renames(Rml::String key, Renamer renamer)
+{
+	this->key = std::move(key);
+	this->renamer = std::move(renamer);
+	return *this;
+}
+
+LedgerLine &LedgerSection::Add(LedgerLine line)
+{
+	return this->lines.emplace_back(std::move(line));
+}

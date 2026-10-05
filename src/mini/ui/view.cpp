@@ -14,9 +14,9 @@
 
 #include "../../safeguards.h"
 
-int ArgumentIndex(const Rml::VariantList &arguments)
+int ArgumentIndex(const Rml::VariantList &arguments, size_t position)
 {
-	return arguments.empty() ? -1 : arguments[0].Get<int>(-1);
+	return position < arguments.size() ? arguments[position].Get<int>(-1) : -1;
 }
 
 void View::Refresh()

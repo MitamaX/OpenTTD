@@ -18,8 +18,16 @@ protected:
 	LedgerPanel(std::string key, Rml::String title, Rml::Vector<Rml::String> tabs);
 
 	void BindSheet(Rml::DataModelConstructor &model) override;
+	void Apply(const Rml::String &key, std::string text) override;
+
+	LedgerSection &Section(Rml::String title = {});
 
 	Rml::Vector<LedgerSection> sections;
+
+private:
+	const LedgerLine *LineAt(const Rml::VariantList &arguments) const;
+	void Pick(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void Edit(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 };
 
 #endif /* MINI_UI_LEDGER_PANEL_H */

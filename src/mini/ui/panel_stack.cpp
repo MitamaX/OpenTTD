@@ -27,17 +27,17 @@ void PanelStack::Reset(Rml::Context *context)
 	this->context = context;
 }
 
-void PanelStack::Show(std::unique_ptr<Panel> panel)
+Panel *PanelStack::Show(std::unique_ptr<Panel> panel)
 {
 	if (Panel *open = this->Find(panel->Key()); open != nullptr) {
 		open->Raise();
-		return;
+		return open;
 	}
-	if (this->context == nullptr || !panel->IsAlive()) return;
-	if (!panel->Open(*this->context, fmt::format("panel{}", ++this->serial))) return;
+	if (this->context == nullptr || !panel->IsAlive()) return nullptr;
+	if (!panel->Open(*this->context, fmt::format("panel{}", ++this->serial))) return nullptr;
 
 	this->Place(*panel);
-	this->panels.push_back(std::move(panel));
+	return this->panels.emplace_back(std::move(panel)).get();
 }
 
 bool PanelStack::CloseFront()
@@ -70,6 +70,13 @@ void PanelStack::Confine()
 		Rml::Vector2f position = panel->Position();
 		Rml::Vector2f confined = this->Confined(panel->Size(), position);
 		if (confined != position) panel->MoveTo(confined);
+	}
+}
+
+void PanelStack::Settle()
+{
+	for (const auto &panel : this->panels) {
+		if (panel->IsOpen()) panel->Settle();
 	}
 }
 

@@ -3,11 +3,12 @@
 	<link type="text/template" href="panel.rml"/>
 </head>
 <body template="panel">
-	<div class="section" data-for="section : sections">
+	<div class="section" data-for="section, s : sections">
 		<div class="heading" data-if="section.title != ''">{{section.title}}</div>
-		<div class="line" data-for="line : section.lines" data-class-total="line.total">
-			<span class="label">{{line.label}}</span>
-			<span class="value" data-attr-tone="line.tone">{{line.value}}</span>
+		<div class="row line" data-for="line, l : section.lines" data-class-total="line.total" data-class-link="line.link" data-class-active="line.active" data-class-editing="line.key != '' &amp;&amp; line.key == editing" data-event-click="pick(s, l)" data-event-dblclick="edit(s, l)">
+			<input type="text" class="edit" data-value="draft" data-event-change="commit(line.key)" data-event-blur="cancel(line.key)"/>
+			<span class="label" data-attr-tone="line.label_tone">{{line.label}}</span>
+			<span class="value" data-if="line.value != ''" data-attr-tone="line.tone">{{line.value}}</span>
 		</div>
 	</div>
 </body>

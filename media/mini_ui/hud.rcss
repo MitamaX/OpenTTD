@@ -342,20 +342,7 @@ body {
 }
 
 .option {
-	padding: 3dp 8dp;
-	border-radius: var(--radius-chip);
 	white-space: pre;
-	transition: background-color color var(--snap);
-}
-
-.option:hover {
-	background-color: var(--tile);
-}
-
-.option.active {
-	background-color: var(--tile-active);
-	decorator: var(--sheen);
-	color: var(--ink-strong);
 }
 
 .option-head {

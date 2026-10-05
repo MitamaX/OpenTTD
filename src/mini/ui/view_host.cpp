@@ -32,7 +32,11 @@ static void RegisterViewTypes(Rml::Context &context)
 	line.RegisterMember("label", &LedgerLine::label);
 	line.RegisterMember("value", &LedgerLine::value);
 	line.RegisterMember("tone", &LedgerLine::tone);
+	line.RegisterMember("label_tone", &LedgerLine::label_tone);
+	line.RegisterMember("key", &LedgerLine::key);
 	line.RegisterMember("total", &LedgerLine::total);
+	line.RegisterMember("link", &LedgerLine::link);
+	line.RegisterMember("active", &LedgerLine::active);
 	types.RegisterArray<Rml::Vector<LedgerLine>>();
 
 	Rml::StructHandle<LedgerSection> section = types.RegisterStruct<LedgerSection>();
@@ -64,12 +68,13 @@ void ViewHost::Frame(int width, int height, float dp_ratio, int dock_top)
 	this->panels.Refresh();
 	this->layer.Update(width, height, dp_ratio);
 	this->panels.Confine();
+	this->panels.Settle();
 	this->panels.Retire();
 }
 
-void ViewHost::Show(std::unique_ptr<Panel> panel)
+Panel *ViewHost::Show(std::unique_ptr<Panel> panel)
 {
-	if (this->Attach()) this->panels.Show(std::move(panel));
+	return this->Attach() ? this->panels.Show(std::move(panel)) : nullptr;
 }
 
 bool ViewHost::CloseFront()

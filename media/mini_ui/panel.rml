@@ -4,14 +4,15 @@
 	<link type="text/rcss" href="panel.rcss"/>
 </head>
 <body>
-	<handle class="caption" move_target="#document">
-		<span class="title">{{title}}</span>
+	<handle class="caption" move_target="#document" data-class-editing="editing == 'title'">
+		<input type="text" class="edit" data-value="draft" data-event-change="commit('title')" data-event-blur="cancel('title')"/>
+		<span class="title" data-event-dblclick="edit_title">{{title}}</span>
 		<span class="close press" data-event-click="close"><svg class="icon" src="icons/close.svg"/></span>
 	</handle>
 	<div class="tabs" data-if="tabs.size > 0">
 		<span class="tab press" data-for="name, index : tabs" data-class-active="index == tab" data-event-click="tab = index">{{name}}</span>
 	</div>
-	<div id="sheet" class="sheet"></div>
+	<div id="sheet" class="sheet scroll-list"></div>
 	<div class="commands" data-if="commands.size > 0">
 		<span class="command press" data-for="command, index : commands" data-class-off="!command.enabled" data-event-click="run(index)">{{command.label}}</span>
 	</div>

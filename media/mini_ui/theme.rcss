@@ -75,6 +75,37 @@ div, handle {
 	box-shadow: var(--lift);
 }
 
+.row {
+	padding: 3dp 8dp;
+	border-radius: var(--radius-chip);
+	transition: background-color color var(--snap);
+}
+
+.row.link:hover {
+	background-color: var(--tile);
+}
+
+.row.active {
+	background-color: var(--tile-active);
+	decorator: var(--sheen);
+	color: var(--ink-strong);
+}
+
+.edit {
+	display: none;
+	flex: 1;
+	padding: 2dp 5dp;
+	background-color: var(--caption);
+	border: 1dp var(--accent);
+	border-radius: var(--radius-chip);
+	box-shadow: var(--sink);
+	color: var(--ink-strong);
+}
+
+.editing .edit {
+	display: block;
+}
+
 .scroll-list {
 	overflow-y: scroll;
 }
