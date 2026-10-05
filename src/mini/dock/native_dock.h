@@ -51,6 +51,7 @@ public:
 
 	Window *Open(const DockSpec &spec, WindowNumber num) const;
 	Rect Pin(Window *w, bool owned, const Rect &slot, const NativeSizing &sizing, int grip);
+	void Carry(Window *w, const Rect &slot);
 
 	void Unmark();
 	void Mark(NativeKey key);
@@ -59,6 +60,7 @@ public:
 	void Stack(const std::vector<NativeKey> &want);
 
 private:
+	DockedWindow &Hold(NativeKey key, bool owned);
 	std::vector<NativeKey> DockedOrder() const;
 
 	std::vector<DockedWindow> windows;

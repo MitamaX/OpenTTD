@@ -49,8 +49,8 @@ void RmlLayer::Start()
 	Rml::SetSystemInterface(&this->system);
 	Rml::SetRenderInterface(this->renderer.get());
 	Rml::Initialise();
-	RegisterElement<NativeSlot>("native-slot");
-	RegisterElement<RasterImage>("raster-image");
+	RegisterElement<NativeSlot>(NativeSlot::TAG);
+	RegisterElement<RasterImage>(RasterImage::TAG);
 	for (const char *font : MINI_FONTS) Rml::LoadFontFace(font);
 
 	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1), nullptr, &this->text_input);
@@ -108,6 +108,13 @@ bool RmlLayer::CapturePointer(const RmlPointer &pointer)
 	}
 	if (pointer.wheel != 0) this->context->ProcessMouseWheel(Rml::Vector2f(0.0f, static_cast<float>(pointer.wheel)), pointer.modifiers);
 	return true;
+}
+
+/* The pointer counts as over the layer only on an element that takes it, never on the bare context root. */
+const Rml::Element *RmlLayer::Hovered() const
+{
+	if (this->context == nullptr || !this->context->IsMouseInteracting()) return nullptr;
+	return this->context->GetHoverElement();
 }
 
 void RmlLayer::ProcessKey(const RmlKey &key)

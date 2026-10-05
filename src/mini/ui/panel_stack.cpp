@@ -97,13 +97,27 @@ Panel *PanelStack::Find(const std::string &key) const
 	return nullptr;
 }
 
+/* The context keeps its documents in stacking order, the front one last. */
+void PanelStack::ListNatives(std::vector<NativeKey> &natives) const
+{
+	if (this->context == nullptr) return;
+	for (int i = 0; i < this->context->GetNumDocuments(); i++) {
+		if (const Panel *panel = this->Owner(this->context->GetDocument(i)); panel != nullptr) panel->ListNatives(natives);
+	}
+}
+
+Panel *PanelStack::Owner(const Rml::ElementDocument *document) const
+{
+	for (const auto &panel : this->panels) {
+		if (panel->Owns(document)) return panel.get();
+	}
+	return nullptr;
+}
+
 Panel *PanelStack::Front() const
 {
 	for (int i = this->context->GetNumDocuments(); i-- > 0;) {
-		const Rml::ElementDocument *document = this->context->GetDocument(i);
-		for (const auto &panel : this->panels) {
-			if (panel->Owns(document)) return panel.get();
-		}
+		if (Panel *panel = this->Owner(this->context->GetDocument(i)); panel != nullptr) return panel;
 	}
 	return nullptr;
 }

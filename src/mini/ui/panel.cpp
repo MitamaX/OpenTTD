@@ -43,6 +43,10 @@ bool Panel::Open(Rml::Context &context, Rml::String model_name)
 	return true;
 }
 
+void Panel::ListNatives(std::vector<NativeKey> &) const
+{
+}
+
 void Panel::Close()
 {
 	if (this->document == nullptr) return;
@@ -93,6 +97,8 @@ void Panel::Bind(Rml::DataModelConstructor &model)
 	model.Bind("commands", &this->commands);
 	model.Bind("editing", &this->editing);
 	model.Bind("draft", &this->draft);
+	model.Bind("embedded", &this->embedded);
+	model.Bind("sizable", &this->sizable);
 	model.BindEventCallback("run", &Panel::Run, this);
 	model.BindEventCallback("close", &Panel::Dismiss, this);
 	model.BindEventCallback("edit_title", &Panel::EditTitle, this);

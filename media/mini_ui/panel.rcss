@@ -2,6 +2,7 @@ body {
 	position: absolute;
 	display: flex;
 	flex-direction: column;
+	box-sizing: border-box;
 	width: 250dp;
 	background-color: var(--panel);
 	decorator: var(--surface);
@@ -99,6 +100,37 @@ body {
 	gap: 8dp;
 	max-height: 360dp;
 	padding: 10dp 4dp;
+}
+
+.sheet.embedding {
+	flex: 1;
+	max-height: none;
+	padding: 0dp;
+	overflow-y: hidden;
+}
+
+.camera {
+	flex-shrink: 0;
+	height: 100dp;
+	margin: 0dp 8dp;
+}
+
+.embed {
+	flex: 1;
+}
+
+.grip {
+	position: absolute;
+	right: 0dp;
+	bottom: 0dp;
+	width: 12dp;
+	height: 12dp;
+	decorator: linear-gradient(135deg, #00000000 55%, var(--ink-dim) 55%);
+	border-radius: 0dp 0dp var(--radius) 0dp;
+}
+
+.grip:hover {
+	decorator: linear-gradient(135deg, #00000000 55%, var(--accent) 55%);
 }
 
 .section {

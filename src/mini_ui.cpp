@@ -2910,6 +2910,12 @@ static std::vector<NativeKey> WantedNativeOrder()
 		WindowNumber num;
 		if (WndEmbedTarget(mw, spec, num) && FindWindowById(spec.wc, num) != nullptr) want.push_back({spec.wc, num});
 	}
+
+	std::vector<NativeKey> held;
+	_views.ListNatives(held);
+	for (const NativeKey &key : held) {
+		if (FindWindowById(key.wc, key.num) != nullptr) want.push_back(key);
+	}
 	return want;
 }
 
@@ -3009,7 +3015,6 @@ static void DrawMiniWndsImGui()
 
 	/* Mark before drawing: a shell whose Begin is skipped still owns its
 	 * window, and releasing it here would re-adopt it the very next frame. */
-	_dock.Unmark();
 	for (const MiniWnd &mw : _wnds) {
 		DockSpec spec;
 		WindowNumber num;
@@ -3023,13 +3028,7 @@ static void DrawMiniWndsImGui()
 	}
 	_wnds_drawing = false;
 
-	/* An embed whose tab went away this frame has no slot left to draw into.
-	 * A window the mini UI opened goes with it; an adopted one is handed back. */
-	_dock.Sweep();
-
 	for (size_t i = closed.size(); i-- > 0;) CloseMiniWnd(closed[i]);
-
-	_dock.Stack(WantedNativeOrder());
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
@@ -3123,8 +3122,13 @@ bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
+	_dock.Unmark();
 	DrawMiniWndsImGui();
 	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, WindowBarBottom());
+	/* An embed whose slot went away this frame has nothing left to draw into.
+	 * A window the mini UI opened goes with it; an adopted one is handed back. */
+	_dock.Sweep();
+	_dock.Stack(WantedNativeOrder());
 	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
@@ -3245,7 +3249,7 @@ void MiniUiScrollTo(int x, int y)
 /* Native windows float above the ImGui layer and take the click; carriers
  * sit below it, so ImGui gets those instead. An embed takes the click only
  * inside its visible slot, so the cropped caption hiding under the mini tab
- * strip cannot start a native drag. */
+ * strip cannot start a native drag, and only where no panel covers the slot. */
 static bool NativeWindowTakesPointer()
 {
 	Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
@@ -3254,7 +3258,8 @@ static bool NativeWindowTakesPointer()
 	const DockedWindow *e = _dock.Find(w);
 	if (e == nullptr) return true;
 	if (!e->vis.Contains({_cursor.pos.x, _cursor.pos.y})) return false;
-	return e->grip <= 0 || _cursor.pos.x <= e->vis.right - e->grip || _cursor.pos.y <= e->vis.bottom - e->grip;
+	bool on_grip = e->grip > 0 && _cursor.pos.x > e->vis.right - e->grip && _cursor.pos.y > e->vis.bottom - e->grip;
+	return !on_grip && (!_views.PointerOverLayer() || _views.PointerOverSlot());
 }
 
 static bool MiniLayerTakesPointer()

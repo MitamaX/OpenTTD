@@ -23,6 +23,7 @@ protected:
 	LedgerSection &Section(Rml::String title = {});
 
 	Rml::Vector<LedgerSection> sections;
+	bool camera = false;
 
 private:
 	const LedgerLine *LineAt(const Rml::VariantList &arguments) const;

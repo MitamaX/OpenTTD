@@ -20,6 +20,13 @@ struct Window;
 
 using CarrierFocus = std::variant<TileIndex, VehicleID>;
 
+enum class CarrierSubject : uint8_t {
+	Vehicle,
+	Station,
+	Town,
+	Industry,
+};
+
 WindowNumber CarrierNumber(int kind, int id);
 bool IsCarrier(const Window *w);
 Window *FindCarrier(WindowNumber num);

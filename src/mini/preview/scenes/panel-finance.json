@@ -310,6 +310,9 @@
 			],
 			"editing": "",
 			"draft": "",
+			"embedded": false,
+			"sizable": false,
+			"camera": false,
 			"sections": [
 				{
 					"title": "수입",

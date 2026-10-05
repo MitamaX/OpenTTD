@@ -19,6 +19,8 @@
 
 class RasterImage final : public TextureBox {
 public:
+	static constexpr const char TAG[] = "raster-image";
+
 	explicit RasterImage(const Rml::String &tag);
 
 	void Show(std::span<const uint32_t> argb, Rml::Vector2i size);

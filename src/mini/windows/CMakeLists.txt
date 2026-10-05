@@ -24,4 +24,6 @@ add_files(
     waypoint_panel.cpp
     waypoint_panel.h
     window_links.h
+    window_panel.cpp
+    window_panel.h
 )

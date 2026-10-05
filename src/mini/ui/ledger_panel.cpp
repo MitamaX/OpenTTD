@@ -24,6 +24,7 @@ LedgerPanel::LedgerPanel(std::string key, Rml::String title, Rml::Vector<Rml::St
 void LedgerPanel::BindSheet(Rml::DataModelConstructor &model)
 {
 	model.Bind("sections", &this->sections);
+	model.Bind("camera", &this->camera);
 	model.BindEventCallback("pick", &LedgerPanel::Pick, this);
 	model.BindEventCallback("edit", &LedgerPanel::Edit, this);
 }

@@ -17,7 +17,7 @@
 #include "rml_input.h"
 #include "rml_interfaces.h"
 
-namespace Rml { class Context; }
+namespace Rml { class Context; class Element; }
 class RmlRenderer;
 
 class RmlLayer final : public RlwLayer {
@@ -33,6 +33,7 @@ public:
 
 	void TrackPointer(const RmlPointer &pointer);
 	bool CapturePointer(const RmlPointer &pointer);
+	const Rml::Element *Hovered() const;
 
 	bool IsTyping() const { return this->text_input.IsActive(); }
 	void ProcessKey(const RmlKey &key);

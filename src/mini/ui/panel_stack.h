@@ -35,8 +35,11 @@ public:
 	void Settle();
 	void Retire();
 
+	void ListNatives(std::vector<NativeKey> &natives) const;
+
 private:
 	Panel *Find(const std::string &key) const;
+	Panel *Owner(const Rml::ElementDocument *document) const;
 	Panel *Front() const;
 	size_t CountOpen() const;
 	void Place(Panel &panel) const;

@@ -63,20 +63,29 @@ Window *NativeDock::Open(const DockSpec &spec, WindowNumber num) const
 }
 
 /* The native is sized in whole steps to the slot and moved so its caption
- * sits just above it; the part that shows is what the slot can sample. */
+ * sits just above it; the part that shows is what the slot can sample. A slot
+ * not laid out yet only holds the window, so nothing adopts it meanwhile. */
 Rect NativeDock::Pin(Window *w, bool owned, const Rect &slot, const NativeSizing &sizing, int grip)
 {
+	DockedWindow &d = this->Hold(KeyOf(w), owned);
+	if (slot.Width() <= 0 || slot.Height() <= 0) return d.vis;
+
 	int crop = CaptionCrop(w);
 	ResizeInSteps(w, slot.Width(), slot.Height() + crop, sizing);
 	MoveNativeWindow(w, slot.left, slot.top - crop);
 
-	NativeKey key = KeyOf(w);
-	DockedWindow *d = FindEntry(this->windows, key);
-	if (d == nullptr) d = &this->windows.emplace_back(DockedWindow{key, {}, 0, false, owned});
-	d->used = true;
-	d->vis = {slot.left, slot.top, slot.left + std::min(w->width, slot.Width()) - 1, slot.top + std::min(w->height - crop, slot.Height()) - 1};
-	d->grip = grip;
-	return d->vis;
+	d.vis = {slot.left, slot.top, slot.left + std::min(w->width, slot.Width()) - 1, slot.top + std::min(w->height - crop, slot.Height()) - 1};
+	d.grip = grip;
+	return d.vis;
+}
+
+/* A carrier has no caption to crop and no resize box; it takes the slot's size outright. */
+void NativeDock::Carry(Window *w, const Rect &slot)
+{
+	FitCarrier(w, slot.left, slot.top, slot.Width(), slot.Height());
+	DockedWindow &d = this->Hold(KeyOf(w), true);
+	d.vis = slot;
+	d.grip = 0;
 }
 
 void NativeDock::Unmark()
@@ -125,6 +134,14 @@ void NativeDock::Stack(const std::vector<NativeKey> &want)
 		if (w != nullptr) w->flags.Reset(WindowFlag::WhiteBorder);
 	}
 	this->settled = this->DockedOrder();
+}
+
+DockedWindow &NativeDock::Hold(NativeKey key, bool owned)
+{
+	DockedWindow *d = FindEntry(this->windows, key);
+	if (d == nullptr) d = &this->windows.emplace_back(DockedWindow{key, {}, 0, false, owned});
+	d->used = true;
+	return *d;
 }
 
 std::vector<NativeKey> NativeDock::DockedOrder() const

@@ -14,6 +14,8 @@
 
 class NativeSlot final : public TextureBox {
 public:
+	static constexpr const char TAG[] = "native-slot";
+
 	explicit NativeSlot(const Rml::String &tag);
 
 protected:

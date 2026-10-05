@@ -12,10 +12,12 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "view.h"
 
 namespace Rml { class ElementDocument; }
+struct NativeKey;
 
 struct PanelCommand {
 	Rml::String label;
@@ -29,6 +31,7 @@ public:
 	bool IsOpen() const { return this->document != nullptr; }
 	bool Owns(const Rml::ElementDocument *document) const { return this->document == document; }
 	virtual bool IsAlive() const { return true; }
+	virtual void ListNatives(std::vector<NativeKey> &natives) const;
 
 	bool Open(Rml::Context &context, Rml::String model_name);
 	void Close();
@@ -60,6 +63,8 @@ protected:
 	Rml::String title;
 	int tab = 0;
 	Rml::Vector<PanelCommand> commands;
+	bool embedded = false;
+	bool sizable = false;
 
 private:
 	void Run(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);

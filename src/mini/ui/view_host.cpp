@@ -14,6 +14,7 @@
 
 #include "ledger.h"
 #include "menu_tile.h"
+#include "native_slot.h"
 
 #include "../../safeguards.h"
 
@@ -106,6 +107,12 @@ void ViewHost::TrackPointer()
 bool ViewHost::CapturePointer()
 {
 	return this->layer.CapturePointer(RmlPointer::Current());
+}
+
+bool ViewHost::PointerOverSlot() const
+{
+	const Rml::Element *hovered = this->layer.Hovered();
+	return hovered != nullptr && hovered->GetTagName() == NativeSlot::TAG;
 }
 
 bool ViewHost::ProcessKey(uint keycode)
