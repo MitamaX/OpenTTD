@@ -91,16 +91,21 @@
 #include "mini/ui/fonts.h"
 #include "mini/ui/ui_text.h"
 #include "mini/ui/view_host.h"
+#include "mini/windows/company_panel.h"
 #include "mini/windows/engine_preview_panel.h"
 #include "mini/windows/finance_panel.h"
 #include "mini/windows/goal_list_panel.h"
-#include "mini/windows/grades.h"
+#include "mini/windows/graph_panel.h"
+#include "mini/windows/industry_list_panel.h"
+#include "mini/windows/industry_panel.h"
 #include "mini/windows/news_list_panel.h"
 #include "mini/windows/sign_list_panel.h"
 #include "mini/windows/station_list_panel.h"
+#include "mini/windows/station_panel.h"
 #include "mini/windows/subsidy_list_panel.h"
 #include "mini/windows/takeover_panel.h"
 #include "mini/windows/town_list_panel.h"
+#include "mini/windows/town_panel.h"
 #include "mini/windows/waypoint_panel.h"
 #include "mini/windows/window_links.h"
 #include "economy_cmd.h"
@@ -367,50 +372,6 @@ static bool HandleLabelClick(int x, int y)
 	return true;
 }
 
-static void OpenFleetMiniWnd(int vt);
-static void OpenFinanceMiniWnd();
-static void OpenGroupMiniWnd(int vt);
-static void OpenStationListMiniWnd();
-static void OpenTownListMiniWnd();
-static void OpenIndustryListMiniWnd();
-static void OpenNewsListMiniWnd();
-static void OpenSubsidyListMiniWnd();
-static void OpenGoalListMiniWnd();
-static void OpenLeagueMiniWnd();
-static void OpenGraphMiniWnd();
-static void OpenMapMiniWnd();
-
-static void OpenMiniWindow(MiniWin win)
-{
-	bool company = Company::IsValidID(_local_company);
-	switch (win) {
-		case MiniWin::Finances: if (company) OpenFinanceMiniWnd(); break;
-		case MiniWin::CompanyInfo: if (company) OpenCompanyWindow(); break;
-		case MiniWin::Goals: OpenGoalListMiniWnd(); break;
-		case MiniWin::League: OpenLeagueMiniWnd(); break;
-		case MiniWin::Graph: OpenGraphMiniWnd(); break;
-		case MiniWin::Stations: if (company) OpenStationListMiniWnd(); break;
-		case MiniWin::Trains: if (company) OpenGroupMiniWnd(VEH_TRAIN); break;
-		case MiniWin::RoadVehicles: if (company) OpenGroupMiniWnd(VEH_ROAD); break;
-		case MiniWin::Ships: if (company) OpenGroupMiniWnd(VEH_SHIP); break;
-		case MiniWin::Aircraft: if (company) OpenGroupMiniWnd(VEH_AIRCRAFT); break;
-		case MiniWin::News: OpenNewsListMiniWnd(); break;
-		case MiniWin::Towns: OpenTownListMiniWnd(); break;
-		case MiniWin::Industries: OpenIndustryListMiniWnd(); break;
-		case MiniWin::Subsidies: OpenSubsidyListMiniWnd(); break;
-		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
-		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
-		case MiniWin::Map: OpenMapMiniWnd(); break;
-		case MiniWin::Signs: OpenSignListMiniWnd(SignID::Invalid()); break;
-		case MiniWin::Save: ShowSaveLoadDialog(FT_SAVEGAME, SLO_SAVE); break;
-		case MiniWin::Load: ShowSaveLoadDialog(FT_SAVEGAME, SLO_LOAD); break;
-		case MiniWin::Options: ShowGameOptions(); break;
-		case MiniWin::Music: ShowMusicWindow(); break;
-		case MiniWin::Abandon: AskExitToGameMenu(); break;
-		case MiniWin::Quit: AskExitGame(); break;
-	}
-}
-
 /* Mini windows: ONI-structured chrome windows on the GPU layer. A window has
  * a title bar with a rename pen and a close box, a uniform-width tab strip,
  * label-value body rows and square icon commands at the bottom. Every
@@ -423,15 +384,8 @@ static const uint32_t COL_CH_YELLOW = 0xFFE0B64AU;
 
 enum class MiniWndKind : uint8_t {
 	Vehicle,
-	Station,
-	Town,
-	Industry,
 	Fleet,
-	Company,
 	Group,
-	IndustryList,
-	League,
-	Graph,
 	Map,
 	Native,
 };
@@ -440,16 +394,12 @@ enum class MiniWndKind : uint8_t {
  * frame and act on a click in the body. */
 static bool WndIsList(MiniWndKind kind)
 {
-	return kind == MiniWndKind::IndustryList || kind == MiniWndKind::League ||
-			kind == MiniWndKind::Graph || kind == MiniWndKind::Map;
+	return kind == MiniWndKind::Map;
 }
 
 struct MiniWnd {
 	MiniWndKind kind = MiniWndKind::Vehicle;
 	VehicleID veh = VehicleID::Invalid();
-	StationID st = StationID::Invalid();
-	TownID town = TownID::Invalid();
-	IndustryID ind = IndustryID::Invalid();
 	VehicleID sel = VehicleID::Invalid();
 	GroupID sel_grp = ALL_GROUP;
 	EngineID sel_eng = EngineID::Invalid();
@@ -480,6 +430,11 @@ struct MiniWnd {
 
 static std::vector<MiniWnd> _wnds;
 
+static void OpenFleetMiniWnd(int vt);
+static void OpenGroupMiniWnd(int vt);
+static void OpenMapMiniWnd();
+static void OpenMiniWindow(MiniWin win);
+
 static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 {
 	std::vector<std::unique_ptr<HudPart>> parts;
@@ -496,6 +451,37 @@ static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 
 static ViewHost _views(CreateHudParts());
 
+static void OpenMiniWindow(MiniWin win)
+{
+	bool company = Company::IsValidID(_local_company);
+	switch (win) {
+		case MiniWin::Finances: if (company) _views.Show(std::make_unique<FinancePanel>()); break;
+		case MiniWin::CompanyInfo: if (company) OpenCompanyWindow(); break;
+		case MiniWin::Goals: _views.Show(std::make_unique<GoalListPanel>()); break;
+		case MiniWin::League: _views.Show(GraphPanel::League()); break;
+		case MiniWin::Graph: _views.Show(GraphPanel::CompanyGraphs()); break;
+		case MiniWin::Stations: if (company) _views.Show(std::make_unique<StationListPanel>()); break;
+		case MiniWin::Trains: if (company) OpenGroupMiniWnd(VEH_TRAIN); break;
+		case MiniWin::RoadVehicles: if (company) OpenGroupMiniWnd(VEH_ROAD); break;
+		case MiniWin::Ships: if (company) OpenGroupMiniWnd(VEH_SHIP); break;
+		case MiniWin::Aircraft: if (company) OpenGroupMiniWnd(VEH_AIRCRAFT); break;
+		case MiniWin::News: _views.Show(std::make_unique<NewsListPanel>()); break;
+		case MiniWin::Towns: _views.Show(std::make_unique<TownListPanel>()); break;
+		case MiniWin::Industries: _views.Show(std::make_unique<IndustryListPanel>()); break;
+		case MiniWin::Subsidies: _views.Show(std::make_unique<SubsidyListPanel>()); break;
+		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
+		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
+		case MiniWin::Map: OpenMapMiniWnd(); break;
+		case MiniWin::Signs: OpenSignListMiniWnd(SignID::Invalid()); break;
+		case MiniWin::Save: ShowSaveLoadDialog(FT_SAVEGAME, SLO_SAVE); break;
+		case MiniWin::Load: ShowSaveLoadDialog(FT_SAVEGAME, SLO_LOAD); break;
+		case MiniWin::Options: ShowGameOptions(); break;
+		case MiniWin::Music: ShowMusicWindow(); break;
+		case MiniWin::Abandon: AskExitToGameMenu(); break;
+		case MiniWin::Quit: AskExitGame(); break;
+	}
+}
+
 /* Mini windows stack by ImGui focus, not by list order, so the native windows
  * under them are ordered by when each shell last held focus. */
 static uint32_t _wnd_focus_tick = 0;
@@ -511,7 +497,7 @@ static VehicleID FrontWndVehicle()
 
 /* Work windows and the plot run twice as wide; the other kinds keep the
  * narrow single-column shape. */
-static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Graph || mw.kind == MiniWndKind::Map; }
+static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Map; }
 static int WndW(const MiniWnd &mw) { return std::min((WndWide(mw) ? 560 : 250) * _tuning.hud_scale, _fbw - 12 * _tuning.hud_scale); }
 static int WndTitleH() { return GetCharacterHeight(FS_NORMAL) + 8 * _tuning.hud_scale; }
 static int WndTabH() { return GetCharacterHeight(FS_NORMAL) + 8 * _tuning.hud_scale; }
@@ -522,133 +508,36 @@ static int WndPad() { return 6 * _tuning.hud_scale; }
 static int WndBodyH(const MiniWnd &mw) { return WndViewH() + WndPad() + (WndWide(mw) ? 10 : 6) * WndRowH(); }
 static int WndH(const MiniWnd &mw) { return WndTitleH() + WndTabH() + WndBodyH(mw) + WndCmdS() + 3 * WndPad(); }
 
-static WindowNumber MiniCarrierNum(const MiniWnd &mw)
+/* Of the ImGui windows only a vehicle window carries a camera. */
+static std::optional<WindowNumber> MiniCarrierNum(const MiniWnd &mw)
 {
-	int id;
-	switch (mw.kind) {
-		case MiniWndKind::Vehicle: id = (int)mw.veh.base(); break;
-		case MiniWndKind::Station: id = (int)mw.st.base(); break;
-		case MiniWndKind::Town: id = (int)mw.town.base(); break;
-		case MiniWndKind::Industry: id = (int)mw.ind.base(); break;
-		default: id = 0; break;
-	}
-	return CarrierNumber((int)mw.kind, id);
-}
-
-static std::optional<CarrierFocus> MiniCarrierFocus(const MiniWnd &mw)
-{
-	switch (mw.kind) {
-		case MiniWndKind::Vehicle: {
-			const Vehicle *v = Vehicle::GetIfValid(mw.veh);
-			if (v == nullptr) return std::nullopt;
-			return v->index;
-		}
-		case MiniWndKind::Station: {
-			const Station *st = Station::GetIfValid(mw.st);
-			if (st == nullptr) return std::nullopt;
-			return st->rect.IsEmpty() ? st->xy : TileXY((st->rect.left + st->rect.right) / 2, (st->rect.top + st->rect.bottom) / 2);
-		}
-		case MiniWndKind::Town: {
-			const Town *t = Town::GetIfValid(mw.town);
-			if (t == nullptr) return std::nullopt;
-			return t->xy;
-		}
-		case MiniWndKind::Group:
-			return TileXY(Map::SizeX() / 2, Map::SizeY() / 2);
-		default: {
-			const Industry *i = Industry::GetIfValid(mw.ind);
-			if (i == nullptr) return std::nullopt;
-			return i->location.GetCenterTile();
-		}
-	}
+	if (mw.kind != MiniWndKind::Vehicle) return std::nullopt;
+	return CarrierNumber(to_underlying(CarrierSubject::Vehicle), mw.veh.base());
 }
 
 static void EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
 {
-	Window *cw = FindCarrier(MiniCarrierNum(mw));
-	if (cw == nullptr) {
-		std::optional<CarrierFocus> focus = MiniCarrierFocus(mw);
-		if (!focus.has_value()) return;
-		cw = OpenCarrier(MiniCarrierNum(mw), *focus);
-	}
+	std::optional<WindowNumber> number = MiniCarrierNum(mw);
+	const Vehicle *v = Vehicle::GetIfValid(mw.veh);
+	if (!number.has_value() || v == nullptr) return;
+
+	Window *cw = FindCarrier(*number);
+	if (cw == nullptr) cw = OpenCarrier(*number, v->index);
 	FitCarrier(cw, x, y, w, h);
 }
 
 static void CloseMiniCarrier(const MiniWnd &mw)
 {
-	CloseCarrier(MiniCarrierNum(mw));
+	if (std::optional<WindowNumber> number = MiniCarrierNum(mw); number.has_value()) CloseCarrier(*number);
 }
 
-static void EmbedOpenCompany(WindowNumber) { ShowCompany(_local_company); }
-static void EmbedOpenOperatingProfit(WindowNumber) { ShowOperatingProfitGraph(); }
-static void EmbedOpenIncome(WindowNumber) { ShowIncomeGraph(); }
-static void EmbedOpenCompanyValue(WindowNumber) { ShowCompanyValueGraph(); }
-static void EmbedOpenPerformance(WindowNumber) { ShowPerformanceHistoryGraph(); }
-static void EmbedOpenDeliveredCargo(WindowNumber) { ShowDeliveredCargoGraph(); }
-static void EmbedOpenPaymentRates(WindowNumber) { ShowCargoPaymentRates(); }
-static void EmbedOpenLeague(WindowNumber) { ShowPerformanceLeagueTable(); }
-static void EmbedOpenRatingDetail(WindowNumber) { ShowPerformanceRatingDetail(); }
-static void EmbedOpenIndustryChain(WindowNumber) { ShowIndustryCargoesWindow(); }
-static void EmbedOpenIndustryProduction(WindowNumber num) { ShowIndustryProductionGraph(num); }
-static void EmbedOpenTownCargo(WindowNumber num) { ShowTownCargoGraph(num); }
-
-/* Tabs the official window fills better than a rewrite would: the manager
- * face, the plotted histories, the rating breakdown, the cargo chain. */
+/* Only an adopted native window still embeds through an ImGui shell. */
 static bool WndEmbedTarget(const MiniWnd &mw, DockSpec &spec, WindowNumber &num)
 {
-	static const DockSpec graphs[] = {
-		{WC_OPERATING_PROFIT, EmbedOpenOperatingProfit},
-		{WC_INCOME_GRAPH, EmbedOpenIncome},
-		{WC_COMPANY_VALUE, EmbedOpenCompanyValue},
-		{WC_PERFORMANCE_HISTORY, EmbedOpenPerformance},
-		{WC_DELIVERED_CARGO, EmbedOpenDeliveredCargo},
-		{WC_PAYMENT_RATES, EmbedOpenPaymentRates},
-	};
-
-	num = 0;
-	switch (mw.kind) {
-		case MiniWndKind::Native:
-			if (mw.nat_wc == WC_NONE) return false;
-			spec = {mw.nat_wc, nullptr};
-			num = mw.nat_num;
-			return true;
-
-		case MiniWndKind::Company:
-			if (mw.tab != 0 || !Company::IsValidID(_local_company)) return false;
-			spec = {WC_COMPANY, EmbedOpenCompany};
-			num = _local_company;
-			return true;
-
-		case MiniWndKind::Graph:
-			if ((size_t)mw.tab >= lengthof(graphs)) return false;
-			spec = graphs[mw.tab];
-			return true;
-
-		case MiniWndKind::League:
-			spec = mw.tab == 1 ? DockSpec{WC_PERFORMANCE_DETAIL, EmbedOpenRatingDetail}
-					: DockSpec{WC_COMPANY_LEAGUE, EmbedOpenLeague};
-			return true;
-
-		case MiniWndKind::IndustryList:
-			if (mw.tab != 3) return false;
-			spec = {WC_INDUSTRY_CARGOES, EmbedOpenIndustryChain};
-			return true;
-
-		case MiniWndKind::Industry:
-			if (mw.tab != 3 || !Industry::IsValidID(mw.ind)) return false;
-			spec = {WC_INDUSTRY_PRODUCTION, EmbedOpenIndustryProduction};
-			num = mw.ind;
-			return true;
-
-		case MiniWndKind::Town:
-			if (mw.tab != 3 || !Town::IsValidID(mw.town)) return false;
-			spec = {WC_TOWN_CARGO_GRAPH, EmbedOpenTownCargo};
-			num = mw.town;
-			return true;
-
-		default:
-			return false;
-	}
+	if (mw.kind != MiniWndKind::Native || mw.nat_wc == WC_NONE) return false;
+	spec = {mw.nat_wc, nullptr};
+	num = mw.nat_num;
+	return true;
 }
 
 static void CloseMiniWnd(size_t i)
@@ -667,7 +556,7 @@ static void CloseMiniWnd(size_t i)
 static void RaiseMiniWnd(size_t i)
 {
 	std::rotate(_wnds.begin() + (ptrdiff_t)i, _wnds.begin() + (ptrdiff_t)i + 1, _wnds.end());
-	BringWindowToFrontById(WC_EXTRA_VIEWPORT, MiniCarrierNum(_wnds.back()));
+	if (std::optional<WindowNumber> number = MiniCarrierNum(_wnds.back()); number.has_value()) BringWindowToFrontById(WC_EXTRA_VIEWPORT, *number);
 	_wnds.back().want_raise = true;
 }
 
@@ -677,23 +566,20 @@ static void RaiseMiniWnd(size_t i)
 struct MiniOpenReq {
 	MiniWndKind kind;
 	VehicleID veh;
-	StationID st;
-	TownID town;
-	IndustryID ind;
 	int8_t tab;
 };
 
 static std::vector<MiniOpenReq> _wnd_opens;
 static bool _wnds_drawing = false;
 
-static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID town = TownID::Invalid(), IndustryID ind = IndustryID::Invalid(), int8_t tab = -1)
+static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, int8_t tab = -1)
 {
 	if (_wnds_drawing) {
-		_wnd_opens.push_back({kind, veh, st, town, ind, tab});
+		_wnd_opens.push_back({kind, veh, tab});
 		return;
 	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (_wnds[i].kind == kind && _wnds[i].veh == veh && _wnds[i].st == st && _wnds[i].town == town && _wnds[i].ind == ind) {
+		if (_wnds[i].kind == kind && _wnds[i].veh == veh) {
 			RaiseMiniWnd(i);
 			if (tab >= 0) _wnds.back().tab = (uint8_t)tab;
 			return;
@@ -703,9 +589,6 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, StationID st, TownID to
 	MiniWnd mw;
 	mw.kind = kind;
 	mw.veh = veh;
-	mw.st = st;
-	mw.town = town;
-	mw.ind = ind;
 	if (tab >= 0) mw.tab = (uint8_t)tab;
 	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
 	mw.y = Clamp(WindowBarBottom() + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
@@ -723,27 +606,27 @@ static void CloseAllMiniWnds()
 
 static void OpenFleetMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), (int8_t)vt);
+	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), (int8_t)vt);
 }
 
 void OpenVehicleWindow(VehicleID vehicle)
 {
-	OpenMiniWnd(MiniWndKind::Vehicle, vehicle, StationID::Invalid());
+	OpenMiniWnd(MiniWndKind::Vehicle, vehicle);
 }
 
 void OpenStationWindow(StationID station)
 {
-	OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), station);
+	_views.Show(std::make_unique<StationPanel>(station));
 }
 
 void OpenTownWindow(TownID town)
 {
-	OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), town);
+	_views.Show(std::make_unique<TownPanel>(town));
 }
 
 void OpenIndustryWindow(IndustryID industry)
 {
-	OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), industry);
+	_views.Show(std::make_unique<IndustryPanel>(industry));
 }
 
 void ScrollToTile(TileIndex tile)
@@ -751,64 +634,19 @@ void ScrollToTile(TileIndex tile)
 	MiniUiScrollTo(TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
 }
 
-static void OpenFinanceMiniWnd()
-{
-	_views.Show(std::make_unique<FinancePanel>());
-}
-
 void OpenCompanyWindow()
 {
-	OpenMiniWnd(MiniWndKind::Company, VehicleID::Invalid(), StationID::Invalid());
+	_views.Show(std::make_unique<CompanyPanel>());
 }
 
 static void OpenGroupMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), IndustryID::Invalid(), (int8_t)vt);
-}
-
-static void OpenStationListMiniWnd()
-{
-	_views.Show(std::make_unique<StationListPanel>());
-}
-
-static void OpenTownListMiniWnd()
-{
-	_views.Show(std::make_unique<TownListPanel>());
-}
-
-static void OpenIndustryListMiniWnd()
-{
-	OpenMiniWnd(MiniWndKind::IndustryList, VehicleID::Invalid(), StationID::Invalid());
-}
-
-static void OpenNewsListMiniWnd()
-{
-	_views.Show(std::make_unique<NewsListPanel>());
-}
-
-static void OpenSubsidyListMiniWnd()
-{
-	_views.Show(std::make_unique<SubsidyListPanel>());
-}
-
-static void OpenGoalListMiniWnd()
-{
-	_views.Show(std::make_unique<GoalListPanel>());
-}
-
-static void OpenLeagueMiniWnd()
-{
-	OpenMiniWnd(MiniWndKind::League, VehicleID::Invalid(), StationID::Invalid());
-}
-
-static void OpenGraphMiniWnd()
-{
-	OpenMiniWnd(MiniWndKind::Graph, VehicleID::Invalid(), StationID::Invalid());
+	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), (int8_t)vt);
 }
 
 static void OpenMapMiniWnd()
 {
-	OpenMiniWnd(MiniWndKind::Map, VehicleID::Invalid(), StationID::Invalid());
+	OpenMiniWnd(MiniWndKind::Map, VehicleID::Invalid());
 }
 
 static StringID OrderLoadStr(OrderLoadType t)
@@ -1463,260 +1301,6 @@ static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
 	}
 }
 
-static void ImStationBody(MiniWnd &mw, const Station *st)
-{
-	switch (mw.tab) {
-		case 0: {
-			bool any = false;
-			for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
-				const GoodsEntry &ge = st->goods[cs->Index()];
-				if (!ge.HasRating()) continue;
-				any = true;
-				/* The rating decides how much of what waits actually gets
-				 * picked up, so it belongs beside the count. */
-				uint pct = ToPercent8(ge.rating);
-				ImWndKV(GameText(cs->name), fmt::format("{}  {}%", ge.TotalCount(), pct),
-						pct < 40 ? COL_CH_RED : (pct < 70 ? COL_CH_YELLOW : COL_CH_TEXT));
-			}
-			if (!any) ImWndText("대기 화물 없음", COL_CH_DIM);
-			break;
-		}
-
-		case 1: {
-			bool any = false;
-			std::vector<const Industry *> supply;
-			for (const Industry *i : Industry::Iterate()) {
-				if (i->stations_near.find(const_cast<Station *>(st)) == i->stations_near.end()) continue;
-				if (std::none_of(std::begin(i->produced), std::end(i->produced), [](const auto &p) { return IsValidCargoType(p.cargo); })) continue;
-				supply.push_back(i);
-			}
-			if (!supply.empty()) {
-				any = true;
-				ImWndHeader("공급처");
-				for (const Industry *i : supply) {
-					if (ImWndLink(GameText(STR_INDUSTRY_NAME, i->index), COL_CH_TEXT)) {
-						MiniUiScrollTo(TileX(i->location.tile) * TILE_SIZE, TileY(i->location.tile) * TILE_SIZE);
-					}
-				}
-			}
-			if (!st->industries_near.empty()) {
-				any = true;
-				ImWndHeader("납품처");
-				for (const IndustryListEntry &e : st->industries_near) {
-					if (ImWndLink(GameText(STR_INDUSTRY_NAME, e.industry->index), COL_CH_TEXT)) {
-						TileIndex jt = e.industry->location.tile;
-						MiniUiScrollTo(TileX(jt) * TILE_SIZE, TileY(jt) * TILE_SIZE);
-					}
-				}
-			}
-			if (!any) ImWndText("주변 산업 없음", COL_CH_DIM);
-			break;
-		}
-
-		case 2: {
-			bool any = false;
-			for (VehicleType vt : {VEH_TRAIN, VEH_ROAD, VEH_SHIP, VEH_AIRCRAFT}) {
-				VehicleList list;
-				if (!GenerateVehicleSortList(&list, VehicleListIdentifier(VL_STATION_LIST, vt, _local_company, st->index))) continue;
-				for (const Vehicle *lv : list) {
-					any = true;
-					bool here = lv->current_order.IsType(OT_GOTO_STATION) && lv->current_order.GetDestination().ToStationID() == st->index;
-					if (ImWndLink(GameText(STR_VEHICLE_NAME, lv->index), here ? COL_CH_ACCENT : COL_CH_TEXT)) {
-						OpenMiniWnd(MiniWndKind::Vehicle, lv->First()->index, StationID::Invalid());
-					}
-				}
-			}
-			if (!any) ImWndText("이 역에 오는 차량 없음", COL_CH_DIM);
-			break;
-		}
-
-		case 3: {
-			if (st->town != nullptr) {
-				if (ImWndKVLink("도시", GameText(STR_TOWN_NAME, st->town->index), COL_CH_DIM, COL_CH_TEXT)) {
-					OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), st->town->index);
-				}
-			}
-			if (Company::IsValidID(st->owner)) {
-				ImWndKV("소유", GameText(STR_COMPANY_NAME, st->owner), COL_CH_TEXT);
-			}
-			std::string fac;
-			for (const auto &[f, name] : std::initializer_list<std::pair<StationFacility, std::string_view>>{
-					{StationFacility::Train, "철도"}, {StationFacility::BusStop, "버스"}, {StationFacility::TruckStop, "트럭"},
-					{StationFacility::Dock, "부두"}, {StationFacility::Airport, "공항"}}) {
-				if (!st->facilities.Test(f)) continue;
-				if (!fac.empty()) fac += " ";
-				fac += name;
-			}
-			if (!fac.empty()) ImWndKV("시설", fac, COL_CH_TEXT);
-			ImWndText(GameText(STR_LAND_AREA_INFORMATION_BUILD_DATE, st->build_date), COL_CH_TEXT);
-			if (st->facilities.Test(StationFacility::Train) && st->train_station.tile != INVALID_TILE) {
-				uint longest = 0;
-				for (TileIndex ti : st->train_station) {
-					if (!st->TileBelongsToRailStation(ti)) continue;
-					longest = std::max(longest, st->GetPlatformLength(ti));
-				}
-				ImWndKV(GameText(STR_STATION_BUILD_PLATFORM_LENGTH), fmt::format("{}칸", longest), COL_CH_TEXT);
-			}
-			ImWndText(GameText(STR_STATION_VIEW_ACCEPTS_CARGO, GetAcceptanceMask(st)), COL_CH_TEXT);
-			bool rated = false;
-			for (const CargoSpec *cs : _sorted_standard_cargo_specs) {
-				const GoodsEntry &ge = st->goods[cs->Index()];
-				if (!ge.HasRating()) continue;
-				if (!rated) {
-					ImWndHeader("화물 처리 평가");
-					rated = true;
-				}
-				uint pct = ToPercent8(ge.rating);
-				uint32_t tint = pct < 25 ? COL_CH_RED : pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT;
-				ImWndKV(GameText(cs->name), fmt::format("{} {}%", GameText(STR_CARGO_RATING_APPALLING + (ge.rating >> 5)), pct), tint);
-			}
-			break;
-		}
-	}
-}
-
-static TownActions MiniEnabledTownActions()
-{
-	TownActions enabled{};
-	enabled.Set();
-	if (!_settings_game.economy.fund_roads) enabled.Reset(TownAction::RoadRebuild);
-	if (!_settings_game.economy.fund_buildings) enabled.Reset(TownAction::FundBuildings);
-	if (!_settings_game.economy.exclusive_rights) enabled.Reset(TownAction::BuyRights);
-	if (!_settings_game.economy.bribe) enabled.Reset(TownAction::Bribe);
-	return enabled;
-}
-
-static void ImTownBody(MiniWnd &mw, const Town *t)
-{
-	switch (mw.tab) {
-		case 0: {
-			ImWndText(GameText(STR_TOWN_VIEW_POPULATION_HOUSES, t->cache.population, t->cache.num_houses), COL_CH_TEXT);
-			if (t->flags.Test(TownFlag::IsGrowing)) {
-				StringID str = t->fund_buildings_months == 0 ? STR_TOWN_VIEW_TOWN_GROWS_EVERY : STR_TOWN_VIEW_TOWN_GROWS_EVERY_FUNDED;
-				ImWndText(GameText(str, RoundDivSU(t->growth_rate + 1, Ticks::DAY_TICKS)), COL_CH_TEXT);
-			} else {
-				ImWndText(GameText(STR_TOWN_VIEW_TOWN_GROW_STOPPED), COL_CH_YELLOW);
-			}
-			if (t->larger_town) ImWndText("대도시", COL_CH_ACCENT);
-			if (_settings_game.economy.station_noise_level) {
-				ImWndText(GameText(STR_TOWN_VIEW_NOISE_IN_TOWN, t->noise_reached, t->MaxTownNoise()), COL_CH_TEXT);
-			}
-			break;
-		}
-
-		case 1: {
-			bool any = false;
-			for (const Company *c : Company::Iterate()) {
-				if (!t->have_ratings.Test(c->index) && t->exclusivity != c->index) continue;
-				any = true;
-				int rating = t->ratings[c->index];
-				uint32_t tint = rating <= RATING_VERYPOOR ? COL_CH_RED : rating <= RATING_MEDIOCRE ? COL_CH_YELLOW : COL_CH_TEXT;
-				std::string name = GameText(STR_COMPANY_NAME, c->index);
-				if (t->exclusivity == c->index) name += " · 독점";
-				ImWndKV(name, GameText(TownRatingString(rating)), tint);
-			}
-			if (!any) ImWndText("회사 평가 없음", COL_CH_DIM);
-
-			ImWndHeader(GameText(STR_LOCAL_AUTHORITY_ACTIONS_TITLE));
-			TownActions enabled = MiniEnabledTownActions();
-			TownActions avail = GetMaskOfTownActions(_local_company, t);
-			for (TownAction a = {}; a != TownAction::End; ++a) {
-				if (!enabled.Test(a)) continue;
-				Money price = _price[PR_TOWN_ACTION] * GetTownActionCost(a) >> 8;
-				bool can = avail.Test(a);
-				bool sel = mw.sel_ord == (int16_t)to_underlying(a);
-				uint32_t tint = sel ? COL_CH_ACCENT : can ? COL_CH_TEXT : COL_CH_DIM;
-				std::string label = GameText(STR_LOCAL_AUTHORITY_ACTION_SMALL_ADVERTISING_CAMPAIGN + to_underlying(a));
-				std::string cost = GameText(STR_JUST_CURRENCY_LONG, price);
-				if (ImWndKVLink(label, cost, tint, tint) && can) mw.sel_ord = sel ? -1 : (int16_t)to_underlying(a);
-			}
-			break;
-		}
-
-		case 2: {
-			StringID str_last = TimerGameEconomy::UsingWallclockUnits() ? STR_TOWN_VIEW_CARGO_LAST_MINUTE_MAX : STR_TOWN_VIEW_CARGO_LAST_MONTH_MAX;
-			for (auto tpe : {TPE_PASSENGERS, TPE_MAIL}) {
-				for (const CargoSpec *cs : CargoSpec::town_production_cargoes[tpe]) {
-					CargoType ct = cs->Index();
-					auto it = t->GetCargoSupplied(ct);
-					uint transported = it != std::end(t->supplied) ? it->history[LAST_MONTH].transported : 0;
-					uint production = it != std::end(t->supplied) ? it->history[LAST_MONTH].production : 0;
-					ImWndText(GameText(str_last, 1ULL << ct, transported, production), COL_CH_TEXT);
-				}
-			}
-			bool first = true;
-			for (int i = TAE_BEGIN; i < TAE_END; i++) {
-				if (t->goal[i] == 0) continue;
-				if (t->goal[i] == TOWN_GROWTH_WINTER && (TileHeight(t->xy) < LowestSnowLine() || t->cache.population <= 90)) continue;
-				if (t->goal[i] == TOWN_GROWTH_DESERT && (GetTropicZone(t->xy) != TROPICZONE_DESERT || t->cache.population <= 60)) continue;
-				if (first) {
-					ImWndHeader(GameText(STR_TOWN_VIEW_CARGO_FOR_TOWNGROWTH));
-					first = false;
-				}
-				const CargoSpec *cargo = FindFirstCargoWithTownAcceptanceEffect((TownAcceptanceEffect)i);
-				if (cargo == nullptr) continue;
-				if (t->goal[i] == TOWN_GROWTH_DESERT || t->goal[i] == TOWN_GROWTH_WINTER) {
-					bool done = t->received[i].old_act > 0;
-					ImWndKV(GameText(cargo->name), done ? "공급됨" : "필요", done ? COL_CH_TEXT : COL_CH_YELLOW);
-				} else {
-					bool done = t->received[i].old_act >= t->goal[i];
-					ImWndKV(GameText(cargo->name), fmt::format("{} / {}", t->received[i].old_act, t->goal[i]), done ? COL_CH_TEXT : COL_CH_YELLOW);
-				}
-			}
-			break;
-		}
-	}
-}
-
-static void ImIndustryBody(MiniWnd &mw, const Industry *i)
-{
-	switch (mw.tab) {
-		case 0: {
-			if (i->prod_level == PRODLEVEL_CLOSURE) ImWndText(GameText(STR_INDUSTRY_VIEW_INDUSTRY_ANNOUNCED_CLOSURE), COL_CH_RED);
-			bool any = false;
-			for (const auto &p : i->produced) {
-				if (!IsValidCargoType(p.cargo)) continue;
-				any = true;
-				uint pct = ToPercent8(p.history[LAST_MONTH].PctTransported());
-				uint32_t tint = pct < 25 ? COL_CH_RED : pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT;
-				ImWndKV(GameText(CargoSpec::Get(p.cargo)->name), fmt::format("{} · {}%", p.history[LAST_MONTH].production, pct), tint);
-			}
-			if (!any) ImWndText("생산 없음", COL_CH_DIM);
-			if (i->prod_level != PRODLEVEL_DEFAULT && i->prod_level != PRODLEVEL_CLOSURE) {
-				ImWndText(GameText(STR_INDUSTRY_VIEW_PRODUCTION_LEVEL, RoundDivSU(i->prod_level * 100, PRODLEVEL_DEFAULT)), COL_CH_TEXT);
-			}
-			break;
-		}
-
-		case 1: {
-			if (i->stations_near.empty()) {
-				ImWndText("주변 역 없음", COL_CH_DIM);
-				break;
-			}
-			for (const Station *st : i->stations_near) {
-				if (ImWndLink(GameText(STR_STATION_NAME, st->index), COL_CH_TEXT)) {
-					OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), st->index);
-				}
-			}
-			break;
-		}
-
-		case 2: {
-			ImWndText(GameText(STR_LAND_AREA_INFORMATION_BUILD_DATE, i->construction_date), COL_CH_TEXT);
-			bool first = true;
-			for (const auto &a : i->accepted) {
-				if (!IsValidCargoType(a.cargo)) continue;
-				if (first) {
-					ImWndHeader(GameText(STR_INDUSTRY_VIEW_REQUIRES));
-					first = false;
-				}
-				ImWndKV(GameText(CargoSpec::Get(a.cargo)->name), a.waiting > 0 ? fmt::format("{}", a.waiting) : std::string("-"), COL_CH_TEXT);
-			}
-			break;
-		}
-	}
-}
-
 static void ImFleetBody(MiniWnd &mw)
 {
 	VehicleType vt = (VehicleType)mw.tab;
@@ -1954,33 +1538,6 @@ static void ImFleetBody(MiniWnd &mw)
 	ImGui::EndChild();
 }
 
-/* The overview tab embeds the official company window, so only the asset
- * roll-up is drawn here. */
-static void ImCompanyBody(MiniWnd &)
-{
-	const Company *c = Company::GetIfValid(_local_company);
-	if (c == nullptr) return;
-
-	static const StringID veh_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
-	ImWndHeader(GameText(STR_COMPANY_VIEW_VEHICLES_TITLE));
-	uint fleet = 0;
-	for (VehicleType vt = VEH_BEGIN; vt < VEH_COMPANY_END; vt++) {
-		uint amount = c->group_all[vt].num_vehicle;
-		fleet += amount;
-		ImWndKV(GameText(veh_strs[vt]), fmt::format("{}대", amount), amount > 0 ? COL_CH_TEXT : COL_CH_DIM);
-	}
-	if (fleet == 0) ImWndText(GameText(STR_COMPANY_VIEW_VEHICLES_NONE), COL_CH_DIM);
-
-	ImWndHeader(GameText(STR_COMPANY_VIEW_INFRASTRUCTURE));
-	uint rail = c->infrastructure.GetRailTotal() + c->infrastructure.signal;
-	uint road = c->infrastructure.GetRoadTotal() + c->infrastructure.GetTramTotal();
-	ImWndKV("선로", fmt::format("{}", rail), rail > 0 ? COL_CH_TEXT : COL_CH_DIM);
-	ImWndKV("도로", fmt::format("{}", road), road > 0 ? COL_CH_TEXT : COL_CH_DIM);
-	ImWndKV("수로", fmt::format("{}", c->infrastructure.water), c->infrastructure.water > 0 ? COL_CH_TEXT : COL_CH_DIM);
-	ImWndKV("역 타일", fmt::format("{}", c->infrastructure.station), c->infrastructure.station > 0 ? COL_CH_TEXT : COL_CH_DIM);
-	ImWndKV("공항", fmt::format("{}", c->infrastructure.airport), c->infrastructure.airport > 0 ? COL_CH_TEXT : COL_CH_DIM);
-}
-
 static void ImGroupBody(MiniWnd &mw)
 {
 	if (!Company::IsValidID(_local_company)) return;
@@ -2110,7 +1667,7 @@ static void ImGroupBody(MiniWnd &mw)
 				if (ImWndKVLink(GameText(STR_VEHICLE_NAME, v->index),
 						GameText(STR_JUST_CURRENCY_SHORT, profit),
 						COL_CH_TEXT, profit < 0 ? COL_CH_RED : COL_CH_TEXT)) {
-					OpenMiniWnd(MiniWndKind::Vehicle, v->First()->index, StationID::Invalid());
+					OpenVehicleWindow(v->First()->index);
 				}
 			}
 			if (list.empty()) ImWndText("차량 없음", COL_CH_DIM);
@@ -2140,48 +1697,6 @@ static void ImGroupBody(MiniWnd &mw)
 		}
 	}
 	ImGui::EndChild();
-}
-
-static void ImIndustryListBody(MiniWnd &mw)
-{
-	struct Row {
-		IndustryID id;
-		std::string name;
-		uint64_t prod;
-		uint pct;
-		bool closing;
-	};
-	std::vector<Row> rows;
-	for (const Industry *i : Industry::Iterate()) {
-		Row r{i->index, GameText(STR_INDUSTRY_NAME, i->index), 0, 0, i->prod_level == PRODLEVEL_CLOSURE};
-		uint64_t weighted = 0;
-		for (const auto &p : i->produced) {
-			if (!IsValidCargoType(p.cargo)) continue;
-			uint amount = p.history[LAST_MONTH].production;
-			r.prod += amount;
-			weighted += (uint64_t)amount * ToPercent8(p.history[LAST_MONTH].PctTransported());
-		}
-		if (r.prod > 0) r.pct = (uint)(weighted / r.prod);
-		rows.push_back(std::move(r));
-	}
-	if (rows.empty()) {
-		ImWndText("산업 없음", COL_CH_DIM);
-		return;
-	}
-
-	switch (mw.tab) {
-		case 1: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.prod > b.prod; }); break;
-		case 2: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.pct < b.pct; }); break;
-		default: std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.name < b.name; }); break;
-	}
-
-	for (const Row &r : rows) {
-		std::string value = mw.tab == 2 ? fmt::format("{}%", r.pct) : fmt::format("{}", r.prod);
-		uint32_t tint = mw.tab == 2 ? (r.pct < 25 ? COL_CH_RED : r.pct < 50 ? COL_CH_YELLOW : COL_CH_TEXT) : COL_CH_TEXT;
-		if (ImWndKVLink(r.name, value, r.closing ? COL_CH_RED : COL_CH_TEXT, tint)) {
-			OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), r.id);
-		}
-	}
 }
 
 /* News rows jump to whatever the item references, so a click lands on the
@@ -2481,7 +1996,7 @@ static bool ImWndButton(std::string_view label, bool enabled)
 	return clicked;
 }
 
-static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t, const Industry *ind)
+static void ImWndCommands(MiniWnd &mw, const Vehicle *v)
 {
 	ImGui::Separator();
 	switch (mw.kind) {
@@ -2501,40 +2016,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			break;
 		}
 
-		case MiniWndKind::Station: {
-			bool own = st != nullptr && (st->owner == _local_company || st->owner == OWNER_NONE);
-			extern const Station *_viewport_highlight_station;
-			bool hl = st != nullptr && _viewport_highlight_station == st;
-			if (ImWndButton(hl ? "범위 끄기" : "범위", own)) {
-				SetViewportCatchmentStation(st, !hl);
-			}
-			if (ImWndButton("이동", st != nullptr)) {
-				MiniUiScrollTo(TileX(st->xy) * TILE_SIZE, TileY(st->xy) * TILE_SIZE);
-			}
-			break;
-		}
-
-		case MiniWndKind::Town: {
-			bool act = t != nullptr && mw.sel_ord >= 0 && mw.sel_ord < (int16_t)to_underlying(TownAction::End) &&
-					GetMaskOfTownActions(_local_company, t).Test((TownAction)mw.sel_ord);
-			if (ImWndButton("실행", act)) {
-				Command<CMD_DO_TOWN_ACTION>::Post(STR_ERROR_CAN_T_DO_THIS, t->xy, t->index, (TownAction)mw.sel_ord);
-				mw.sel_ord = -1;
-			}
-			if (ImWndButton("이동", t != nullptr)) MiniUiScrollTo(TileX(t->xy) * TILE_SIZE, TileY(t->xy) * TILE_SIZE);
-			break;
-		}
-
-		case MiniWndKind::Industry: {
-			extern void ShowIndustryCargoesWindow(IndustryType id);
-			if (ImWndButton("계통", ind != nullptr)) ShowIndustryCargoesWindow(ind->type);
-			if (ImWndButton("이동", ind != nullptr)) {
-				TileIndex ct = ind->location.GetCenterTile();
-				MiniUiScrollTo(TileX(ct) * TILE_SIZE, TileY(ct) * TILE_SIZE);
-			}
-			break;
-		}
-
 		case MiniWndKind::Fleet: {
 			bool own = Company::IsValidID(_local_company);
 			const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
@@ -2547,15 +2028,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			if (ImWndButton("설계 비우기", own && !draft.Empty())) draft.Clear();
 			if (ImWndButton("복제", own && sv != nullptr)) {
 				Command<CMD_CLONE_VEHICLE>::Post(GetCmdBuildVehMsg(sv->type), sv->tile, sv->First()->index, false);
-			}
-			break;
-		}
-
-		case MiniWndKind::Company: {
-			const Company *cc = Company::GetIfValid(_local_company);
-			bool has_hq = cc != nullptr && cc->location_of_HQ != INVALID_TILE;
-			if (ImWndButton("본사 보기", has_hq)) {
-				MiniUiScrollTo(TileX(cc->location_of_HQ) * TILE_SIZE, TileY(cc->location_of_HQ) * TILE_SIZE);
 			}
 			break;
 		}
@@ -2582,9 +2054,6 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 			break;
 		}
 
-		case MiniWndKind::IndustryList:
-		case MiniWndKind::League:
-		case MiniWndKind::Graph:
 		case MiniWndKind::Map:
 		case MiniWndKind::Native:
 			break;
@@ -2592,41 +2061,20 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v, const Station *st, cons
 	ImGui::NewLine();
 }
 
-static bool WndRenamable(const MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t)
+static bool WndRenamable(const Vehicle *v)
 {
-	switch (mw.kind) {
-		case MiniWndKind::Vehicle: return v != nullptr && v->owner == _local_company;
-		case MiniWndKind::Station: return st != nullptr && st->owner == _local_company;
-		case MiniWndKind::Town: return t != nullptr;
-		case MiniWndKind::Company: return Company::IsValidID(_local_company);
-		default: return false;
-	}
+	return v != nullptr && v->owner == _local_company;
 }
 
-static void WndPostRename(const MiniWnd &mw, const Vehicle *v, const Station *st, const Town *t, std::string name)
+static void WndPostRename(const Vehicle *v, std::string name)
 {
-	if (name.empty()) return;
-	switch (mw.kind) {
-		case MiniWndKind::Vehicle:
-			if (v != nullptr) Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + v->type, v->index, std::move(name));
-			break;
-		case MiniWndKind::Station:
-			if (st != nullptr) Command<CMD_RENAME_STATION>::Post(STR_ERROR_CAN_T_RENAME_STATION, st->index, std::move(name));
-			break;
-		case MiniWndKind::Town:
-			if (t != nullptr) Command<CMD_RENAME_TOWN>::Post(STR_ERROR_CAN_T_RENAME_TOWN, t->index, std::move(name));
-			break;
-		case MiniWndKind::Company:
-			Command<CMD_RENAME_COMPANY>::Post(STR_ERROR_CAN_T_CHANGE_COMPANY_NAME, std::move(name));
-			break;
-		default: break;
-	}
+	if (name.empty() || v == nullptr) return;
+	Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + v->type, v->index, std::move(name));
 }
 
 /* The caption doubles as the rename field: a double click swaps the label for
  * an input, Enter commits, anything else leaves the name alone. */
-static void ImWndTitle(MiniWnd &mw, const std::string &title, bool renamable, bool &open,
-		const Vehicle *v, const Station *st, const Town *t)
+static void ImWndTitle(MiniWnd &mw, const std::string &title, bool renamable, bool &open, const Vehicle *v)
 {
 	if (mw.renaming && !renamable) mw.renaming = false;
 
@@ -2646,7 +2094,7 @@ static void ImWndTitle(MiniWnd &mw, const std::string &title, bool renamable, bo
 		ImGui::PushID("title");
 		int r = ImWndNameEdit(mw, std::max(right - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x, 32.0f));
 		ImGui::PopID();
-		if (r == 1) WndPostRename(mw, v, st, t, mw.name_buf);
+		if (r == 1) WndPostRename(v, mw.name_buf);
 		if (r != 0) mw.renaming = false;
 	} else {
 		ImGui::AlignTextToFramePadding();
@@ -2699,7 +2147,7 @@ static bool DrawImGuiNativeWnd(MiniWnd &mw)
 	RecordShellRect(mw);
 
 	_imrow = 0;
-	ImWndTitle(mw, title, false, open, nullptr, nullptr, nullptr);
+	ImWndTitle(mw, title, false, open, nullptr);
 
 	DockSpec spec;
 	WindowNumber wnum;
@@ -2722,24 +2170,15 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 
 	int s = _tuning.hud_scale;
 	const Vehicle *v = mw.kind == MiniWndKind::Vehicle ? Vehicle::GetIfValid(mw.veh) : nullptr;
-	const Station *st = mw.kind == MiniWndKind::Station ? (Station::IsValidID(mw.st) ? Station::Get(mw.st) : nullptr) : nullptr;
-	const Town *t = mw.kind == MiniWndKind::Town ? Town::GetIfValid(mw.town) : nullptr;
-	const Industry *ind = mw.kind == MiniWndKind::Industry ? Industry::GetIfValid(mw.ind) : nullptr;
 
 	std::string title = "-";
 	uint32_t idnum = 0;
 	switch (mw.kind) {
 		case MiniWndKind::Vehicle: if (v != nullptr) title = GameText(STR_VEHICLE_NAME, v->index); idnum = mw.veh.base(); break;
-		case MiniWndKind::Station: if (st != nullptr) title = GameText(STR_STATION_NAME, st->index); idnum = mw.st.base(); break;
-		case MiniWndKind::Town: if (t != nullptr) title = GameText(STR_TOWN_NAME, t->index); idnum = mw.town.base(); break;
 		case MiniWndKind::Fleet: title = "차고"; break;
-		case MiniWndKind::Company: if (Company::IsValidID(_local_company)) title = GameText(STR_COMPANY_NAME, _local_company); break;
 		case MiniWndKind::Group: title = "차량군"; break;
-		case MiniWndKind::IndustryList: title = "산업 목록"; break;
-		case MiniWndKind::League: title = "순위"; break;
-		case MiniWndKind::Graph: title = "그래프"; break;
 		case MiniWndKind::Map: title = "지도"; break;
-		default: if (ind != nullptr) title = GameText(STR_INDUSTRY_NAME, ind->index); idnum = mw.ind.base(); break;
+		case MiniWndKind::Native: break;
 	}
 	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
 
@@ -2763,7 +2202,7 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	}
 	RecordShellRect(mw);
 
-	ImWndTitle(mw, title, WndRenamable(mw, v, st, t), open, v, st, t);
+	ImWndTitle(mw, title, WndRenamable(v), open, v);
 
 	_imrow = 0;
 	int ntab;
@@ -2776,52 +2215,12 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			for (int ti = 0; ti < 4; ti++) tl[ti] = GameText(type_strs[ti]);
 			break;
 		}
-		case MiniWndKind::Company:
-			ntab = 2;
-			tl[0] = "개요";
-			tl[1] = "자산";
-			break;
 		case MiniWndKind::Vehicle:
 			ntab = 4;
 			tl[0] = "상태";
 			tl[1] = GameText(STR_VEHICLE_DETAIL_TAB_CARGO);
 			tl[2] = "주문";
 			tl[3] = GameText(STR_VEHICLE_DETAIL_TAB_INFORMATION);
-			break;
-		case MiniWndKind::Station:
-			ntab = 4;
-			tl[0] = "상태";
-			tl[1] = GameText(STR_SMALLMAP_TYPE_INDUSTRIES);
-			tl[2] = GameText(STR_SMALLMAP_TYPE_VEHICLES);
-			tl[3] = GameText(STR_VEHICLE_DETAIL_TAB_INFORMATION);
-			break;
-		case MiniWndKind::Town:
-			ntab = 4;
-			tl[0] = "상태";
-			tl[1] = "당국";
-			tl[2] = GameText(STR_VEHICLE_DETAIL_TAB_INFORMATION);
-			tl[3] = "화물";
-			break;
-		case MiniWndKind::IndustryList:
-			ntab = 4;
-			tl[0] = "이름";
-			tl[1] = "생산";
-			tl[2] = "수송";
-			tl[3] = "연쇄";
-			break;
-		case MiniWndKind::League:
-			ntab = 2;
-			tl[0] = "순위";
-			tl[1] = "상세";
-			break;
-		case MiniWndKind::Graph:
-			ntab = 6;
-			tl[0] = "영업 이익";
-			tl[1] = "수입";
-			tl[2] = "가치";
-			tl[3] = "성능";
-			tl[4] = "화물";
-			tl[5] = "지급률";
 			break;
 		case MiniWndKind::Map:
 			ntab = 7;
@@ -2833,17 +2232,12 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[5] = GameText(STR_SMALLMAP_TYPE_VEGETATION);
 			tl[6] = GameText(STR_SMALLMAP_TYPE_OWNERS);
 			break;
-		default:
-			ntab = 4;
-			tl[0] = "상태";
-			tl[1] = "역";
-			tl[2] = GameText(STR_VEHICLE_DETAIL_TAB_INFORMATION);
-			tl[3] = "생산";
+		case MiniWndKind::Native:
+			ntab = 0;
 			break;
 	}
 
-	bool has_view = mw.kind == MiniWndKind::Vehicle || mw.kind == MiniWndKind::Station ||
-			mw.kind == MiniWndKind::Town || mw.kind == MiniWndKind::Industry;
+	bool has_view = mw.kind == MiniWndKind::Vehicle;
 	if (ImGui::BeginTabBar("tabs")) {
 		for (int ti = 0; ti < ntab; ti++) {
 			ImGuiTabItemFlags fl = mw.want_tab == ti ? ImGuiTabItemFlags_SetSelected : 0;
@@ -2862,27 +2256,20 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 				_imwnd_outer = ImGui::GetWindowSize();
 				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h), ImGuiChildFlags_None,
 						embed ? (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse) : 0);
-				if (ti == 0 && has_view && (v != nullptr || st != nullptr || t != nullptr || ind != nullptr)) {
+				if (ti == 0 && has_view && v != nullptr) {
 					ImWndViewSlot(mw);
 				}
 				if (embed) {
 					ImWndNativeSlot(mw, spec, wnum);
 				} else switch (mw.kind) {
 					case MiniWndKind::Vehicle: if (v != nullptr) ImVehicleBody(mw, v); break;
-					case MiniWndKind::Station: if (st != nullptr) ImStationBody(mw, st); break;
-					case MiniWndKind::Town: if (t != nullptr) ImTownBody(mw, t); break;
-					case MiniWndKind::Industry: if (ind != nullptr) ImIndustryBody(mw, ind); break;
 					case MiniWndKind::Fleet: ImFleetBody(mw); break;
-					case MiniWndKind::Company: ImCompanyBody(mw); break;
 					case MiniWndKind::Group: ImGroupBody(mw); break;
-					case MiniWndKind::IndustryList: ImIndustryListBody(mw); break;
-					case MiniWndKind::League:
-					case MiniWndKind::Graph: break;
 					case MiniWndKind::Map: ImMapBody(mw); break;
 					case MiniWndKind::Native: break;
 				}
 				ImGui::EndChild();
-				if (has_cmds) ImWndCommands(mw, v, st, t, ind);
+				if (has_cmds) ImWndCommands(mw, v);
 				ImGui::EndTabItem();
 			}
 		}
@@ -2904,8 +2291,8 @@ static std::vector<NativeKey> WantedNativeOrder()
 	std::vector<NativeKey> want;
 	for (const auto &[seq, i] : order) {
 		const MiniWnd &mw = _wnds[i];
-		WindowNumber cnum = MiniCarrierNum(mw);
-		if (FindCarrier(cnum) != nullptr) want.push_back({WC_EXTRA_VIEWPORT, cnum});
+		std::optional<WindowNumber> cnum = MiniCarrierNum(mw);
+		if (cnum.has_value() && FindCarrier(*cnum) != nullptr) want.push_back({WC_EXTRA_VIEWPORT, *cnum});
 		DockSpec spec;
 		WindowNumber num;
 		if (WndEmbedTarget(mw, spec, num) && FindWindowById(spec.wc, num) != nullptr) want.push_back({spec.wc, num});
@@ -3000,10 +2387,6 @@ static void DrawMiniWndsImGui()
 		bool alive;
 		switch (_wnds[i].kind) {
 			case MiniWndKind::Vehicle: alive = Vehicle::GetIfValid(_wnds[i].veh) != nullptr; break;
-			case MiniWndKind::Station: alive = Station::IsValidID(_wnds[i].st); break;
-			case MiniWndKind::Town: alive = Town::IsValidID(_wnds[i].town); break;
-			case MiniWndKind::Industry: alive = Industry::IsValidID(_wnds[i].ind); break;
-			case MiniWndKind::Company: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Native: alive = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num) != nullptr; break;
 			default: alive = true; break;
@@ -3032,7 +2415,7 @@ static void DrawMiniWndsImGui()
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
-	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.st, r.town, r.ind, r.tab);
+	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.tab);
 }
 
 bool MiniUiCatchEstimate(Money cost)
@@ -3080,7 +2463,7 @@ bool ShowMiniBuyCompany(CompanyID company, bool hostile_takeover)
 bool ShowMiniVehicleWindow(const Vehicle *v)
 {
 	if (!_mini_active) return false;
-	OpenMiniWnd(MiniWndKind::Vehicle, v->First()->index, StationID::Invalid());
+	OpenVehicleWindow(v->First()->index);
 	return true;
 }
 
@@ -3094,21 +2477,21 @@ bool ShowMiniWaypointWindow(StationID waypoint)
 bool ShowMiniStationWindow(StationID station)
 {
 	if (!_mini_active || !Station::IsValidID(station)) return false;
-	OpenMiniWnd(MiniWndKind::Station, VehicleID::Invalid(), station);
+	OpenStationWindow(station);
 	return true;
 }
 
 bool ShowMiniTownWindow(TownID town)
 {
 	if (!_mini_active || !Town::IsValidID(town)) return false;
-	OpenMiniWnd(MiniWndKind::Town, VehicleID::Invalid(), StationID::Invalid(), town);
+	OpenTownWindow(town);
 	return true;
 }
 
 bool ShowMiniIndustryWindow(IndustryID industry)
 {
 	if (!_mini_active || !Industry::IsValidID(industry)) return false;
-	OpenMiniWnd(MiniWndKind::Industry, VehicleID::Invalid(), StationID::Invalid(), TownID::Invalid(), industry);
+	OpenIndustryWindow(industry);
 	return true;
 }
 

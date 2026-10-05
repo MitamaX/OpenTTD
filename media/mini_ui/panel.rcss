@@ -12,6 +12,10 @@ body {
 	animation: 0.22s back-out panel-in;
 }
 
+body.wide {
+	width: 560dp;
+}
+
 @keyframes panel-in {
 	from {
 		opacity: 0;
@@ -43,6 +47,10 @@ body {
 
 .editing .title, .editing .label {
 	display: none;
+}
+
+.row.active .label, .row.active .value {
+	color: var(--ink-strong);
 }
 
 .close {

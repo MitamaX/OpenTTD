@@ -1,4 +1,6 @@
 add_files(
+    company_panel.cpp
+    company_panel.h
     directory_panel.cpp
     directory_panel.h
     engine_preview_panel.cpp
@@ -9,18 +11,30 @@ add_files(
     goal_list_panel.h
     grades.cpp
     grades.h
+    graph_panel.cpp
+    graph_panel.h
+    industry_list_panel.cpp
+    industry_list_panel.h
+    industry_panel.cpp
+    industry_panel.h
     news_list_panel.cpp
     news_list_panel.h
     sign_list_panel.cpp
     sign_list_panel.h
     station_list_panel.cpp
     station_list_panel.h
+    station_panel.cpp
+    station_panel.h
     subsidy_list_panel.cpp
     subsidy_list_panel.h
     takeover_panel.cpp
     takeover_panel.h
     town_list_panel.cpp
     town_list_panel.h
+    town_panel.cpp
+    town_panel.h
+    vehicle_types.cpp
+    vehicle_types.h
     waypoint_panel.cpp
     waypoint_panel.h
     window_links.h

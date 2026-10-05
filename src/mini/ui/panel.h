@@ -65,6 +65,7 @@ protected:
 	Rml::Vector<PanelCommand> commands;
 	bool embedded = false;
 	bool sizable = false;
+	bool wide = false;
 
 private:
 	void Run(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);

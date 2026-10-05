@@ -17,6 +17,7 @@
 #include "../../safeguards.h"
 
 static constexpr const char EDIT_FIELD[] = ".editing .edit";
+static constexpr const char WIDE_CLASS[] = "wide";
 
 static Rml::String KeyArgument(const Rml::VariantList &arguments)
 {
@@ -39,6 +40,7 @@ bool Panel::Open(Rml::Context &context, Rml::String model_name)
 		this->RemoveModel(context);
 		return false;
 	}
+	this->document->SetClass(WIDE_CLASS, this->wide);
 	this->document->Show();
 	return true;
 }
