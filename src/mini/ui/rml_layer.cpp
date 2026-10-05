@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file rml_layer.cpp The RmlUi context composited over the mini UI map. */
+/** @file rml_layer.cpp The RmlUi context the mini UI draws in, from the map up. */
 
 #include "../../stdafx.h"
 #include "rml_layer.h"
@@ -14,6 +14,7 @@
 
 #include "../gpu/gl_api.h"
 #include "fonts.h"
+#include "map_view.h"
 #include "native_slot.h"
 #include "raster_image.h"
 #include "rml_renderer.h"
@@ -50,6 +51,7 @@ void RmlLayer::Start()
 	Rml::SetSystemInterface(&this->system);
 	Rml::SetRenderInterface(this->renderer.get());
 	Rml::Initialise();
+	RegisterElement<MapView>(MapView::TAG);
 	RegisterElement<NativeSlot>(NativeSlot::TAG);
 	RegisterElement<RasterImage>(RasterImage::TAG);
 	for (const std::string &font : MiniFontFiles()) Rml::LoadFontFace(font);
@@ -67,7 +69,7 @@ void RmlLayer::Update(int width, int height, float dp_ratio)
 
 void RmlLayer::Render(Dimension screen)
 {
-	this->renderer->SyncScreenTexture();
+	this->renderer->SyncLentTextures();
 	this->renderer->SetViewport(static_cast<int>(screen.width), static_cast<int>(screen.height));
 	this->renderer->BeginFrame();
 	this->context->Render();

@@ -25,7 +25,9 @@
 static const int ATLAS_CELL = 64;
 static const int ATLAS_GUTTER = 8;
 static const int ATLAS_COLS = 4;
-static const int ATLAS_ROWS = ((int)MiniSprite::End + ATLAS_COLS - 1) / ATLAS_COLS;
+/* One cell past the sprites is solid white, the texel untextured map shapes sample. */
+static const int SOLID_CELL = (int)MiniSprite::End;
+static const int ATLAS_ROWS = (SOLID_CELL + ATLAS_COLS) / ATLAS_COLS;
 static const int ATLAS_WIDTH = ATLAS_COLS * ATLAS_CELL;
 static const int ATLAS_HEIGHT = ATLAS_ROWS * ATLAS_CELL;
 static const int ATLAS_CONTENT = ATLAS_CELL - 2 * ATLAS_GUTTER;
@@ -104,12 +106,18 @@ void MiniAtlasEnsure()
 		}
 	}
 
+	int solid_x = (SOLID_CELL % ATLAS_COLS) * ATLAS_CELL;
+	int solid_y = (SOLID_CELL / ATLAS_COLS) * ATLAS_CELL;
+	for (int y = 0; y < ATLAS_CELL; y++) std::fill_n(&px[(size_t)(solid_y + y) * ATLAS_WIDTH + solid_x], ATLAS_CELL, 0xFFFFFFFFU);
+
 	_atlas_tex = _textures.Add(px, Dimension(ATLAS_WIDTH, ATLAS_HEIGHT), TextureFilter::Mipmapped);
+	_map_draw.SetSolid({_atlas_tex, (solid_x + ATLAS_CELL / 2.0f) / ATLAS_WIDTH, (solid_y + ATLAS_CELL / 2.0f) / ATLAS_HEIGHT});
 }
 
 /* Frees the textures so the next frame rebuilds them and re-reads art files. */
 void MiniAtlasReload()
 {
+	_map_draw.SetSolid({});
 	_textures.Remove(std::exchange(_atlas_tex, NO_TEXTURE));
 	for (TextureId &t : _tile_tex) _textures.Remove(std::exchange(t, NO_TEXTURE));
 }

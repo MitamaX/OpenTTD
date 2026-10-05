@@ -12,12 +12,10 @@
 
 #include <span>
 
-#include "draw_list.h"
-#include "draw_pass.h"
 #include "screen_target.h"
 
-/* A layer drawn over the map and under the native popups. It is detached
- * while the GL context still lives, so it can free what it holds. */
+/* A layer drawn under the native popups. It is detached while the GL
+ * context still lives, so it can free what it holds. */
 class ScreenLayer {
 public:
 	virtual ~ScreenLayer() = default;
@@ -25,30 +23,18 @@ public:
 	virtual void Detach() = 0;
 };
 
-/* The game's screen as a texture; its rows run bottom up, as a framebuffer's do. */
-struct ScreenImage {
-	uint32_t name = 0;
-	Dimension size{};
-
-	bool operator==(const ScreenImage &) const = default;
-};
-
 class GpuFrame {
 public:
 	bool Available() const { return this->available; }
 	bool BeginPaint(Dimension screen, bool capture);
-	void Compose(const DrawList &map, std::span<const Rect> floating);
+	void Compose(std::span<const Rect> floating);
 	void Release();
 
 	void Attach(ScreenLayer *layer) { this->layer = layer; }
-	ScreenImage Screen() const;
+	GlImage Screen() const;
 
 private:
-	void DrawFloating(std::span<const Rect> floating);
-
 	ScreenTarget target;
-	DrawPass pass;
-	DrawList floating_list;
 	ScreenLayer *layer = nullptr;
 	bool available = false;
 };

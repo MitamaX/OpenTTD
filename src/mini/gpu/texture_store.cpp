@@ -10,16 +10,32 @@
 #include "../../stdafx.h"
 #include "texture_store.h"
 
+#include <array>
+#include <bit>
+
 #include "gl_api.h"
 
 #include "../../safeguards.h"
 
+using Texel = std::array<uint8_t, 4>;
+
+static constexpr size_t ALPHA = 3;
+static constexpr uint CHANNEL_MAX = 0xFF;
+
 TextureStore _textures;
+
+static uint32_t Premultiplied(uint32_t pixel)
+{
+	Texel texel = std::bit_cast<Texel>(pixel);
+	for (size_t c = 0; c < ALPHA; c++) texel[c] = static_cast<uint8_t>(texel[c] * texel[ALPHA] / CHANNEL_MAX);
+	return std::bit_cast<uint32_t>(texel);
+}
 
 TextureId TextureStore::Add(std::span<const uint32_t> rgba, Dimension size, TextureFilter filter, TextureWrap wrap)
 {
 	TextureId id = this->next++;
-	this->entries.emplace(id, Entry{{rgba.begin(), rgba.end()}, size, filter, wrap});
+	Entry &entry = this->entries.emplace(id, Entry{std::vector<uint32_t>(rgba.size()), size, filter, wrap}).first->second;
+	std::ranges::transform(rgba, entry.rgba.begin(), Premultiplied);
 	return id;
 }
 
@@ -37,19 +53,18 @@ void TextureStore::Remove(TextureId id)
 	this->entries.erase(it);
 }
 
-/* Uploads on first use, so textures made between frames reach the GPU inside one. */
 uint32_t TextureStore::Name(TextureId id)
 {
-	auto it = this->entries.find(id);
-	if (it == this->entries.end()) return 0;
-	if (it->second.name == 0) Upload(it->second);
-	return it->second.name;
+	return this->Image(id).name;
 }
 
-Dimension TextureStore::Size(TextureId id) const
+/* Uploads on first use, so textures made between frames reach the GPU inside one. */
+GlImage TextureStore::Image(TextureId id)
 {
 	auto it = this->entries.find(id);
-	return it == this->entries.end() ? Dimension{} : it->second.size;
+	if (it == this->entries.end()) return {};
+	if (it->second.name == 0) Upload(it->second);
+	return {it->second.name, it->second.size};
 }
 
 /* The pixels stay, so every texture comes back on the next context. */

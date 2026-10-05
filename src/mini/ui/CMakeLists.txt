@@ -8,6 +8,8 @@ add_files(
     ledger.h
     ledger_panel.cpp
     ledger_panel.h
+    map_view.cpp
+    map_view.h
     menu_tile.cpp
     menu_tile.h
     model_tag.h

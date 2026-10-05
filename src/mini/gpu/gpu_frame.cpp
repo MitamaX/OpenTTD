@@ -16,17 +16,7 @@
 
 #include "../../safeguards.h"
 
-static constexpr uint32_t UNTINTED = 0xFFFFFFFFU;
-
 GpuFrame _gpu;
-
-/* Sampling the screen texture at a screen rectangle, with its rows flipped back. */
-static UvRect ScreenUv(const Rect &rect, Dimension size)
-{
-	float width = static_cast<float>(size.width);
-	float height = static_cast<float>(size.height);
-	return {rect.left / width, 1.0f - rect.top / height, (rect.right + 1) / width, 1.0f - (rect.bottom + 1) / height};
-}
 
 /* Every paint of an OpenGL back-end passes here; a captured one lands in the screen texture instead of the window. */
 bool GpuFrame::BeginPaint(Dimension screen, bool capture)
@@ -35,8 +25,8 @@ bool GpuFrame::BeginPaint(Dimension screen, bool capture)
 	return capture && LoadGl() && this->target.Bind(screen);
 }
 
-/* Bottom to top: the map, the RmlUi layer, then the native windows that float free of any panel. */
-void GpuFrame::Compose(const DrawList &map, std::span<const Rect> floating)
+/* Bottom to top: the RmlUi layer with the map at its foot, then the native windows that float free of any panel. */
+void GpuFrame::Compose(std::span<const Rect> floating)
 {
 	Dimension size = this->target.Size();
 	this->target.Unbind();
@@ -45,9 +35,8 @@ void GpuFrame::Compose(const DrawList &map, std::span<const Rect> floating)
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	this->pass.Draw(map, _textures, size);
 	if (this->layer != nullptr) this->layer->Render(size);
-	this->DrawFloating(floating);
+	for (const Rect &rect : floating) this->target.Blit(rect);
 }
 
 /* The back-end is going away with its context; everything made in it goes first. */
@@ -57,21 +46,12 @@ void GpuFrame::Release()
 	if (!GlLoaded()) return;
 
 	if (this->layer != nullptr) std::exchange(this->layer, nullptr)->Detach();
-	this->pass.Release();
 	this->target.Release();
 	_textures.Release();
 	UnloadGl();
 }
 
-ScreenImage GpuFrame::Screen() const
+GlImage GpuFrame::Screen() const
 {
-	return {_textures.Name(this->target.Texture()), this->target.Size()};
-}
-
-void GpuFrame::DrawFloating(std::span<const Rect> floating)
-{
-	Dimension size = this->target.Size();
-	this->floating_list.Clear();
-	for (const Rect &rect : floating) this->floating_list.Image(this->target.Texture(), rect, ScreenUv(rect, size), 0, UNTINTED);
-	this->pass.Draw(this->floating_list, _textures, size);
+	return _textures.Image(this->target.Texture());
 }

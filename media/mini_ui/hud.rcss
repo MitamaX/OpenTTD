@@ -6,6 +6,16 @@ body {
 	pointer-events: none;
 }
 
+map-view {
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	width: 100%;
+	height: 100%;
+	pointer-events: auto;
+	drag: drag;
+}
+
 .dock {
 	position: absolute;
 	display: flex;

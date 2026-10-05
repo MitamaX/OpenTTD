@@ -29,7 +29,15 @@ enum class TextureWrap : uint8_t {
 	Repeat,
 };
 
-/* Pixels are RGBA bytes in memory order. */
+/* A texture as the GL context holds it. */
+struct GlImage {
+	uint32_t name = 0;
+	Dimension size{};
+
+	bool operator==(const GlImage &) const = default;
+};
+
+/* Pixels come in as RGBA bytes in memory order and are kept premultiplied, the way RmlUi blends them. */
 class TextureStore {
 public:
 	TextureId Add(std::span<const uint32_t> rgba, Dimension size, TextureFilter filter = TextureFilter::Nearest, TextureWrap wrap = TextureWrap::Clamp);
@@ -37,7 +45,7 @@ public:
 	void Remove(TextureId id);
 
 	uint32_t Name(TextureId id);
-	Dimension Size(TextureId id) const;
+	GlImage Image(TextureId id);
 
 	void Release();
 

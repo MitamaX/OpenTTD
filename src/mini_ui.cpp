@@ -73,6 +73,7 @@
 #include "mini/hud/toast_stack.h"
 #include "mini/hud/window_bar.h"
 #include "mini/input/input_mode.h"
+#include "mini/input/map_pointer.h"
 #include "mini/input/pointer_router.h"
 #include "mini/map/ground.h"
 #include "mini/map/map_labels.h"
@@ -171,8 +172,6 @@ static bool _mini_active = false;
 /* Mini UI frame size in pixels; drawing goes through the map draw list, so
  * this only mirrors the screen dimensions. */
 static int _fbw, _fbh;
-
-static bool _prev_left = false;
 
 bool MiniUiActive()
 {
@@ -288,11 +287,19 @@ static bool HandleLabelClick(int x, int y)
 	return true;
 }
 
+/* A plain click on the map opens what lies under it: a label first, then a vehicle, a depot or a waypoint. */
+static void InspectAt(Point at)
+{
+	if (HandleLabelClick(at.x, at.y) || OpenVehicleWndAt(at.x, at.y) || OpenDepotWndAt(at.x, at.y)) return;
+	OpenWaypointWndAt(at.x, at.y);
+}
+
 static void OpenMiniWindow(MiniWin win);
 
 static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 {
 	std::vector<std::unique_ptr<HudPart>> parts;
+	parts.push_back(std::make_unique<MapPointer>(InspectAt));
 	parts.push_back(std::make_unique<ColonyPanel>());
 	parts.push_back(std::make_unique<StatusStream>());
 	parts.push_back(std::make_unique<BuildDock>());
@@ -584,7 +591,6 @@ void MiniUiToggle()
 	} else {
 		_camera.CentreOn(Map::SizeX() / 2.0, Map::SizeY() / 2.0);
 	}
-	_prev_left = _left_button_down;
 	_mini_active = true;
 }
 
@@ -649,7 +655,7 @@ bool MiniUiBeginPaint()
 
 void MiniUiEndPaint()
 {
-	_gpu.Compose(_map_draw, FloatingNativeRects());
+	_gpu.Compose(FloatingNativeRects());
 }
 
 void MiniUiReleaseGraphics()
@@ -691,39 +697,6 @@ static PointerLayer LayerUnder(int x, int y)
 	NOT_REACHED();
 }
 
-static void HandleMapPointer()
-{
-	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) _camera.Drag(_cursor.delta.x, _cursor.delta.y);
-
-	if (_cursor.wheel != 0) {
-		if (_mode.Following()) {
-			/* While following, zooming keeps the vehicle centred instead of
-			 * anchoring the cursor point. */
-			_camera.Zoom(_cursor.wheel < 0);
-		} else {
-			_camera.ZoomAt(_cursor.pos.x, _cursor.pos.y, _cursor.wheel < 0);
-		}
-	}
-
-	if (_left_button_down && !_left_button_clicked) {
-		if (_tool.Kind() == MiniTool::None) {
-			if (_mode.PickingOrders()) {
-				_mode.PickOrderAt(CursorPoint());
-			} else if (!HandleLabelClick(_cursor.pos.x, _cursor.pos.y) && !OpenVehicleWndAt(_cursor.pos.x, _cursor.pos.y) &&
-					!OpenDepotWndAt(_cursor.pos.x, _cursor.pos.y)) {
-				OpenWaypointWndAt(_cursor.pos.x, _cursor.pos.y);
-			}
-		} else {
-			_tool.Press(CursorPoint(), _ctrl_pressed);
-		}
-	}
-
-	if (!_left_button_down && _prev_left) _tool.Release();
-	_prev_left = _left_button_down;
-
-	if (_right_button_clicked) _mode.Unwind();
-}
-
 /* An event the mini UI handled is spent: a native window the pointer reaches
  * later must not find its click latch, wheel or motion still pending. */
 static void SpendPointerEvent()
@@ -743,15 +716,12 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (!_mini_active) return false;
 
 	PointerLayer under = native_capture ? PointerLayer::Native : LayerUnder(_cursor.pos.x, _cursor.pos.y);
-	PointerLayer layer = _pointer.Route(under);
-	if (layer == PointerLayer::Panel) {
-		_views.FeedPointer();
-	} else {
+	if (_pointer.Route(under) == PointerLayer::Native) {
 		_views.LeavePointer(_left_button_down || _right_button_down || _middle_button_down);
+		return false;
 	}
 
-	if (layer == PointerLayer::Native) return false;
-	if (layer == PointerLayer::Map) HandleMapPointer();
+	_views.FeedPointer();
 	SpendPointerEvent();
 	return true;
 }

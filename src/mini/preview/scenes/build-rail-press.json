@@ -15,6 +15,7 @@
 		671
 	],
 	"models": {
+		"map": {},
 		"colony": {
 			"name": "LBH Cor.",
 			"date": "1976년 4월 30일",

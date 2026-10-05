@@ -15,6 +15,7 @@
 #include "../../core/utf8.hpp"
 #include "../../string_func.h"
 #include "ledger.h"
+#include "map_view.h"
 #include "menu_tile.h"
 #include "native_slot.h"
 
@@ -114,10 +115,11 @@ void ViewHost::ReloadDesign()
 	this->hud.ReloadStyleSheet();
 }
 
+/* The map lies at the foot of the HUD, so only what rises above it counts as a hit. */
 LayerHit ViewHost::HitAt(int x, int y) const
 {
 	const Rml::Element *element = this->layer.ElementAt(x, y);
-	if (element == nullptr) return LayerHit::Nothing;
+	if (element == nullptr || element->GetTagName() == MapView::TAG) return LayerHit::Nothing;
 	return element->GetTagName() == NativeSlot::TAG ? LayerHit::Slot : LayerHit::Element;
 }
 

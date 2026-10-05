@@ -16,6 +16,7 @@ class ScreenTarget {
 public:
 	bool Bind(Dimension size);
 	void Unbind() const;
+	void Blit(const Rect &rect) const;
 	void Release();
 
 	TextureId Texture() const { return this->texture; }

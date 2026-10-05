@@ -25,6 +25,7 @@ enum class PointerLayer : uint8_t {
 class PointerRouter {
 public:
 	PointerLayer Route(PointerLayer under);
+	PointerLayer Current() const { return this->current; }
 	bool OnMap() const;
 
 private:

@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file rml_layer.h The RmlUi context composited over the mini UI map. */
+/** @file rml_layer.h The RmlUi context the mini UI draws in, from the map up. */
 
 #ifndef MINI_UI_RML_LAYER_H
 #define MINI_UI_RML_LAYER_H

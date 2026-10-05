@@ -42,10 +42,18 @@ struct UvRect {
 
 static constexpr UvRect FULL_UV = {0.0f, 0.0f, 1.0f, 1.0f};
 
+/* A plain white texel inside a texture sprites draw from, so untextured shapes join the sprites' batches. */
+struct SolidTexel {
+	TextureId texture = NO_TEXTURE;
+	float u = 0.0f;
+	float v = 0.0f;
+};
+
 /* Positions are pixels with inclusive right and bottom edges; colours are 0xAARRGGBB. */
 class DrawList {
 public:
 	void Clear();
+	void SetSolid(const SolidTexel &solid) { this->solid = solid; }
 
 	void FillRect(int x0, int y0, int x1, int y1, uint32_t argb);
 	void FillRoundRect(int x0, int y0, int x1, int y1, int radius, uint32_t argb);
@@ -60,6 +68,7 @@ public:
 	std::span<const DrawBatch> Batches() const { return this->batches; }
 
 private:
+	DrawVertex Plain(float x, float y, const VertexColour &colour) const;
 	void Use(TextureId texture);
 	void Triangle(const DrawVertex &a, const DrawVertex &b, const DrawVertex &c);
 	void Quad(const DrawVertex &top_left, const DrawVertex &top_right, const DrawVertex &bottom_right, const DrawVertex &bottom_left);
@@ -68,6 +77,7 @@ private:
 
 	std::vector<DrawVertex> vertices;
 	std::vector<DrawBatch> batches;
+	SolidTexel solid;
 };
 
 #endif /* MINI_GPU_DRAW_LIST_H */
