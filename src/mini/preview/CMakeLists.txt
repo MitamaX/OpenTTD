@@ -1,4 +1,4 @@
-if(NOT raylib_FOUND)
+if(NOT glfw3_FOUND OR NOT PNG_FOUND)
     return()
 endif()
 
@@ -14,7 +14,7 @@ add_executable(mini_ui_preview
     scene_watch.h
 )
 
-target_link_libraries(mini_ui_preview PRIVATE rmlui raylib)
+target_link_libraries(mini_ui_preview PRIVATE rmlui glfw PNG::PNG)
 target_compile_definitions(mini_ui_preview PRIVATE
     MEDIA_DIR="${CMAKE_SOURCE_DIR}/media"
     PREVIEW_SCENE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/scenes"
@@ -24,6 +24,6 @@ set_target_properties(mini_ui_preview PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAK
 if(WIN32)
     add_custom_command(TARGET mini_ui_preview POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:raylib> $<PATH:REPLACE_FILENAME,$<TARGET_FILE:raylib>,glfw3.dll> $<TARGET_FILE_DIR:mini_ui_preview>
+            $<TARGET_FILE:glfw> $<TARGET_FILE_DIR:mini_ui_preview>
     )
 endif()
