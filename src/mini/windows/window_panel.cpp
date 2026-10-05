@@ -16,6 +16,7 @@
 #include "../../window_gui.h"
 #include "../dock/native_window.h"
 #include "../ui/native_slot.h"
+#include "../ui/pixel_style.h"
 
 #include "../../safeguards.h"
 
@@ -38,13 +39,6 @@ static Rect ScreenRectOf(NativeSlot &slot)
 {
 	Rml::Rectanglei area = slot.ScreenRect();
 	return {area.Left(), area.Top(), area.Right() - 1, area.Bottom() - 1};
-}
-
-static void SetPixels(Rml::Element &element, Rml::PropertyId id, float pixels)
-{
-	const Rml::Property *current = element.GetLocalProperty(id);
-	if (current != nullptr && current->unit == Rml::Unit::PX && current->Get<float>() == pixels) return;
-	element.SetProperty(id, Rml::Property(pixels, Rml::Unit::PX));
 }
 
 static void SetCap(Rml::Element &element, Rml::PropertyId id, std::optional<float> pixels)

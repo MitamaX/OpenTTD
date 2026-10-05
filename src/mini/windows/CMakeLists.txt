@@ -15,10 +15,14 @@ add_files(
     grades.h
     graph_panel.cpp
     graph_panel.h
+    group_panel.cpp
+    group_panel.h
     industry_list_panel.cpp
     industry_list_panel.h
     industry_panel.cpp
     industry_panel.h
+    map_panel.cpp
+    map_panel.h
     native_panel.cpp
     native_panel.h
     news_list_panel.cpp

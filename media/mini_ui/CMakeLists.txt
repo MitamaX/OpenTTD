@@ -58,6 +58,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/truck-stop.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/vehicle-shop.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/ledger.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/map.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/theme.rcss

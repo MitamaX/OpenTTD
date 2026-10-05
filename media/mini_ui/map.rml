@@ -1,0 +1,14 @@
+<rml>
+<head>
+	<link type="text/template" href="panel.rml"/>
+</head>
+<body template="panel">
+	<div id="map" class="map">
+		<div id="map-frame" class="map-frame" data-event-mousedown="seek" data-event-drag="seek">
+			<raster-image id="map-image" class="map-image"/>
+			<span class="map-town" data-for="town : towns">{{town}}</span>
+			<div id="map-view" class="map-view"></div>
+		</div>
+	</div>
+</body>
+</rml>

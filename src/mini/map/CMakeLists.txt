@@ -7,6 +7,8 @@ add_files(
     map_overlay.h
     map_painter.cpp
     map_painter.h
+    overview.cpp
+    overview.h
     tile_shapes.cpp
     tile_shapes.h
     vehicle_motion.cpp

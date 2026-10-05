@@ -17,6 +17,7 @@ add_files(
     panel.h
     panel_stack.cpp
     panel_stack.h
+    pixel_style.h
     raster_image.cpp
     raster_image.h
     rml_input.cpp

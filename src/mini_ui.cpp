@@ -97,8 +97,10 @@
 #include "mini/windows/finance_panel.h"
 #include "mini/windows/goal_list_panel.h"
 #include "mini/windows/graph_panel.h"
+#include "mini/windows/group_panel.h"
 #include "mini/windows/industry_list_panel.h"
 #include "mini/windows/industry_panel.h"
+#include "mini/windows/map_panel.h"
 #include "mini/windows/native_panel.h"
 #include "mini/windows/news_list_panel.h"
 #include "mini/windows/sign_list_panel.h"
@@ -375,41 +377,6 @@ static bool HandleLabelClick(int x, int y)
 	return true;
 }
 
-/* ImGui mini windows: a caption with a close box, a uniform-width tab strip,
- * label-value body rows and command buttons at the bottom. */
-
-static const uint32_t COL_CH_RED = 0xFFE05F4AU;
-static const uint32_t COL_CH_YELLOW = 0xFFE0B64AU;
-
-enum class MiniWndKind : uint8_t {
-	Group,
-	Map,
-};
-
-/* Kinds that carry no entity and take no commands: they read the world each
- * frame and act on a click in the body. */
-static bool WndIsList(MiniWndKind kind)
-{
-	return kind == MiniWndKind::Map;
-}
-
-struct MiniWnd {
-	MiniWndKind kind = MiniWndKind::Group;
-	GroupID sel_grp = ALL_GROUP;
-	EngineID sel_eng = EngineID::Invalid();
-	int x = 0, y = 0;
-	uint8_t tab = 0;
-	bool want_raise = false;
-	bool focus_name = false;
-	GroupID rename_grp = GroupID::Invalid();
-	uint32_t focus_seq = 0;
-	char name_buf[128] = {};
-};
-
-static std::vector<MiniWnd> _wnds;
-
-static void OpenGroupMiniWnd(int vt);
-static void OpenMapMiniWnd();
 static void OpenMiniWindow(MiniWin win);
 
 static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
@@ -428,6 +395,12 @@ static std::vector<std::unique_ptr<HudPart>> CreateHudParts()
 
 static ViewHost _views(CreateHudParts());
 
+template <class TPanel>
+static void ShowPanelOnTab(int tab)
+{
+	if (Panel *panel = _views.Show(std::make_unique<TPanel>()); panel != nullptr) panel->SelectTab(tab);
+}
+
 static void OpenMiniWindow(MiniWin win)
 {
 	bool company = Company::IsValidID(_local_company);
@@ -438,17 +411,17 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::League: _views.Show(GraphPanel::League()); break;
 		case MiniWin::Graph: _views.Show(GraphPanel::CompanyGraphs()); break;
 		case MiniWin::Stations: if (company) _views.Show(std::make_unique<StationListPanel>()); break;
-		case MiniWin::Trains: if (company) OpenGroupMiniWnd(VEH_TRAIN); break;
-		case MiniWin::RoadVehicles: if (company) OpenGroupMiniWnd(VEH_ROAD); break;
-		case MiniWin::Ships: if (company) OpenGroupMiniWnd(VEH_SHIP); break;
-		case MiniWin::Aircraft: if (company) OpenGroupMiniWnd(VEH_AIRCRAFT); break;
+		case MiniWin::Trains: if (company) ShowPanelOnTab<GroupPanel>(VEH_TRAIN); break;
+		case MiniWin::RoadVehicles: if (company) ShowPanelOnTab<GroupPanel>(VEH_ROAD); break;
+		case MiniWin::Ships: if (company) ShowPanelOnTab<GroupPanel>(VEH_SHIP); break;
+		case MiniWin::Aircraft: if (company) ShowPanelOnTab<GroupPanel>(VEH_AIRCRAFT); break;
 		case MiniWin::News: _views.Show(std::make_unique<NewsListPanel>()); break;
 		case MiniWin::Towns: _views.Show(std::make_unique<TownListPanel>()); break;
 		case MiniWin::Industries: _views.Show(std::make_unique<IndustryListPanel>()); break;
 		case MiniWin::Subsidies: _views.Show(std::make_unique<SubsidyListPanel>()); break;
 		case MiniWin::Buy: if (company) _views.Show(std::make_unique<DepotPanel>()); break;
-		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
-		case MiniWin::Map: OpenMapMiniWnd(); break;
+		case MiniWin::Groups: if (company) _views.Show(std::make_unique<GroupPanel>()); break;
+		case MiniWin::Map: _views.Show(std::make_unique<MapPanel>()); break;
 		case MiniWin::Signs: OpenSignListMiniWnd(SignID::Invalid()); break;
 		case MiniWin::Save: ShowSaveLoadDialog(FT_SAVEGAME, SLO_SAVE); break;
 		case MiniWin::Load: ShowSaveLoadDialog(FT_SAVEGAME, SLO_LOAD); break;
@@ -459,10 +432,6 @@ static void OpenMiniWindow(MiniWin win)
 	}
 }
 
-/* ImGui windows stack by focus, not by list order, so Escape closes the one
- * the player last worked in. */
-static uint32_t _wnd_focus_tick = 0;
-
 /* The front panel decides whose order route shows. */
 static VehicleID FrontWndVehicle()
 {
@@ -470,68 +439,9 @@ static VehicleID FrontWndVehicle()
 	return panel != nullptr ? panel->Subject() : VehicleID::Invalid();
 }
 
-/* Work windows and the plot run twice as wide; the other kinds keep the
- * narrow single-column shape. */
-static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Map; }
-static int WndW(const MiniWnd &mw) { return std::min((WndWide(mw) ? 560 : 250) * _tuning.hud_scale, _fbw - 12 * _tuning.hud_scale); }
-static int WndTitleH() { return GetCharacterHeight(FS_NORMAL) + 8 * _tuning.hud_scale; }
-static int WndTabH() { return GetCharacterHeight(FS_NORMAL) + 8 * _tuning.hud_scale; }
-static int WndRowH() { return GetCharacterHeight(FS_NORMAL) + 5 * _tuning.hud_scale; }
-static int WndViewH() { return 100 * _tuning.hud_scale; }
-static int WndCmdS() { return 26 * _tuning.hud_scale; }
-static int WndPad() { return 6 * _tuning.hud_scale; }
-static int WndBodyH(const MiniWnd &mw) { return WndViewH() + WndPad() + (WndWide(mw) ? 10 : 6) * WndRowH(); }
-static int WndH(const MiniWnd &mw) { return WndTitleH() + WndTabH() + WndBodyH(mw) + WndCmdS() + 3 * WndPad(); }
-
-static void CloseMiniWnd(size_t i)
-{
-	_wnds.erase(_wnds.begin() + (ptrdiff_t)i);
-}
-
-static void RaiseMiniWnd(size_t i)
-{
-	std::rotate(_wnds.begin() + (ptrdiff_t)i, _wnds.begin() + (ptrdiff_t)i + 1, _wnds.end());
-	_wnds.back().want_raise = true;
-}
-
-/* Rows open other windows from inside the draw loop; growing or reordering
- * _wnds there would strand the reference the loop is drawing through, so the
- * request waits until the loop is done. */
-struct MiniOpenReq {
-	MiniWndKind kind;
-	int8_t tab;
-};
-
-static std::vector<MiniOpenReq> _wnd_opens;
-static bool _wnds_drawing = false;
-
-static void OpenMiniWnd(MiniWndKind kind, int8_t tab = -1)
-{
-	if (_wnds_drawing) {
-		_wnd_opens.push_back({kind, tab});
-		return;
-	}
-	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (_wnds[i].kind == kind) {
-			RaiseMiniWnd(i);
-			if (tab >= 0) _wnds.back().tab = (uint8_t)tab;
-			return;
-		}
-	}
-	int s = _tuning.hud_scale;
-	MiniWnd mw;
-	mw.kind = kind;
-	if (tab >= 0) mw.tab = (uint8_t)tab;
-	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
-	mw.y = Clamp(WindowBarBottom() + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
-	_wnds.push_back(mw);
-}
-
 static void CloseAllMiniWnds()
 {
 	_dock.CloseAll();
-	_wnds.clear();
-	_wnd_opens.clear();
 	_views.CloseAll();
 }
 
@@ -565,122 +475,6 @@ void OpenCompanyWindow()
 	_views.Show(std::make_unique<CompanyPanel>());
 }
 
-static void OpenGroupMiniWnd(int vt)
-{
-	OpenMiniWnd(MiniWndKind::Group, (int8_t)vt);
-}
-
-static void OpenMapMiniWnd()
-{
-	OpenMiniWnd(MiniWndKind::Map);
-}
-
-/* ImGui mini windows: layout, clipping, scroll and input routing come from
- * ImGui; rows execute their commands at the click site. */
-
-static int _imrow;
-
-static ImU32 MiniImU32(uint32_t argb)
-{
-	return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >> 24) & 0xFF);
-}
-
-/* Rows never widen the window: anything past the content edge wraps onto the
- * next line, and key/value rows wrap the key against the value's column. */
-static float ImWndTextWidth(std::string_view text)
-{
-	return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-}
-
-static float ImWndTextHeight(std::string_view text, float wrap_w)
-{
-	return std::max(ImGui::CalcTextSize(text.data(), text.data() + text.size(), false, wrap_w).y, ImGui::GetFontSize());
-}
-
-static void ImWndDrawWrapped(ImDrawList *dl, ImVec2 pos, std::string_view text, uint32_t tint, float wrap_w)
-{
-	dl->AddText(nullptr, 0.0f, pos, MiniImU32(tint), text.data(), text.data() + text.size(), wrap_w);
-}
-
-static void ImWndText(std::string_view text, uint32_t tint)
-{
-	ImGui::PushStyleColor(ImGuiCol_Text, ImGuiCol32(tint));
-	ImGui::PushTextWrapPos(0.0f);
-	ImGui::TextUnformatted(text.data(), text.data() + text.size());
-	ImGui::PopTextWrapPos();
-	ImGui::PopStyleColor();
-}
-
-/* Splits the row into a wrapped key column and a value pinned to the right of
- * the first line. */
-static float ImWndKeyColumn(float avail, std::string_view value)
-{
-	return std::max(avail - ImWndTextWidth(value) - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFontSize());
-}
-
-static void ImWndKV(std::string_view label, std::string_view value, uint32_t vtint)
-{
-	float avail = ImGui::GetContentRegionAvail().x;
-	float lw = ImWndKeyColumn(avail, value);
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	ImDrawList *dl = ImGui::GetWindowDrawList();
-	ImWndDrawWrapped(dl, p, label, COL_CH_DIM, lw);
-	ImWndDrawWrapped(dl, ImVec2(p.x + avail - ImWndTextWidth(value), p.y), value, vtint, 0.0f);
-	ImGui::Dummy(ImVec2(avail, ImWndTextHeight(label, lw)));
-}
-
-static bool ImWndLink(std::string_view label, uint32_t tint)
-{
-	ImGui::PushID(_imrow++);
-	float avail = ImGui::GetContentRegionAvail().x;
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	bool clicked = ImGui::Selectable("##link", false, 0, ImVec2(0.0f, ImWndTextHeight(label, avail)));
-	ImWndDrawWrapped(ImGui::GetWindowDrawList(), p, label, tint, avail);
-	ImGui::PopID();
-	return clicked;
-}
-
-static bool ImWndKVLink(std::string_view label, std::string_view value, uint32_t ltint, uint32_t vtint)
-{
-	ImGui::PushID(_imrow++);
-	float avail = ImGui::GetContentRegionAvail().x;
-	float lw = ImWndKeyColumn(avail, value);
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	bool clicked = ImGui::Selectable("##kv", false, 0, ImVec2(0.0f, ImWndTextHeight(label, lw)));
-	ImDrawList *dl = ImGui::GetWindowDrawList();
-	ImWndDrawWrapped(dl, p, label, ltint, lw);
-	ImWndDrawWrapped(dl, ImVec2(p.x + avail - ImWndTextWidth(value), p.y), value, vtint, 0.0f);
-	ImGui::PopID();
-	return clicked;
-}
-
-static void ImWndHeader(std::string_view text)
-{
-	ImGui::SeparatorText(std::string(text).c_str());
-}
-
-/* Names are edited where they are shown: the label swaps for a text field in
- * place, Enter commits and anything else leaves the name alone. */
-static void ImWndNameEditBegin(MiniWnd &mw, std::string_view name)
-{
-	size_t n = std::min(name.size(), sizeof(mw.name_buf) - 1);
-	std::char_traits<char>::copy(mw.name_buf, name.data(), n);
-	mw.name_buf[n] = '\0';
-	mw.focus_name = true;
-}
-
-/* Returns 1 once the name is committed, -1 once the edit is abandoned. */
-static int ImWndNameEdit(MiniWnd &mw, float width)
-{
-	ImGui::SetNextItemWidth(width);
-	if (mw.focus_name) {
-		ImGui::SetKeyboardFocusHere();
-		mw.focus_name = false;
-	}
-	if (ImGui::InputText("##edit", mw.name_buf, sizeof(mw.name_buf), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) return 1;
-	return ImGui::IsItemDeactivated() ? -1 : 0;
-}
-
 /* Clicking a sign on the map opens the list already editing that sign, which
  * is the only place a sign can be named. */
 static void OpenSignListMiniWnd(SignID focus)
@@ -688,166 +482,6 @@ static void OpenSignListMiniWnd(SignID focus)
 	Panel *list = _views.Show(std::make_unique<SignListPanel>());
 	const Sign *sign = Sign::GetIfValid(focus);
 	if (list != nullptr && sign != nullptr) list->BeginEdit(SignListPanel::EditKey(focus), sign->name);
-}
-
-static void ImGroupBody(MiniWnd &mw)
-{
-	if (!Company::IsValidID(_local_company)) return;
-	VehicleType vt = (VehicleType)mw.tab;
-
-	bool special = mw.sel_grp == ALL_GROUP || mw.sel_grp == DEFAULT_GROUP;
-	const Group *sg = special ? nullptr : Group::GetIfValid(mw.sel_grp);
-	if (!special && (sg == nullptr || sg->owner != _local_company || sg->vehicle_type != vt)) {
-		mw.sel_grp = ALL_GROUP;
-		special = true;
-	}
-	const Engine *se = Engine::GetIfValid(mw.sel_eng);
-	if (se != nullptr && se->type != vt) {
-		mw.sel_eng = EngineID::Invalid();
-		se = nullptr;
-	}
-
-	/* A rename left open on a group this tab no longer lists would edit a row
-	 * that is never drawn. */
-	const Group *rg = Group::GetIfValid(mw.rename_grp);
-	if (rg != nullptr && (rg->owner != _local_company || rg->vehicle_type != vt)) rg = nullptr;
-	if (rg == nullptr) mw.rename_grp = GroupID::Invalid();
-
-	float lw = ImGui::GetContentRegionAvail().x * 0.45f;
-	ImGui::BeginChild("groups", ImVec2(lw, 0.0f));
-	{
-		ImWndHeader("그룹");
-		auto group_row = [&](GroupID gid, std::string_view name, uint count) {
-			if (mw.rename_grp == gid) {
-				ImGui::PushID((int)gid.base());
-				int r = ImWndNameEdit(mw, ImGui::GetContentRegionAvail().x);
-				ImGui::PopID();
-				if (r == 1 && mw.name_buf[0] != '\0') {
-					Command<CMD_ALTER_GROUP>::Post(STR_ERROR_GROUP_CAN_T_RENAME, AlterGroupMode::Rename, gid, GroupID::Invalid(), mw.name_buf);
-				}
-				if (r != 0) mw.rename_grp = GroupID::Invalid();
-				return;
-			}
-			if (ImWndLink(fmt::format("{}{} · {}대", mw.sel_grp == gid ? "▶ " : "· ", name, count),
-					mw.sel_grp == gid ? COL_CH_ACCENT : COL_CH_TEXT)) {
-				mw.sel_grp = gid;
-				mw.sel_eng = EngineID::Invalid();
-			}
-			if (Group::IsValidID(gid) && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-				ImWndNameEditBegin(mw, name);
-				mw.rename_grp = gid;
-			}
-		};
-		group_row(ALL_GROUP, GameText(STR_GROUP_ALL_TRAINS + vt), GetGroupNumVehicle(_local_company, ALL_GROUP, vt));
-		group_row(DEFAULT_GROUP, GameText(STR_GROUP_DEFAULT_TRAINS + vt), GetGroupNumVehicle(_local_company, DEFAULT_GROUP, vt));
-		std::vector<const Group *> groups;
-		for (const Group *g : Group::Iterate()) {
-			if (g->owner != _local_company || g->vehicle_type != vt) continue;
-			groups.push_back(g);
-		}
-		std::sort(groups.begin(), groups.end(), [](const Group *a, const Group *b) { return a->number < b->number; });
-		for (const Group *g : groups) {
-			group_row(g->index, GameText(STR_GROUP_NAME, g->index), GetGroupNumVehicle(_local_company, g->index, vt));
-		}
-
-		ImWndHeader("자동 교체");
-		if (sg != nullptr) {
-			bool prot = sg->flags.Test(GroupFlag::ReplaceProtection);
-			if (ImWndKVLink("교체 보호", prot ? "켜짐" : "꺼짐", COL_CH_DIM, prot ? COL_CH_YELLOW : COL_CH_TEXT)) {
-				Command<CMD_SET_GROUP_FLAG>::Post(mw.sel_grp, GroupFlag::ReplaceProtection, !prot, false);
-			}
-			if (vt == VEH_TRAIN) {
-				bool wr = sg->flags.Test(GroupFlag::ReplaceWagonRemoval);
-				if (ImWndKVLink("화차 제거", wr ? "켜짐" : "꺼짐", COL_CH_DIM, wr ? COL_CH_YELLOW : COL_CH_TEXT)) {
-					Command<CMD_SET_GROUP_FLAG>::Post(mw.sel_grp, GroupFlag::ReplaceWagonRemoval, !wr, false);
-				}
-			}
-		}
-		const Company *comp = Company::Get(_local_company);
-		bool any_used = false;
-		for (const Engine *e : Engine::IterateType(vt)) {
-			uint num = GetGroupNumEngines(_local_company, mw.sel_grp, e->index);
-			EngineID repl = EngineReplacementForCompany(comp, e->index, mw.sel_grp);
-			if (num == 0 && repl == EngineID::Invalid()) continue;
-			any_used = true;
-			std::string label = fmt::format("{}{} · {}대", mw.sel_eng == e->index ? "▶ " : "· ",
-					GameText(STR_ENGINE_NAME, e->index), num);
-			if (repl != EngineID::Invalid()) label += fmt::format(" → {}", GameText(STR_ENGINE_NAME, repl));
-			if (ImWndLink(label, mw.sel_eng == e->index ? COL_CH_ACCENT : (repl != EngineID::Invalid() ? COL_CH_YELLOW : COL_CH_TEXT))) {
-				mw.sel_eng = mw.sel_eng == e->index ? EngineID::Invalid() : e->index;
-			}
-		}
-		if (!any_used) ImWndText("보유 엔진 없음", COL_CH_DIM);
-		if (Engine::GetIfValid(mw.sel_eng) != nullptr) {
-			EngineID repl = EngineReplacementForCompany(comp, mw.sel_eng, mw.sel_grp);
-			if (repl != EngineID::Invalid()) {
-				if (ImWndLink("교체 해제", COL_CH_RED)) {
-					Command<CMD_SET_AUTOREPLACE>::Post(mw.sel_grp, mw.sel_eng, EngineID::Invalid(), false);
-				}
-			}
-			ImWndText("교체할 새 엔진 클릭", COL_CH_DIM);
-			for (const Engine *e : Engine::IterateType(vt)) {
-				if (e->index == mw.sel_eng) continue;
-				if (!CheckAutoreplaceValidity(mw.sel_eng, e->index, _local_company)) continue;
-				if (ImWndLink(fmt::format("· {}", GameText(STR_ENGINE_NAME, e->index)),
-						e->index == repl ? COL_CH_ACCENT : COL_CH_TEXT)) {
-					Command<CMD_SET_AUTOREPLACE>::Post(mw.sel_grp, mw.sel_eng, e->index, false);
-				}
-			}
-		}
-	}
-	ImGui::EndChild();
-	ImGui::SameLine();
-	ImGui::BeginChild("vehicles", ImVec2(0.0f, 0.0f));
-	{
-		if (special) {
-			ImWndHeader("차량");
-			/* A fleet is managed by finding the losers, so the list carries this
-			 * year's profit and puts the worst first. */
-			std::vector<const Vehicle *> list;
-			for (const Vehicle *v : Vehicle::Iterate()) {
-				if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company) continue;
-				if (mw.sel_grp == DEFAULT_GROUP && v->group_id != DEFAULT_GROUP) continue;
-				list.push_back(v);
-			}
-			std::sort(list.begin(), list.end(), [](const Vehicle *a, const Vehicle *b) {
-				return a->GetDisplayProfitThisYear() < b->GetDisplayProfitThisYear();
-			});
-			for (const Vehicle *v : list) {
-				Money profit = v->GetDisplayProfitThisYear();
-				if (ImWndKVLink(GameText(STR_VEHICLE_NAME, v->index),
-						GameText(STR_JUST_CURRENCY_SHORT, profit),
-						COL_CH_TEXT, profit < 0 ? COL_CH_RED : COL_CH_TEXT)) {
-					OpenVehicleWindow(v->First()->index);
-				}
-			}
-			if (list.empty()) ImWndText("차량 없음", COL_CH_DIM);
-		} else {
-			ImWndHeader("소속 차량. 클릭으로 제외");
-			bool anyin = false;
-			for (const Vehicle *v : Vehicle::Iterate()) {
-				if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id != mw.sel_grp) continue;
-				anyin = true;
-				if (ImWndLink(GameText(STR_VEHICLE_NAME, v->index), COL_CH_TEXT)) {
-					Command<CMD_ADD_VEHICLE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_ADD_VEHICLE, DEFAULT_GROUP, v->index, false, VehicleListIdentifier{});
-				}
-			}
-			if (!anyin) ImWndText("소속 차량 없음", COL_CH_DIM);
-			ImWndHeader("클릭으로 추가");
-			bool anyout = false;
-			for (const Vehicle *v : Vehicle::Iterate()) {
-				if (v->type != vt || !v->IsPrimaryVehicle() || v->owner != _local_company || v->group_id == mw.sel_grp) continue;
-				anyout = true;
-				if (ImWndLink(GameText(STR_VEHICLE_NAME, v->index), COL_CH_TEXT)) {
-					if (Group::IsValidID(mw.sel_grp)) {
-						Command<CMD_ADD_VEHICLE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_ADD_VEHICLE, mw.sel_grp, v->index, false, VehicleListIdentifier{});
-					}
-				}
-			}
-			if (!anyout) ImWndText("없음", COL_CH_DIM);
-		}
-	}
-	ImGui::EndChild();
 }
 
 /* News rows jump to whatever the item references, so a click lands on the
@@ -879,404 +513,6 @@ void FollowNews(const NewsReference &ref)
 	std::visit(visitor{}, ref);
 }
 
-enum class MiniMapMode : uint8_t {
-	Contour,
-	Vehicles,
-	Industries,
-	Routes,
-	Flow,
-	Vegetation,
-	Owner,
-};
-
-static uint32_t MiniMapFaded(uint32_t c)
-{
-	return Mix(c, COL_CH_PANEL, 168);
-}
-
-static uint32_t MiniMapStationColour(TileIndex tile)
-{
-	switch (GetStationType(tile)) {
-		case StationType::Rail:
-		case StationType::RailWaypoint: return COL_ST_RAIL;
-		case StationType::Airport: return COL_ST_AIR;
-		case StationType::Truck:
-		case StationType::Bus:
-		case StationType::RoadWaypoint: return COL_ST_ROAD;
-		case StationType::Dock: return COL_ST_DOCK;
-		case StationType::Buoy: return COL_ST_BUOY;
-		default: return COL_OBJ;
-	}
-}
-
-static uint32_t MiniMapBaseColour(TileIndex tile)
-{
-	switch (GetTileType(tile)) {
-		case MP_VOID: return COL_VOID;
-		case MP_WATER: return COL_WATER;
-		case MP_TREES: return COL_TREE;
-		case MP_HOUSE: return COL_HOUSE;
-		case MP_INDUSTRY: return COL_IND;
-		case MP_RAILWAY: return COL_RAIL;
-		case MP_ROAD: return COL_ROAD;
-		case MP_STATION: return MiniMapStationColour(tile);
-		case MP_TUNNELBRIDGE: return COL_BRIDGE;
-		case MP_OBJECT: return COL_OBJ;
-		default: return GroundColour(tile, TileHeight(tile));
-	}
-}
-
-static uint32_t MiniMapOwnerColour(Owner o)
-{
-	if (Company::IsValidID(o)) return _company_rgb[_company_colours[o]];
-	if (o == OWNER_TOWN) return COL_ROAD;
-	return COL_OBJ;
-}
-
-static uint32_t MiniMapTileColour(TileIndex tile, MiniMapMode mode)
-{
-	TileType tt = GetTileType(tile);
-	if (tt == MP_VOID) return COL_VOID;
-
-	switch (mode) {
-		case MiniMapMode::Industries:
-			if (tt == MP_INDUSTRY) {
-				const Industry *ind = Industry::GetByTile(tile);
-				return PaletteRgb(GetIndustrySpec(ind->type)->map_colour);
-			}
-			return MiniMapFaded(MiniMapBaseColour(tile));
-
-		case MiniMapMode::Routes:
-			switch (tt) {
-				case MP_RAILWAY: return COL_PAPER;
-				case MP_ROAD: return COL_CATENARY;
-				case MP_STATION: return MiniMapStationColour(tile);
-				case MP_TUNNELBRIDGE: return COL_BRIDGE;
-				default: return MiniMapFaded(MiniMapBaseColour(tile));
-			}
-
-		/* Which ground a tile carries decides what can be built on it, and in
-		 * the tropical climate the zone decides it outright, so the zone wins
-		 * over the ground colour there. */
-		case MiniMapMode::Vegetation:
-			switch (tt) {
-				case MP_WATER: return COL_WATER;
-				case MP_TREES: return Mix(COL_TREE, COL_PAPER, 60 - std::min(GetTreeCount(tile), 4U) * 15);
-				case MP_CLEAR:
-					if (_settings_game.game_creation.landscape == LandscapeType::Tropic) {
-						switch (GetTropicZone(tile)) {
-							case TROPICZONE_DESERT: return COL_DESERT;
-							case TROPICZONE_RAINFOREST: return Mix(COL_TREE, COL_PAPER, 40);
-							default: break;
-						}
-					}
-					return GroundColour(tile, TileHeight(tile));
-				default: return MiniMapFaded(MiniMapBaseColour(tile));
-			}
-
-		case MiniMapMode::Owner:
-			switch (tt) {
-				case MP_HOUSE: return COL_HOUSE;
-				case MP_INDUSTRY: return COL_IND;
-				case MP_CLEAR:
-				case MP_TREES: return MiniMapFaded(MiniMapBaseColour(tile));
-				case MP_WATER: {
-					Owner o = GetTileOwner(tile);
-					return Company::IsValidID(o) ? _company_rgb[_company_colours[o]] : COL_WATER;
-				}
-				default: return MiniMapOwnerColour(GetTileOwner(tile));
-			}
-
-		case MiniMapMode::Vehicles:
-		case MiniMapMode::Flow:
-			return MiniMapFaded(MiniMapBaseColour(tile));
-
-		default:
-			return MiniMapBaseColour(tile);
-	}
-}
-
-/* Scanning every tile costs too much to repeat per frame, so the overview
- * keeps a pixel buffer and refreshes it on a slow beat. */
-struct MiniMapCache {
-	int w = 0;
-	int h = 0;
-	uint8_t mode = 0xFF;
-	float age = 0.0f;
-	std::vector<uint32_t> px;
-};
-
-static MiniMapCache _map_cache;
-
-static void RebuildMiniMap(int w, int h, MiniMapMode mode)
-{
-	int mx = (int)Map::SizeX();
-	int my = (int)Map::SizeY();
-	_map_cache.px.assign((size_t)w * h, COL_VOID);
-	for (int y = 0; y < h; y++) {
-		int tx = (int)((int64_t)y * mx / h);
-		uint32_t *row = _map_cache.px.data() + (size_t)y * w;
-		for (int x = 0; x < w; x++) {
-			int ty = (int)((int64_t)x * my / w);
-			row[x] = MiniMapTileColour(TileXY(tx, ty), mode);
-		}
-	}
-	_map_cache.w = w;
-	_map_cache.h = h;
-	_map_cache.mode = (uint8_t)mode;
-	_map_cache.age = 0.0f;
-}
-
-/* Town names are placed largest first and a name that would land on one
- * already placed is dropped, so a crowded map stays readable. */
-static void DrawMiniMapTownNames(ImDrawList *dl, ImVec2 p, int w, int h)
-{
-	std::vector<const Town *> towns;
-	for (const Town *t : Town::Iterate()) towns.push_back(t);
-	std::sort(towns.begin(), towns.end(), [](const Town *a, const Town *b) { return a->cache.population > b->cache.population; });
-
-	int mx = (int)Map::SizeX();
-	int my = (int)Map::SizeY();
-	std::vector<ImVec4> placed;
-	for (const Town *t : towns) {
-		std::string name = GameText(STR_TOWN_NAME, t->index);
-		ImVec2 sz = ImGui::CalcTextSize(name.c_str());
-		float cx = p.x + (float)TileY(t->xy) * w / my;
-		float cy = p.y + (float)TileX(t->xy) * h / mx;
-		ImVec4 r(cx - sz.x * 0.5f, cy - sz.y - 2.0f, cx + sz.x * 0.5f, cy - 2.0f);
-		if (r.x < p.x || r.z > p.x + w || r.y < p.y) continue;
-		bool hit = false;
-		for (const ImVec4 &o : placed) {
-			if (r.x < o.z && o.x < r.z && r.y < o.w && o.y < r.w) { hit = true; break; }
-		}
-		if (hit) continue;
-		placed.push_back(r);
-		dl->AddRectFilled(ImVec2(cx - 1.0f, cy - 1.0f), ImVec2(cx + 2.0f, cy + 2.0f), MiniImU32(COL_PAPER));
-		dl->AddText(ImVec2(r.x + 1.0f, r.y + 1.0f), MiniImU32(COL_INK), name.c_str());
-		dl->AddText(ImVec2(r.x, r.y), MiniImU32(COL_PAPER), name.c_str());
-	}
-}
-
-static void ImMapBody(MiniWnd &mw)
-{
-	MiniMapMode mode = (MiniMapMode)mw.tab;
-	int mx = (int)Map::SizeX();
-	int my = (int)Map::SizeY();
-
-	ImVec2 avail = ImGui::GetContentRegionAvail();
-	float scale = std::min(avail.x / (float)my, avail.y / (float)mx);
-	int w = std::max(1, (int)(my * scale));
-	int h = std::max(1, (int)(mx * scale));
-
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	p.x += std::floor((avail.x - w) * 0.5f);
-	ImGui::SetCursorScreenPos(p);
-	ImGui::InvisibleButton("map", ImVec2((float)w, (float)h));
-
-	_map_cache.age += ImGui::GetIO().DeltaTime;
-	if (_map_cache.w != w || _map_cache.h != h || _map_cache.mode != (uint8_t)mode || _map_cache.age > 0.5f) {
-		RebuildMiniMap(w, h, mode);
-	}
-
-	ImDrawList *dl = ImGui::GetWindowDrawList();
-	for (int y = 0; y < h; y++) {
-		const uint32_t *row = _map_cache.px.data() + (size_t)y * w;
-		int x = 0;
-		while (x < w) {
-			int e = x + 1;
-			while (e < w && row[e] == row[x]) e++;
-			dl->AddRectFilled(ImVec2(p.x + x, p.y + y), ImVec2(p.x + e, p.y + y + 1), MiniImU32(row[x]));
-			x = e;
-		}
-	}
-
-	if (mode == MiniMapMode::Vehicles) {
-		for (const Vehicle *v : Vehicle::Iterate()) {
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Hidden)) continue;
-			float sx = p.x + (float)(v->y_pos / TILE_SIZE) * w / my;
-			float sy = p.y + (float)(v->x_pos / TILE_SIZE) * h / mx;
-			uint32_t c = Company::IsValidID(v->owner) ? _company_rgb[_company_colours[v->owner]] : COL_PAPER;
-			dl->AddRectFilled(ImVec2(sx - 1.0f, sy - 1.0f), ImVec2(sx + 2.0f, sy + 2.0f), MiniImU32(c));
-		}
-	}
-
-	/* One line per link the company's stations carry, thickened by how much of
-	 * the link is in use, so a saturated leg reads at a glance. */
-	if (mode == MiniMapMode::Flow) {
-		for (const LinkGraph *lg : LinkGraph::Iterate()) {
-			if (!IsValidCargoType(lg->Cargo())) continue;
-			uint32_t col = CargoRgb(lg->Cargo());
-			for (NodeID i = 0; i < lg->Size(); i++) {
-				const LinkGraph::BaseNode &n = (*lg)[i];
-				if (!Station::IsValidID(n.station) || Station::Get(n.station)->owner != _local_company) continue;
-				for (const LinkGraph::BaseEdge &e : n.edges) {
-					if (e.capacity == 0 || e.dest_node >= lg->Size()) continue;
-					const LinkGraph::BaseNode &d = (*lg)[e.dest_node];
-					if (n.xy == INVALID_TILE || d.xy == INVALID_TILE) continue;
-					ImVec2 a(p.x + (float)TileY(n.xy) * w / my, p.y + (float)TileX(n.xy) * h / mx);
-					ImVec2 b(p.x + (float)TileY(d.xy) * w / my, p.y + (float)TileX(d.xy) * h / mx);
-					float load = std::min(1.0f, (float)e.usage / (float)e.capacity);
-					dl->AddLine(a, b, MiniImU32(col), 1.0f + 2.0f * load);
-				}
-			}
-		}
-	}
-
-	if (mode == MiniMapMode::Contour) DrawMiniMapTownNames(dl, p, w, h);
-
-	double half_y = _fbw * 0.5 / _camera.Ppt();
-	double half_x = _fbh * 0.5 / _camera.Ppt();
-	dl->AddRect(ImVec2(p.x + (float)((_camera.Y() - half_y) * w / my), p.y + (float)((_camera.X() - half_x) * h / mx)),
-			ImVec2(p.x + (float)((_camera.Y() + half_y) * w / my), p.y + (float)((_camera.X() + half_x) * h / mx)),
-			MiniImU32(COL_CH_ACCENT), 0.0f, 0, 1.5f);
-
-	if (ImGui::IsItemActive()) {
-		ImVec2 m = ImGui::GetIO().MousePos;
-		int ty = Clamp((int)((m.x - p.x) * my / w), 0, my - 1);
-		int tx = Clamp((int)((m.y - p.y) * mx / h), 0, mx - 1);
-		MiniUiScrollTo(tx * TILE_SIZE, ty * TILE_SIZE);
-	}
-}
-
-static bool ImWndButton(std::string_view label, bool enabled)
-{
-	ImGui::BeginDisabled(!enabled);
-	bool clicked = ImGui::Button(std::string(label).c_str());
-	ImGui::EndDisabled();
-	ImGui::SameLine();
-	return clicked;
-}
-
-static void ImWndCommands(MiniWnd &mw)
-{
-	ImGui::Separator();
-	switch (mw.kind) {
-		case MiniWndKind::Group: {
-			bool own = Company::IsValidID(_local_company);
-			VehicleListIdentifier vli(VL_GROUP_LIST, (VehicleType)mw.tab, _local_company, mw.sel_grp);
-			if (ImWndButton("새 그룹", own)) {
-				Command<CMD_CREATE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_CREATE, (VehicleType)mw.tab, GroupID::Invalid());
-			}
-			if (ImWndButton("그룹 삭제", own && Group::IsValidID(mw.sel_grp))) {
-				Command<CMD_DELETE_GROUP>::Post(STR_ERROR_GROUP_CAN_T_DELETE, mw.sel_grp);
-				mw.sel_grp = ALL_GROUP;
-			}
-			if (ImWndButton("전체 출발", own)) {
-				Command<CMD_MASS_START_STOP>::Post(TileIndex{}, true, true, vli);
-			}
-			if (ImWndButton("전체 정지", own)) {
-				Command<CMD_MASS_START_STOP>::Post(TileIndex{}, false, true, vli);
-			}
-			if (ImWndButton("전체 차고로", own)) {
-				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg((VehicleType)mw.tab), VehicleID::Invalid(), DepotCommandFlag::MassSend, vli);
-			}
-			break;
-		}
-
-		case MiniWndKind::Map:
-			break;
-	}
-	ImGui::NewLine();
-}
-
-static void ImWndTitle(const std::string &title, bool &open)
-{
-	float bw = ImGui::GetFrameHeight();
-	float right = ImGui::GetContentRegionMax().x - bw;
-
-	/* The window carries no native title bar, so the caption row paints its
-	 * own band to stay readable as a drag handle. */
-	ImVec2 wp = ImGui::GetWindowPos();
-	ImVec2 cp = ImGui::GetCursorScreenPos();
-	float pad = ImGui::GetStyle().WindowPadding.y;
-	ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(wp.x + 1.0f, cp.y - pad),
-			ImVec2(wp.x + ImGui::GetWindowWidth() - 1.0f, cp.y + bw), MiniImU32(COL_CH_TILE),
-			ImGui::GetStyle().WindowRounding, ImDrawFlags_RoundCornersTop);
-
-	ImGui::AlignTextToFramePadding();
-	ImWndText(title, COL_CH_ACCENT);
-
-	ImGui::SameLine(right);
-	ImGui::PushID("close");
-	if (ImGui::Button("×", ImVec2(bw, bw))) open = false;
-	ImGui::PopID();
-	ImGui::Separator();
-}
-
-static bool DrawImGuiMiniWnd(MiniWnd &mw)
-{
-	int s = _tuning.hud_scale;
-
-	std::string title = "-";
-	switch (mw.kind) {
-		case MiniWndKind::Group: title = "차량군"; break;
-		case MiniWndKind::Map: title = "지도"; break;
-	}
-	std::string wid = fmt::format("###mw{}", (int)mw.kind);
-
-	bool wide = WndWide(mw);
-	ImVec2 def_size((float)((wide ? 560 : 250) * s), (float)(270 * s));
-	ImGui::SetNextWindowPos(ImVec2((float)mw.x, (float)mw.y), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(def_size, ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSizeConstraints(def_size, ImVec2(FLT_MAX, FLT_MAX));
-	if (mw.want_raise) {
-		ImGui::SetNextWindowFocus();
-		mw.want_raise = false;
-	}
-	bool open = true;
-	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse)) {
-		ImGui::End();
-		return open;
-	}
-	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) mw.focus_seq = ++_wnd_focus_tick;
-
-	ImWndTitle(title, open);
-
-	_imrow = 0;
-	int ntab;
-	std::string tl[8];
-	switch (mw.kind) {
-		case MiniWndKind::Group: {
-			static const StringID type_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
-			ntab = 4;
-			for (int ti = 0; ti < 4; ti++) tl[ti] = GameText(type_strs[ti]);
-			break;
-		}
-		case MiniWndKind::Map:
-			ntab = 7;
-			tl[0] = GameText(STR_SMALLMAP_TYPE_CONTOURS);
-			tl[1] = GameText(STR_SMALLMAP_TYPE_VEHICLES);
-			tl[2] = GameText(STR_SMALLMAP_TYPE_INDUSTRIES);
-			tl[3] = GameText(STR_SMALLMAP_TYPE_ROUTES);
-			tl[4] = GameText(STR_SMALLMAP_TYPE_ROUTEMAP);
-			tl[5] = GameText(STR_SMALLMAP_TYPE_VEGETATION);
-			tl[6] = GameText(STR_SMALLMAP_TYPE_OWNERS);
-			break;
-	}
-
-	if (ImGui::BeginTabBar("tabs")) {
-		for (int ti = 0; ti < ntab; ti++) {
-			if (ImGui::BeginTabItem(fmt::format("{}###t{}", tl[ti], ti).c_str())) {
-				mw.tab = (uint8_t)ti;
-				bool has_cmds = !WndIsList(mw.kind);
-				float cmd_h = has_cmds ? ImGui::GetFrameHeightWithSpacing() + 4.0f * s : 0.0f;
-				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h));
-				switch (mw.kind) {
-					case MiniWndKind::Group: ImGroupBody(mw); break;
-					case MiniWndKind::Map: ImMapBody(mw); break;
-				}
-				ImGui::EndChild();
-				if (has_cmds) ImWndCommands(mw);
-				ImGui::EndTabItem();
-			}
-		}
-		ImGui::EndTabBar();
-	}
-
-	ImGui::End();
-	return open;
-}
-
 /* Native windows under panels must stack the way the panels do, or the
  * slot of the front panel would sample a native lying under another. */
 static std::vector<NativeKey> WantedNativeOrder()
@@ -1285,31 +521,6 @@ static std::vector<NativeKey> WantedNativeOrder()
 	_views.ListNatives(want);
 	std::erase_if(want, [](const NativeKey &key) { return FindWindowById(key.wc, key.num) == nullptr; });
 	return want;
-}
-
-static void DrawMiniWndsImGui()
-{
-	for (size_t i = _wnds.size(); i-- > 0;) {
-		bool alive;
-		switch (_wnds[i].kind) {
-			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
-			default: alive = true; break;
-		}
-		if (!alive) CloseMiniWnd(i);
-	}
-
-	_wnds_drawing = true;
-	std::vector<size_t> closed;
-	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (!DrawImGuiMiniWnd(_wnds[i])) closed.push_back(i);
-	}
-	_wnds_drawing = false;
-
-	for (size_t i = closed.size(); i-- > 0;) CloseMiniWnd(closed[i]);
-
-	std::vector<MiniOpenReq> opens;
-	opens.swap(_wnd_opens);
-	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.tab);
 }
 
 bool MiniUiCatchEstimate(Money cost)
@@ -1392,7 +603,7 @@ bool ShowMiniIndustryWindow(IndustryID industry)
 bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 {
 	if (!_mini_active || !IsDepotTile(tile)) return false;
-	if (Panel *depot = _views.Show(std::make_unique<DepotPanel>()); depot != nullptr) depot->SelectTab(type);
+	ShowPanelOnTab<DepotPanel>(type);
 	return true;
 }
 
@@ -1401,7 +612,6 @@ static void Present()
 	_map_labels.Paint(_camera.TilePixels());
 	_dock.Unmark();
 	NativePanel::AdoptAll(_views);
-	DrawMiniWndsImGui();
 	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, WindowBarBottom());
 	/* An embed whose slot went away this frame has nothing left to draw into.
 	 * A window the mini UI opened goes with it; an adopted one is handed back. */
@@ -1622,16 +832,6 @@ static void UnwindEscape()
 {
 	if (_mode.Unwind()) return;
 	if (_views.CloseFront()) return;
-	if (!_wnds.empty()) {
-		/* Windows stack by focus, so the one on top is the one the
-		 * player last worked in, not the one opened last. */
-		size_t top = _wnds.size() - 1;
-		for (size_t i = 0; i < _wnds.size(); i++) {
-			if (_wnds[i].focus_seq > _wnds[top].focus_seq) top = i;
-		}
-		CloseMiniWnd(top);
-		return;
-	}
 	_build_shelf.Close();
 	_window_shelf.Close();
 }

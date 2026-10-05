@@ -261,6 +261,42 @@ body.wide {
 	color: var(--ink-dim);
 }
 
+.map {
+	display: flex;
+	justify-content: center;
+	height: 400dp;
+	margin: 0dp 8dp;
+}
+
+.map-frame {
+	position: relative;
+	drag: drag;
+}
+
+.map-image {
+	width: 100%;
+	height: 100%;
+}
+
+.map-town {
+	position: absolute;
+	font-size: 10dp;
+	color: var(--ink-strong);
+	font-effect: shadow(1dp 1dp #000000c0);
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.map-town.hidden {
+	visibility: hidden;
+}
+
+.map-view {
+	position: absolute;
+	border: 2dp var(--accent);
+	pointer-events: none;
+}
+
 native-slot, raster-image {
 	display: block;
 }
