@@ -29,6 +29,7 @@
 #include "../../settings_type.h"
 #include "../../string_func.h"
 #include "../../gfx_func.h"
+#include "../../mini_ui.h"
 #include "../../window_func.h"
 #include "../../window_gui.h"
 #include "../../spritecache.h"
@@ -151,6 +152,27 @@ static std::vector<char32_t> NSStringToUTF32(NSString *s)
 	}
 
 	return unicode_str;
+}
+
+/** NSEvent numbers the mouse buttons from zero: left, right, then middle. */
+static constexpr NSInteger MIDDLE_MOUSE_BUTTON = 2;
+
+/** The game key a Cocoa key code maps to, or none. */
+static uint32_t MappedKey(unsigned short keycode)
+{
+	auto vk = std::ranges::find(_vk_mapping, keycode, &CocoaVkMapping::vk_from);
+	return vk != std::end(_vk_mapping) ? vk->map_to : 0;
+}
+
+/** WASD pans the mini map while the mini UI is up; letting go of a key always stops its pan. */
+static void TrackPanKey(unsigned short keycode, bool down)
+{
+	uint8_t bit = MiniUiPanBit(MappedKey(keycode));
+	if (!down) {
+		_dirkeys &= ~bit;
+	} else if (MiniUiActive()) {
+		_dirkeys |= bit;
+	}
 }
 
 static void CGDataFreeCallback(void *, const void *data, size_t)
@@ -734,6 +756,23 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 	[ self internalMouseButtonEvent ];
 }
 
+- (void)otherMouseDragged:(NSEvent *)event
+{
+	[ self internalMouseMoveEvent:event ];
+}
+- (void)otherMouseDown:(NSEvent *)event
+{
+	if (event.buttonNumber != MIDDLE_MOUSE_BUTTON) return;
+	_middle_button_down = true;
+	[ self internalMouseButtonEvent ];
+}
+- (void)otherMouseUp:(NSEvent *)event
+{
+	if (event.buttonNumber != MIDDLE_MOUSE_BUTTON) return;
+	_middle_button_down = false;
+	[ self internalMouseButtonEvent ];
+}
+
 - (void)scrollWheel:(NSEvent *)event
 {
 	if ([ event deltaY ] > 0.0) { /* Scroll up */
@@ -797,7 +836,7 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 
 		case QZ_TAB:
 			_tab_is_down = down;
-			if (down && EditBoxInGlobalFocus()) {
+			if (down && TextInputFocused()) {
 				HandleKeypress(WKC_TAB, unicode);
 			}
 			break;
@@ -810,12 +849,12 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 			break;
 
 		case QZ_v:
-			if (down && EditBoxInGlobalFocus() && (modifiers & (NSEventModifierFlagCommand | NSEventModifierFlagControl))) {
+			if (down && TextInputFocused() && (modifiers & (NSEventModifierFlagCommand | NSEventModifierFlagControl))) {
 				HandleKeypress(WKC_CTRL | 'V', unicode);
 			}
 			break;
 		case QZ_u:
-			if (down && EditBoxInGlobalFocus() && (modifiers & (NSEventModifierFlagCommand | NSEventModifierFlagControl))) {
+			if (down && TextInputFocused() && (modifiers & (NSEventModifierFlagCommand | NSEventModifierFlagControl))) {
 				HandleKeypress(WKC_CTRL | 'U', unicode);
 			}
 			break;
@@ -824,8 +863,7 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 	BOOL interpret_keys = YES;
 	if (down) {
 		/* Map keycode to OTTD code. */
-		auto vk = std::ranges::find(_vk_mapping, keycode, &CocoaVkMapping::vk_from);
-		uint32_t pressed_key = vk != std::end(_vk_mapping) ? vk->map_to : 0;
+		uint32_t pressed_key = MappedKey(keycode);
 
 		if (modifiers & NSEventModifierFlagShift)   pressed_key |= WKC_SHIFT;
 		if (modifiers & NSEventModifierFlagControl) pressed_key |= (_settings_client.gui.right_mouse_btn_emulation != RMBE_CONTROL ? WKC_CTRL : WKC_META);
@@ -848,7 +886,7 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 		console = false;
 
 		/* Don't handle normal characters if an edit box has the focus. */
-		if (!EditBoxInGlobalFocus() || IsInsideMM(pressed_key & ~WKC_SPECIAL_KEYS, WKC_F1, WKC_PAUSE + 1)) {
+		if (!TextInputFocused() || IsInsideMM(pressed_key & ~WKC_SPECIAL_KEYS, WKC_F1, WKC_PAUSE + 1)) {
 			HandleKeypress(pressed_key, unicode);
 		}
 		Debug(driver, 3, "cocoa_v: QZ_KeyEvent: {:x} ({:x}), down, mapping: {:x}", keycode, (int)unicode, pressed_key);
@@ -872,11 +910,13 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 			break;
 	}
 
+	TrackPanKey(event.keyCode, true);
+
 	/* Convert UTF-16 characters to UCS-4 chars. */
 	std::vector<char32_t> unicode_str = NSStringToUTF32([ event characters ]);
 	if (unicode_str.empty()) unicode_str.push_back(0);
 
-	if (EditBoxInGlobalFocus()) {
+	if (TextInputFocused()) {
 		if ([ self internalHandleKeycode:event.keyCode unicode:unicode_str[0] pressed:YES modifiers:event.modifierFlags ]) {
 			[ self interpretKeyEvents:[ NSArray arrayWithObject:event ] ];
 		}
@@ -900,6 +940,8 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 			}
 			break;
 	}
+
+	TrackPanKey(event.keyCode, false);
 
 	/* Convert UTF-16 characters to UCS-4 chars. */
 	std::vector<char32_t> unicode_str = NSStringToUTF32([ event characters ]);
@@ -936,13 +978,13 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 /** Insert the given text at the given range. */
 - (void)insertText:(id)aString replacementRange:(NSRange)replacementRange
 {
-	if (!EditBoxInGlobalFocus()) return;
+	if (!TextInputFocused()) return;
 
 	NSString *s = [ aString isKindOfClass:[ NSAttributedString class ] ] ? [ aString string ] : (NSString *)aString;
 
 	std::optional<size_t> insert_point;
 	std::optional<size_t> replace_range;
-	if (replacementRange.location != NSNotFound) {
+	if (replacementRange.location != NSNotFound && EditBoxInGlobalFocus()) {
 		/* Calculate the part to be replaced. */
 		std::string_view focused_text{_focused_window->GetFocusedTextbuf()->GetText()};
 		insert_point = Utf8AdvanceByUtf16Units(focused_text, replacementRange.location);
@@ -962,7 +1004,7 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 /** Set a new marked text and reposition the caret. */
 - (void)setMarkedText:(id)aString selectedRange:(NSRange)selRange replacementRange:(NSRange)replacementRange
 {
-	if (!EditBoxInGlobalFocus()) return;
+	if (!TextInputFocused()) return;
 
 	NSString *s = [ aString isKindOfClass:[ NSAttributedString class ] ] ? [ aString string ] : (NSString *)aString;
 
@@ -970,7 +1012,7 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 	if (utf8 != nullptr) {
 		std::optional<size_t> insert_point;
 		std::optional<size_t> replace_range;
-		if (replacementRange.location != NSNotFound) {
+		if (replacementRange.location != NSNotFound && EditBoxInGlobalFocus()) {
 			/* Calculate the part to be replaced. */
 			NSRange marked = [ self markedRange ];
 			std::string_view focused_text{_focused_window->GetFocusedTextbuf()->GetText()};
@@ -1111,109 +1153,109 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 /** Delete single character left of the cursor. */
 - (void)deleteBackward:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_BACKSPACE, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_BACKSPACE, 0);
 }
 
 /** Delete word left of the cursor. */
 - (void)deleteWordBackward:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_BACKSPACE | WKC_CTRL, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_BACKSPACE | WKC_CTRL, 0);
 }
 
 /** Delete single character right of the cursor. */
 - (void)deleteForward:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_DELETE, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_DELETE, 0);
 }
 
 /** Delete word right of the cursor. */
 - (void)deleteWordForward:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_DELETE | WKC_CTRL, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_DELETE | WKC_CTRL, 0);
 }
 
 /** Move cursor one character left. */
 - (void)moveLeft:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_LEFT, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_LEFT, 0);
 }
 
 /** Move cursor one word left. */
 - (void)moveWordLeft:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_LEFT | WKC_CTRL, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_LEFT | WKC_CTRL, 0);
 }
 
 /** Move cursor one character right. */
 - (void)moveRight:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_RIGHT, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_RIGHT, 0);
 }
 
 /** Move cursor one word right. */
 - (void)moveWordRight:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_RIGHT | WKC_CTRL, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_RIGHT | WKC_CTRL, 0);
 }
 
 /** Move cursor one line up. */
 - (void)moveUp:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_UP, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_UP, 0);
 }
 
 /** Move cursor one line down. */
 - (void)moveDown:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_DOWN, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_DOWN, 0);
 }
 
 /** MScroll one line up. */
 - (void)moveUpAndModifySelection:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_UP | WKC_SHIFT, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_UP | WKC_SHIFT, 0);
 }
 
 /** Scroll one line down. */
 - (void)moveDownAndModifySelection:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_DOWN | WKC_SHIFT, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_DOWN | WKC_SHIFT, 0);
 }
 
 /** Move cursor to the start of the line. */
 - (void)moveToBeginningOfLine:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_HOME, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_HOME, 0);
 }
 
 /** Move cursor to the end of the line. */
 - (void)moveToEndOfLine:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_END, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_END, 0);
 }
 
 /** Scroll one page up. */
 - (void)scrollPageUp:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_PAGEUP, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_PAGEUP, 0);
 }
 
 /** Scroll one page down. */
 - (void)scrollPageDown:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_PAGEDOWN, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_PAGEDOWN, 0);
 }
 
 /** Move cursor (and selection) one page up. */
 - (void)pageUpAndModifySelection:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_PAGEUP | WKC_SHIFT, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_PAGEUP | WKC_SHIFT, 0);
 }
 
 /** Move cursor (and selection) one page down. */
 - (void)pageDownAndModifySelection:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_PAGEDOWN | WKC_SHIFT, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_PAGEDOWN | WKC_SHIFT, 0);
 }
 
 /** Scroll to the beginning of the document. */
@@ -1233,13 +1275,13 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 /** Return was pressed. */
 - (void)insertNewline:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_RETURN, '\r');
+	if (TextInputFocused()) HandleKeypress(WKC_RETURN, '\r');
 }
 
 /** Escape was pressed. */
 - (void)cancelOperation:(id)sender
 {
-	if (EditBoxInGlobalFocus()) HandleKeypress(WKC_ESC, 0);
+	if (TextInputFocused()) HandleKeypress(WKC_ESC, 0);
 }
 
 /** Invoke the selector if we implement it. */

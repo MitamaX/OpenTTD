@@ -15,6 +15,7 @@
 #include "../../depot_map.h"
 #include "../../gfx_func.h"
 #include "../../industry.h"
+#include "../../mini_ui.h"
 #include "../../order_cmd.h"
 #include "../../settings_type.h"
 #include "../../station_base.h"
@@ -72,7 +73,7 @@ std::optional<TilePoint> InputMode::FollowTarget()
 	if (!this->Following()) return std::nullopt;
 
 	const Vehicle *v = Vehicle::GetIfValid(this->follow);
-	if (v == nullptr || _dirkeys != 0 || _middle_button_down) {
+	if (v == nullptr || MiniUiPanKeys() != 0 || _middle_button_down) {
 		this->Unfollow();
 		return std::nullopt;
 	}

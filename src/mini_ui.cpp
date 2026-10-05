@@ -760,6 +760,46 @@ bool MiniUiTyping()
 	return _mini_active && _views.IsTyping();
 }
 
+/* Any text field, the game's or the mini UI's, that takes typed characters. */
+bool TextInputFocused()
+{
+	return EditBoxInGlobalFocus() || MiniUiTyping();
+}
+
+/* The held direction keys pan the map unless a text field takes them as typing. */
+uint8_t MiniUiPanKeys()
+{
+	return TextInputFocused() ? 0 : _dirkeys;
+}
+
+/* WASD pans the mini map the way the arrows do. */
+static constexpr std::pair<char32_t, uint8_t> PAN_LETTERS[] = {
+	{'A', DIRKEY_LEFT},
+	{'W', DIRKEY_UP},
+	{'D', DIRKEY_RIGHT},
+	{'S', DIRKEY_DOWN},
+};
+
+/* The _dirkeys bit a key pans with, or none for a key that does not pan. */
+uint8_t MiniUiPanBit(char32_t key)
+{
+	for (const auto &[letter, bit] : PAN_LETTERS) {
+		if (key == letter) return bit;
+	}
+	return 0;
+}
+
+/* Drivers that poll their keys ask after each pan letter; the letters only pan while the mini UI is up. */
+uint8_t MiniUiHeldPanBits(const std::function<bool(char32_t key)> &held)
+{
+	uint8_t bits = 0;
+	if (!_mini_active) return bits;
+	for (const auto &[letter, bit] : PAN_LETTERS) {
+		if (held(letter)) bits |= bit;
+	}
+	return bits;
+}
+
 bool MiniUiHandleTextInput(std::string_view text, bool marked)
 {
 	return _mini_active && _views.ProcessText(text, marked);

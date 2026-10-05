@@ -276,12 +276,6 @@ static LRESULT HandleCharMsg(uint keycode, char32_t charcode)
 	return 0;
 }
 
-/** Is any text field, the game's or the mini UI's, taking typed characters? */
-static bool TextInputFocused()
-{
-	return EditBoxInGlobalFocus() || MiniUiTyping();
-}
-
 /** Should we draw the composition string ourself, i.e is this a normal IME? */
 static bool DrawIMECompositionString()
 {
@@ -1004,19 +998,13 @@ void VideoDriver_Win32Base::InputLoop()
 	this->fast_forward_key_pressed = this->has_focus && GetAsyncKeyState(VK_TAB) < 0 && GetAsyncKeyState(VK_MENU) >= 0;
 
 	/* Determine which directional keys are down. */
-	if (this->has_focus && !MiniUiTyping()) {
+	if (this->has_focus) {
 		_dirkeys =
 			(GetAsyncKeyState(VK_LEFT) < 0 ? 1 : 0) +
 			(GetAsyncKeyState(VK_UP) < 0 ? 2 : 0) +
 			(GetAsyncKeyState(VK_RIGHT) < 0 ? 4 : 0) +
 			(GetAsyncKeyState(VK_DOWN) < 0 ? 8 : 0);
-		if (MiniUiActive() && !EditBoxInGlobalFocus()) {
-			_dirkeys |=
-				(GetAsyncKeyState('A') < 0 ? 1 : 0) |
-				(GetAsyncKeyState('W') < 0 ? 2 : 0) |
-				(GetAsyncKeyState('D') < 0 ? 4 : 0) |
-				(GetAsyncKeyState('S') < 0 ? 8 : 0);
-		}
+		_dirkeys |= MiniUiHeldPanBits([](char32_t key) { return GetAsyncKeyState(static_cast<int>(key)) < 0; });
 	} else {
 		_dirkeys = 0;
 	}

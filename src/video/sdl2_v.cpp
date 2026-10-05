@@ -18,6 +18,7 @@
 #include "../core/utf8.hpp"
 #include "../fileio_func.h"
 #include "../framerate_type.h"
+#include "../mini_ui.h"
 #include "../window_func.h"
 #include "sdl2_v.h"
 #include <SDL.h>
@@ -438,6 +439,10 @@ bool VideoDriver_SDL_Base::PollEvent()
 					_right_button_clicked = true;
 					break;
 
+				case SDL_BUTTON_MIDDLE:
+					_middle_button_down = true;
+					break;
+
 				default: break;
 			}
 			HandleMouseEvents();
@@ -453,6 +458,8 @@ bool VideoDriver_SDL_Base::PollEvent()
 				_left_button_clicked = false;
 			} else if (ev.button.button == SDL_BUTTON_RIGHT) {
 				_right_button_down = false;
+			} else if (ev.button.button == SDL_BUTTON_MIDDLE) {
+				_middle_button_down = false;
 			}
 			HandleMouseEvents();
 			break;
@@ -606,6 +613,13 @@ void VideoDriver_SDL_Base::Stop()
 	}
 }
 
+/** SDL names a letter key after the lowercase letter. */
+static bool LetterHeld(const Uint8 *keys, char32_t letter)
+{
+	SDL_Keycode keycode = static_cast<SDL_Keycode>(letter - 'A' + 'a');
+	return keys[SDL_GetScancodeFromKey(keycode)] != 0;
+}
+
 void VideoDriver_SDL_Base::InputLoop()
 {
 	uint32_t mod = SDL_GetModState();
@@ -626,6 +640,7 @@ void VideoDriver_SDL_Base::InputLoop()
 		(keys[SDL_SCANCODE_UP]    ? 2 : 0) |
 		(keys[SDL_SCANCODE_RIGHT] ? 4 : 0) |
 		(keys[SDL_SCANCODE_DOWN]  ? 8 : 0);
+	_dirkeys |= MiniUiHeldPanBits([keys](char32_t key) { return LetterHeld(keys, key); });
 
 	if (old_ctrl_pressed != _ctrl_pressed) HandleCtrlChanged();
 }

@@ -10,6 +10,7 @@
 #ifndef MINI_UI_H
 #define MINI_UI_H
 
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -33,6 +34,8 @@ bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
 bool MiniUiHandleTextInput(std::string_view text, bool marked);
 bool MiniUiTyping();
+bool TextInputFocused();
+uint8_t MiniUiPanKeys();
 bool MiniUiHidesWindow(WindowClass wc);
 bool MiniUiWindowPlacement(int width, int height, Point &pt);
 void MiniUiScrollTo(int x, int y);
@@ -45,6 +48,15 @@ void MiniUiReleaseGraphics();
 
 struct NewsItem;
 bool MiniUiShowNews(const NewsItem *ni);
+
+/* The _dirkeys bits, one per direction, as the drivers set them. */
+static constexpr uint8_t DIRKEY_LEFT = 1;
+static constexpr uint8_t DIRKEY_UP = 2;
+static constexpr uint8_t DIRKEY_RIGHT = 4;
+static constexpr uint8_t DIRKEY_DOWN = 8;
+
+uint8_t MiniUiPanBit(char32_t key);
+uint8_t MiniUiHeldPanBits(const std::function<bool(char32_t key)> &held);
 
 /* Chrome tones. The GPU chrome and the native widget skin share them so mini
  * windows and the official windows embedded in them read as one surface. */

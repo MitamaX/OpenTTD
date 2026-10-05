@@ -13,15 +13,11 @@
 #include "../../core/math_func.hpp"
 #include "../../gfx_func.h"
 #include "../../map_func.h"
+#include "../../mini_ui.h"
 #include "../input/pointer_router.h"
 #include "tuning.h"
 
 #include "../../safeguards.h"
-
-static constexpr uint8_t DIRKEY_LEFT = 1;
-static constexpr uint8_t DIRKEY_UP = 2;
-static constexpr uint8_t DIRKEY_RIGHT = 4;
-static constexpr uint8_t DIRKEY_DOWN = 8;
 
 static constexpr double MS_PER_SECOND = 1000.0;
 static constexpr double PAN_STOP_SPEED = 5.0;
@@ -201,7 +197,8 @@ void Camera::MoveToward(TilePoint target, double share)
 /* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
 void Camera::Pan(uint delta_ms)
 {
-	if (_dirkeys != 0) {
+	uint8_t keys = MiniUiPanKeys();
+	if (keys != 0) {
 		this->anchored = false;
 		this->gliding = false;
 	} else if (this->gliding || this->anchored) {
@@ -211,8 +208,8 @@ void Camera::Pan(uint delta_ms)
 
 	double speed = _shift_pressed ? _tuning.pan_speed_fast : _tuning.pan_speed;
 	double decay = Approach(delta_ms, _tuning.pan_smooth_ms);
-	this->pan_vx = AxisVelocity(this->pan_vx, (_dirkeys & DIRKEY_LEFT) != 0, (_dirkeys & DIRKEY_RIGHT) != 0, speed, decay);
-	this->pan_vy = AxisVelocity(this->pan_vy, (_dirkeys & DIRKEY_UP) != 0, (_dirkeys & DIRKEY_DOWN) != 0, speed, decay);
+	this->pan_vx = AxisVelocity(this->pan_vx, (keys & DIRKEY_LEFT) != 0, (keys & DIRKEY_RIGHT) != 0, speed, decay);
+	this->pan_vy = AxisVelocity(this->pan_vy, (keys & DIRKEY_UP) != 0, (keys & DIRKEY_DOWN) != 0, speed, decay);
 	if (this->pan_vx == 0.0 && this->pan_vy == 0.0) return;
 
 	this->y += this->TilesFor(this->pan_vx, delta_ms);
