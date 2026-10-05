@@ -15,6 +15,8 @@
 struct OptionRow {
 	Rml::String label;
 	bool active = false;
+
+	bool operator==(const OptionRow &) const = default;
 };
 
 /* One row per transport system, so the drag takes that system off the area

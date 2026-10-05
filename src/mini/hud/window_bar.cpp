@@ -45,10 +45,10 @@ WindowBar::WindowBar(Opener open) : HudPart("windows"), open(std::move(open))
 
 void WindowBar::Bind(Rml::DataModelConstructor &model)
 {
-	model.Bind("categories", &this->categories);
-	model.Bind("shelf", &this->shelf);
-	model.Bind("windows", &this->windows);
-	model.Bind("overlays", &this->overlays);
+	this->Expose(model, "categories", &this->categories);
+	this->Expose(model, "shelf", &this->shelf);
+	this->Expose(model, "windows", &this->windows);
+	this->Expose(model, "overlays", &this->overlays);
 	model.BindEventCallback("toggle", &WindowBar::Toggle, this);
 	model.BindEventCallback("pick", &WindowBar::Pick, this);
 	model.BindEventCallback("overlay", &WindowBar::Overlay, this);

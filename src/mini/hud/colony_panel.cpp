@@ -64,14 +64,14 @@ void ColonyPanel::Bind(Rml::DataModelConstructor &model)
 	}
 	model.RegisterArray<Rml::Vector<SpeedButton>>();
 
-	model.Bind("name", &this->name);
-	model.Bind("date", &this->date);
-	model.Bind("money", &this->money);
-	model.Bind("vehicles", &this->vehicles);
-	model.Bind("warning", &this->warning);
-	model.Bind("funds_tone", &this->funds_tone);
-	model.Bind("gauge", &this->gauge);
-	model.Bind("speeds", &this->speeds);
+	this->Expose(model, "name", &this->name);
+	this->Expose(model, "date", &this->date);
+	this->Expose(model, "money", &this->money);
+	this->Expose(model, "vehicles", &this->vehicles);
+	this->Expose(model, "warning", &this->warning);
+	this->Expose(model, "funds_tone", &this->funds_tone);
+	this->Expose(model, "gauge", &this->gauge);
+	this->Expose(model, "speeds", &this->speeds);
 	model.BindEventCallback("speed", &ColonyPanel::SetSpeed, this);
 }
 

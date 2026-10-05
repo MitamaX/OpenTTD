@@ -31,7 +31,7 @@ void ToastStack::Bind(Rml::DataModelConstructor &model)
 		card.RegisterMember("opacity", &ToastCard::opacity);
 	}
 	model.RegisterArray<Rml::Vector<ToastCard>>();
-	model.Bind("cards", &this->cards);
+	this->Expose(model, "cards", &this->cards);
 	model.BindEventCallback("open", &ToastStack::Open, this);
 }
 

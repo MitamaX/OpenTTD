@@ -17,6 +17,8 @@ struct StatusRow {
 	Rml::String text;
 	Rml::String tone;
 	Rml::Vector<Rml::String> names;
+
+	bool operator==(const StatusRow &) const = default;
 };
 
 /* A row shows the category and count, hovering lists the affected vehicles,

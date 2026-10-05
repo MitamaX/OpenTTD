@@ -49,7 +49,7 @@ void StatusStream::Bind(Rml::DataModelConstructor &model)
 		row.RegisterMember("names", &StatusRow::names);
 	}
 	model.RegisterArray<Rml::Vector<StatusRow>>();
-	model.Bind("rows", &this->rows);
+	this->Expose(model, "rows", &this->rows);
 	model.BindEventCallback("cycle", &StatusStream::Cycle, this);
 }
 

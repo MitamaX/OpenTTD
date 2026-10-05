@@ -17,12 +17,16 @@ struct Company;
 struct GaugeSegment {
 	Rml::String angle;
 	bool done = false;
+
+	bool operator==(const GaugeSegment &) const = default;
 };
 
 struct SpeedButton {
 	Rml::String icon;
 	bool active = false;
 	bool off = false;
+
+	bool operator==(const SpeedButton &) const = default;
 };
 
 class ColonyPanel final : public HudPart {

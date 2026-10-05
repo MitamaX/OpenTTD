@@ -24,6 +24,12 @@ static Rml::String KeyArgument(const Rml::VariantList &arguments)
 	return arguments.empty() ? Rml::String() : arguments[0].Get<Rml::String>();
 }
 
+/* Only what RmlUi shows counts; the action is looked up by index when it fires. */
+bool PanelCommand::operator==(const PanelCommand &other) const
+{
+	return this->label == other.label && this->enabled == other.enabled && this->active == other.active;
+}
+
 Panel::Panel(std::string key, std::string document_path, Rml::String title, Rml::Vector<Rml::String> tabs) :
 	title(std::move(title)), key(std::move(key)), document_path(std::move(document_path)), tabs(std::move(tabs))
 {
@@ -100,14 +106,14 @@ void Panel::MoveTo(Rml::Vector2f position)
 
 void Panel::Bind(Rml::DataModelConstructor &model)
 {
-	model.Bind("title", &this->title);
-	model.Bind("tabs", &this->tabs);
-	model.Bind("tab", &this->tab);
-	model.Bind("commands", &this->commands);
-	model.Bind("editing", &this->editing);
-	model.Bind("draft", &this->draft);
-	model.Bind("embedded", &this->embedded);
-	model.Bind("sizable", &this->sizable);
+	this->Expose(model, "title", &this->title);
+	this->Expose(model, "tabs", &this->tabs);
+	this->Expose(model, "tab", &this->tab);
+	this->Expose(model, "commands", &this->commands);
+	this->Expose(model, "editing", &this->editing);
+	this->Expose(model, "draft", &this->draft);
+	this->Expose(model, "embedded", &this->embedded);
+	this->Expose(model, "sizable", &this->sizable);
 	model.BindEventCallback("run", &Panel::Run, this);
 	model.BindEventCallback("close", &Panel::DismissClicked, this);
 	model.BindEventCallback("edit_title", &Panel::EditTitle, this);

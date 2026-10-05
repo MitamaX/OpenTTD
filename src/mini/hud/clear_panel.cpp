@@ -28,8 +28,8 @@ void ClearPanel::Bind(Rml::DataModelConstructor &model)
 		row.RegisterMember("active", &OptionRow::active);
 	}
 	model.RegisterArray<Rml::Vector<OptionRow>>();
-	model.Bind("shown", &this->shown);
-	model.Bind("rows", &this->rows);
+	this->Expose(model, "shown", &this->shown);
+	this->Expose(model, "rows", &this->rows);
 	model.BindEventCallback("pick", &ClearPanel::Pick, this);
 }
 

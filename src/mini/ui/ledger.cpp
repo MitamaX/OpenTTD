@@ -71,6 +71,13 @@ LedgerLine &LedgerLine::OnHover(Action hover)
 	return *this;
 }
 
+/* Only what RmlUi shows counts; the callbacks are looked up by index when they fire. */
+bool LedgerLine::operator==(const LedgerLine &other) const
+{
+	return this->label == other.label && this->value == other.value && this->tone == other.tone && this->label_tone == other.label_tone &&
+			this->key == other.key && this->total == other.total && this->link == other.link && this->active == other.active && this->blocks == other.blocks;
+}
+
 LedgerLine &LedgerSection::Add(LedgerLine line)
 {
 	return this->lines.emplace_back(std::move(line));

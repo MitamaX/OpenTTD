@@ -55,7 +55,7 @@ MapPanel::MapPanel() : Panel("map", MAP_DOCUMENT, "지도", MapTabs())
 
 void MapPanel::BindSheet(Rml::DataModelConstructor &model)
 {
-	model.Bind("towns", &this->towns);
+	this->Expose(model, "towns", &this->towns);
 	model.BindEventCallback("seek", &MapPanel::Seek, this);
 }
 

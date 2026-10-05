@@ -46,11 +46,11 @@ void BuildDock::Bind(Rml::DataModelConstructor &model)
 	}
 	model.RegisterArray<Rml::Vector<BuildRow>>();
 
-	model.Bind("categories", &this->categories);
-	model.Bind("shelf", &this->shelf);
-	model.Bind("tools", &this->tools);
-	model.Bind("title", &this->title);
-	model.Bind("rows", &this->rows);
+	this->Expose(model, "categories", &this->categories);
+	this->Expose(model, "shelf", &this->shelf);
+	this->Expose(model, "tools", &this->tools);
+	this->Expose(model, "title", &this->title);
+	this->Expose(model, "rows", &this->rows);
 	model.BindEventCallback("toggle", &BuildDock::Toggle, this);
 	model.BindEventCallback("pick", &BuildDock::Pick, this);
 	model.BindEventCallback("apply", &BuildDock::Apply, this);

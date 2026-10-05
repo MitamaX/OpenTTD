@@ -22,13 +22,16 @@ int ArgumentIndex(const Rml::VariantList &arguments, size_t position)
 void View::Refresh()
 {
 	this->Collect();
-	this->model.DirtyAllVariables();
+	for (Exposed &variable : this->exposed) {
+		if (variable.changed()) this->model.DirtyVariable(variable.name);
+	}
 }
 
 void View::RemoveModel(Rml::Context &context)
 {
 	context.RemoveDataModel(this->model_name);
 	this->model = {};
+	this->exposed.clear();
 }
 
 bool View::CreateModel(Rml::Context &context, Rml::String model_name)
@@ -36,6 +39,7 @@ bool View::CreateModel(Rml::Context &context, Rml::String model_name)
 	Rml::DataModelConstructor constructor = context.CreateDataModel(model_name);
 	if (!constructor) return false;
 
+	this->exposed.clear();
 	this->Bind(constructor);
 	this->model = constructor.GetModelHandle();
 	this->model_name = std::move(model_name);

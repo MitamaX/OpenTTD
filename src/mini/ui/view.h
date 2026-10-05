@@ -10,7 +10,9 @@
 #ifndef MINI_UI_VIEW_H
 #define MINI_UI_VIEW_H
 
+#include <functional>
 #include <span>
+#include <vector>
 
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>
@@ -43,12 +45,33 @@ public:
 protected:
 	bool CreateModel(Rml::Context &context, Rml::String model_name);
 
+	template <typename T>
+	void Expose(Rml::DataModelConstructor &model, const Rml::String &name, T *value);
+
 	virtual void Bind(Rml::DataModelConstructor &model) = 0;
 	virtual void Collect() = 0;
 
 private:
+	/* A bound variable with the value RmlUi last saw, so only a change makes it evaluate again. */
+	struct Exposed {
+		Rml::String name;
+		std::function<bool()> changed;
+	};
+
 	Rml::String model_name;
 	Rml::DataModelHandle model;
+	std::vector<Exposed> exposed;
 };
+
+template <typename T>
+void View::Expose(Rml::DataModelConstructor &model, const Rml::String &name, T *value)
+{
+	model.Bind(name, value);
+	this->exposed.push_back({name, [value, seen = *value]() mutable {
+		if (*value == seen) return false;
+		seen = *value;
+		return true;
+	}});
+}
 
 #endif /* MINI_UI_VIEW_H */

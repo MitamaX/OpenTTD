@@ -18,6 +18,8 @@ struct FacingCell {
 	int value = 0;
 	Rml::String turn;
 	bool active = false;
+
+	bool operator==(const FacingCell &) const = default;
 };
 
 struct BuildRow {
@@ -28,6 +30,8 @@ struct BuildRow {
 	bool head = false;
 	Rml::String mark;
 	Rml::Vector<FacingCell> cells;
+
+	bool operator==(const BuildRow &) const = default;
 };
 
 Rml::Vector<BuildRow> CollectBuildRows(MiniTool kind);

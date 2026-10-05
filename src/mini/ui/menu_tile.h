@@ -20,6 +20,8 @@ struct MenuTile {
 	Rml::String label;
 	Rml::String icon;
 	bool active = false;
+
+	bool operator==(const MenuTile &) const = default;
 };
 
 Rml::String IconPath(std::string_view name);

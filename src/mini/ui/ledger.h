@@ -22,6 +22,8 @@ struct StripBlock {
 	Rml::String colour;
 	bool engine = false;
 	bool active = false;
+
+	bool operator==(const StripBlock &) const = default;
 };
 
 struct LedgerLine {
@@ -40,6 +42,8 @@ struct LedgerLine {
 	LedgerLine &Mark(bool active = true);
 	LedgerLine &Renames(Rml::String key, Renamer renamer);
 	LedgerLine &OnHover(Action hover);
+
+	bool operator==(const LedgerLine &other) const;
 
 	Rml::String label;
 	Rml::String value;
@@ -61,10 +65,14 @@ struct LedgerSection {
 	Rml::Vector<LedgerLine> lines;
 
 	LedgerLine &Add(LedgerLine line);
+
+	bool operator==(const LedgerSection &) const = default;
 };
 
 struct LedgerColumn {
 	Rml::Vector<LedgerSection> sections;
+
+	bool operator==(const LedgerColumn &) const = default;
 };
 
 #endif /* MINI_UI_LEDGER_H */

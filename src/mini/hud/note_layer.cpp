@@ -140,13 +140,13 @@ NoteLayer::NoteLayer() : HudPart("notes")
 
 void NoteLayer::Bind(Rml::DataModelConstructor &model)
 {
-	model.Bind("paused", &this->paused);
-	model.Bind("pause_text", &this->pause_text);
-	model.Bind("tool_shown", &this->tool_shown);
-	model.Bind("title", &this->title);
-	model.Bind("hint", &this->hint);
-	model.Bind("cost", &this->cost);
-	model.Bind("cost_tone", &this->cost_tone);
+	this->Expose(model, "paused", &this->paused);
+	this->Expose(model, "pause_text", &this->pause_text);
+	this->Expose(model, "tool_shown", &this->tool_shown);
+	this->Expose(model, "title", &this->title);
+	this->Expose(model, "hint", &this->hint);
+	this->Expose(model, "cost", &this->cost);
+	this->Expose(model, "cost_tone", &this->cost_tone);
 }
 
 void NoteLayer::Collect()

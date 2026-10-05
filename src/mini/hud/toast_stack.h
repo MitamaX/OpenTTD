@@ -20,6 +20,8 @@ struct ToastCard {
 	Rml::String detail;
 	Rml::String tone;
 	float opacity = 1.0f;
+
+	bool operator==(const ToastCard &) const = default;
 };
 
 class ToastStack final : public HudPart {

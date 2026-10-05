@@ -24,6 +24,8 @@ struct PanelCommand {
 	bool enabled = false;
 	std::function<void()> action;
 	bool active = false;
+
+	bool operator==(const PanelCommand &other) const;
 };
 
 class Panel : public View {

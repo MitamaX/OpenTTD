@@ -23,7 +23,7 @@ CommandBar::CommandBar() : HudPart("commands")
 
 void CommandBar::Bind(Rml::DataModelConstructor &model)
 {
-	model.Bind("commands", &this->commands);
+	this->Expose(model, "commands", &this->commands);
 	model.BindEventCallback("pick", &CommandBar::Pick, this);
 }
 
