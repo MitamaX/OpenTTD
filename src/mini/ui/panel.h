@@ -36,6 +36,7 @@ public:
 
 	bool Open(Rml::Context &context, Rml::String model_name);
 	void Close();
+	void Dismiss();
 	void Raise();
 	void Settle();
 
@@ -54,6 +55,7 @@ protected:
 	void Bind(Rml::DataModelConstructor &model) final;
 	virtual void BindSheet(Rml::DataModelConstructor &model);
 	virtual void AfterLayout();
+	virtual void OnDismiss();
 
 	virtual bool Renamable() const { return false; }
 	virtual void Rename(std::string name);
@@ -70,7 +72,7 @@ protected:
 
 private:
 	void Run(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
-	void Dismiss(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
+	void DismissClicked(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void EditTitle(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void Commit(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void Cancel(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);

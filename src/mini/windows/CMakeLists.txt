@@ -17,6 +17,8 @@ add_files(
     industry_list_panel.h
     industry_panel.cpp
     industry_panel.h
+    native_panel.cpp
+    native_panel.h
     news_list_panel.cpp
     news_list_panel.h
     sign_list_panel.cpp

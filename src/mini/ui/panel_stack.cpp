@@ -46,7 +46,7 @@ bool PanelStack::CloseFront()
 
 	Panel *front = this->Front();
 	if (front == nullptr) return false;
-	front->Close();
+	front->Dismiss();
 	return true;
 }
 

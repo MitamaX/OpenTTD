@@ -98,6 +98,7 @@
 #include "mini/windows/graph_panel.h"
 #include "mini/windows/industry_list_panel.h"
 #include "mini/windows/industry_panel.h"
+#include "mini/windows/native_panel.h"
 #include "mini/windows/news_list_panel.h"
 #include "mini/windows/sign_list_panel.h"
 #include "mini/windows/station_list_panel.h"
@@ -373,12 +374,8 @@ static bool HandleLabelClick(int x, int y)
 	return true;
 }
 
-/* Mini windows: ONI-structured chrome windows on the GPU layer. A window has
- * a title bar with a rename pen and a close box, a uniform-width tab strip,
- * label-value body rows and square icon commands at the bottom. Every
- * window may embed a live native viewport through a frameless carrier
- * window that is kept aligned with its slot; carriers under higher mini
- * windows are clipped out of the native overlay. */
+/* ImGui mini windows: a caption with a close box, a uniform-width tab strip,
+ * label-value body rows and command buttons at the bottom. */
 
 static const uint32_t COL_CH_RED = 0xFFE05F4AU;
 static const uint32_t COL_CH_YELLOW = 0xFFE0B64AU;
@@ -387,7 +384,6 @@ enum class MiniWndKind : uint8_t {
 	Fleet,
 	Group,
 	Map,
-	Native,
 };
 
 /* Kinds that carry no entity and take no commands: they read the world each
@@ -410,16 +406,7 @@ struct MiniWnd {
 	GroupID rename_grp = GroupID::Invalid();
 	TileIndex rename_depot = INVALID_TILE;
 	TileIndex sell_arm = INVALID_TILE;
-	int embed_w = 0;
-	int embed_h = 0;
-	bool embed_fix_w = false;
-	bool embed_fix_h = false;
-	int embed_step_w = 1;
-	int embed_step_h = 1;
-	WindowClass nat_wc = WC_NONE;
-	int32_t nat_num = 0;
 	uint32_t focus_seq = 0;
-	Rect shell = {};
 	char name_buf[128] = {};
 };
 
@@ -477,8 +464,8 @@ static void OpenMiniWindow(MiniWin win)
 	}
 }
 
-/* Mini windows stack by ImGui focus, not by list order, so the native windows
- * under them are ordered by when each shell last held focus. */
+/* ImGui windows stack by focus, not by list order, so Escape closes the one
+ * the player last worked in. */
 static uint32_t _wnd_focus_tick = 0;
 
 /* The front panel decides whose order route shows. */
@@ -501,21 +488,8 @@ static int WndPad() { return 6 * _tuning.hud_scale; }
 static int WndBodyH(const MiniWnd &mw) { return WndViewH() + WndPad() + (WndWide(mw) ? 10 : 6) * WndRowH(); }
 static int WndH(const MiniWnd &mw) { return WndTitleH() + WndTabH() + WndBodyH(mw) + WndCmdS() + 3 * WndPad(); }
 
-/* Only an adopted native window still embeds through an ImGui shell. */
-static bool WndEmbedTarget(const MiniWnd &mw, DockSpec &spec, WindowNumber &num)
-{
-	if (mw.kind != MiniWndKind::Native || mw.nat_wc == WC_NONE) return false;
-	spec = {mw.nat_wc, nullptr};
-	num = mw.nat_num;
-	return true;
-}
-
 static void CloseMiniWnd(size_t i)
 {
-	if (_wnds[i].kind == MiniWndKind::Native) {
-		Window *nw = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num);
-		if (nw != nullptr) nw->Close();
-	}
 	_wnds.erase(_wnds.begin() + (ptrdiff_t)i);
 }
 
@@ -616,10 +590,6 @@ static void OpenMapMiniWnd()
 
 static int _imrow;
 
-/* Outer window box of the mini window being drawn; a native slot needs it to
- * report how much window the chrome takes on top of the native size. */
-static ImVec2 _imwnd_outer;
-
 static ImU32 MiniImU32(uint32_t argb)
 {
 	return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >> 24) & 0xFF);
@@ -697,103 +667,6 @@ static bool ImWndKVLink(std::string_view label, std::string_view value, uint32_t
 static void ImWndHeader(std::string_view text)
 {
 	ImGui::SeparatorText(std::string(text).c_str());
-}
-
-/* The native grows in whole resize steps while the shell would drag pixel by
- * pixel; snapping the shell onto the same grid keeps the two flush instead of
- * leaving a strip of the body cut off or a strip of empty shell. */
-struct MiniSizeGrid {
-	float base_x, base_y, step_x, step_y;
-};
-
-static MiniSizeGrid _size_grid;
-
-static void RecordShellRect(MiniWnd &mw)
-{
-	ImVec2 p = ImGui::GetWindowPos();
-	ImVec2 sz = ImGui::GetWindowSize();
-	mw.shell = {(int)p.x, (int)p.y, (int)(p.x + sz.x) - 1, (int)(p.y + sz.y) - 1};
-}
-
-static void MiniSizeSnap(ImGuiSizeCallbackData *data)
-{
-	const MiniSizeGrid *g = (const MiniSizeGrid *)data->UserData;
-	if (g->step_x > 1.0f) data->DesiredSize.x = g->base_x + std::floor(std::max(0.0f, data->DesiredSize.x - g->base_x) / g->step_x) * g->step_x;
-	if (g->step_y > 1.0f) data->DesiredSize.y = g->base_y + std::floor(std::max(0.0f, data->DesiredSize.y - g->base_y) / g->step_y) * g->step_y;
-}
-
-/* A native window keeps its own minimum, so the shell grows to what last
- * frame's slot reported instead of cropping the content. Axes the native cannot
- * resize are pinned to that size, which the return value reports. */
-static bool MiniShellConstraints(MiniWnd &mw, ImVec2 def_size)
-{
-	ImVec2 min_size(mw.embed_fix_w ? (float)mw.embed_w : std::max(def_size.x, (float)mw.embed_w),
-			mw.embed_fix_h ? (float)mw.embed_h : std::max(def_size.y, (float)mw.embed_h));
-	min_size.x = std::min(min_size.x, (float)_fbw);
-	min_size.y = std::min(min_size.y, (float)_fbh);
-	_size_grid = {min_size.x, min_size.y, (float)mw.embed_step_w, (float)mw.embed_step_h};
-	ImGui::SetNextWindowSizeConstraints(min_size,
-			ImVec2(mw.embed_fix_w ? min_size.x : FLT_MAX, mw.embed_fix_h ? min_size.y : FLT_MAX),
-			(mw.embed_step_w > 1 || mw.embed_step_h > 1) ? MiniSizeSnap : nullptr, &_size_grid);
-
-	bool pinned = mw.embed_fix_w && mw.embed_fix_h;
-	mw.embed_step_w = 1;
-	mw.embed_step_h = 1;
-	mw.embed_w = 0;
-	mw.embed_h = 0;
-	mw.embed_fix_w = false;
-	mw.embed_fix_h = false;
-	return pinned;
-}
-
-/* An embed that grew the window can push it past the framebuffer, where the
- * native paint under the slot would be clipped away. */
-static void ClampShellToScreen(const MiniWnd &mw)
-{
-	if (mw.embed_w <= 0) return;
-	ImVec2 wp = ImGui::GetWindowPos();
-	ImVec2 ws = ImGui::GetWindowSize();
-	ImVec2 np(Clamp(wp.x, 0.0f, std::max(0.0f, (float)_fbw - ws.x)), Clamp(wp.y, 0.0f, std::max(0.0f, (float)_fbh - ws.y)));
-	if (np.x != wp.x || np.y != wp.y) ImGui::SetWindowPos(np);
-}
-
-static void ImWndNativeSlot(MiniWnd &mw, const DockSpec &spec, WindowNumber num)
-{
-	ImVec2 pos = ImGui::GetCursorScreenPos();
-	ImVec2 avail = ImGui::GetContentRegionAvail();
-	if (avail.x < 32.0f || avail.y < 32.0f || _fbw <= 0 || _fbh <= 0) return;
-
-	Window *w = _dock.Open(spec, num);
-	if (w == nullptr) {
-		if (spec.open != nullptr) ImWndText("표시할 내용이 없습니다", COL_CH_DIM);
-		return;
-	}
-
-	NativeSizing sizing = SizingOf(w);
-	mw.embed_fix_w = sizing.fix_w;
-	mw.embed_fix_h = sizing.fix_h;
-	mw.embed_step_w = sizing.step_w;
-	mw.embed_step_h = sizing.step_h;
-	/* The floor is the native minimum, not its current size, or every widening
-	 * drag would ratchet the mini window and never let it back. An axis the
-	 * native cannot resize becomes a hard size, so a drag cannot open dead
-	 * space the native will never fill. */
-	mw.embed_w = sizing.min_w + (int)(_imwnd_outer.x - avail.x);
-	mw.embed_h = sizing.min_h + (int)(_imwnd_outer.y - avail.y);
-
-	int grip = sizing.Pinned() ? 0 : (int)ImGui::GetStyle().WindowPadding.x + 8 * _tuning.hud_scale;
-	Rect slot = {(int)pos.x, (int)pos.y, (int)pos.x + (int)avail.x - 1, (int)pos.y + (int)avail.y - 1};
-	Rect vis = _dock.Pin(w, spec.open != nullptr, slot, sizing, grip);
-	ImVec2 size((float)vis.Width(), (float)vis.Height());
-
-	/* An item under the cursor keeps ImGui from dragging the mini window, so
-	 * a press inside the slot is free to reach the native widget. */
-	ImGui::InvisibleButton("##native", size);
-	uintptr_t tid = RlwScreenTexture().id;
-	if (tid == 0) return;
-	ImVec2 uv0((float)vis.left / (float)_fbw, (float)vis.top / (float)_fbh);
-	ImVec2 uv1((float)(vis.left + vis.Width()) / (float)_fbw, (float)(vis.top + vis.Height()) / (float)_fbh);
-	ImGui::GetWindowDrawList()->AddImage((ImTextureID)tid, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1);
 }
 
 struct ImStripUnit {
@@ -1635,7 +1508,6 @@ static void ImWndCommands(MiniWnd &mw)
 		}
 
 		case MiniWndKind::Map:
-		case MiniWndKind::Native:
 			break;
 	}
 	ImGui::NewLine();
@@ -1665,58 +1537,8 @@ static void ImWndTitle(const std::string &title, bool &open)
 	ImGui::Separator();
 }
 
-/* An adopted native window wears mini chrome and nothing else: its own caption
- * with the close box on the left is cropped away and this bar replaces it. */
-static bool DrawImGuiNativeWnd(MiniWnd &mw)
-{
-	Window *nw = FindWindowById(mw.nat_wc, mw.nat_num);
-	if (nw == nullptr) return false;
-
-	int s = _tuning.hud_scale;
-	std::string title = NativeCaption(nw);
-	if (title.empty()) title = "창";
-	std::string wid = fmt::format("###nat{}_{}", (int)mw.nat_wc, mw.nat_num);
-
-	ImVec2 def_size((float)(260 * s), (float)(200 * s));
-	ImGui::SetNextWindowPos(ImVec2((float)mw.x, (float)mw.y), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(def_size, ImGuiCond_FirstUseEver);
-	bool pinned = MiniShellConstraints(mw, def_size);
-	if (mw.want_raise) {
-		ImGui::SetNextWindowFocus();
-		mw.want_raise = false;
-	}
-
-	bool open = true;
-	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | (pinned ? ImGuiWindowFlags_NoResize : 0))) {
-		ImGui::End();
-		return open;
-	}
-
-	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) mw.focus_seq = ++_wnd_focus_tick;
-	RecordShellRect(mw);
-
-	_imrow = 0;
-	ImWndTitle(title, open);
-
-	DockSpec spec;
-	WindowNumber wnum;
-	if (WndEmbedTarget(mw, spec, wnum)) {
-		_imwnd_outer = ImGui::GetWindowSize();
-		ImGui::BeginChild("body", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
-				ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-		ImWndNativeSlot(mw, spec, wnum);
-		ImGui::EndChild();
-	}
-
-	ClampShellToScreen(mw);
-	ImGui::End();
-	return open;
-}
-
 static bool DrawImGuiMiniWnd(MiniWnd &mw)
 {
-	if (mw.kind == MiniWndKind::Native) return DrawImGuiNativeWnd(mw);
-
 	int s = _tuning.hud_scale;
 
 	std::string title = "-";
@@ -1724,7 +1546,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		case MiniWndKind::Fleet: title = "차고"; break;
 		case MiniWndKind::Group: title = "차량군"; break;
 		case MiniWndKind::Map: title = "지도"; break;
-		case MiniWndKind::Native: break;
 	}
 	std::string wid = fmt::format("###mw{}", (int)mw.kind);
 
@@ -1732,18 +1553,17 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	ImVec2 def_size((float)((wide ? 560 : 250) * s), (float)(270 * s));
 	ImGui::SetNextWindowPos(ImVec2((float)mw.x, (float)mw.y), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(def_size, ImGuiCond_FirstUseEver);
-	bool pinned = MiniShellConstraints(mw, def_size);
+	ImGui::SetNextWindowSizeConstraints(def_size, ImVec2(FLT_MAX, FLT_MAX));
 	if (mw.want_raise) {
 		ImGui::SetNextWindowFocus();
 		mw.want_raise = false;
 	}
 	bool open = true;
-	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | (pinned ? ImGuiWindowFlags_NoResize : 0))) {
+	if (!ImGui::Begin(wid.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse)) {
 		ImGui::End();
 		return open;
 	}
 	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) mw.focus_seq = ++_wnd_focus_tick;
-	RecordShellRect(mw);
 
 	ImWndTitle(title, open);
 
@@ -1768,9 +1588,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			tl[5] = GameText(STR_SMALLMAP_TYPE_VEGETATION);
 			tl[6] = GameText(STR_SMALLMAP_TYPE_OWNERS);
 			break;
-		case MiniWndKind::Native:
-			ntab = 0;
-			break;
 	}
 
 	if (ImGui::BeginTabBar("tabs")) {
@@ -1779,21 +1596,11 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 				mw.tab = (uint8_t)ti;
 				bool has_cmds = !WndIsList(mw.kind);
 				float cmd_h = has_cmds ? ImGui::GetFrameHeightWithSpacing() + 4.0f * s : 0.0f;
-				DockSpec spec;
-				WindowNumber wnum;
-				bool embed = WndEmbedTarget(mw, spec, wnum);
-				/* A slot fills the body exactly; a scrollbar appearing on the
-				 * rounding would shrink it and oscillate. */
-				_imwnd_outer = ImGui::GetWindowSize();
-				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h), ImGuiChildFlags_None,
-						embed ? (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse) : 0);
-				if (embed) {
-					ImWndNativeSlot(mw, spec, wnum);
-				} else switch (mw.kind) {
+				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h));
+				switch (mw.kind) {
 					case MiniWndKind::Fleet: ImFleetBody(mw); break;
 					case MiniWndKind::Group: ImGroupBody(mw); break;
 					case MiniWndKind::Map: ImMapBody(mw); break;
-					case MiniWndKind::Native: break;
 				}
 				ImGui::EndChild();
 				if (has_cmds) ImWndCommands(mw);
@@ -1803,106 +1610,18 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		ImGui::EndTabBar();
 	}
 
-	ClampShellToScreen(mw);
 	ImGui::End();
 	return open;
 }
 
+/* Native windows under panels must stack the way the panels do, or the
+ * slot of the front panel would sample a native lying under another. */
 static std::vector<NativeKey> WantedNativeOrder()
 {
-	std::vector<std::pair<uint32_t, size_t>> order;
-	for (size_t i = 0; i < _wnds.size(); i++) order.emplace_back(_wnds[i].focus_seq, i);
-	std::sort(order.begin(), order.end());
-
 	std::vector<NativeKey> want;
-	for (const auto &[seq, i] : order) {
-		const MiniWnd &mw = _wnds[i];
-		DockSpec spec;
-		WindowNumber num;
-		if (WndEmbedTarget(mw, spec, num) && FindWindowById(spec.wc, num) != nullptr) want.push_back({spec.wc, num});
-	}
-
-	std::vector<NativeKey> held;
-	_views.ListNatives(held);
-	for (const NativeKey &key : held) {
-		if (FindWindowById(key.wc, key.num) != nullptr) want.push_back(key);
-	}
+	_views.ListNatives(want);
+	std::erase_if(want, [](const NativeKey &key) { return FindWindowById(key.wc, key.num) == nullptr; });
 	return want;
-}
-
-/* Two shells that overlap sample each other's pixels out of the shared screen
- * buffer, so a new one is dropped where it covers none of the others. */
-static void PlaceNativeShell(MiniWnd &mw, int cw, int ch)
-{
-	int gap = 6 * _tuning.hud_scale;
-	int right = std::max(0, _fbw - cw - gap);
-	int top = WindowBarBottom() + gap;
-
-	mw.x = right;
-	mw.y = top;
-	for (int x = right; x >= 0; x -= cw + gap) {
-		int y = top;
-		bool moved = true;
-		while (moved) {
-			moved = false;
-			for (const MiniWnd &o : _wnds) {
-				if (o.shell.right <= o.shell.left) continue;
-				if (x <= o.shell.right && o.shell.left <= x + cw && y <= o.shell.bottom && o.shell.top <= y + ch) {
-					y = o.shell.bottom + 1 + gap;
-					moved = true;
-				}
-			}
-		}
-		if (y + ch <= _fbh) {
-			mw.x = std::max(0, x);
-			mw.y = y;
-			break;
-		}
-	}
-
-	/* The guessed rect stands in until the shell first draws itself, so shells
-	 * adopted in the same frame do not all land on the same spot. */
-	mw.shell = {mw.x, mw.y, mw.x + cw - 1, mw.y + ch - 1};
-}
-
-/* Every standalone native window on screen gets a mini shell, so nothing is
- * left wearing the official frame while the mini UI is up. */
-static void AdoptNativeWnds()
-{
-	static std::vector<std::pair<WindowClass, int32_t>> taken;
-	taken.clear();
-	for (const MiniWnd &mw : _wnds) {
-		DockSpec spec;
-		WindowNumber num;
-		if (WndEmbedTarget(mw, spec, num)) taken.emplace_back(spec.wc, (int32_t)num);
-	}
-
-	int s = _tuning.hud_scale;
-	for (Window *w : Window::Iterate()) {
-		if (!NativeWrappable(w)) continue;
-		/* A shell closed this frame leaves its window slotted until the sweep
-		 * runs; adopting it here would rebuild the shell the player dismissed. */
-		if (_dock.Find(w) != nullptr) continue;
-		bool held = false;
-		for (const auto &t : taken) {
-			if (t.first == w->window_class && t.second == (int32_t)w->window_number) {
-				held = true;
-				break;
-			}
-		}
-		if (held) continue;
-
-		MiniWnd mw;
-		mw.kind = MiniWndKind::Native;
-		mw.nat_wc = w->window_class;
-		mw.nat_num = w->window_number;
-		int chrome_x = 2 * (int)ImGui::GetStyle().WindowPadding.x + 2;
-		int chrome_y = 3 * (int)ImGui::GetStyle().WindowPadding.y + GetCharacterHeight(FS_NORMAL) + 8 * s;
-		PlaceNativeShell(mw, w->width + chrome_x, w->height - CaptionCrop(w) + chrome_y);
-		mw.want_raise = true;
-		_wnds.push_back(mw);
-		taken.emplace_back(mw.nat_wc, mw.nat_num);
-	}
 }
 
 static void DrawMiniWndsImGui()
@@ -1911,20 +1630,9 @@ static void DrawMiniWndsImGui()
 		bool alive;
 		switch (_wnds[i].kind) {
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
-			case MiniWndKind::Native: alive = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num) != nullptr; break;
 			default: alive = true; break;
 		}
 		if (!alive) CloseMiniWnd(i);
-	}
-
-	AdoptNativeWnds();
-
-	/* Mark before drawing: a shell whose Begin is skipped still owns its
-	 * window, and releasing it here would re-adopt it the very next frame. */
-	for (const MiniWnd &mw : _wnds) {
-		DockSpec spec;
-		WindowNumber num;
-		if (WndEmbedTarget(mw, spec, num)) _dock.Mark({spec.wc, num});
 	}
 
 	_wnds_drawing = true;
@@ -2029,6 +1737,7 @@ static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
 	_dock.Unmark();
+	NativePanel::AdoptAll(_views);
 	DrawMiniWndsImGui();
 	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, WindowBarBottom());
 	/* An embed whose slot went away this frame has nothing left to draw into.

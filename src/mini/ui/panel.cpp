@@ -56,6 +56,13 @@ void Panel::Close()
 	this->document = nullptr;
 }
 
+/* The player sent the panel away, as opposed to the mini UI closing it. */
+void Panel::Dismiss()
+{
+	this->OnDismiss();
+	this->Close();
+}
+
 void Panel::Raise()
 {
 	if (this->document != nullptr) this->document->PullToFront();
@@ -102,7 +109,7 @@ void Panel::Bind(Rml::DataModelConstructor &model)
 	model.Bind("embedded", &this->embedded);
 	model.Bind("sizable", &this->sizable);
 	model.BindEventCallback("run", &Panel::Run, this);
-	model.BindEventCallback("close", &Panel::Dismiss, this);
+	model.BindEventCallback("close", &Panel::DismissClicked, this);
 	model.BindEventCallback("edit_title", &Panel::EditTitle, this);
 	model.BindEventCallback("commit", &Panel::Commit, this);
 	model.BindEventCallback("cancel", &Panel::Cancel, this);
@@ -114,6 +121,10 @@ void Panel::BindSheet(Rml::DataModelConstructor &)
 }
 
 void Panel::AfterLayout()
+{
+}
+
+void Panel::OnDismiss()
 {
 }
 
@@ -135,9 +146,9 @@ void Panel::Run(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &argu
 	if (command.enabled) command.action();
 }
 
-void Panel::Dismiss(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &)
+void Panel::DismissClicked(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &)
 {
-	this->Close();
+	this->Dismiss();
 }
 
 void Panel::EditTitle(Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &)
