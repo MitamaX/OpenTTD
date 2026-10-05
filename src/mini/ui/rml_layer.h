@@ -13,8 +13,10 @@
 #include <array>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 #include "../gpu/gpu_frame.h"
+#include "game_fonts.h"
 #include "rml_input.h"
 #include "rml_interfaces.h"
 
@@ -43,12 +45,14 @@ public:
 
 private:
 	void Start();
+	void LoadFonts();
 	void ReleaseFocus();
 
 	RmlFileInterface files;
 	RmlSystemInterface system;
 	RmlTextInputHandler text_input;
 	std::unique_ptr<RmlRenderer> renderer;
+	std::vector<FontFace> fonts;
 	Rml::Context *context = nullptr;
 	bool unavailable = false;
 	std::array<bool, 3> held{};

@@ -193,7 +193,7 @@ static std::string GetDefaultTruetypeFont(FontSize fs)
  * @param fs Font size.
  * @return Full path of default font file.
  */
-static std::string GetDefaultTruetypeFontFile([[maybe_unused]] FontSize fs)
+std::string GetDefaultTruetypeFontFile([[maybe_unused]] FontSize fs)
 {
 #if defined(WITH_FREETYPE) || defined(_WIN32) || defined(WITH_COCOA)
 	/* Find font file. */

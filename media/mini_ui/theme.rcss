@@ -47,7 +47,7 @@ body {
 	--snap: 0.12s cubic-out;
 	--spring: 0.35s back-out;
 
-	font-family: "Malgun Gothic";
+	font-family: mini;
 	font-weight: normal;
 	font-size: 12dp;
 	color: var(--ink);

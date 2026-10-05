@@ -54,10 +54,17 @@ void RmlLayer::Start()
 	RegisterElement<MapView>(MapView::TAG);
 	RegisterElement<NativeSlot>(NativeSlot::TAG);
 	RegisterElement<RasterImage>(RasterImage::TAG);
-	for (const std::string &font : MiniFontFiles()) Rml::LoadFontFace(font);
+	this->LoadFonts();
 
 	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1), nullptr, &this->text_input);
 	_gpu.Attach(this);
+}
+
+/* RmlUi reads the faces where they lie, so they are kept until RmlUi shuts down. */
+void RmlLayer::LoadFonts()
+{
+	this->fonts = GameFontFaces();
+	for (const FontFace &face : this->fonts) Rml::LoadFontFace({face.data.data(), face.data.size()}, MINI_FONT_FAMILY, Rml::Style::FontStyle::Normal, face.weight);
 }
 
 void RmlLayer::Update(int width, int height, float dp_ratio)
@@ -81,6 +88,7 @@ void RmlLayer::Detach()
 	Rml::Shutdown();
 	this->context = nullptr;
 	this->renderer.reset();
+	this->fonts.clear();
 	this->held = {};
 }
 

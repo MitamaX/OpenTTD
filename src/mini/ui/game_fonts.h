@@ -5,12 +5,20 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file fonts.h The font family every mini UI document writes in. */
+/** @file game_fonts.h The font the game's own font search settled on, read out for RmlUi. */
 
-#ifndef MINI_UI_FONTS_H
-#define MINI_UI_FONTS_H
+#ifndef MINI_UI_GAME_FONTS_H
+#define MINI_UI_GAME_FONTS_H
 
-/* The theme asks for this family; every face loaded for the mini UI is registered under it, whatever its own name. */
-static constexpr const char MINI_FONT_FAMILY[] = "mini";
+#include <RmlUi/Core/StyleTypes.h>
 
-#endif /* MINI_UI_FONTS_H */
+#include <vector>
+
+struct FontFace {
+	std::vector<uint8_t> data;
+	Rml::Style::FontWeight weight;
+};
+
+std::vector<FontFace> GameFontFaces();
+
+#endif /* MINI_UI_GAME_FONTS_H */

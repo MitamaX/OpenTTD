@@ -9,7 +9,10 @@
 
 #include "preview_host.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <vector>
 
 #include <RmlUi/Core.h>
 #include <RmlUi_Renderer_GL3.h>
@@ -19,6 +22,43 @@
 #include "json_model.h"
 
 static constexpr const char CONTEXT_NAME[] = "preview";
+
+struct PreviewFace {
+	std::vector<std::filesystem::path> candidates;
+	Rml::Style::FontWeight weight;
+};
+
+/* Without the game there is no font search to ask, so the preview takes the
+ * usual Hangul faces from wherever each platform keeps them. */
+static std::vector<PreviewFace> PreviewFaces()
+{
+	using Rml::Style::FontWeight;
+#if defined(_WIN32)
+	const char *windows = std::getenv("WINDIR");
+	if (windows == nullptr) return {};
+	std::filesystem::path fonts = std::filesystem::path(windows) / "Fonts";
+	return {{{fonts / "malgun.ttf"}, FontWeight::Normal}, {{fonts / "malgunbd.ttf"}, FontWeight::Bold}};
+#elif defined(__APPLE__)
+	return {{{"/System/Library/Fonts/AppleSDGothicNeo.ttc"}, FontWeight::Normal}};
+#else
+	return {
+		{{"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc"}, FontWeight::Normal},
+		{{"/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc", "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc"}, FontWeight::Bold},
+	};
+#endif
+}
+
+/* Each face is the first of its candidates that is installed here, registered under the family the documents ask for. */
+static void LoadFonts()
+{
+	for (const PreviewFace &face : PreviewFaces()) {
+		auto installed = std::ranges::find_if(face.candidates, [](const std::filesystem::path &file) {
+			std::error_code error;
+			return std::filesystem::exists(file, error);
+		});
+		if (installed != face.candidates.end()) Rml::LoadFontFace(installed->string(), MINI_FONT_FAMILY, Rml::Style::FontStyle::Normal, face.weight);
+	}
+}
 
 /* Documents are opened by the relative paths the game uses, so their links resolve the same way. */
 Rml::FileHandle PreviewFiles::Open(const Rml::String &path)
@@ -80,7 +120,7 @@ bool PreviewHost::Start()
 	Rml::SetSystemInterface(&this->log);
 	Rml::SetRenderInterface(this->renderer.get());
 	Rml::Initialise();
-	for (const std::string &font : MiniFontFiles()) Rml::LoadFontFace(font);
+	LoadFonts();
 	return true;
 }
 

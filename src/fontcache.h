@@ -206,6 +206,7 @@ inline FontCacheSubSetting *GetFontCacheSubSetting(FontSize fs)
 
 uint GetFontCacheFontSize(FontSize fs);
 std::string GetFontCacheFontName(FontSize fs);
+std::string GetDefaultTruetypeFontFile(FontSize fs);
 
 bool GetFontAAState();
 void SetFont(FontSize fontsize, const std::string &font, uint size);

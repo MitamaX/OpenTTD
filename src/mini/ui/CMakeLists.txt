@@ -1,5 +1,7 @@
 add_files(
     fonts.h
+    game_fonts.cpp
+    game_fonts.h
     hud.cpp
     hud.h
     hud_part.cpp
@@ -32,6 +34,8 @@ add_files(
     rml_layer.h
     rml_renderer.cpp
     rml_renderer.h
+    sfnt_file.cpp
+    sfnt_file.h
     texture_box.cpp
     texture_box.h
     tone.cpp

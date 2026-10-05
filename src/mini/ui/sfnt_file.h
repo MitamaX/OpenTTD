@@ -5,12 +5,24 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file fonts.h The font family every mini UI document writes in. */
+/** @file sfnt_file.h A standalone font file put together from the tables of one face. */
 
-#ifndef MINI_UI_FONTS_H
-#define MINI_UI_FONTS_H
+#ifndef MINI_UI_SFNT_FILE_H
+#define MINI_UI_SFNT_FILE_H
 
-/* The theme asks for this family; every face loaded for the mini UI is registered under it, whatever its own name. */
-static constexpr const char MINI_FONT_FAMILY[] = "mini";
+#include <span>
+#include <vector>
 
-#endif /* MINI_UI_FONTS_H */
+/* Tags are the four tag bytes read as one big-endian number. */
+struct SfntTable {
+	uint32_t tag;
+	std::vector<uint8_t> data;
+};
+
+static constexpr size_t SFNT_HEADER_SIZE = 12;
+
+size_t SfntDirectorySize(std::span<const uint8_t> header);
+std::vector<uint32_t> SfntDirectoryTags(std::span<const uint8_t> directory);
+std::vector<uint8_t> BuildSfnt(std::vector<SfntTable> tables);
+
+#endif /* MINI_UI_SFNT_FILE_H */
