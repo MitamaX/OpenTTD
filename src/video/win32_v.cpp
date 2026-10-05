@@ -276,6 +276,12 @@ static LRESULT HandleCharMsg(uint keycode, char32_t charcode)
 	return 0;
 }
 
+/** Is any text field, the game's or the mini UI's, taking typed characters? */
+static bool TextInputFocused()
+{
+	return EditBoxInGlobalFocus() || MiniUiTyping();
+}
+
 /** Should we draw the composition string ourself, i.e is this a normal IME? */
 static bool DrawIMECompositionString()
 {
@@ -695,7 +701,7 @@ LRESULT CALLBACK WndProcGdi(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 
 			/* If an edit box is in focus, wait for the corresponding WM_CHAR message. */
-			if (!EditBoxInGlobalFocus()) {
+			if (!TextInputFocused()) {
 				/* Is the console key a dead key? If yes, ignore the first key down event. */
 				if (HasBit(charcode, 31) && !console) {
 					if (scancode == 41) {
@@ -998,7 +1004,7 @@ void VideoDriver_Win32Base::InputLoop()
 	this->fast_forward_key_pressed = this->has_focus && GetAsyncKeyState(VK_TAB) < 0 && GetAsyncKeyState(VK_MENU) >= 0;
 
 	/* Determine which directional keys are down. */
-	if (this->has_focus) {
+	if (this->has_focus && !MiniUiTyping()) {
 		_dirkeys =
 			(GetAsyncKeyState(VK_LEFT) < 0 ? 1 : 0) +
 			(GetAsyncKeyState(VK_UP) < 0 ? 2 : 0) +
@@ -1025,7 +1031,7 @@ bool VideoDriver_Win32Base::PollEvent()
 	if (!PeekMessage(&mesg, nullptr, 0, 0, PM_REMOVE)) return false;
 
 	/* Convert key messages to char messages if we want text input. */
-	if (EditBoxInGlobalFocus()) TranslateMessage(&mesg);
+	if (TextInputFocused()) TranslateMessage(&mesg);
 	DispatchMessage(&mesg);
 
 	return true;

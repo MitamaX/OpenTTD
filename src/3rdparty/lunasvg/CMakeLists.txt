@@ -1,7 +1,3 @@
-if(NOT raylib_FOUND)
-    return()
-endif()
-
 enable_language(C)
 
 file(GLOB PLUTOVG_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/plutovg/source/*.c)

@@ -5,26 +5,27 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file rml_renderer.h The upstream GL3 renderer, with the game's screen texture as one more image source. */
+/** @file draw_pass.h The GL program that puts a draw list on the bound framebuffer. */
 
-#ifndef MINI_UI_RML_RENDERER_H
-#define MINI_UI_RML_RENDERER_H
+#ifndef MINI_GPU_DRAW_PASS_H
+#define MINI_GPU_DRAW_PASS_H
 
-#include <RmlUi_Renderer_GL3.h>
+#include "draw_list.h"
 
-#include "../gpu/gpu_frame.h"
-
-class RmlRenderer final : public RenderInterface_GL3 {
+class DrawPass {
 public:
-	static constexpr const char SCREEN_SOURCE[] = "?screen";
-
-	void SyncScreenTexture();
-
-	Rml::TextureHandle LoadTexture(Rml::Vector2i &texture_dimensions, const Rml::String &source) override;
-	void ReleaseTexture(Rml::TextureHandle texture_handle) override;
+	void Draw(const DrawList &list, TextureStore &textures, Dimension screen);
+	void Release();
 
 private:
-	ScreenImage lent_screen{};
+	bool Prepare();
+
+	uint32_t program = 0;
+	uint32_t vertex_array = 0;
+	uint32_t vertex_buffer = 0;
+	uint32_t white = 0;
+	int screen_uniform = -1;
+	bool broken = false;
 };
 
-#endif /* MINI_UI_RML_RENDERER_H */
+#endif /* MINI_GPU_DRAW_PASS_H */

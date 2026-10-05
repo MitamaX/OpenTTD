@@ -10,11 +10,13 @@
 #include "stdafx.h"
 
 #include <cmath>
+#include <utility>
 #include <vector>
 
 #include "fileio_func.h"
 #include "mini_atlas.h"
-#include "video/raylib_wrap.h"
+#include "mini/core/canvas.h"
+#include "mini/gpu/art_image.h"
 
 #include "safeguards.h"
 
@@ -24,10 +26,13 @@ static const int ATLAS_CELL = 64;
 static const int ATLAS_GUTTER = 8;
 static const int ATLAS_COLS = 4;
 static const int ATLAS_ROWS = ((int)MiniSprite::End + ATLAS_COLS - 1) / ATLAS_COLS;
+static const int ATLAS_WIDTH = ATLAS_COLS * ATLAS_CELL;
+static const int ATLAS_HEIGHT = ATLAS_ROWS * ATLAS_CELL;
+static const int ATLAS_CONTENT = ATLAS_CELL - 2 * ATLAS_GUTTER;
 
-static int _atlas_tex = 0;
+static TextureId _atlas_tex = NO_TEXTURE;
 static bool _has_art[(size_t)MiniSprite::End];
-static int _tile_tex[(size_t)MiniSprite::End];
+static TextureId _tile_tex[(size_t)MiniSprite::End];
 
 /* Ground kinds also get a standalone repeat-wrapped texture, so merged runs
  * of equal tiles can draw as one quad without per-tile seams. */
@@ -66,54 +71,47 @@ static bool SpriteHit(MiniSprite sprite, double x, double y)
 
 void MiniAtlasEnsure()
 {
-	if (_atlas_tex != 0) return;
+	if (_atlas_tex != NO_TEXTURE) return;
 
-	int w = ATLAS_COLS * ATLAS_CELL;
-	int h = ATLAS_ROWS * ATLAS_CELL;
-	int content = ATLAS_CELL - 2 * ATLAS_GUTTER;
-	std::vector<uint32_t> px((size_t)w * h, 0x00FFFFFFU);
-	std::vector<uint32_t> art((size_t)content * content);
+	std::vector<uint32_t> px((size_t)ATLAS_WIDTH * ATLAS_HEIGHT, 0x00FFFFFFU);
+	std::vector<uint32_t> art((size_t)ATLAS_CONTENT * ATLAS_CONTENT);
 
 	for (int i = 0; i < (int)MiniSprite::End; i++) {
 		int ox = (i % ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
 		int oy = (i / ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
 		std::string path = _personal_dir + "mini_art/" + _slot_names[i] + ".png";
-		_has_art[i] = RlwLoadImageInto(path.c_str(), art.data(), content, content);
+		_has_art[i] = LoadArtImage(path, art, ATLAS_CONTENT, ATLAS_CONTENT);
 		if (_has_art[i]) {
-			for (int y = 0; y < content; y++) {
-				std::copy_n(&art[(size_t)y * content], content, &px[(size_t)(oy + y) * w + ox]);
+			for (int y = 0; y < ATLAS_CONTENT; y++) {
+				std::copy_n(&art[(size_t)y * ATLAS_CONTENT], ATLAS_CONTENT, &px[(size_t)(oy + y) * ATLAS_WIDTH + ox]);
 			}
-			if (IsGroundSlot((MiniSprite)i)) _tile_tex[i] = RlwCreateTileTexture(art.data(), content, content);
+			if (IsGroundSlot((MiniSprite)i)) _tile_tex[i] = _textures.Add(art, Dimension(ATLAS_CONTENT, ATLAS_CONTENT), TextureFilter::Mipmapped, TextureWrap::Repeat);
 			continue;
 		}
-		for (int y = 0; y < content; y++) {
-			for (int x = 0; x < content; x++) {
+		for (int y = 0; y < ATLAS_CONTENT; y++) {
+			for (int x = 0; x < ATLAS_CONTENT; x++) {
 				int hits = 0;
 				for (int sy = 0; sy < 4; sy++) {
 					for (int sx = 0; sx < 4; sx++) {
-						double u = (x + (sx + 0.5) / 4.0) / content;
-						double v = (y + (sy + 0.5) / 4.0) / content;
+						double u = (x + (sx + 0.5) / 4.0) / ATLAS_CONTENT;
+						double v = (y + (sy + 0.5) / 4.0) / ATLAS_CONTENT;
 						if (SpriteHit((MiniSprite)i, u, v)) hits++;
 					}
 				}
 				uint32_t a = hits * 255 / 16;
-				px[(size_t)(oy + y) * w + ox + x] = (a << 24) | 0x00FFFFFFU;
+				px[(size_t)(oy + y) * ATLAS_WIDTH + ox + x] = (a << 24) | 0x00FFFFFFU;
 			}
 		}
 	}
 
-	_atlas_tex = RlwCreateAtlasTexture(px.data(), w, h);
+	_atlas_tex = _textures.Add(px, Dimension(ATLAS_WIDTH, ATLAS_HEIGHT), TextureFilter::Mipmapped);
 }
 
 /* Frees the textures so the next frame rebuilds them and re-reads art files. */
 void MiniAtlasReload()
 {
-	if (_atlas_tex != 0) RlwFreeTexture(_atlas_tex);
-	_atlas_tex = 0;
-	for (int &t : _tile_tex) {
-		if (t != 0) RlwFreeTexture(t);
-		t = 0;
-	}
+	_textures.Remove(std::exchange(_atlas_tex, NO_TEXTURE));
+	for (TextureId &t : _tile_tex) _textures.Remove(std::exchange(t, NO_TEXTURE));
 }
 
 bool MiniAtlasHasArt(MiniSprite sprite)
@@ -121,21 +119,13 @@ bool MiniAtlasHasArt(MiniSprite sprite)
 	return sprite < MiniSprite::End && _has_art[(size_t)sprite];
 }
 
-/* The driver unloads every texture on shutdown; forgetting the ids here makes
- * the next frame rebuild the atlas instead of drawing with dead handles. */
-void MiniAtlasReset()
-{
-	_atlas_tex = 0;
-	for (int &t : _tile_tex) t = 0;
-}
-
 static bool AtlasSprite(MiniSprite sprite, int x0, int y0, int x1, int y1, int angle_deg, uint32_t argb)
 {
-	if (_atlas_tex == 0 || sprite >= MiniSprite::End || x1 < x0 || y1 < y0) return false;
-	int content = ATLAS_CELL - 2 * ATLAS_GUTTER;
-	int sx = ((int)sprite % ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
-	int sy = ((int)sprite / ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
-	RlwCmdSprite(_atlas_tex, sx, sy, content, content, x0, y0, x1, y1, angle_deg, argb);
+	if (_atlas_tex == NO_TEXTURE || sprite >= MiniSprite::End || x1 < x0 || y1 < y0) return false;
+	float left = ((int)sprite % ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
+	float top = ((int)sprite / ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
+	UvRect cell = {left / ATLAS_WIDTH, top / ATLAS_HEIGHT, (left + ATLAS_CONTENT) / ATLAS_WIDTH, (top + ATLAS_CONTENT) / ATLAS_HEIGHT};
+	_map_draw.Image(_atlas_tex, {x0, y0, x1, y1}, cell, angle_deg, argb);
 	return true;
 }
 
@@ -154,9 +144,8 @@ bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, int angle_deg, u
 bool MiniAtlasTileRun(MiniSprite sprite, int x0, int y0, int x1, int y1, int run_tiles, uint32_t argb)
 {
 	if (sprite >= MiniSprite::End || x1 < x0 || y1 < y0) return false;
-	int tex = _tile_tex[(size_t)sprite];
-	if (tex == 0) return false;
-	int content = ATLAS_CELL - 2 * ATLAS_GUTTER;
-	RlwCmdSprite(tex, 0, 0, content, content * std::max(run_tiles, 1), x0, y0, x1, y1, 0, argb);
+	TextureId tex = _tile_tex[(size_t)sprite];
+	if (tex == NO_TEXTURE) return false;
+	_map_draw.Image(tex, {x0, y0, x1, y1}, {0.0f, 0.0f, 1.0f, static_cast<float>(std::max(run_tiles, 1))}, 0, argb);
 	return true;
 }

@@ -2747,6 +2747,7 @@ void HandleCtrlChanged()
  */
 void HandleTextInput(std::string_view str, bool marked, std::optional<size_t> caret, std::optional<size_t> insert_location, std::optional<size_t> replacement_end)
 {
+	if (MiniUiHandleTextInput(str, marked)) return;
 	if (!EditBoxInGlobalFocus()) return;
 
 	_focused_window->InsertTextString(_focused_window->window_class == WC_CONSOLE ? 0 : _focused_window->nested_focus->GetIndex(), str, marked, caret, insert_location, replacement_end);

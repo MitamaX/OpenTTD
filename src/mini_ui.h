@@ -11,7 +11,7 @@
 #define MINI_UI_H
 
 #include <string>
-#include <vector>
+#include <string_view>
 
 #include "company_type.h"
 #include "core/geometry_type.hpp"
@@ -23,7 +23,6 @@
 #include "tile_type.h"
 #include "town_type.h"
 #include "vehicle_type.h"
-#include "video/raylib_wrap.h"
 #include "window_type.h"
 
 bool MiniUiActive();
@@ -32,14 +31,17 @@ void MiniUiResetGameState();
 void MiniUiFrame(uint delta_ms);
 bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
-bool MiniUiHandleTextInput(char32_t character);
+bool MiniUiHandleTextInput(std::string_view text, bool marked);
 bool MiniUiTyping();
 bool MiniUiHidesWindow(WindowClass wc);
 bool MiniUiWindowPlacement(int width, int height, Point &pt);
-void MiniUiOverlayRects(std::vector<RlwRectI> &rects);
 void MiniUiScrollTo(int x, int y);
 bool MiniUiShowError(std::string summary, std::string detail, bool warn);
 bool MiniUiCatchEstimate(Money cost);
+
+bool MiniUiBeginPaint();
+void MiniUiEndPaint();
+void MiniUiReleaseGraphics();
 
 struct NewsItem;
 bool MiniUiShowNews(const NewsItem *ni);

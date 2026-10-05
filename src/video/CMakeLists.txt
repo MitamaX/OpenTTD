@@ -32,14 +32,6 @@ if(NOT OPTION_DEDICATED)
         win32_v.h
         CONDITION WIN32
     )
-
-    add_files(
-        raylib_v.cpp
-        raylib_v.h
-        raylib_wrap.cpp
-        raylib_wrap.h
-        CONDITION raylib_FOUND
-    )
 endif()
 
 add_files(

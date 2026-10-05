@@ -5,13 +5,14 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file rml_layer.cpp The RmlUi context the raylib driver composites over the mini UI. */
+/** @file rml_layer.cpp The RmlUi context composited over the mini UI map. */
 
 #include "../../stdafx.h"
 #include "rml_layer.h"
 
 #include <RmlUi/Core.h>
 
+#include "../gpu/gl_api.h"
 #include "fonts.h"
 #include "native_slot.h"
 #include "raster_image.h"
@@ -37,7 +38,7 @@ Rml::Context *RmlLayer::Acquire()
 
 void RmlLayer::Start()
 {
-	this->unavailable = !RmlGL3::Initialize();
+	this->unavailable = !LoadGl();
 	if (this->unavailable) return;
 
 	auto renderer = std::make_unique<RmlRenderer>();
@@ -54,7 +55,7 @@ void RmlLayer::Start()
 	for (const char *font : MINI_FONTS) Rml::LoadFontFace(font);
 
 	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1), nullptr, &this->text_input);
-	RlwAttachLayer(this);
+	_gpu.Attach(this);
 }
 
 void RmlLayer::Update(int width, int height, float dp_ratio)
@@ -64,10 +65,10 @@ void RmlLayer::Update(int width, int height, float dp_ratio)
 	this->context->Update();
 }
 
-void RmlLayer::Render(int width, int height)
+void RmlLayer::Render(Dimension screen)
 {
 	this->renderer->SyncScreenTexture();
-	this->renderer->SetViewport(width, height);
+	this->renderer->SetViewport(static_cast<int>(screen.width), static_cast<int>(screen.height));
 	this->renderer->BeginFrame();
 	this->context->Render();
 	this->renderer->EndFrame();
@@ -79,7 +80,6 @@ void RmlLayer::Detach()
 	this->context = nullptr;
 	this->renderer.reset();
 	this->held = {};
-	RmlGL3::Shutdown();
 }
 
 void RmlLayer::TrackPointer(const RmlPointer &pointer)
@@ -126,9 +126,14 @@ void RmlLayer::ProcessKey(const RmlKey &key)
 	this->context->ProcessKeyDown(key.identifier, key.modifiers);
 }
 
-void RmlLayer::ProcessText(char32_t character)
+void RmlLayer::ProcessText(std::string_view text)
 {
-	this->context->ProcessTextInput(static_cast<Rml::Character>(character));
+	this->context->ProcessTextInput(Rml::String(text));
+}
+
+void RmlLayer::Compose(std::string_view text)
+{
+	this->text_input.Compose(text);
 }
 
 void RmlLayer::ReleaseFocus()

@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file canvas.cpp Shapes and text the mini UI records into the raylib command buffer. */
+/** @file canvas.cpp Shapes and text the mini UI records into the map draw list. */
 
 #include "../../stdafx.h"
 #include "canvas.h"
@@ -13,7 +13,7 @@
 #include "../../core/backup_type.hpp"
 #include "../../core/math_func.hpp"
 #include "../../gfx_func.h"
-#include "../../video/raylib_wrap.h"
+#include "../gpu/texture_store.h"
 #include "tuning.h"
 
 #include "../../safeguards.h"
@@ -23,6 +23,7 @@ static constexpr uint64_t TEXT_IDLE_FRAMES = 600;
 static constexpr int MIN_ATLAS_RADIUS = 2;
 
 Canvas _canvas;
+DrawList _map_draw;
 
 void Canvas::BeginFrame()
 {
@@ -48,13 +49,13 @@ uint32_t Canvas::Tone(uint32_t c) const
 void Canvas::FillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
 	if (x1 < x0 || y1 < y0) return;
-	RlwCmdRect(x0, y0, x1, y1, this->Tone(c));
+	_map_draw.FillRect(x0, y0, x1, y1, this->Tone(c));
 }
 
 void Canvas::BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
 {
 	if (x1 < x0 || y1 < y0) return;
-	RlwCmdRect(x0, y0, x1, y1, (this->Tone(c) & 0x00FFFFFFU) | (static_cast<uint32_t>(Clamp<uint>(alpha, 0, 255)) << 24));
+	_map_draw.FillRect(x0, y0, x1, y1, (this->Tone(c) & 0x00FFFFFFU) | (static_cast<uint32_t>(Clamp<uint>(alpha, 0, 255)) << 24));
 }
 
 void Canvas::Frame(const Rect &r, int width, uint32_t c, uint alpha)
@@ -67,7 +68,7 @@ void Canvas::Frame(const Rect &r, int width, uint32_t c, uint alpha)
 
 void Canvas::ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
-	RlwCmdLine(x0, y0, x1, y1, std::max(width, 1), this->Tone(c));
+	_map_draw.Line(x0, y0, x1, y1, std::max(width, 1), this->Tone(c));
 }
 
 /* Shape fills prefer an atlas quad so the silhouettes are already on the
@@ -78,7 +79,7 @@ void Canvas::FillCircle(int cx, int cy, int r, uint32_t c)
 	r = std::max(r, 1);
 	uint32_t col = this->Tone(c);
 	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Disc, cx - r, cy - r, cx + r, cy + r, col)) return;
-	RlwCmdCircle(cx, cy, r, col);
+	_map_draw.FillCircle(cx, cy, r, col);
 }
 
 void Canvas::FillDiamond(int cx, int cy, int r, uint32_t c)
@@ -86,7 +87,7 @@ void Canvas::FillDiamond(int cx, int cy, int r, uint32_t c)
 	r = std::max(r, 1);
 	uint32_t col = this->Tone(c);
 	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Diamond, cx - r, cy - r, cx + r, cy + r, col)) return;
-	RlwCmdDiamond(cx, cy, r, col);
+	_map_draw.FillDiamond(cx, cy, r, col);
 }
 
 void Canvas::FillTriangle(int cx, int cy, int r, uint32_t c)
@@ -94,7 +95,7 @@ void Canvas::FillTriangle(int cx, int cy, int r, uint32_t c)
 	r = std::max(r, 1);
 	uint32_t col = this->Tone(c);
 	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Triangle, cx - r, cy - r, cx + r, cy + r, col)) return;
-	RlwCmdTriangle(cx, cy, r, col);
+	_map_draw.FillTriangle(cx, cy, r, col);
 }
 
 /* Rotated silhouette: ships and aircraft point along their heading. Without
@@ -107,14 +108,14 @@ void Canvas::FillShapeRot(MiniSprite s, int cx, int cy, int r, int angle, uint32
 	switch (s) {
 		case MiniSprite::Triangle:
 		case MiniSprite::Aircraft:
-			RlwCmdTriangle(cx, cy, r, col);
+			_map_draw.FillTriangle(cx, cy, r, col);
 			break;
 		case MiniSprite::Diamond:
 		case MiniSprite::Ship:
-			RlwCmdDiamond(cx, cy, r, col);
+			_map_draw.FillDiamond(cx, cy, r, col);
 			break;
 		default:
-			RlwCmdCircle(cx, cy, r, col);
+			_map_draw.FillCircle(cx, cy, r, col);
 			break;
 	}
 }
@@ -138,7 +139,8 @@ const CanvasText *Canvas::Text(std::string_view text)
 
 void Canvas::DrawText(const CanvasText &text, int x, int y, uint32_t tint)
 {
-	RlwCmdTexQuad(text.tex, x - text.pad, y - text.pad, tint);
+	Rect area = {x - text.pad, y - text.pad, x + text.w + text.pad - 1, y + text.h + text.pad - 1};
+	_map_draw.Image(text.tex, area, FULL_UV, 0, tint);
 }
 
 void Canvas::DrawText(std::string_view text, int x, int y, uint32_t tint)
@@ -176,7 +178,7 @@ std::optional<CanvasText> Canvas::Render(std::string_view text) const
 		uint32_t a = std::max({(px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF});
 		px = (a << 24) | 0x00FFFFFFU;
 	}
-	return CanvasText{RlwCreateTexture(buf.data(), bw, bh), w, h, pad, 0};
+	return CanvasText{_textures.Add(buf, Dimension(bw, bh)), w, h, pad, 0};
 }
 
 void Canvas::PruneText()
@@ -184,7 +186,7 @@ void Canvas::PruneText()
 	if ((this->frame & TEXT_PRUNE_INTERVAL_MASK) != 0) return;
 	for (auto it = this->texts.begin(); it != this->texts.end();) {
 		if (this->frame - it->second.last_use > TEXT_IDLE_FRAMES) {
-			RlwFreeTexture(it->second.tex);
+			_textures.Remove(it->second.tex);
 			it = this->texts.erase(it);
 		} else {
 			++it;

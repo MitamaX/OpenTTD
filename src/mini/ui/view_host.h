@@ -32,8 +32,8 @@ public:
 	const Panel *Front() const { return this->panels.Front(); }
 
 	bool IsTyping() const { return this->layer.IsTyping(); }
-	bool ProcessKey(uint keycode);
-	bool ProcessText(char32_t character);
+	bool ProcessKey(uint keycode, char32_t character);
+	bool ProcessText(std::string_view text, bool marked);
 
 private:
 	bool Attach();

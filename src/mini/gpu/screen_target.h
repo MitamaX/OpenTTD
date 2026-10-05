@@ -5,26 +5,28 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file rml_renderer.h The upstream GL3 renderer, with the game's screen texture as one more image source. */
+/** @file screen_target.h The framebuffer the game paints its own screen into while the mini UI is up. */
 
-#ifndef MINI_UI_RML_RENDERER_H
-#define MINI_UI_RML_RENDERER_H
+#ifndef MINI_GPU_SCREEN_TARGET_H
+#define MINI_GPU_SCREEN_TARGET_H
 
-#include <RmlUi_Renderer_GL3.h>
+#include "texture_store.h"
 
-#include "../gpu/gpu_frame.h"
-
-class RmlRenderer final : public RenderInterface_GL3 {
+class ScreenTarget {
 public:
-	static constexpr const char SCREEN_SOURCE[] = "?screen";
+	bool Bind(Dimension size);
+	void Unbind() const;
+	void Release();
 
-	void SyncScreenTexture();
-
-	Rml::TextureHandle LoadTexture(Rml::Vector2i &texture_dimensions, const Rml::String &source) override;
-	void ReleaseTexture(Rml::TextureHandle texture_handle) override;
+	TextureId Texture() const { return this->texture; }
+	Dimension Size() const { return this->size; }
 
 private:
-	ScreenImage lent_screen{};
+	bool Build(Dimension size);
+
+	uint32_t framebuffer = 0;
+	TextureId texture = NO_TEXTURE;
+	Dimension size{};
 };
 
-#endif /* MINI_UI_RML_RENDERER_H */
+#endif /* MINI_GPU_SCREEN_TARGET_H */

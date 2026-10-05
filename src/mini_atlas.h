@@ -37,7 +37,6 @@ enum class MiniSprite : uint8_t {
 
 void MiniAtlasEnsure();
 void MiniAtlasReload();
-void MiniAtlasReset();
 bool MiniAtlasHasArt(MiniSprite sprite);
 bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t argb);
 bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, int angle_deg, uint32_t argb);

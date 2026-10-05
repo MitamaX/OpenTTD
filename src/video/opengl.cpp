@@ -35,6 +35,7 @@
 #include "../blitter/factory.hpp"
 #include "../zoom_func.h"
 #include "../core/string_consumer.hpp"
+#include "../mini_ui.h"
 
 #include "../table/opengl_shader.h"
 #include "../table/sprites.h"
@@ -492,6 +493,8 @@ OpenGLBackend::OpenGLBackend() : cursor_cache(MAX_CACHED_CURSORS)
  */
 OpenGLBackend::~OpenGLBackend()
 {
+	MiniUiReleaseGraphics();
+
 	if (_glDeleteProgram != nullptr) {
 		_glDeleteProgram(this->remap_program);
 		_glDeleteProgram(this->vid_program);
@@ -1038,6 +1041,8 @@ void OpenGLBackend::UpdatePalette(const Colour *pal, uint first, uint length)
  */
 void OpenGLBackend::Paint()
 {
+	bool mini = MiniUiBeginPaint();
+
 	_glClear(GL_COLOR_BUFFER_BIT);
 
 	_glDisable(GL_BLEND);
@@ -1063,6 +1068,8 @@ void OpenGLBackend::Paint()
 	_glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
 	_glEnable(GL_BLEND);
+
+	if (mini) MiniUiEndPaint();
 }
 
 /**

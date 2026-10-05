@@ -10,11 +10,22 @@
 #include "../../stdafx.h"
 #include "rml_interfaces.h"
 
+#include <RmlUi/Core/StringUtilities.h>
+#include <RmlUi/Core/TextInputContext.h>
+
 #include "../../debug.h"
 #include "../../fileio_func.h"
-#include "../../video/raylib_wrap.h"
+#include "../../video/video_driver.hpp"
+#include "../../window_func.h"
 
 #include "../../safeguards.h"
+
+std::optional<std::string> GetClipboardContents();
+
+static Rml::StringView RmlView(std::string_view text)
+{
+	return Rml::StringView(text.data(), text.data() + text.size());
+}
 
 Rml::FileHandle RmlFileInterface::Open(const Rml::String &path)
 {
@@ -63,19 +74,31 @@ bool RmlSystemInterface::LogMessage(Rml::Log::Type type, const Rml::String &mess
 	return true;
 }
 
-void RmlSystemInterface::SetClipboardText(const Rml::String &text)
-{
-	RlwSetClipboardText(text.c_str());
-}
-
+/* The game only reads the system clipboard, so pasting reaches it and copying stays inside RmlUi. */
 void RmlSystemInterface::GetClipboardText(Rml::String &text)
 {
-	text = RlwClipboardText();
+	text = GetClipboardContents().value_or(Rml::String());
 }
 
+/* An input method's unfinished text sits in the field as a marked range that each update replaces. */
+void RmlTextInputHandler::Compose(std::string_view text)
+{
+	if (this->active == nullptr) return;
+	if (!this->composing) this->active->GetSelectionRange(this->composition_start, this->composition_end);
+
+	this->active->SetText(RmlView(text), this->composition_start, this->composition_end);
+	this->composition_end = this->composition_start + static_cast<int>(Rml::StringUtilities::LengthUTF8(RmlView(text)));
+	this->composing = this->composition_end > this->composition_start;
+	this->active->SetCompositionRange(this->composition_start, this->composition_end);
+	this->active->SetCursorPosition(this->composition_end);
+}
+
+/* The driver only delivers composed and translated text while it believes an edit box has focus. */
 void RmlTextInputHandler::OnActivate(Rml::TextInputContext *input_context)
 {
 	this->active = input_context;
+	this->composing = false;
+	VideoDriver::GetInstance()->EditBoxGainedFocus();
 }
 
 void RmlTextInputHandler::OnDeactivate(Rml::TextInputContext *input_context)
@@ -90,5 +113,8 @@ void RmlTextInputHandler::OnDestroy(Rml::TextInputContext *input_context)
 
 void RmlTextInputHandler::Release(const Rml::TextInputContext *input_context)
 {
-	if (this->active == input_context) this->active = nullptr;
+	if (this->active != input_context) return;
+	this->active = nullptr;
+	this->composing = false;
+	if (!EditBoxInGlobalFocus()) VideoDriver::GetInstance()->EditBoxLostFocus();
 }

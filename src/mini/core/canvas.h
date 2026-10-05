@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file canvas.h Shapes and text the mini UI records into the raylib command buffer. */
+/** @file canvas.h Shapes and text the mini UI records into the map draw list. */
 
 #ifndef MINI_CORE_CANVAS_H
 #define MINI_CORE_CANVAS_H
@@ -18,9 +18,10 @@
 #include "../../core/geometry_type.hpp"
 #include "../../gfx_type.h"
 #include "../../mini_atlas.h"
+#include "../gpu/draw_list.h"
 
 struct CanvasText {
-	int tex;
+	TextureId tex;
 	int w;
 	int h;
 	int pad;
@@ -65,5 +66,6 @@ private:
 };
 
 extern Canvas _canvas;
+extern DrawList _map_draw;
 
 #endif /* MINI_CORE_CANVAS_H */

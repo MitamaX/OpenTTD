@@ -15,6 +15,7 @@
 #include <RmlUi/Core/TextInputHandler.h>
 
 #include <chrono>
+#include <string_view>
 #include <unordered_map>
 
 #include "../../fileio_type.h"
@@ -38,7 +39,6 @@ class RmlSystemInterface final : public Rml::SystemInterface {
 public:
 	double GetElapsedTime() override;
 	bool LogMessage(Rml::Log::Type type, const Rml::String &message) override;
-	void SetClipboardText(const Rml::String &text) override;
 	void GetClipboardText(Rml::String &text) override;
 
 private:
@@ -48,6 +48,7 @@ private:
 class RmlTextInputHandler final : public Rml::TextInputHandler {
 public:
 	bool IsActive() const { return this->active != nullptr; }
+	void Compose(std::string_view text);
 
 	void OnActivate(Rml::TextInputContext *input_context) override;
 	void OnDeactivate(Rml::TextInputContext *input_context) override;
@@ -56,7 +57,10 @@ public:
 private:
 	void Release(const Rml::TextInputContext *input_context);
 
-	const Rml::TextInputContext *active = nullptr;
+	Rml::TextInputContext *active = nullptr;
+	int composition_start = 0;
+	int composition_end = 0;
+	bool composing = false;
 };
 
 #endif /* MINI_UI_RML_INTERFACES_H */

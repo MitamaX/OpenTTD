@@ -14,7 +14,6 @@
 #include "../../core/math_func.hpp"
 #include "../../landscape.h"
 #include "../../slope_func.h"
-#include "../../video/raylib_wrap.h"
 #include "../core/canvas.h"
 #include "../core/tones.h"
 #include "../core/tuning.h"
@@ -116,5 +115,5 @@ void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
 		int z = GetSlopeZInCorner(s, cn);
 		return _canvas.Tone(special ? Mix(flat, COL_SHADOW, std::min(255, _tuning.relief_strength * z)) : RampLerp(hbase + z));
 	};
-	RlwCmdGradientRect(x0, y0, x1, y1, corner(CORNER_N), corner(CORNER_E), corner(CORNER_W), corner(CORNER_S));
+	_map_draw.FillGradient(x0, y0, x1, y1, corner(CORNER_N), corner(CORNER_E), corner(CORNER_W), corner(CORNER_S));
 }

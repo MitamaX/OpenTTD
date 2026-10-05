@@ -5,22 +5,23 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file rml_layer.h The RmlUi context the raylib driver composites over the mini UI. */
+/** @file rml_layer.h The RmlUi context composited over the mini UI map. */
 
 #ifndef MINI_UI_RML_LAYER_H
 #define MINI_UI_RML_LAYER_H
 
 #include <array>
 #include <memory>
+#include <string_view>
 
-#include "../../video/raylib_wrap.h"
+#include "../gpu/gpu_frame.h"
 #include "rml_input.h"
 #include "rml_interfaces.h"
 
 namespace Rml { class Context; class Element; }
 class RmlRenderer;
 
-class RmlLayer final : public RlwLayer {
+class RmlLayer final : public ScreenLayer {
 public:
 	RmlLayer();
 	~RmlLayer() override;
@@ -28,7 +29,7 @@ public:
 	Rml::Context *Acquire();
 	Rml::Context *Current() const { return this->context; }
 	void Update(int width, int height, float dp_ratio);
-	void Render(int width, int height) override;
+	void Render(Dimension screen) override;
 	void Detach() override;
 
 	void TrackPointer(const RmlPointer &pointer);
@@ -37,7 +38,8 @@ public:
 
 	bool IsTyping() const { return this->text_input.IsActive(); }
 	void ProcessKey(const RmlKey &key);
-	void ProcessText(char32_t character);
+	void ProcessText(std::string_view text);
+	void Compose(std::string_view text);
 
 private:
 	void Start();

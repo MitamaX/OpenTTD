@@ -327,14 +327,6 @@ if(NOT OPTION_DEDICATED)
     link_package(ICU_i18n)
     link_package(ICU_uc)
     link_package(OpusFile TARGET OpusFile::opusfile)
-    link_package(raylib TARGET raylib)
-
-    if(WIN32 AND raylib_FOUND)
-        add_custom_command(TARGET openttd POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:raylib> $<PATH:REPLACE_FILENAME,$<TARGET_FILE:raylib>,glfw3.dll> $<TARGET_FILE_DIR:openttd>
-        )
-    endif()
 
     if(SDL2_FOUND AND OPENGL_FOUND AND UNIX)
         # SDL2 dynamically loads OpenGL if needed, so do not link to OpenGL when

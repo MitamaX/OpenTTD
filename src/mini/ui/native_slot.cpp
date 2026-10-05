@@ -28,5 +28,8 @@ void NativeSlot::OnRender()
 
 	Rml::Rectanglei rect = this->ScreenRect();
 	Rml::Vector2f texels(Rml::Math::Max(this->screen.GetDimensions(), Rml::Vector2i(1)));
-	this->RenderTexture(rect, this->screen, Rml::Vector2f(rect.TopLeft()) / texels, Rml::Vector2f(rect.BottomRight()) / texels);
+	Rml::Vector2f top_left = Rml::Vector2f(rect.TopLeft()) / texels;
+	Rml::Vector2f bottom_right = Rml::Vector2f(rect.BottomRight()) / texels;
+	/* The screen texture's rows run bottom up. */
+	this->RenderTexture(rect, this->screen, {top_left.x, 1.0f - top_left.y}, {bottom_right.x, 1.0f - bottom_right.y});
 }

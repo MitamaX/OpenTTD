@@ -17,7 +17,6 @@
 #include "../../station_base.h"
 #include "../../strings_func.h"
 #include "../../town.h"
-#include "../../video/raylib_wrap.h"
 #include "../../mini_ui.h"
 #include "../core/camera.h"
 #include "../core/canvas.h"
@@ -103,10 +102,10 @@ void MapLabels::Place(int cx, int cy, std::string_view str, uint32_t fill, bool 
 	int h = GetCharacterHeight(FS_NORMAL) + 2 * PLATE_PAD;
 	Rect r = {cx - w / 2, cy - h - 3, cx - w / 2 + w - 1, cy - 4};
 	if (transparent) {
-		RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, PLATE_PAD, (fill & 0x00FFFFFFU) | 0xAA000000U);
+		_map_draw.FillRoundRect(r.left, r.top, r.right, r.bottom, PLATE_PAD, (fill & 0x00FFFFFFU) | 0xAA000000U);
 	} else {
-		RlwCmdRoundRect(r.left, r.top, r.right, r.bottom, PLATE_PAD, MINI_CH_EDGE);
-		RlwCmdRoundRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, PLATE_PAD, fill);
+		_map_draw.FillRoundRect(r.left, r.top, r.right, r.bottom, PLATE_PAD, MINI_CH_EDGE);
+		_map_draw.FillRoundRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, PLATE_PAD, fill);
 	}
 	if (e != nullptr) _canvas.DrawText(*e, r.left + PLATE_PAD, r.top + PLATE_PAD, TextTint(tc));
 	this->plates.push_back({r, target});

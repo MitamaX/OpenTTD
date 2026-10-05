@@ -1,0 +1,16 @@
+add_files(
+    art_image.cpp
+    art_image.h
+    draw_list.cpp
+    draw_list.h
+    draw_pass.cpp
+    draw_pass.h
+    gl_api.cpp
+    gl_api.h
+    gpu_frame.cpp
+    gpu_frame.h
+    screen_target.cpp
+    screen_target.h
+    texture_store.cpp
+    texture_store.h
+)

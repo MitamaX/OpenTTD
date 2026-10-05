@@ -1,6 +1,7 @@
 add_subdirectory(core)
 add_subdirectory(dock)
 add_subdirectory(fleet)
+add_subdirectory(gpu)
 add_subdirectory(hud)
 add_subdirectory(input)
 add_subdirectory(map)

@@ -12,6 +12,8 @@
 
 #include <RmlUi/Core.h>
 
+#include "../../core/utf8.hpp"
+#include "../../string_func.h"
 #include "ledger.h"
 #include "menu_tile.h"
 #include "native_slot.h"
@@ -128,17 +130,26 @@ bool ViewHost::PointerOverSlot() const
 	return hovered != nullptr && hovered->GetTagName() == NativeSlot::TAG;
 }
 
-bool ViewHost::ProcessKey(uint keycode)
+/* Drivers that translate key presses hand the character over with the key; the others send it as text. */
+bool ViewHost::ProcessKey(uint keycode, char32_t character)
 {
 	if (!this->IsTyping()) return false;
 	this->layer.ProcessKey(RmlKey::FromKeycode(keycode));
+	if (IsValidChar(character, CS_ALPHANUMERAL)) {
+		auto [buffer, length] = EncodeUtf8(character);
+		this->layer.ProcessText(std::string_view(buffer, length));
+	}
 	return true;
 }
 
-bool ViewHost::ProcessText(char32_t character)
+bool ViewHost::ProcessText(std::string_view text, bool marked)
 {
 	if (!this->IsTyping()) return false;
-	this->layer.ProcessText(character);
+	if (marked) {
+		this->layer.Compose(text);
+	} else {
+		this->layer.ProcessText(text);
+	}
 	return true;
 }
 

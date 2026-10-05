@@ -61,6 +61,7 @@
 #include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
+#include "mini/gpu/gpu_frame.h"
 #include "mini/hud/build_dock.h"
 #include "mini/hud/clear_panel.h"
 #include "mini/hud/colony_panel.h"
@@ -156,7 +157,6 @@
 #include "vehicle_func.h"
 #include "vehicle_gui.h"
 #include "vehiclelist.h"
-#include "video/video_driver.hpp"
 #include "viewport_func.h"
 #include "water_map.h"
 #include "window_func.h"
@@ -168,8 +168,8 @@
 
 static bool _mini_active = false;
 
-/* Mini UI frame size in pixels; drawing goes through the raylib command
- * buffer, so this only mirrors the screen dimensions. */
+/* Mini UI frame size in pixels; drawing goes through the map draw list, so
+ * this only mirrors the screen dimensions. */
 static int _fbw, _fbh;
 
 static bool _prev_left = false;
@@ -529,7 +529,6 @@ static void Present()
 	 * A window the mini UI opened goes with it; an adopted one is handed back. */
 	_dock.Sweep();
 	_dock.Stack(WantedNativeOrder());
-	VideoDriver::GetInstance()->MakeDirty(0, 0, _fbw, _fbh);
 }
 
 static void Deactivate()
@@ -567,7 +566,7 @@ void MiniUiToggle()
 	}
 	if (_game_mode != GM_NORMAL && _game_mode != GM_EDITOR) return;
 	if (BlitterFactory::GetCurrentBlitter()->GetScreenDepth() != 32) return;
-	if (VideoDriver::GetInstance()->GetName() != "raylib") return;
+	if (!_gpu.Available()) return;
 
 	_tuning.Load();
 	MiniAtlasReload();
@@ -626,15 +625,33 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	return true;
 }
 
-void MiniUiOverlayRects(std::vector<RlwRectI> &rects)
+/* A docked window reaches the screen only through its panel slot; drawing it
+ * whole would show the part that reaches past the slot through the chrome. */
+static std::vector<Rect> FloatingNativeRects()
 {
-	if (!_mini_active) return;
+	std::vector<Rect> rects;
 	for (const Window *w : Window::IterateFromBack()) {
-		if (MiniUiHidesWindow(w->window_class)) continue;
-		/* A docked window reaches the screen only through its panel slot; blitting
-		 * it would show the part that reaches past the slot through the chrome. */
-		rects.push_back({w->left, w->top, w->width, w->height, _dock.Docks(w)});
+		if (MiniUiHidesWindow(w->window_class) || _dock.Docks(w)) continue;
+		rects.push_back({w->left, w->top, w->left + w->width - 1, w->top + w->height - 1});
 	}
+	return rects;
+}
+
+/* The game's OpenGL back-end paints its own screen between these two; while the
+ * mini UI is up that paint lands in a texture the frame composes from. */
+bool MiniUiBeginPaint()
+{
+	return _gpu.BeginPaint(Dimension(_screen.width, _screen.height), _mini_active);
+}
+
+void MiniUiEndPaint()
+{
+	_gpu.Compose(_map_draw, FloatingNativeRects());
+}
+
+void MiniUiReleaseGraphics()
+{
+	_gpu.Release();
 }
 
 void MiniUiScrollTo(int x, int y)
@@ -746,7 +763,7 @@ static void UnwindEscape()
 	_window_shelf.Close();
 }
 
-bool MiniUiHandleKeypress(uint keycode, char32_t)
+bool MiniUiHandleKeypress(uint keycode, char32_t key)
 {
 	uint kc = keycode & ~WKC_SPECIAL_KEYS;
 
@@ -760,7 +777,7 @@ bool MiniUiHandleKeypress(uint keycode, char32_t)
 
 	/* An open rename field owns the keyboard; letting the shortcuts through
 	 * would rotate blueprints while typing a name. */
-	if (kc != WKC_F9 && _views.ProcessKey(keycode)) return true;
+	if (kc != WKC_F9 && _views.ProcessKey(keycode, key)) return true;
 
 	/* A native edit box holding the game focus owns the keyboard too, or a
 	 * wrapped popup could never be typed into. */
@@ -797,9 +814,9 @@ bool MiniUiTyping()
 	return _mini_active && _views.IsTyping();
 }
 
-bool MiniUiHandleTextInput(char32_t character)
+bool MiniUiHandleTextInput(std::string_view text, bool marked)
 {
-	return _mini_active && _views.ProcessText(character);
+	return _mini_active && _views.ProcessText(text, marked);
 }
 
 void MiniUiFrame(uint delta_ms)
@@ -830,7 +847,7 @@ void MiniUiFrame(uint delta_ms)
 	_vehicle_motion.Advance(delta_ms);
 	_toast_feed.Age(delta_ms);
 	if (VehicleID built = _deploy.Step(); built != VehicleID::Invalid()) OpenVehicleWindow(built);
-	RlwCmdClear();
+	_map_draw.Clear();
 
 	_camera.Update(delta_ms, _mode.FollowTarget());
 
