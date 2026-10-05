@@ -13,6 +13,8 @@ add_files(
     menu_tile.cpp
     menu_tile.h
     model_tag.h
+    native_floats.cpp
+    native_floats.h
     native_slot.cpp
     native_slot.h
     panel.cpp

@@ -5,28 +5,26 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file screen_target.h The framebuffer the game paints its own screen into while the mini UI is up. */
+/** @file native_floats.h The topmost RmlUi document: a native slot over every official window that floats free of the panels. */
 
-#ifndef MINI_GPU_SCREEN_TARGET_H
-#define MINI_GPU_SCREEN_TARGET_H
+#ifndef MINI_UI_NATIVE_FLOATS_H
+#define MINI_UI_NATIVE_FLOATS_H
 
-#include "texture_store.h"
+#include <span>
+#include <vector>
 
-class ScreenTarget {
+#include "../../core/geometry_type.hpp"
+
+namespace Rml { class Context; class Element; class ElementDocument; }
+
+class NativeFloats {
 public:
-	bool Bind(Dimension size);
-	void Unbind() const;
-	void Release();
-
-	TextureId Texture() const { return this->texture; }
-	Dimension Size() const { return this->size; }
+	void Reset(Rml::Context *context);
+	void Show(std::span<const Rect> windows);
 
 private:
-	bool Build(Dimension size);
-
-	uint32_t framebuffer = 0;
-	TextureId texture = NO_TEXTURE;
-	Dimension size{};
+	Rml::ElementDocument *document = nullptr;
+	std::vector<Rml::Element *> slots;
 };
 
-#endif /* MINI_GPU_SCREEN_TARGET_H */
+#endif /* MINI_UI_NATIVE_FLOATS_H */

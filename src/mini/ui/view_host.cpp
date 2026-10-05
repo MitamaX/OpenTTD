@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file view_host.cpp The RmlUi layer with everything drawn on it: the HUD below, the panels above. */
+/** @file view_host.cpp The RmlUi layer with everything drawn on it: the HUD with the map at its foot, the panels above, the floating native windows on top. */
 
 #include "../../stdafx.h"
 #include "view_host.h"
@@ -76,13 +76,14 @@ ViewHost::ViewHost(std::vector<std::unique_ptr<HudPart>> hud_parts) : hud(std::m
 {
 }
 
-void ViewHost::Frame(int width, int height, float dp_ratio, int dock_top)
+void ViewHost::Frame(int width, int height, float dp_ratio, int dock_top, std::span<const Rect> floating)
 {
 	this->panels.SetBounds({Rml::Vector2f(static_cast<float>(width), static_cast<float>(height)), dp_ratio, static_cast<float>(dock_top)});
 	if (!this->Attach()) return;
 
 	this->hud.Refresh();
 	this->panels.Refresh();
+	this->floats.Show(floating);
 	this->layer.Update(width, height, dp_ratio);
 	this->panels.Confine();
 	this->panels.Settle();
@@ -115,12 +116,14 @@ void ViewHost::ReloadDesign()
 	this->hud.ReloadStyleSheet();
 }
 
-/* The map lies at the foot of the HUD, so only what rises above it counts as a hit. */
-LayerHit ViewHost::HitAt(int x, int y) const
+/* RmlUi alone says what lies under the pointer. A native slot hands it to the
+ * official window it shows; a slot that only shows a camera takes no pointer,
+ * so the panel around it keeps the click. */
+PointerLayer ViewHost::LayerAt(int x, int y) const
 {
 	const Rml::Element *element = this->layer.ElementAt(x, y);
-	if (element == nullptr || element->GetTagName() == MapView::TAG) return LayerHit::Nothing;
-	return element->GetTagName() == NativeSlot::TAG ? LayerHit::Slot : LayerHit::Element;
+	if (element == nullptr || element->GetTagName() == MapView::TAG) return PointerLayer::Map;
+	return element->GetTagName() == NativeSlot::TAG ? PointerLayer::Native : PointerLayer::Panel;
 }
 
 void ViewHost::FeedPointer()
@@ -173,4 +176,5 @@ void ViewHost::Sync()
 	if (current != nullptr) RegisterViewTypes(*current);
 	this->panels.Reset(current);
 	this->hud.Reset(current);
+	this->floats.Reset(current);
 }

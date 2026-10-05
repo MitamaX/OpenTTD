@@ -25,8 +25,8 @@ bool GpuFrame::BeginPaint(Dimension screen, bool capture)
 	return capture && LoadGl() && this->target.Bind(screen);
 }
 
-/* Bottom to top: the RmlUi layer with the map at its foot, then the native windows that float free of any panel. */
-void GpuFrame::Compose(std::span<const Rect> floating)
+/* The layer draws the whole frame: the map at its foot, the native windows that float free of any panel on top. */
+void GpuFrame::Compose()
 {
 	Dimension size = this->target.Size();
 	this->target.Unbind();
@@ -36,7 +36,6 @@ void GpuFrame::Compose(std::span<const Rect> floating)
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	if (this->layer != nullptr) this->layer->Render(size);
-	for (const Rect &rect : floating) this->target.Blit(rect);
 }
 
 /* The back-end is going away with its context; everything made in it goes first. */

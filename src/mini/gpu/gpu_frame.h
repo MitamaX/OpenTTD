@@ -10,12 +10,10 @@
 #ifndef MINI_GPU_GPU_FRAME_H
 #define MINI_GPU_GPU_FRAME_H
 
-#include <span>
-
 #include "screen_target.h"
 
-/* A layer drawn under the native popups. It is detached while the GL
- * context still lives, so it can free what it holds. */
+/* The layer every frame is drawn in. It is detached while the GL context
+ * still lives, so it can free what it holds. */
 class ScreenLayer {
 public:
 	virtual ~ScreenLayer() = default;
@@ -27,7 +25,7 @@ class GpuFrame {
 public:
 	bool Available() const { return this->available; }
 	bool BeginPaint(Dimension screen, bool capture);
-	void Compose(std::span<const Rect> floating);
+	void Compose();
 	void Release();
 
 	void Attach(ScreenLayer *layer) { this->layer = layer; }

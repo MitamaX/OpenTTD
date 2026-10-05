@@ -56,7 +56,6 @@
 #include "mini/core/canvas.h"
 #include "mini/core/tones.h"
 #include "mini/core/tuning.h"
-#include "mini/dock/carrier.h"
 #include "mini/dock/native_dock.h"
 #include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
@@ -525,12 +524,30 @@ bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 	return true;
 }
 
+/* A docked window reaches the screen only through its panel slot; showing it
+ * whole would show the part that reaches past the slot through the chrome. A
+ * window that wears mini chrome is in a panel by the time the frame is drawn,
+ * even when this frame is the one that adopts it. */
+static bool Floats(const Window *w)
+{
+	return !MiniUiHidesWindow(w->window_class) && !_dock.Docks(w) && !NativeWrappable(w);
+}
+
+static std::vector<Rect> FloatingNativeRects()
+{
+	std::vector<Rect> rects;
+	for (const Window *w : Window::IterateFromBack()) {
+		if (Floats(w)) rects.push_back({w->left, w->top, w->left + w->width - 1, w->top + w->height - 1});
+	}
+	return rects;
+}
+
 static void Present()
 {
 	_map_labels.Paint(_camera.TilePixels());
 	_dock.Unmark();
 	NativePanel::AdoptAll(_views);
-	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, WindowBarBottom());
+	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, WindowBarBottom(), FloatingNativeRects());
 	/* An embed whose slot went away this frame has nothing left to draw into.
 	 * A window the mini UI opened goes with it; an adopted one is handed back. */
 	_dock.Sweep();
@@ -630,22 +647,6 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 	return true;
 }
 
-/* A docked window reaches the screen only through its panel slot; drawing it
- * whole would show the part that reaches past the slot through the chrome. */
-static bool Floats(const Window *w)
-{
-	return !MiniUiHidesWindow(w->window_class) && !_dock.Docks(w);
-}
-
-static std::vector<Rect> FloatingNativeRects()
-{
-	std::vector<Rect> rects;
-	for (const Window *w : Window::IterateFromBack()) {
-		if (Floats(w)) rects.push_back({w->left, w->top, w->left + w->width - 1, w->top + w->height - 1});
-	}
-	return rects;
-}
-
 /* The game's OpenGL back-end paints its own screen between these two; while the
  * mini UI is up that paint lands in a texture the frame composes from. */
 bool MiniUiBeginPaint()
@@ -655,7 +656,7 @@ bool MiniUiBeginPaint()
 
 void MiniUiEndPaint()
 {
-	_gpu.Compose(FloatingNativeRects());
+	_gpu.Compose();
 }
 
 void MiniUiReleaseGraphics()
@@ -668,33 +669,6 @@ void MiniUiScrollTo(int x, int y)
 	_mode.Unfollow();
 	if (!_mini_active) return;
 	_camera.GlideTo(x / (double)TILE_SIZE, y / (double)TILE_SIZE);
-}
-
-/* Floating native windows are drawn over everything, so they are first in line. */
-static bool FloatingNativeAt(int x, int y)
-{
-	for (const Window *w : Window::IterateFromFront()) {
-		if (Floats(w) && IsInsideBS(x, w->left, w->width) && IsInsideBS(y, w->top, w->height)) return true;
-	}
-	return false;
-}
-
-/* A slot hands the pointer to the native window docked in it; a carrier only
- * shows the camera, so a click there stays with the panel around it. */
-static PointerLayer LayerUnder(int x, int y)
-{
-	if (FloatingNativeAt(x, y)) return PointerLayer::Native;
-	switch (_views.HitAt(x, y)) {
-		case LayerHit::Nothing:
-			return PointerLayer::Map;
-		case LayerHit::Element:
-			return PointerLayer::Panel;
-		case LayerHit::Slot: {
-			const Window *w = FindWindowFromPt(x, y);
-			return w != nullptr && _dock.Find(w) != nullptr && !IsCarrier(w) ? PointerLayer::Native : PointerLayer::Panel;
-		}
-	}
-	NOT_REACHED();
 }
 
 /* An event the mini UI handled is spent: a native window the pointer reaches
@@ -715,7 +689,7 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 {
 	if (!_mini_active) return false;
 
-	PointerLayer under = native_capture ? PointerLayer::Native : LayerUnder(_cursor.pos.x, _cursor.pos.y);
+	PointerLayer under = native_capture ? PointerLayer::Native : _views.LayerAt(_cursor.pos.x, _cursor.pos.y);
 	if (_pointer.Route(under) == PointerLayer::Native) {
 		_views.LeavePointer(_left_button_down || _right_button_down || _middle_button_down);
 		return false;

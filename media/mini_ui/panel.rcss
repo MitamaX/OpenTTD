@@ -131,6 +131,7 @@ body.wide {
 	flex-shrink: 0;
 	height: 100dp;
 	margin: 0dp 8dp;
+	pointer-events: none;
 }
 
 .embed {

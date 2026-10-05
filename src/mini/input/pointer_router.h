@@ -12,8 +12,9 @@
 
 #include <optional>
 
-/* Top to bottom, the way the frame is drawn: native windows floating free of
- * any panel, the RmlUi layer with the native windows its panels show, the map. */
+/* What RmlUi finds under the pointer: a native slot passes it on to the
+ * official window it shows, the map lies at the foot of the HUD, and every
+ * other element belongs to a panel or the HUD. */
 enum class PointerLayer : uint8_t {
 	Native,
 	Panel,
@@ -21,7 +22,7 @@ enum class PointerLayer : uint8_t {
 };
 
 /* Whoever a press started on keeps the mouse until every button is up, so a
- * dragged panel or a map drag never hands events to what it passes over. */
+ * native drag never reaches RmlUi and the map acts on no press it did not start. */
 class PointerRouter {
 public:
 	PointerLayer Route(PointerLayer under);

@@ -1,4 +1,6 @@
 set(MINI_UI_SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/floats.rcss
+        ${CMAKE_CURRENT_SOURCE_DIR}/floats.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/hud.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/hud.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/abandon.svg

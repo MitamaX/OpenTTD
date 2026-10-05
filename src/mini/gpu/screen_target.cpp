@@ -33,21 +33,6 @@ void ScreenTarget::Unbind() const
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-/* The framebuffer and the window both run their rows bottom up, so a rectangle copies straight across; what lies off the screen is left out. */
-void ScreenTarget::Blit(const Rect &rect) const
-{
-	int height = static_cast<int>(this->size.height);
-	int left = std::max(rect.left, 0);
-	int right = std::min(rect.right + 1, static_cast<int>(this->size.width));
-	int bottom = std::max(height - rect.bottom - 1, 0);
-	int top = std::min(height - rect.top, height);
-	if (left >= right || bottom >= top) return;
-
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, this->framebuffer);
-	glBlitFramebuffer(left, bottom, right, top, left, bottom, right, top, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-}
-
 void ScreenTarget::Release()
 {
 	glDeleteFramebuffers(1, &this->framebuffer);
