@@ -78,10 +78,9 @@ SubsidyListPanel::SubsidyListPanel() : LedgerPanel("subsidies", "보조금", {"�
 {
 }
 
-void SubsidyListPanel::Collect()
+void SubsidyListPanel::Fill()
 {
 	bool awarded = this->tab == SLT_AWARDED;
-	this->sections.clear();
 	LedgerSection &list = this->Section();
 	for (const Subsidy *subsidy : Subsidy::Iterate()) {
 		if (subsidy->IsAwarded() == awarded) list.Add(SubsidyLine(*subsidy));

@@ -18,7 +18,10 @@ protected:
 	LedgerPanel(std::string key, Rml::String title, Rml::Vector<Rml::String> tabs);
 
 	void BindSheet(Rml::DataModelConstructor &model) override;
+	void Collect() override;
 	void Apply(const Rml::String &key, std::string text) override;
+
+	virtual void Fill() = 0;
 
 	LedgerSection &Section(Rml::String title = {});
 

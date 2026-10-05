@@ -17,7 +17,7 @@ public:
 	SubsidyListPanel();
 
 private:
-	void Collect() override;
+	void Fill() override;
 };
 
 #endif /* MINI_WINDOWS_SUBSIDY_LIST_PANEL_H */

@@ -20,7 +20,7 @@ public:
 	static Rml::String EditKey(SignID sign);
 
 private:
-	void Collect() override;
+	void Fill() override;
 };
 
 #endif /* MINI_WINDOWS_SIGN_LIST_PANEL_H */

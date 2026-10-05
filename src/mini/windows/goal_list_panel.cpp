@@ -62,10 +62,9 @@ GoalListPanel::GoalListPanel() : LedgerPanel("goals", "목표", {"회사", "전�
 {
 }
 
-void GoalListPanel::Collect()
+void GoalListPanel::Fill()
 {
 	CompanyID owner = this->tab == GLT_GLOBAL ? CompanyID::Invalid() : _local_company;
-	this->sections.clear();
 	LedgerSection &list = this->Section();
 	for (const Goal *goal : Goal::Iterate()) {
 		if (goal->company == owner) list.Add(GoalLine(*goal));

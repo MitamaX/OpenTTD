@@ -21,7 +21,7 @@ public:
 	bool IsAlive() const override;
 
 private:
-	void Collect() override;
+	void Fill() override;
 	Money Price() const;
 
 	const CompanyID company;

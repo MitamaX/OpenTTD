@@ -36,9 +36,8 @@ NewsListPanel::NewsListPanel() : LedgerPanel("news", "소식", {"전체", "조�
 {
 }
 
-void NewsListPanel::Collect()
+void NewsListPanel::Fill()
 {
-	this->sections.clear();
 	LedgerSection &list = this->Section();
 	for (const NewsItem &item : GetNews()) {
 		if (this->tab == NLT_ADVICE && item.type != NewsType::Advice) continue;

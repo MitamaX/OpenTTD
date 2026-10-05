@@ -20,7 +20,7 @@ public:
 	bool IsAlive() const override;
 
 private:
-	void Collect() override;
+	void Fill() override;
 
 	const EngineID engine;
 };

@@ -45,13 +45,12 @@ Rml::String SignListPanel::EditKey(SignID sign)
 	return fmt::format("sign{}", sign.base());
 }
 
-void SignListPanel::Collect()
+void SignListPanel::Fill()
 {
 	std::vector<const Sign *> signs;
 	for (const Sign *sign : Sign::Iterate()) signs.push_back(sign);
 	std::ranges::sort(signs, std::less{}, &Sign::name);
 
-	this->sections.clear();
 	LedgerSection &list = this->Section();
 	if (signs.empty()) {
 		list.Add(LedgerLine::Text("표지판 없음. 토지 메뉴의 표지판 도구로 놓습니다", Tone::Dim));

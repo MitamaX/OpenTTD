@@ -85,9 +85,7 @@ void WindowPanel::Collect()
 	this->target = this->Embed();
 	this->camera = this->shot.has_value();
 	this->embedded = this->target.has_value();
-	this->sections.clear();
-	this->commands.clear();
-	this->Fill();
+	LedgerPanel::Collect();
 }
 
 void WindowPanel::AfterLayout()

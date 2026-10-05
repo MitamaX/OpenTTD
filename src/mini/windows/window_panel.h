@@ -36,7 +36,6 @@ protected:
 
 	virtual std::optional<CameraShot> Camera() const;
 	virtual std::optional<EmbedTarget> Embed() const;
-	virtual void Fill() = 0;
 
 private:
 	void Collect() final;

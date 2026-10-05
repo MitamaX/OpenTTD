@@ -20,14 +20,22 @@ enum DirectoryTab : int {
 	DT_GRADE,
 };
 
-DirectoryPanel::DirectoryPanel(std::string key, Rml::String title, Rml::String amount_tab, Rml::String grade_tab) :
-	LedgerPanel(std::move(key), std::move(title), {"이름", std::move(amount_tab), std::move(grade_tab)})
+static Rml::Vector<Rml::String> DirectoryTabs(Rml::String amount_tab, Rml::String grade_tab, Rml::Vector<Rml::String> more_tabs)
+{
+	Rml::Vector<Rml::String> tabs = {"이름", std::move(amount_tab), std::move(grade_tab)};
+	std::ranges::move(more_tabs, std::back_inserter(tabs));
+	return tabs;
+}
+
+DirectoryPanel::DirectoryPanel(std::string key, Rml::String title, Rml::String amount_tab, Rml::String grade_tab, Rml::Vector<Rml::String> more_tabs) :
+	WindowPanel(std::move(key), std::move(title), DirectoryTabs(std::move(amount_tab), std::move(grade_tab), std::move(more_tabs)))
 {
 }
 
-void DirectoryPanel::Collect()
+void DirectoryPanel::Fill()
 {
-	this->sections.clear();
+	if (this->tab > DT_GRADE) return;
+
 	LedgerSection &list = this->Section();
 
 	std::vector<DirectoryEntry> entries = this->Entries();

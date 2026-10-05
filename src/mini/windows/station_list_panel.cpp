@@ -67,9 +67,9 @@ bool StationListPanel::IsAlive() const
 	return Company::IsValidID(_local_company);
 }
 
-void StationListPanel::Collect()
+void StationListPanel::Fill()
 {
-	DirectoryPanel::Collect();
+	DirectoryPanel::Fill();
 	if (_mode.PickingOrders()) this->Section().Add(LedgerLine::Text("행 클릭으로 목적지 추가", Tone::Accent));
 }
 

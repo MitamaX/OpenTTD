@@ -21,9 +21,9 @@ public:
 	bool IsAlive() const override;
 
 private:
-	void Collect() override;
-	void CollectStanding(const Company &company);
-	void CollectYear(const Company &company);
+	void Fill() override;
+	void FillStanding(const Company &company);
+	void FillYear(const Company &company);
 };
 
 #endif /* MINI_WINDOWS_FINANCE_PANEL_H */

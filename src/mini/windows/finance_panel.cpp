@@ -60,15 +60,14 @@ bool FinancePanel::IsAlive() const
 	return Company::IsValidID(_local_company);
 }
 
-void FinancePanel::Collect()
+void FinancePanel::Fill()
 {
 	const Company &company = *Company::Get(_local_company);
 
-	this->sections.clear();
 	if (this->tab == FT_YEAR) {
-		this->CollectYear(company);
+		this->FillYear(company);
 	} else {
-		this->CollectStanding(company);
+		this->FillStanding(company);
 	}
 
 	this->commands = {
@@ -77,7 +76,7 @@ void FinancePanel::Collect()
 	};
 }
 
-void FinancePanel::CollectStanding(const Company &company)
+void FinancePanel::FillStanding(const Company &company)
 {
 	this->sections.push_back({{}, {
 		{GameText(STR_FINANCES_BANK_BALANCE_TITLE), Currency(company.money), Tone::Accent},
@@ -89,7 +88,7 @@ void FinancePanel::CollectStanding(const Company &company)
 	}});
 }
 
-void FinancePanel::CollectYear(const Company &company)
+void FinancePanel::FillYear(const Company &company)
 {
 	const Expenses &expenses = company.yearly_expenses[0];
 	Money year = 0;

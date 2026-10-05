@@ -17,7 +17,7 @@ public:
 	GoalListPanel();
 
 private:
-	void Collect() override;
+	void Fill() override;
 };
 
 #endif /* MINI_WINDOWS_GOAL_LIST_PANEL_H */

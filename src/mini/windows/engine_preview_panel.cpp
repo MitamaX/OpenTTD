@@ -32,9 +32,8 @@ bool EnginePreviewPanel::IsAlive() const
 	return e != nullptr && e->preview_company == _local_company;
 }
 
-void EnginePreviewPanel::Collect()
+void EnginePreviewPanel::Fill()
 {
-	this->sections.clear();
 	this->Section().Add(LedgerLine::Text(GameText(STR_ENGINE_PREVIEW_MESSAGE, GetEngineCategoryName(this->engine))));
 	this->Section(GameText(STR_ENGINE_NAME, PackEngineNameDParam(this->engine, EngineNameContext::PreviewNews)))
 		.Add(LedgerLine::Text(StrMakeValid(GetEngineInfoString(this->engine), {})));

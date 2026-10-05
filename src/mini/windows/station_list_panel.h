@@ -19,7 +19,7 @@ public:
 	bool IsAlive() const override;
 
 private:
-	void Collect() override;
+	void Fill() override;
 	std::vector<DirectoryEntry> Entries() const override;
 	Rml::String Emptiness() const override;
 };

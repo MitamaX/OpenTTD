@@ -29,6 +29,13 @@ void LedgerPanel::BindSheet(Rml::DataModelConstructor &model)
 	model.BindEventCallback("edit", &LedgerPanel::Edit, this);
 }
 
+void LedgerPanel::Collect()
+{
+	this->sections.clear();
+	this->commands.clear();
+	this->Fill();
+}
+
 void LedgerPanel::Apply(const Rml::String &key, std::string text)
 {
 	for (const LedgerSection &section : this->sections) {

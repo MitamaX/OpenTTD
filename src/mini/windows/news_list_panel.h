@@ -17,7 +17,7 @@ public:
 	NewsListPanel();
 
 private:
-	void Collect() override;
+	void Fill() override;
 };
 
 #endif /* MINI_WINDOWS_NEWS_LIST_PANEL_H */

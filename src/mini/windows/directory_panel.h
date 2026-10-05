@@ -12,7 +12,7 @@
 
 #include <vector>
 
-#include "../ui/ledger_panel.h"
+#include "window_panel.h"
 
 struct DirectoryEntry {
 	Rml::String name;
@@ -24,11 +24,11 @@ struct DirectoryEntry {
 	LedgerLine::Action open;
 };
 
-class DirectoryPanel : public LedgerPanel {
+class DirectoryPanel : public WindowPanel {
 protected:
-	DirectoryPanel(std::string key, Rml::String title, Rml::String amount_tab, Rml::String grade_tab);
+	DirectoryPanel(std::string key, Rml::String title, Rml::String amount_tab, Rml::String grade_tab, Rml::Vector<Rml::String> more_tabs = {});
 
-	void Collect() override;
+	void Fill() override;
 
 	virtual std::vector<DirectoryEntry> Entries() const = 0;
 	virtual Rml::String Emptiness() const = 0;

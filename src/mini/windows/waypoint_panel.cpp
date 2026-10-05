@@ -51,12 +51,11 @@ void WaypointPanel::Rename(std::string name)
 	Command<CMD_RENAME_WAYPOINT>::Post(STR_ERROR_CAN_T_CHANGE_WAYPOINT_NAME, this->waypoint, std::move(name));
 }
 
-void WaypointPanel::Collect()
+void WaypointPanel::Fill()
 {
 	const Waypoint &wp = *Waypoint::Get(this->waypoint);
 	this->title = GameText(STR_WAYPOINT_NAME, this->waypoint);
 
-	this->sections.clear();
 	LedgerSection &facts = this->Section();
 	facts.Add({"종류", Rml::String(WaypointKind(wp))});
 	if (Company::IsValidID(wp.owner)) facts.Add({"소유", GameText(STR_COMPANY_NAME, wp.owner)});

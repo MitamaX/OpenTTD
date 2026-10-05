@@ -38,14 +38,13 @@ Money TakeoverPanel::Price() const
 	return this->hostile ? CalculateHostileTakeoverValue(c) : c->bankrupt_value;
 }
 
-void TakeoverPanel::Collect()
+void TakeoverPanel::Fill()
 {
 	const Company &target = *Company::Get(this->company);
 	Money price = this->Price();
 	StringID offer = this->hostile ? STR_BUY_COMPANY_HOSTILE_TAKEOVER : STR_BUY_COMPANY_MESSAGE;
 
 	this->title = GameText(STR_COMPANY_NAME, this->company);
-	this->sections.clear();
 	this->Section().Add(LedgerLine::Text(GameText(offer, this->company, price)));
 	this->Section().lines = {
 		{"성능 지수", fmt::format("{}/1000", target.old_economy[0].performance_history)},
