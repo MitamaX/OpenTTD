@@ -23,6 +23,7 @@ struct PanelCommand {
 	Rml::String label;
 	bool enabled = false;
 	std::function<void()> action;
+	bool active = false;
 };
 
 class Panel : public View {

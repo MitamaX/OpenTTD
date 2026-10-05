@@ -116,6 +116,7 @@ Panel *PanelStack::Owner(const Rml::ElementDocument *document) const
 
 Panel *PanelStack::Front() const
 {
+	if (this->context == nullptr) return nullptr;
 	for (int i = this->context->GetNumDocuments(); i-- > 0;) {
 		if (Panel *panel = this->Owner(this->context->GetDocument(i)); panel != nullptr) return panel;
 	}

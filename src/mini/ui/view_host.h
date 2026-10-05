@@ -29,6 +29,7 @@ public:
 	bool PointerOverLayer() const { return this->layer.Hovered() != nullptr; }
 	bool PointerOverSlot() const;
 	void ListNatives(std::vector<NativeKey> &natives) const { this->panels.ListNatives(natives); }
+	const Panel *Front() const { return this->panels.Front(); }
 
 	bool IsTyping() const { return this->layer.IsTyping(); }
 	bool ProcessKey(uint keycode);

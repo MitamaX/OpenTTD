@@ -213,7 +213,7 @@ void StationPanel::FillCommands(const Station &st)
 	StationID station = st.index;
 	TileIndex tile = st.xy;
 	this->commands = {
-		{highlighted ? "범위 끄기" : "범위", own, [station, highlighted] { SetViewportCatchmentStation(Station::GetIfValid(station), !highlighted); }},
+		{"범위", own, [station, highlighted] { SetViewportCatchmentStation(Station::GetIfValid(station), !highlighted); }, highlighted},
 		{"이동", true, [tile] { ScrollToTile(tile); }},
 	};
 }

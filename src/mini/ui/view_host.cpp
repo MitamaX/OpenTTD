@@ -27,6 +27,7 @@ static void RegisterViewTypes(Rml::Context &context)
 	Rml::StructHandle<PanelCommand> command = types.RegisterStruct<PanelCommand>();
 	command.RegisterMember("label", &PanelCommand::label);
 	command.RegisterMember("enabled", &PanelCommand::enabled);
+	command.RegisterMember("active", &PanelCommand::active);
 	types.RegisterArray<Rml::Vector<PanelCommand>>();
 
 	Rml::StructHandle<LedgerLine> line = types.RegisterStruct<LedgerLine>();

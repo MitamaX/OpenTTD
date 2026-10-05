@@ -301,11 +301,13 @@
 			"commands": [
 				{
 					"label": "대출 늘리기",
-					"enabled": true
+					"enabled": true,
+					"active": false
 				},
 				{
 					"label": "대출 갚기",
-					"enabled": false
+					"enabled": false,
+					"active": false
 				}
 			],
 			"editing": "",

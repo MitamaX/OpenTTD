@@ -106,6 +106,7 @@
 #include "mini/windows/takeover_panel.h"
 #include "mini/windows/town_list_panel.h"
 #include "mini/windows/town_panel.h"
+#include "mini/windows/vehicle_panel.h"
 #include "mini/windows/waypoint_panel.h"
 #include "mini/windows/window_links.h"
 #include "economy_cmd.h"
@@ -383,7 +384,6 @@ static const uint32_t COL_CH_RED = 0xFFE05F4AU;
 static const uint32_t COL_CH_YELLOW = 0xFFE0B64AU;
 
 enum class MiniWndKind : uint8_t {
-	Vehicle,
 	Fleet,
 	Group,
 	Map,
@@ -398,19 +398,14 @@ static bool WndIsList(MiniWndKind kind)
 }
 
 struct MiniWnd {
-	MiniWndKind kind = MiniWndKind::Vehicle;
-	VehicleID veh = VehicleID::Invalid();
+	MiniWndKind kind = MiniWndKind::Fleet;
 	VehicleID sel = VehicleID::Invalid();
 	GroupID sel_grp = ALL_GROUP;
 	EngineID sel_eng = EngineID::Invalid();
-	int16_t sel_ord = -1;
-	bool ord_refit = false;
 	bool show_hidden = false;
 	int x = 0, y = 0;
 	uint8_t tab = 0;
 	bool want_raise = false;
-	int8_t want_tab = -1;
-	bool renaming = false;
 	bool focus_name = false;
 	GroupID rename_grp = GroupID::Invalid();
 	TileIndex rename_depot = INVALID_TILE;
@@ -486,13 +481,11 @@ static void OpenMiniWindow(MiniWin win)
  * under them are ordered by when each shell last held focus. */
 static uint32_t _wnd_focus_tick = 0;
 
-/* The last focused mini window decides whose order route shows; focus is
- * tracked from the ImGui side each frame. */
-static VehicleID _front_wnd_veh = VehicleID::Invalid();
-
+/* The front panel decides whose order route shows. */
 static VehicleID FrontWndVehicle()
 {
-	return _front_wnd_veh;
+	const VehiclePanel *panel = dynamic_cast<const VehiclePanel *>(_views.Front());
+	return panel != nullptr ? panel->Subject() : VehicleID::Invalid();
 }
 
 /* Work windows and the plot run twice as wide; the other kinds keep the
@@ -507,29 +500,6 @@ static int WndCmdS() { return 26 * _tuning.hud_scale; }
 static int WndPad() { return 6 * _tuning.hud_scale; }
 static int WndBodyH(const MiniWnd &mw) { return WndViewH() + WndPad() + (WndWide(mw) ? 10 : 6) * WndRowH(); }
 static int WndH(const MiniWnd &mw) { return WndTitleH() + WndTabH() + WndBodyH(mw) + WndCmdS() + 3 * WndPad(); }
-
-/* Of the ImGui windows only a vehicle window carries a camera. */
-static std::optional<WindowNumber> MiniCarrierNum(const MiniWnd &mw)
-{
-	if (mw.kind != MiniWndKind::Vehicle) return std::nullopt;
-	return CarrierNumber(to_underlying(CarrierSubject::Vehicle), mw.veh.base());
-}
-
-static void EnsureMiniCarrier(const MiniWnd &mw, int x, int y, int w, int h)
-{
-	std::optional<WindowNumber> number = MiniCarrierNum(mw);
-	const Vehicle *v = Vehicle::GetIfValid(mw.veh);
-	if (!number.has_value() || v == nullptr) return;
-
-	Window *cw = FindCarrier(*number);
-	if (cw == nullptr) cw = OpenCarrier(*number, v->index);
-	FitCarrier(cw, x, y, w, h);
-}
-
-static void CloseMiniCarrier(const MiniWnd &mw)
-{
-	if (std::optional<WindowNumber> number = MiniCarrierNum(mw); number.has_value()) CloseCarrier(*number);
-}
 
 /* Only an adopted native window still embeds through an ImGui shell. */
 static bool WndEmbedTarget(const MiniWnd &mw, DockSpec &spec, WindowNumber &num)
@@ -546,17 +516,12 @@ static void CloseMiniWnd(size_t i)
 		Window *nw = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num);
 		if (nw != nullptr) nw->Close();
 	}
-	CloseMiniCarrier(_wnds[i]);
-	if (_wnds[i].kind == MiniWndKind::Vehicle && _wnds[i].veh == _front_wnd_veh) _front_wnd_veh = VehicleID::Invalid();
 	_wnds.erase(_wnds.begin() + (ptrdiff_t)i);
 }
 
-/* The carrier rises with its window so native z-order keeps matching the
- * mini window order where slots overlap. */
 static void RaiseMiniWnd(size_t i)
 {
 	std::rotate(_wnds.begin() + (ptrdiff_t)i, _wnds.begin() + (ptrdiff_t)i + 1, _wnds.end());
-	if (std::optional<WindowNumber> number = MiniCarrierNum(_wnds.back()); number.has_value()) BringWindowToFrontById(WC_EXTRA_VIEWPORT, *number);
 	_wnds.back().want_raise = true;
 }
 
@@ -565,21 +530,20 @@ static void RaiseMiniWnd(size_t i)
  * request waits until the loop is done. */
 struct MiniOpenReq {
 	MiniWndKind kind;
-	VehicleID veh;
 	int8_t tab;
 };
 
 static std::vector<MiniOpenReq> _wnd_opens;
 static bool _wnds_drawing = false;
 
-static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, int8_t tab = -1)
+static void OpenMiniWnd(MiniWndKind kind, int8_t tab = -1)
 {
 	if (_wnds_drawing) {
-		_wnd_opens.push_back({kind, veh, tab});
+		_wnd_opens.push_back({kind, tab});
 		return;
 	}
 	for (size_t i = 0; i < _wnds.size(); i++) {
-		if (_wnds[i].kind == kind && _wnds[i].veh == veh) {
+		if (_wnds[i].kind == kind) {
 			RaiseMiniWnd(i);
 			if (tab >= 0) _wnds.back().tab = (uint8_t)tab;
 			return;
@@ -588,7 +552,6 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, int8_t tab = -1)
 	int s = _tuning.hud_scale;
 	MiniWnd mw;
 	mw.kind = kind;
-	mw.veh = veh;
 	if (tab >= 0) mw.tab = (uint8_t)tab;
 	mw.x = Clamp(_fbw - 6 * s - WndW(mw) - (int)_wnds.size() * 20 * s, 0, std::max(0, _fbw - WndW(mw)));
 	mw.y = Clamp(WindowBarBottom() + 6 * s + (int)_wnds.size() * 20 * s, 0, std::max(0, _fbh - WndH(mw)));
@@ -597,7 +560,6 @@ static void OpenMiniWnd(MiniWndKind kind, VehicleID veh, int8_t tab = -1)
 
 static void CloseAllMiniWnds()
 {
-	for (const MiniWnd &mw : _wnds) CloseMiniCarrier(mw);
 	_dock.CloseAll();
 	_wnds.clear();
 	_wnd_opens.clear();
@@ -606,12 +568,12 @@ static void CloseAllMiniWnds()
 
 static void OpenFleetMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Fleet, VehicleID::Invalid(), (int8_t)vt);
+	OpenMiniWnd(MiniWndKind::Fleet, (int8_t)vt);
 }
 
 void OpenVehicleWindow(VehicleID vehicle)
 {
-	OpenMiniWnd(MiniWndKind::Vehicle, vehicle);
+	_views.Show(std::make_unique<VehiclePanel>(vehicle));
 }
 
 void OpenStationWindow(StationID station)
@@ -641,32 +603,12 @@ void OpenCompanyWindow()
 
 static void OpenGroupMiniWnd(int vt)
 {
-	OpenMiniWnd(MiniWndKind::Group, VehicleID::Invalid(), (int8_t)vt);
+	OpenMiniWnd(MiniWndKind::Group, (int8_t)vt);
 }
 
 static void OpenMapMiniWnd()
 {
-	OpenMiniWnd(MiniWndKind::Map, VehicleID::Invalid());
-}
-
-static StringID OrderLoadStr(OrderLoadType t)
-{
-	switch (t) {
-		case OrderLoadType::FullLoad: return STR_ORDER_DROP_FULL_LOAD_ALL;
-		case OrderLoadType::FullLoadAny: return STR_ORDER_DROP_FULL_LOAD_ANY;
-		case OrderLoadType::NoLoad: return STR_ORDER_DROP_NO_LOADING;
-		default: return STR_ORDER_DROP_LOAD_IF_POSSIBLE;
-	}
-}
-
-static StringID OrderUnloadStr(OrderUnloadType t)
-{
-	switch (t) {
-		case OrderUnloadType::Unload: return STR_ORDER_DROP_UNLOAD;
-		case OrderUnloadType::Transfer: return STR_ORDER_DROP_TRANSFER;
-		case OrderUnloadType::NoUnload: return STR_ORDER_DROP_NO_UNLOADING;
-		default: return STR_ORDER_DROP_UNLOAD_IF_ACCEPTED;
-	}
+	OpenMiniWnd(MiniWndKind::Map);
 }
 
 /* ImGui mini windows: layout, clipping, scroll and input routing come from
@@ -755,26 +697,6 @@ static bool ImWndKVLink(std::string_view label, std::string_view value, uint32_t
 static void ImWndHeader(std::string_view text)
 {
 	ImGui::SeparatorText(std::string(text).c_str());
-}
-
-/* The carrier keeps painting into the CPU screen texture below the ImGui
- * layer; the slot samples that region back as an image, so window z-order
- * and clipping stay correct for free. */
-static void ImWndViewSlot(const MiniWnd &mw)
-{
-	float vh = (float)(100 * _tuning.hud_scale);
-	ImVec2 pos = ImGui::GetCursorScreenPos();
-	float vw = ImGui::GetContentRegionAvail().x;
-	if (vw < 32.0f || _fbw <= 0 || _fbh <= 0) return;
-	EnsureMiniCarrier(mw, (int)pos.x, (int)pos.y, (int)vw, (int)vh);
-	uintptr_t tid = RlwScreenTexture().id;
-	if (tid != 0) {
-		ImVec2 uv0(pos.x / (float)_fbw, pos.y / (float)_fbh);
-		ImVec2 uv1((pos.x + vw) / (float)_fbw, (pos.y + vh) / (float)_fbh);
-		ImGui::Image((ImTextureID)tid, ImVec2(vw, vh), uv0, uv1);
-	} else {
-		ImGui::Dummy(ImVec2(vw, vh));
-	}
 }
 
 /* The native grows in whole resize steps while the shell would drag pixel by
@@ -977,330 +899,6 @@ static void OpenSignListMiniWnd(SignID focus)
 	if (list != nullptr && sign != nullptr) list->BeginEdit(SignListPanel::EditKey(focus), sign->name);
 }
 
-static bool _order_clone_share = false;
-
-static void ImVehicleBody(MiniWnd &mw, const Vehicle *v)
-{
-	bool own = v->owner == _local_company;
-	switch (mw.tab) {
-		case 0: {
-			if (v->vehstatus.Test(VehState::Crashed)) {
-				ImWndText(GameText(STR_VEHICLE_STATUS_CRASHED), COL_CH_RED);
-			} else if (v->vehstatus.Test(VehState::Stopped)) {
-				ImWndText(GameText(STR_VEHICLE_STATUS_STOPPED), COL_CH_RED);
-			} else if (v->current_order.IsType(OT_GOTO_STATION)) {
-				ImWndText(GameText(STR_STATION_NAME, v->current_order.GetDestination().ToStationID()), COL_CH_ACCENT);
-			} else if (v->current_order.IsType(OT_GOTO_DEPOT)) {
-				ImWndText("차고로 이동 중", COL_CH_ACCENT);
-			} else {
-				ImWndText("-", COL_CH_DIM);
-			}
-			ImWndKV("속도", fmt::format("{} / {}", v->GetDisplaySpeed(), v->GetDisplayMaxSpeed()), COL_CH_TEXT);
-			ImWndText(GameText(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, v->reliability * 100 >> 16, v->breakdowns_since_last_service), COL_CH_TEXT);
-			/* Unsticking a vehicle has no other home in the mini UI: a train
-			 * held at a danger signal or facing the wrong way can only be
-			 * fixed from here. */
-			if (own && v->type == VEH_TRAIN) {
-				if (ImWndLink("방향 전환", COL_CH_TEXT)) {
-					Command<CMD_REVERSE_TRAIN_DIRECTION>::Post(STR_ERROR_CAN_T_REVERSE_DIRECTION_TRAIN, v->tile, v->index, false);
-				}
-				if (Train::From(v)->flags.Test(VehicleRailFlag::Stuck) && ImWndLink("신호 강행", COL_CH_YELLOW)) {
-					Command<CMD_FORCE_TRAIN_PROCEED>::Post(STR_ERROR_CAN_T_MAKE_TRAIN_PASS_SIGNAL, v->tile, v->index);
-				}
-			}
-			if (own && v->type == VEH_ROAD && ImWndLink("회차", COL_CH_TEXT)) {
-				Command<CMD_TURN_ROADVEH>::Post(STR_ERROR_CAN_T_MAKE_ROAD_VEHICLE_TURN, v->tile, v->index);
-			}
-			break;
-		}
-
-		case 1: {
-			bool any = false;
-			static std::vector<std::tuple<CargoType, uint, uint>> cargo;
-			cargo.clear();
-			for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
-				if (u->cargo_cap == 0 || !IsValidCargoType(u->cargo_type)) continue;
-				auto it = std::find_if(cargo.begin(), cargo.end(), [&](const auto &e) { return std::get<0>(e) == u->cargo_type; });
-				if (it == cargo.end()) it = cargo.emplace(cargo.end(), u->cargo_type, 0, 0);
-				std::get<1>(*it) += u->cargo_cap;
-				std::get<2>(*it) += u->cargo.StoredCount();
-			}
-			for (const auto &[ct, cap, stored] : cargo) {
-				any = true;
-				ImWndKV(GameText(CargoSpec::Get(ct)->name), fmt::format("{} / {}", stored, cap), COL_CH_TEXT);
-			}
-			if (!any) ImWndText("적재 화물 없음", COL_CH_DIM);
-			if (own && v->IsStoppedInDepot()) {
-				CargoTypes mask = 0;
-				for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
-					mask |= u->GetEngine()->info.refit_mask;
-				}
-				bool any_ref = false;
-				for (const CargoSpec *cs : _sorted_cargo_specs) {
-					if (!HasBit(mask, cs->Index())) continue;
-					if (!any_ref) {
-						ImWndHeader("개조");
-						any_ref = true;
-					}
-					bool cur = false;
-					for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
-						if (u->cargo_cap > 0 && u->cargo_type == cs->Index()) cur = true;
-					}
-					if (ImWndLink(fmt::format("{}{}", cur ? "▶ " : "· ", GameText(cs->name)), cur ? COL_CH_ACCENT : COL_CH_TEXT)) {
-						Command<CMD_REFIT_VEHICLE>::Post(GetCmdRefitVehMsg(v->type), v->tile, v->index, cs->Index(), 0xFF, false, false, 0);
-					}
-				}
-			}
-			break;
-		}
-
-		case 2: {
-			int nord = v->GetNumOrders();
-			if (mw.sel_ord >= nord) mw.sel_ord = -1;
-			if (nord == 0) ImWndText("주문 없음", COL_CH_DIM);
-			int oi = 0;
-			for (const Order &o : v->Orders()) {
-				std::string label;
-				switch (o.GetType()) {
-					case OT_GOTO_STATION: label = GameText(STR_STATION_NAME, o.GetDestination().ToStationID()); break;
-					case OT_GOTO_WAYPOINT: label = GameText(STR_WAYPOINT_NAME, o.GetDestination().ToStationID()); break;
-					/* A route with several depot stops read as a list of
-					 * identical rows, so the row names the depot. */
-					case OT_GOTO_DEPOT:
-						label = o.GetDepotActionType().Test(OrderDepotActionFlag::NearestDepot)
-								? std::string("가까운 차고")
-								: GameText(STR_DEPOT_NAME, v->type, o.GetDestination());
-						break;
-					case OT_CONDITIONAL: label = fmt::format("조건 {}번", o.GetConditionSkipToOrder() + 1); break;
-					default: break;
-				}
-				if (!label.empty()) {
-					if (o.IsType(OT_GOTO_STATION)) {
-						if (o.GetNonStopType().Test(OrderNonStopFlag::NoIntermediate)) label += " · 비정차";
-						if (o.GetNonStopType().Test(OrderNonStopFlag::NoDestination)) label += " · 경유";
-						switch (o.GetLoadType()) {
-							case OrderLoadType::FullLoad:
-							case OrderLoadType::FullLoadAny: label += " · 만재"; break;
-							case OrderLoadType::NoLoad: label += " · 무적재"; break;
-							default: break;
-						}
-						switch (o.GetUnloadType()) {
-							case OrderUnloadType::Unload: label += " · 강제 하차"; break;
-							case OrderUnloadType::Transfer: label += " · 환승"; break;
-							case OrderUnloadType::NoUnload: label += " · 무하차"; break;
-							default: break;
-						}
-					} else if (o.IsType(OT_GOTO_DEPOT)) {
-						if (o.GetDepotActionType().Test(OrderDepotActionFlag::Unbunch)) label += " · 간격 조정";
-						if (o.GetDepotActionType().Test(OrderDepotActionFlag::Halt)) label += " · 정지";
-						if (o.GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) label += " · 필요할 때만";
-					}
-					if (o.IsRefit()) {
-						label += fmt::format(" · 개조 {}", o.IsAutoRefit() ? std::string("자동") : GameText(CargoSpec::Get(o.GetRefitCargo())->name));
-					}
-					bool cur = oi == v->cur_real_order_index;
-					if (ImWndLink(fmt::format("{}{}. {}", cur ? "▶ " : "", oi + 1, label), mw.sel_ord == oi ? COL_CH_ACCENT : (cur ? COL_CH_YELLOW : COL_CH_TEXT))) {
-						mw.sel_ord = mw.sel_ord == oi ? -1 : (int16_t)oi;
-						mw.ord_refit = false;
-					}
-				}
-				oi++;
-			}
-			if (own && mw.sel_ord >= 0) {
-				const Order *so = v->GetOrder((VehicleOrderID)mw.sel_ord);
-				if (so != nullptr) {
-					ImWndHeader(fmt::format("{}번 주문", mw.sel_ord + 1));
-					if (ImWndLink("위로", COL_CH_TEXT)) {
-						int to = mw.sel_ord - 1;
-						if (to >= 0 && Command<CMD_MOVE_ORDER>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, (VehicleOrderID)to)) {
-							mw.sel_ord = (int16_t)to;
-						}
-					}
-					if (ImWndLink("아래로", COL_CH_TEXT)) {
-						int to = mw.sel_ord + 1;
-						if (to < v->GetNumOrders() && Command<CMD_MOVE_ORDER>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, (VehicleOrderID)to)) {
-							mw.sel_ord = (int16_t)to;
-						}
-					}
-					if (ImWndLink("여기로 건너뛰기", COL_CH_TEXT)) {
-						Command<CMD_SKIP_TO_ORDER>::Post(STR_ERROR_CAN_T_SKIP_TO_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord);
-					}
-					if (so->IsType(OT_GOTO_STATION)) {
-						if (ImWndKVLink("적재", GameText(OrderLoadStr(so->GetLoadType())), COL_CH_DIM, COL_CH_TEXT)) {
-							OrderLoadType next;
-							switch (so->GetLoadType()) {
-								case OrderLoadType::LoadIfPossible: next = OrderLoadType::FullLoad; break;
-								case OrderLoadType::FullLoad: next = OrderLoadType::FullLoadAny; break;
-								case OrderLoadType::FullLoadAny: next = OrderLoadType::NoLoad; break;
-								default: next = OrderLoadType::LoadIfPossible; break;
-							}
-							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_LOAD, to_underlying(next));
-						}
-						if (ImWndKVLink("하차", GameText(OrderUnloadStr(so->GetUnloadType())), COL_CH_DIM, COL_CH_TEXT)) {
-							OrderUnloadType next;
-							switch (so->GetUnloadType()) {
-								case OrderUnloadType::UnloadIfPossible: next = OrderUnloadType::Unload; break;
-								case OrderUnloadType::Unload: next = OrderUnloadType::Transfer; break;
-								case OrderUnloadType::Transfer: next = OrderUnloadType::NoUnload; break;
-								default: next = OrderUnloadType::UnloadIfPossible; break;
-							}
-							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_UNLOAD, to_underlying(next));
-						}
-					}
-					/* Whether a train stops at what it passes is a per-order
-					 * choice on a shared line, not a global setting. */
-					if (so->IsType(OT_GOTO_STATION) && v->IsGroundVehicle()) {
-						OrderNonStopFlags ns = so->GetNonStopType();
-						int at = (ns.Test(OrderNonStopFlag::NoIntermediate) ? 1 : 0) | (ns.Test(OrderNonStopFlag::NoDestination) ? 2 : 0);
-						static const std::string_view ns_names[] = {"모든 역 정차", "비정차", "경유", "비정차 경유"};
-						if (ImWndKVLink("정차", ns_names[at], COL_CH_DIM, COL_CH_TEXT)) {
-							int nx = (at + 1) % 4;
-							OrderNonStopFlags next{};
-							if ((nx & 1) != 0) next.Set(OrderNonStopFlag::NoIntermediate);
-							if ((nx & 2) != 0) next.Set(OrderNonStopFlag::NoDestination);
-							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_NON_STOP, next.base());
-						}
-					}
-					/* Spacing a fleet out is what a depot order is normally for,
-					 * so the row cycles the depot action rather than hiding
-					 * unbunching behind a timetable. */
-					if (so->IsType(OT_GOTO_DEPOT)) {
-						OrderDepotActionFlags da = so->GetDepotActionType();
-						OrderDepotAction cur;
-						if (da.Test(OrderDepotActionFlag::Unbunch)) {
-							cur = OrderDepotAction::Unbunch;
-						} else if (da.Test(OrderDepotActionFlag::Halt)) {
-							cur = OrderDepotAction::Stop;
-						} else if (so->GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) {
-							cur = OrderDepotAction::Service;
-						} else {
-							cur = OrderDepotAction::AlwaysGo;
-						}
-						static const std::string_view da_names[] = {"항상 입고", "필요할 때만", "입고 후 정지", "입고 후 간격 조정"};
-						if (ImWndKVLink("차고 동작", da_names[(int)cur], COL_CH_DIM, COL_CH_TEXT)) {
-							OrderDepotAction next = (OrderDepotAction)(((int)cur + 1) % (int)OrderDepotAction::End);
-							Command<CMD_MODIFY_ORDER>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, MOF_DEPOT_ACTION, to_underlying(next));
-						}
-					}
-					/* A route that runs loaded both ways needs the vehicle to
-					 * change what it carries along the way, so the refit rides on
-					 * the order instead of on the vehicle. */
-					if ((so->IsType(OT_GOTO_STATION) || so->IsType(OT_GOTO_DEPOT)) && so->GetLoadType() != OrderLoadType::NoLoad) {
-						CargoTypes mask = 0;
-						for (const Vehicle *u = v; u != nullptr; u = u->Next()) mask |= u->GetEngine()->info.refit_mask;
-						if (mask != 0) {
-							CargoType rc = so->GetRefitCargo();
-							std::string cur = rc == CARGO_NO_REFIT ? std::string("안 함")
-									: (rc == CARGO_AUTO_REFIT ? std::string("자동") : GameText(CargoSpec::Get(rc)->name));
-							if (ImWndKVLink("개조", cur, COL_CH_DIM, mw.ord_refit ? COL_CH_ACCENT : COL_CH_TEXT)) mw.ord_refit = !mw.ord_refit;
-							if (mw.ord_refit) {
-								auto set_refit = [&](CargoType ct) {
-									Command<CMD_ORDER_REFIT>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord, ct);
-									mw.ord_refit = false;
-								};
-								bool none = rc == CARGO_NO_REFIT;
-								if (ImWndLink(none ? "▶ 안 함" : "· 안 함", none ? COL_CH_ACCENT : COL_CH_TEXT)) set_refit(CARGO_NO_REFIT);
-								if (so->IsType(OT_GOTO_STATION)) {
-									bool automatic = rc == CARGO_AUTO_REFIT;
-									if (ImWndLink(automatic ? "▶ 자동" : "· 자동", automatic ? COL_CH_ACCENT : COL_CH_TEXT)) set_refit(CARGO_AUTO_REFIT);
-								}
-								for (const CargoSpec *cs : _sorted_cargo_specs) {
-									if (!HasBit(mask, cs->Index())) continue;
-									bool sel = rc == cs->Index();
-									if (ImWndLink(fmt::format("{}{}", sel ? "▶ " : "· ", GameText(cs->name)), sel ? COL_CH_ACCENT : COL_CH_TEXT)) set_refit(cs->Index());
-								}
-							}
-						}
-					}
-					if (ImWndLink("삭제", COL_CH_RED)) {
-						Command<CMD_DELETE_ORDER>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, v->tile, v->index, (VehicleOrderID)mw.sel_ord);
-						mw.sel_ord = -1;
-					}
-				}
-			}
-			if (own) {
-				bool picking = _mode.OrderVehicle() == v->index;
-				if (ImWndLink(picking ? "추가 중. 지도에서 목적지 클릭, ESC 종료" : "+ 목적지 추가", COL_CH_ACCENT)) _mode.TogglePickOrders(v->index);
-
-				/* A fleet runs one route, so taking the list off a vehicle that
-				 * already has it beats typing the stops in again per vehicle. */
-				if (v->orders != nullptr && v->orders->GetNumVehicles() > 1) {
-					if (ImWndLink("주문 공유 해제", COL_CH_YELLOW)) {
-						Command<CMD_CLONE_ORDER>::Post(STR_ERROR_CAN_T_STOP_SHARING_ORDER_LIST, v->tile, CO_UNSHARE, v->index, VehicleID::Invalid());
-					}
-				}
-				std::vector<const Vehicle *> srcs;
-				for (const Vehicle *o : Vehicle::Iterate()) {
-					if (o->type != v->type || !o->IsPrimaryVehicle() || o->owner != _local_company) continue;
-					if (o->index == v->index || o->GetNumOrders() == 0) continue;
-					if (v->orders != nullptr && o->orders == v->orders) continue;
-					srcs.push_back(o);
-				}
-				if (!srcs.empty()) {
-					ImWndHeader("주문 가져오기");
-					if (ImWndKVLink("방식", _order_clone_share ? "공유" : "복사", COL_CH_DIM, COL_CH_ACCENT)) {
-						_order_clone_share = !_order_clone_share;
-					}
-					for (const Vehicle *o : srcs) {
-						std::string label = fmt::format("· {} · {}개", GameText(STR_VEHICLE_NAME, o->index), o->GetNumOrders());
-						if (ImWndLink(label, COL_CH_TEXT)) {
-							Command<CMD_CLONE_ORDER>::Post(_order_clone_share ? STR_ERROR_CAN_T_SHARE_ORDER_LIST : STR_ERROR_CAN_T_COPY_ORDER_LIST,
-									v->tile, _order_clone_share ? CO_SHARE : CO_COPY, v->index, o->index);
-						}
-					}
-				}
-			}
-			break;
-		}
-
-		case 3: {
-			ImWndKV("구매", fmt::format("{}년", v->build_year.base()), COL_CH_TEXT);
-			Money value = 0;
-			for (const Vehicle *u = v; u != nullptr; u = u->Next()) value += u->value;
-			ImWndKV("가치", GetString(STR_JUST_CURRENCY_LONG, value), COL_CH_TEXT);
-			ImWndKV("유지비", fmt::format("{}/년", GetString(STR_JUST_CURRENCY_LONG, v->GetDisplayRunningCost())), COL_CH_TEXT);
-			ImWndKV("차령", fmt::format("{}년 / {}년", v->age.base() / 366, v->max_age.base() / 366), COL_CH_TEXT);
-			ImWndText(GameText(STR_VEHICLE_INFO_PROFIT_THIS_YEAR_LAST_YEAR, v->GetDisplayProfitThisYear(), v->GetDisplayProfitLastYear()), COL_CH_TEXT);
-			if (v->type == VEH_TRAIN) {
-				ImWndKV("총길이", fmt::format("{:.1f}타일", Train::From(v)->gcache.cached_total_length / (double)TILE_SIZE), COL_CH_TEXT);
-			}
-			/* How often a vehicle services decides how often it breaks down, so
-			 * the interval is the one setting that belongs on the vehicle. */
-			if (own) {
-				bool pct = v->ServiceIntervalIsPercent();
-				bool wall = TimerGameEconomy::UsingWallclockUnits();
-				uint si = v->GetServiceInterval();
-				uint lo = pct ? MIN_SERVINT_PERCENT : (wall ? MIN_SERVINT_MINUTES : MIN_SERVINT_DAYS);
-				uint hi = pct ? MAX_SERVINT_PERCENT : (wall ? MAX_SERVINT_MINUTES : MAX_SERVINT_DAYS);
-				uint step = pct ? 5 : (wall ? 1 : 10);
-				std::string val = pct ? fmt::format("{}%", si) : fmt::format("{}", si);
-				if (!v->ServiceIntervalIsCustom()) val += " 기본";
-				ImWndKV("정비 간격", val, COL_CH_TEXT);
-				if (ImWndLink("간격 늘리기", COL_CH_TEXT)) {
-					Command<CMD_CHANGE_SERVICE_INT>::Post(v->index, (uint16_t)std::min(si + step, hi), true, pct);
-				}
-				if (ImWndLink("간격 줄이기", COL_CH_TEXT)) {
-					Command<CMD_CHANGE_SERVICE_INT>::Post(v->index, (uint16_t)std::max(si > step ? si - step : lo, lo), true, pct);
-				}
-				if (v->ServiceIntervalIsCustom() && ImWndLink("간격 기본값", COL_CH_TEXT)) {
-					Command<CMD_CHANGE_SERVICE_INT>::Post(v->index, (uint16_t)si, false, pct);
-				}
-			}
-			if (v->type == VEH_TRAIN || (v->type == VEH_ROAD && _settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL)) {
-				const GroundVehicleCache *gc = v->GetGroundVehicleCache();
-				int64_t ms = PackVelocity(v->GetDisplayMaxSpeed(), v->type);
-				if (v->type == VEH_TRAIN && (_settings_game.vehicle.train_acceleration_model == AM_ORIGINAL ||
-						Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev)) {
-					ImWndText(GameText(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, gc->cached_weight, gc->cached_power, ms), COL_CH_TEXT);
-				} else {
-					ImWndText(GameText(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED_MAX_TE, gc->cached_weight, gc->cached_power, ms, gc->cached_max_te), COL_CH_TEXT);
-				}
-			}
-			break;
-		}
-	}
-}
-
 static void ImFleetBody(MiniWnd &mw)
 {
 	VehicleType vt = (VehicleType)mw.tab;
@@ -1498,7 +1096,6 @@ static void ImFleetBody(MiniWnd &mw)
 				if (did != DepotID::Invalid() && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 					ImWndNameEditBegin(mw, dn);
 					mw.rename_depot = tile;
-					mw.renaming = false;
 				}
 			}
 			/* Emptying a depot cannot be taken back, so the row arms first and
@@ -1584,7 +1181,6 @@ static void ImGroupBody(MiniWnd &mw)
 			if (Group::IsValidID(gid) && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 				ImWndNameEditBegin(mw, name);
 				mw.rename_grp = gid;
-				mw.renaming = false;
 			}
 		};
 		group_row(ALL_GROUP, GameText(STR_GROUP_ALL_TRAINS + vt), GetGroupNumVehicle(_local_company, ALL_GROUP, vt));
@@ -1996,26 +1592,10 @@ static bool ImWndButton(std::string_view label, bool enabled)
 	return clicked;
 }
 
-static void ImWndCommands(MiniWnd &mw, const Vehicle *v)
+static void ImWndCommands(MiniWnd &mw)
 {
 	ImGui::Separator();
 	switch (mw.kind) {
-		case MiniWndKind::Vehicle: {
-			bool own = v != nullptr && v->owner == _local_company;
-			bool stopped = v != nullptr && v->vehstatus.Test(VehState::Stopped);
-			if (ImWndButton(stopped ? "출발" : "정지", own)) {
-				Command<CMD_START_STOP_VEHICLE>::Post(STR_ERROR_CAN_T_STOP_START_TRAIN + v->type, v->tile, v->index, false);
-			}
-			if (ImWndButton("차고로", own)) {
-				Command<CMD_SEND_VEHICLE_TO_DEPOT>::Post(GetCmdSendToDepotMsg(v), v->index, _ctrl_pressed ? DepotCommandFlag::Service : DepotCommandFlags{}, {});
-			}
-			if (ImWndButton("개조", own)) mw.want_tab = 1;
-			if (ImWndButton("주문", own)) mw.want_tab = 2;
-			bool following = v != nullptr && _mode.FollowedVehicle() == v->index;
-			if (ImWndButton(following ? "추적 해제" : "따라가기", v != nullptr)) _mode.ToggleFollow(v->index);
-			break;
-		}
-
 		case MiniWndKind::Fleet: {
 			bool own = Company::IsValidID(_local_company);
 			const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
@@ -2061,23 +1641,8 @@ static void ImWndCommands(MiniWnd &mw, const Vehicle *v)
 	ImGui::NewLine();
 }
 
-static bool WndRenamable(const Vehicle *v)
+static void ImWndTitle(const std::string &title, bool &open)
 {
-	return v != nullptr && v->owner == _local_company;
-}
-
-static void WndPostRename(const Vehicle *v, std::string name)
-{
-	if (name.empty() || v == nullptr) return;
-	Command<CMD_RENAME_VEHICLE>::Post(STR_ERROR_CAN_T_RENAME_TRAIN + v->type, v->index, std::move(name));
-}
-
-/* The caption doubles as the rename field: a double click swaps the label for
- * an input, Enter commits, anything else leaves the name alone. */
-static void ImWndTitle(MiniWnd &mw, const std::string &title, bool renamable, bool &open, const Vehicle *v)
-{
-	if (mw.renaming && !renamable) mw.renaming = false;
-
 	float bw = ImGui::GetFrameHeight();
 	float right = ImGui::GetContentRegionMax().x - bw;
 
@@ -2090,24 +1655,8 @@ static void ImWndTitle(MiniWnd &mw, const std::string &title, bool renamable, bo
 			ImVec2(wp.x + ImGui::GetWindowWidth() - 1.0f, cp.y + bw), MiniImU32(COL_CH_TILE),
 			ImGui::GetStyle().WindowRounding, ImDrawFlags_RoundCornersTop);
 
-	if (mw.renaming) {
-		ImGui::PushID("title");
-		int r = ImWndNameEdit(mw, std::max(right - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x, 32.0f));
-		ImGui::PopID();
-		if (r == 1) WndPostRename(v, mw.name_buf);
-		if (r != 0) mw.renaming = false;
-	} else {
-		ImGui::AlignTextToFramePadding();
-		ImWndText(title, COL_CH_ACCENT);
-		if (renamable && ImGui::IsItemHovered()) {
-			ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
-			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-				ImWndNameEditBegin(mw, title);
-				mw.renaming = true;
-				mw.rename_grp = GroupID::Invalid();
-			}
-		}
-	}
+	ImGui::AlignTextToFramePadding();
+	ImWndText(title, COL_CH_ACCENT);
 
 	ImGui::SameLine(right);
 	ImGui::PushID("close");
@@ -2147,7 +1696,7 @@ static bool DrawImGuiNativeWnd(MiniWnd &mw)
 	RecordShellRect(mw);
 
 	_imrow = 0;
-	ImWndTitle(mw, title, false, open, nullptr);
+	ImWndTitle(title, open);
 
 	DockSpec spec;
 	WindowNumber wnum;
@@ -2169,18 +1718,15 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	if (mw.kind == MiniWndKind::Native) return DrawImGuiNativeWnd(mw);
 
 	int s = _tuning.hud_scale;
-	const Vehicle *v = mw.kind == MiniWndKind::Vehicle ? Vehicle::GetIfValid(mw.veh) : nullptr;
 
 	std::string title = "-";
-	uint32_t idnum = 0;
 	switch (mw.kind) {
-		case MiniWndKind::Vehicle: if (v != nullptr) title = GameText(STR_VEHICLE_NAME, v->index); idnum = mw.veh.base(); break;
 		case MiniWndKind::Fleet: title = "차고"; break;
 		case MiniWndKind::Group: title = "차량군"; break;
 		case MiniWndKind::Map: title = "지도"; break;
 		case MiniWndKind::Native: break;
 	}
-	std::string wid = fmt::format("###mw{}_{}", (int)mw.kind, idnum);
+	std::string wid = fmt::format("###mw{}", (int)mw.kind);
 
 	bool wide = WndWide(mw);
 	ImVec2 def_size((float)((wide ? 560 : 250) * s), (float)(270 * s));
@@ -2196,13 +1742,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 		ImGui::End();
 		return open;
 	}
-	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
-		_front_wnd_veh = mw.kind == MiniWndKind::Vehicle ? mw.veh : VehicleID::Invalid();
-		mw.focus_seq = ++_wnd_focus_tick;
-	}
+	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) mw.focus_seq = ++_wnd_focus_tick;
 	RecordShellRect(mw);
 
-	ImWndTitle(mw, title, WndRenamable(v), open, v);
+	ImWndTitle(title, open);
 
 	_imrow = 0;
 	int ntab;
@@ -2215,13 +1758,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			for (int ti = 0; ti < 4; ti++) tl[ti] = GameText(type_strs[ti]);
 			break;
 		}
-		case MiniWndKind::Vehicle:
-			ntab = 4;
-			tl[0] = "상태";
-			tl[1] = GameText(STR_VEHICLE_DETAIL_TAB_CARGO);
-			tl[2] = "주문";
-			tl[3] = GameText(STR_VEHICLE_DETAIL_TAB_INFORMATION);
-			break;
 		case MiniWndKind::Map:
 			ntab = 7;
 			tl[0] = GameText(STR_SMALLMAP_TYPE_CONTOURS);
@@ -2237,15 +1773,10 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 			break;
 	}
 
-	bool has_view = mw.kind == MiniWndKind::Vehicle;
 	if (ImGui::BeginTabBar("tabs")) {
 		for (int ti = 0; ti < ntab; ti++) {
-			ImGuiTabItemFlags fl = mw.want_tab == ti ? ImGuiTabItemFlags_SetSelected : 0;
-			if (ImGui::BeginTabItem(fmt::format("{}###t{}", tl[ti], ti).c_str(), nullptr, fl)) {
-				if (mw.tab != ti) {
-					mw.tab = (uint8_t)ti;
-					if (ti != 0) CloseMiniCarrier(mw);
-				}
+			if (ImGui::BeginTabItem(fmt::format("{}###t{}", tl[ti], ti).c_str())) {
+				mw.tab = (uint8_t)ti;
 				bool has_cmds = !WndIsList(mw.kind);
 				float cmd_h = has_cmds ? ImGui::GetFrameHeightWithSpacing() + 4.0f * s : 0.0f;
 				DockSpec spec;
@@ -2256,26 +1787,21 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 				_imwnd_outer = ImGui::GetWindowSize();
 				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h), ImGuiChildFlags_None,
 						embed ? (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse) : 0);
-				if (ti == 0 && has_view && v != nullptr) {
-					ImWndViewSlot(mw);
-				}
 				if (embed) {
 					ImWndNativeSlot(mw, spec, wnum);
 				} else switch (mw.kind) {
-					case MiniWndKind::Vehicle: if (v != nullptr) ImVehicleBody(mw, v); break;
 					case MiniWndKind::Fleet: ImFleetBody(mw); break;
 					case MiniWndKind::Group: ImGroupBody(mw); break;
 					case MiniWndKind::Map: ImMapBody(mw); break;
 					case MiniWndKind::Native: break;
 				}
 				ImGui::EndChild();
-				if (has_cmds) ImWndCommands(mw, v);
+				if (has_cmds) ImWndCommands(mw);
 				ImGui::EndTabItem();
 			}
 		}
 		ImGui::EndTabBar();
 	}
-	mw.want_tab = -1;
 
 	ClampShellToScreen(mw);
 	ImGui::End();
@@ -2291,8 +1817,6 @@ static std::vector<NativeKey> WantedNativeOrder()
 	std::vector<NativeKey> want;
 	for (const auto &[seq, i] : order) {
 		const MiniWnd &mw = _wnds[i];
-		std::optional<WindowNumber> cnum = MiniCarrierNum(mw);
-		if (cnum.has_value() && FindCarrier(*cnum) != nullptr) want.push_back({WC_EXTRA_VIEWPORT, *cnum});
 		DockSpec spec;
 		WindowNumber num;
 		if (WndEmbedTarget(mw, spec, num) && FindWindowById(spec.wc, num) != nullptr) want.push_back({spec.wc, num});
@@ -2386,7 +1910,6 @@ static void DrawMiniWndsImGui()
 	for (size_t i = _wnds.size(); i-- > 0;) {
 		bool alive;
 		switch (_wnds[i].kind) {
-			case MiniWndKind::Vehicle: alive = Vehicle::GetIfValid(_wnds[i].veh) != nullptr; break;
 			case MiniWndKind::Group: alive = Company::IsValidID(_local_company); break;
 			case MiniWndKind::Native: alive = FindWindowById(_wnds[i].nat_wc, _wnds[i].nat_num) != nullptr; break;
 			default: alive = true; break;
@@ -2415,7 +1938,7 @@ static void DrawMiniWndsImGui()
 
 	std::vector<MiniOpenReq> opens;
 	opens.swap(_wnd_opens);
-	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.veh, r.tab);
+	for (const MiniOpenReq &r : opens) OpenMiniWnd(r.kind, r.tab);
 }
 
 bool MiniUiCatchEstimate(Money cost)

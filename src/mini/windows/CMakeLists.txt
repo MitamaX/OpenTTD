@@ -33,6 +33,8 @@ add_files(
     town_list_panel.h
     town_panel.cpp
     town_panel.h
+    vehicle_panel.cpp
+    vehicle_panel.h
     vehicle_types.cpp
     vehicle_types.h
     waypoint_panel.cpp

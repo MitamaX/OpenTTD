@@ -14,7 +14,7 @@
 	</div>
 	<div id="sheet" class="sheet scroll-list" data-class-embedding="embedded"></div>
 	<div class="commands" data-if="commands.size > 0">
-		<span class="command press" data-for="command, index : commands" data-class-off="!command.enabled" data-event-click="run(index)">{{command.label}}</span>
+		<span class="command press" data-for="command, index : commands" data-class-off="!command.enabled" data-class-active="command.active" data-event-click="run(index)">{{command.label}}</span>
 	</div>
 	<handle class="grip" size_target="#document" data-if="sizable"/>
 </body>

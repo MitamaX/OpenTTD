@@ -209,6 +209,15 @@ body.wide {
 	background-color: var(--primary-press);
 }
 
+.command.active {
+	background-color: var(--tile-active);
+	box-shadow: var(--glow);
+}
+
+.command.active:hover {
+	background-color: var(--tile-active-hover);
+}
+
 .command.off, .command.off:hover, .command.off:active {
 	background-color: var(--tile);
 	color: var(--ink-dim);

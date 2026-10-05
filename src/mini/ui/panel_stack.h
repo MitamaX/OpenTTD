@@ -36,11 +36,11 @@ public:
 	void Retire();
 
 	void ListNatives(std::vector<NativeKey> &natives) const;
+	Panel *Front() const;
 
 private:
 	Panel *Find(const std::string &key) const;
 	Panel *Owner(const Rml::ElementDocument *document) const;
-	Panel *Front() const;
 	size_t CountOpen() const;
 	void Place(Panel &panel) const;
 	Rml::Vector2f Confined(Rml::Vector2f size, Rml::Vector2f position) const;
