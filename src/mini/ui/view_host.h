@@ -14,6 +14,13 @@
 #include "panel_stack.h"
 #include "rml_layer.h"
 
+/* What the RmlUi layer has under a screen point. */
+enum class LayerHit : uint8_t {
+	Nothing,
+	Element,
+	Slot,
+};
+
 class ViewHost {
 public:
 	explicit ViewHost(std::vector<std::unique_ptr<HudPart>> hud_parts);
@@ -24,10 +31,9 @@ public:
 	void CloseAll();
 	void ReloadDesign();
 
-	void TrackPointer();
-	bool CapturePointer();
-	bool PointerOverLayer() const { return this->layer.Hovered() != nullptr; }
-	bool PointerOverSlot() const;
+	LayerHit HitAt(int x, int y) const;
+	void FeedPointer();
+	void LeavePointer(bool pressed);
 	void ListNatives(std::vector<NativeKey> &natives) const { this->panels.ListNatives(natives); }
 	const Panel *Front() const { return this->panels.Front(); }
 

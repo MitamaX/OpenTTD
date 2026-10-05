@@ -114,20 +114,21 @@ void ViewHost::ReloadDesign()
 	this->hud.ReloadStyleSheet();
 }
 
-void ViewHost::TrackPointer()
+LayerHit ViewHost::HitAt(int x, int y) const
 {
-	this->layer.TrackPointer(RmlPointer::Current());
+	const Rml::Element *element = this->layer.ElementAt(x, y);
+	if (element == nullptr) return LayerHit::Nothing;
+	return element->GetTagName() == NativeSlot::TAG ? LayerHit::Slot : LayerHit::Element;
 }
 
-bool ViewHost::CapturePointer()
+void ViewHost::FeedPointer()
 {
-	return this->layer.CapturePointer(RmlPointer::Current());
+	this->layer.Feed(RmlPointer::Current());
 }
 
-bool ViewHost::PointerOverSlot() const
+void ViewHost::LeavePointer(bool pressed)
 {
-	const Rml::Element *hovered = this->layer.Hovered();
-	return hovered != nullptr && hovered->GetTagName() == NativeSlot::TAG;
+	this->layer.Leave(pressed);
 }
 
 /* Drivers that translate key presses hand the character over with the key; the others send it as text. */

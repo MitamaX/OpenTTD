@@ -1,6 +1,6 @@
 add_files(
     input_mode.cpp
     input_mode.h
-    press_owner.cpp
-    press_owner.h
+    pointer_router.cpp
+    pointer_router.h
 )

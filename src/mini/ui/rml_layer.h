@@ -32,9 +32,9 @@ public:
 	void Render(Dimension screen) override;
 	void Detach() override;
 
-	void TrackPointer(const RmlPointer &pointer);
-	bool CapturePointer(const RmlPointer &pointer);
-	const Rml::Element *Hovered() const;
+	const Rml::Element *ElementAt(int x, int y) const;
+	void Feed(const RmlPointer &pointer);
+	void Leave(bool pressed);
 
 	bool IsTyping() const { return this->text_input.IsActive(); }
 	void ProcessKey(const RmlKey &key);

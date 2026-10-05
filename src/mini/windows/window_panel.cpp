@@ -117,7 +117,7 @@ void WindowPanel::ShowEmbed(const EmbedTarget &target)
 	Rml::Vector2f chrome = document.GetBox().GetSize(Rml::BoxArea::Border) - Rml::Vector2f(slot->ScreenRect().Size());
 	this->Fit(sizing, chrome);
 	this->sizable = !sizing.Pinned();
-	_dock.Pin(w, target.spec.open != nullptr, ScreenRectOf(*slot), sizing, 0);
+	_dock.Pin(w, target.spec.open != nullptr, ScreenRectOf(*slot), sizing);
 }
 
 /* The panel never shrinks below the native's own minimum; an axis the native cannot resize is held at it. */

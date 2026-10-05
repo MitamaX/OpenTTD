@@ -13,6 +13,7 @@
 #include "../../core/math_func.hpp"
 #include "../../gfx_func.h"
 #include "../../map_func.h"
+#include "../input/pointer_router.h"
 #include "tuning.h"
 
 #include "../../safeguards.h"
@@ -221,7 +222,7 @@ void Camera::Pan(uint delta_ms)
 
 void Camera::EdgeScroll(uint delta_ms)
 {
-	if (_tuning.edge_scroll == 0 || !_cursor.in_window || _middle_button_down) return;
+	if (_tuning.edge_scroll == 0 || !_pointer.OnMap() || _middle_button_down) return;
 
 	double step = this->TilesFor(_tuning.edge_scroll_speed, delta_ms);
 	double ex = 0.0;

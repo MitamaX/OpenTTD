@@ -82,39 +82,38 @@ void RmlLayer::Detach()
 	this->held = {};
 }
 
-void RmlLayer::TrackPointer(const RmlPointer &pointer)
+/* Only an element that takes the pointer counts, never the bare context root. */
+const Rml::Element *RmlLayer::ElementAt(int x, int y) const
+{
+	if (this->context == nullptr) return nullptr;
+	const Rml::Element *element = this->context->GetElementAtPoint(Rml::Vector2f(static_cast<float>(x), static_cast<float>(y)));
+	return element == this->context->GetRootElement() ? nullptr : element;
+}
+
+/* Each driver event arrives on its own, so a button that changed changed with this event. */
+void RmlLayer::Feed(const RmlPointer &pointer)
 {
 	if (this->context == nullptr) return;
 
 	this->context->ProcessMouseMove(pointer.x, pointer.y, pointer.modifiers);
 	for (int button = 0; button < static_cast<int>(this->held.size()); button++) {
-		if (!this->held[button] || pointer.buttons[button]) continue;
-		this->held[button] = false;
-		this->context->ProcessMouseButtonUp(button, pointer.modifiers);
-	}
-
-	bool pressed_elsewhere = !this->context->IsMouseInteracting() && std::ranges::any_of(pointer.buttons, std::identity{});
-	if (this->IsTyping() && pressed_elsewhere) this->ReleaseFocus();
-}
-
-bool RmlLayer::CapturePointer(const RmlPointer &pointer)
-{
-	if (this->context == nullptr || !this->context->IsMouseInteracting()) return false;
-
-	for (int button = 0; button < static_cast<int>(this->held.size()); button++) {
-		if (this->held[button] || !pointer.buttons[button]) continue;
-		this->held[button] = true;
-		this->context->ProcessMouseButtonDown(button, pointer.modifiers);
+		if (this->held[button] == pointer.buttons[button]) continue;
+		this->held[button] = pointer.buttons[button];
+		if (pointer.buttons[button]) {
+			this->context->ProcessMouseButtonDown(button, pointer.modifiers);
+		} else {
+			this->context->ProcessMouseButtonUp(button, pointer.modifiers);
+		}
 	}
 	if (pointer.wheel != 0) this->context->ProcessMouseWheel(Rml::Vector2f(0.0f, static_cast<float>(pointer.wheel)), pointer.modifiers);
-	return true;
 }
 
-/* The pointer counts as over the layer only on an element that takes it, never on the bare context root. */
-const Rml::Element *RmlLayer::Hovered() const
+/* The pointer is on another layer: nothing here stays hovered, and a press there ends typing here. */
+void RmlLayer::Leave(bool pressed)
 {
-	if (this->context == nullptr || !this->context->IsMouseInteracting()) return nullptr;
-	return this->context->GetHoverElement();
+	if (this->context == nullptr) return;
+	if (this->context->GetHoverElement() != nullptr) this->context->ProcessMouseLeave();
+	if (pressed && this->IsTyping()) this->ReleaseFocus();
 }
 
 void RmlLayer::ProcessKey(const RmlKey &key)

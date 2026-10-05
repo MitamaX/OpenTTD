@@ -31,10 +31,6 @@ struct NativeKey {
 
 struct DockedWindow {
 	NativeKey key;
-	Rect vis;
-	/* Size of the shell's own resize grip in the bottom-right of the slot; the
-	 * native must not take those clicks or both grips would fight. */
-	int grip;
 	bool used;
 	/* Windows the mini UI opened itself go away with their slot; windows it
 	 * merely adopted are handed back where the player can still reach them. */
@@ -50,7 +46,7 @@ public:
 	bool Docks(const Window *w) const;
 
 	Window *Open(const DockSpec &spec, WindowNumber num) const;
-	Rect Pin(Window *w, bool owned, const Rect &slot, const NativeSizing &sizing, int grip);
+	void Pin(Window *w, bool owned, const Rect &slot, const NativeSizing &sizing);
 	void Carry(Window *w, const Rect &slot);
 
 	void Unmark();
@@ -60,7 +56,7 @@ public:
 	void Stack(const std::vector<NativeKey> &want);
 
 private:
-	DockedWindow &Hold(NativeKey key, bool owned);
+	void Hold(NativeKey key, bool owned);
 	std::vector<NativeKey> DockedOrder() const;
 
 	std::vector<DockedWindow> windows;

@@ -5,27 +5,34 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file press_owner.cpp Which layer a mouse press belongs to. */
+/** @file pointer_router.cpp Which layer a mouse event belongs to. */
 
 #include "../../stdafx.h"
-#include "press_owner.h"
+#include "pointer_router.h"
 
 #include "../../gfx_func.h"
 
 #include "../../safeguards.h"
+
+PointerRouter _pointer;
 
 static bool AnyButtonDown()
 {
 	return _left_button_down || _right_button_down || _middle_button_down;
 }
 
-PressSide PressOwner::Held()
+/* The release goes to the owner too, and only then is the mouse free again. */
+PointerLayer PointerRouter::Route(PointerLayer under)
 {
-	if (!AnyButtonDown()) this->side = PressSide::None;
-	return this->side;
+	bool down = AnyButtonDown();
+	if (!this->owner.has_value() && down) this->owner = under;
+	this->current = this->owner.value_or(under);
+	if (!down) this->owner.reset();
+	return this->current;
 }
 
-void PressOwner::Claim(PressSide side)
+/* The map follows the pointer only while nothing above it has the pointer. */
+bool PointerRouter::OnMap() const
 {
-	if (AnyButtonDown() && this->side == PressSide::None) this->side = side;
+	return _cursor.in_window && this->current == PointerLayer::Map;
 }

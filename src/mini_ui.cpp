@@ -73,7 +73,7 @@
 #include "mini/hud/toast_stack.h"
 #include "mini/hud/window_bar.h"
 #include "mini/input/input_mode.h"
-#include "mini/input/press_owner.h"
+#include "mini/input/pointer_router.h"
 #include "mini/map/ground.h"
 #include "mini/map/map_labels.h"
 #include "mini/map/map_overlay.h"
@@ -173,7 +173,6 @@ static bool _mini_active = false;
 static int _fbw, _fbh;
 
 static bool _prev_left = false;
-static PressOwner _press_owner;
 
 bool MiniUiActive()
 {
@@ -627,12 +626,16 @@ bool MiniUiWindowPlacement(int width, int height, Point &pt)
 
 /* A docked window reaches the screen only through its panel slot; drawing it
  * whole would show the part that reaches past the slot through the chrome. */
+static bool Floats(const Window *w)
+{
+	return !MiniUiHidesWindow(w->window_class) && !_dock.Docks(w);
+}
+
 static std::vector<Rect> FloatingNativeRects()
 {
 	std::vector<Rect> rects;
 	for (const Window *w : Window::IterateFromBack()) {
-		if (MiniUiHidesWindow(w->window_class) || _dock.Docks(w)) continue;
-		rects.push_back({w->left, w->top, w->left + w->width - 1, w->top + w->height - 1});
+		if (Floats(w)) rects.push_back({w->left, w->top, w->left + w->width - 1, w->top + w->height - 1});
 	}
 	return rects;
 }
@@ -661,58 +664,35 @@ void MiniUiScrollTo(int x, int y)
 	_camera.GlideTo(x / (double)TILE_SIZE, y / (double)TILE_SIZE);
 }
 
-/* Native windows float above the panels and take the click; carriers sit
- * below them, so the panel gets those instead. An embed takes the click only
- * inside its visible slot, so the cropped caption hiding under the mini tab
- * strip cannot start a native drag, and only where no panel covers the slot. */
-static bool NativeWindowTakesPointer()
+/* Floating native windows are drawn over everything, so they are first in line. */
+static bool FloatingNativeAt(int x, int y)
 {
-	Window *w = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
-	if (w == nullptr || MiniUiHidesWindow(w->window_class) || IsCarrier(w)) return false;
-
-	const DockedWindow *e = _dock.Find(w);
-	if (e == nullptr) return true;
-	if (!e->vis.Contains({_cursor.pos.x, _cursor.pos.y})) return false;
-	bool on_grip = e->grip > 0 && _cursor.pos.x > e->vis.right - e->grip && _cursor.pos.y > e->vis.bottom - e->grip;
-	return !on_grip && (!_views.PointerOverLayer() || _views.PointerOverSlot());
+	for (const Window *w : Window::IterateFromFront()) {
+		if (Floats(w) && IsInsideBS(x, w->left, w->width) && IsInsideBS(y, w->top, w->height)) return true;
+	}
+	return false;
 }
 
-static bool MiniLayerTakesPointer()
+/* A slot hands the pointer to the native window docked in it; a carrier only
+ * shows the camera, so a click there stays with the panel around it. */
+static PointerLayer LayerUnder(int x, int y)
 {
-	return _views.CapturePointer();
+	if (FloatingNativeAt(x, y)) return PointerLayer::Native;
+	switch (_views.HitAt(x, y)) {
+		case LayerHit::Nothing:
+			return PointerLayer::Map;
+		case LayerHit::Element:
+			return PointerLayer::Panel;
+		case LayerHit::Slot: {
+			const Window *w = FindWindowFromPt(x, y);
+			return w != nullptr && _dock.Find(w) != nullptr && !IsCarrier(w) ? PointerLayer::Native : PointerLayer::Panel;
+		}
+	}
+	NOT_REACHED();
 }
 
-bool MiniUiHandleMouseEvents(bool native_capture)
+static void HandleMapPointer()
 {
-	if (!_mini_active) return false;
-
-	PressSide held = _press_owner.Held();
-	_views.TrackPointer();
-
-	if (held == PressSide::Native) return false;
-	if (held == PressSide::Mini) {
-		_cursor.wheel = 0;
-		return true;
-	}
-
-	if (held == PressSide::None && !_tool.Dragging() && !_middle_button_down) {
-		if (native_capture) return false;
-		if (NativeWindowTakesPointer()) {
-			_press_owner.Claim(PressSide::Native);
-			return false;
-		}
-		/* The panels have the wheel already. Leaving the pending
-		 * notch here would zoom the map the moment the cursor leaves the
-		 * window and the map starts consuming events again. */
-		if (MiniLayerTakesPointer()) {
-			_cursor.wheel = 0;
-			_press_owner.Claim(PressSide::Mini);
-			return true;
-		}
-	}
-
-	_press_owner.Claim(PressSide::Map);
-
 	if (_middle_button_down && (_cursor.delta.x != 0 || _cursor.delta.y != 0)) _camera.Drag(_cursor.delta.x, _cursor.delta.y);
 
 	if (_cursor.wheel != 0) {
@@ -723,11 +703,9 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 		} else {
 			_camera.ZoomAt(_cursor.pos.x, _cursor.pos.y, _cursor.wheel < 0);
 		}
-		_cursor.wheel = 0;
 	}
 
 	if (_left_button_down && !_left_button_clicked) {
-		_left_button_clicked = true;
 		if (_tool.Kind() == MiniTool::None) {
 			if (_mode.PickingOrders()) {
 				_mode.PickOrderAt(CursorPoint());
@@ -743,14 +721,38 @@ bool MiniUiHandleMouseEvents(bool native_capture)
 	if (!_left_button_down && _prev_left) _tool.Release();
 	_prev_left = _left_button_down;
 
-	if (_right_button_clicked) {
-		_right_button_clicked = false;
-		_mode.Unwind();
-	}
+	if (_right_button_clicked) _mode.Unwind();
+}
 
+/* An event the mini UI handled is spent: a native window the pointer reaches
+ * later must not find its click latch, wheel or motion still pending. */
+static void SpendPointerEvent()
+{
+	if (_left_button_down) _left_button_clicked = true;
+	_right_button_clicked = false;
+	_cursor.wheel = 0;
+	_cursor.v_wheel = 0.0f;
+	_cursor.h_wheel = 0.0f;
+	_cursor.wheel_moved = false;
 	_cursor.delta.x = 0;
 	_cursor.delta.y = 0;
-	_cursor.wheel_moved = false;
+}
+
+bool MiniUiHandleMouseEvents(bool native_capture)
+{
+	if (!_mini_active) return false;
+
+	PointerLayer under = native_capture ? PointerLayer::Native : LayerUnder(_cursor.pos.x, _cursor.pos.y);
+	PointerLayer layer = _pointer.Route(under);
+	if (layer == PointerLayer::Panel) {
+		_views.FeedPointer();
+	} else {
+		_views.LeavePointer(_left_button_down || _right_button_down || _middle_button_down);
+	}
+
+	if (layer == PointerLayer::Native) return false;
+	if (layer == PointerLayer::Map) HandleMapPointer();
+	SpendPointerEvent();
 	return true;
 }
 

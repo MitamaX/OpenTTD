@@ -16,6 +16,7 @@
 #include "../../map_func.h"
 #include "../../slope_func.h"
 #include "../../tile_map.h"
+#include "../input/pointer_router.h"
 #include "build_tool.h"
 #include "command_probe.h"
 #include "tile_pick.h"
@@ -68,7 +69,7 @@ static bool SiteShapeFits(MiniTool kind, TileIndex tile)
 void ToolSites::Update()
 {
 	MiniTool kind = _tool.Kind();
-	if (!NeedsSite(kind) || !_cursor.in_window || _ctrl_pressed || !Company::IsValidID(_local_company)) {
+	if (!NeedsSite(kind) || !_pointer.OnMap() || _ctrl_pressed || !Company::IsValidID(_local_company)) {
 		this->tiles.clear();
 		this->key = 0;
 		return;

@@ -18,6 +18,7 @@
 #include "../../map_func.h"
 #include "../../tunnelbridge.h"
 #include "../core/tones.h"
+#include "../input/pointer_router.h"
 #include "build_tool.h"
 #include "clear_filter.h"
 #include "command_probe.h"
@@ -100,7 +101,7 @@ static std::vector<bool> ProbeAreaFit(const AreaPlan &area, bool remove)
 
 void ToolEstimate::Update()
 {
-	if (!WantsEstimate() || !_cursor.in_window) {
+	if (!WantsEstimate() || !_pointer.OnMap()) {
 		this->Clear();
 		return;
 	}

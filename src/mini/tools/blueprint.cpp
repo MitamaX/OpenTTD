@@ -24,6 +24,7 @@
 #include "../core/camera.h"
 #include "../core/canvas.h"
 #include "../core/tones.h"
+#include "../input/pointer_router.h"
 #include "../map/tile_shapes.h"
 #include "build_tool.h"
 #include "clear_filter.h"
@@ -373,8 +374,11 @@ static void PaintCatchment(MiniTool kind, int ppt)
 	});
 }
 
+/* The blueprint follows the pointer only while the pointer is on the map. */
 void PaintBlueprint(int ppt)
 {
+	if (!_pointer.OnMap()) return;
+
 	MiniTool kind = _tool.Kind();
 	PaintCatchment(kind, ppt);
 	if (_tool.Dragging()) {
