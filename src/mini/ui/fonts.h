@@ -10,11 +10,45 @@
 #ifndef MINI_UI_FONTS_H
 #define MINI_UI_FONTS_H
 
-#include <array>
+#include <cstdlib>
+#include <filesystem>
+#include <string>
+#include <vector>
 
-inline constexpr const char MINI_FONT_REGULAR[] = "C:\\Windows\\Fonts\\malgun.ttf";
-inline constexpr const char MINI_FONT_BOLD[] = "C:\\Windows\\Fonts\\malgunbd.ttf";
+using FontCandidates = std::vector<std::filesystem::path>;
 
-inline constexpr std::array<const char *, 2> MINI_FONTS = {MINI_FONT_REGULAR, MINI_FONT_BOLD};
+/* Hangul needs a CJK face, and every platform keeps one somewhere else: the
+ * regular face first, then the bold one. */
+inline std::vector<FontCandidates> MiniFontFaces()
+{
+#if defined(_WIN32)
+	const char *windows = std::getenv("WINDIR");
+	if (windows == nullptr) return {};
+	std::filesystem::path fonts = std::filesystem::path(windows) / "Fonts";
+	return {{fonts / "malgun.ttf"}, {fonts / "malgunbd.ttf"}};
+#elif defined(__APPLE__)
+	return {{"/System/Library/Fonts/AppleSDGothicNeo.ttc"}};
+#else
+	return {
+		{"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc"},
+		{"/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc", "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc"},
+	};
+#endif
+}
+
+/* Each face is the first of its candidates that is installed here. */
+inline std::vector<std::string> MiniFontFiles()
+{
+	std::vector<std::string> files;
+	for (const FontCandidates &face : MiniFontFaces()) {
+		for (const std::filesystem::path &file : face) {
+			std::error_code error;
+			if (!std::filesystem::exists(file, error)) continue;
+			files.push_back(file.string());
+			break;
+		}
+	}
+	return files;
+}
 
 #endif /* MINI_UI_FONTS_H */

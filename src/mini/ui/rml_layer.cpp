@@ -52,7 +52,7 @@ void RmlLayer::Start()
 	Rml::Initialise();
 	RegisterElement<NativeSlot>(NativeSlot::TAG);
 	RegisterElement<RasterImage>(RasterImage::TAG);
-	for (const char *font : MINI_FONTS) Rml::LoadFontFace(font);
+	for (const std::string &font : MiniFontFiles()) Rml::LoadFontFace(font);
 
 	this->context = Rml::CreateContext("mini", Rml::Vector2i(1, 1), nullptr, &this->text_input);
 	_gpu.Attach(this);

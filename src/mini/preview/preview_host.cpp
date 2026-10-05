@@ -80,7 +80,7 @@ bool PreviewHost::Start()
 	Rml::SetSystemInterface(&this->log);
 	Rml::SetRenderInterface(this->renderer.get());
 	Rml::Initialise();
-	for (const char *font : MINI_FONTS) Rml::LoadFontFace(font);
+	for (const std::string &font : MiniFontFiles()) Rml::LoadFontFace(font);
 	return true;
 }
 
