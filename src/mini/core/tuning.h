@@ -25,7 +25,6 @@ struct MiniTuning {
 	int edge_scroll = 0;
 	int edge_margin = 24;
 	double edge_scroll_speed = 1600.0;
-	double drag_pan_multiplier = 2.0;
 	double jump_ppt = 32.0;
 	double glide_ms = 250.0;
 

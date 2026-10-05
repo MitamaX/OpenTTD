@@ -129,15 +129,10 @@ void Camera::GlideTo(double tx, double ty)
 	this->dest_ppt = std::max(this->dest_ppt, _tuning.jump_ppt);
 }
 
-void Camera::Drag(int dx, int dy)
+/* The world point under a middle press stays under the pointer until the button comes up. */
+void Camera::Grab(int sx, int sy)
 {
-	this->anchored = false;
-	this->gliding = false;
-	this->pan_vx = 0.0;
-	this->pan_vy = 0.0;
-	this->y -= dx * _tuning.drag_pan_multiplier / this->ppt;
-	this->x -= dy * _tuning.drag_pan_multiplier / this->ppt;
-	this->Confine();
+	this->grab = this->MapAt(sx, sy);
 }
 
 void Camera::Zoom(bool in)
@@ -174,6 +169,7 @@ void Camera::Update(uint delta_ms, std::optional<TilePoint> chase)
 	}
 	this->Glide(delta_ms);
 	this->Settle(delta_ms);
+	this->FollowGrab();
 }
 
 double Camera::TilesFor(double pixels_per_second, uint delta_ms) const
@@ -258,8 +254,30 @@ void Camera::Settle(uint delta_ms)
 	}
 	if (!this->anchored) return;
 
-	this->x = this->anchor.first - (this->anchor_sy - this->height * 0.5) / this->ppt;
-	this->y = this->anchor.second - (this->anchor_sx - this->width * 0.5) / this->ppt;
-	this->Confine();
+	this->Pin(this->anchor, this->anchor_sx, this->anchor_sy);
 	if (this->ppt == this->dest_ppt) this->anchored = false;
+}
+
+/* The grab is placed from where the pointer is now, not from how far it moved, so
+ * whatever the pointer crossed in between, panels or the window edge, the grabbed
+ * point is back under it. It comes last and overrules every other motion. */
+void Camera::FollowGrab()
+{
+	if (!this->grab.has_value()) return;
+	if (!_middle_button_down) {
+		this->grab.reset();
+		return;
+	}
+
+	this->Halt();
+	this->pan_vx = 0.0;
+	this->pan_vy = 0.0;
+	this->Pin(*this->grab, _cursor.pos.x, _cursor.pos.y);
+}
+
+void Camera::Pin(TilePoint world, int sx, int sy)
+{
+	this->x = world.first - (sy - this->height * 0.5) / this->ppt;
+	this->y = world.second - (sx - this->width * 0.5) / this->ppt;
+	this->Confine();
 }

@@ -45,7 +45,7 @@ public:
 
 	void CentreOn(double tx, double ty);
 	void GlideTo(double tx, double ty);
-	void Drag(int dx, int dy);
+	void Grab(int sx, int sy);
 	void Zoom(bool in);
 	void ZoomAt(int sx, int sy, bool in);
 	void Halt();
@@ -61,6 +61,8 @@ private:
 	void EdgeScroll(uint delta_ms);
 	void Glide(uint delta_ms);
 	void Settle(uint delta_ms);
+	void FollowGrab();
+	void Pin(TilePoint world, int sx, int sy);
 
 	int width = 0;
 	int height = 0;
@@ -78,6 +80,8 @@ private:
 
 	bool gliding = false;
 	TilePoint glide{};
+
+	std::optional<TilePoint> grab;
 
 	double pan_vx = 0.0;
 	double pan_vy = 0.0;

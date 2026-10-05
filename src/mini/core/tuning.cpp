@@ -61,7 +61,6 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "edge_scroll", this->edge_scroll);
 	ReadIniNumber(group, "edge_margin", this->edge_margin);
 	ReadIniNumber(group, "edge_scroll_speed", this->edge_scroll_speed);
-	ReadIniNumber(group, "drag_pan_multiplier", this->drag_pan_multiplier);
 	ReadIniNumber(group, "jump_ppt", this->jump_ppt);
 	ReadIniNumber(group, "glide_ms", this->glide_ms);
 
@@ -77,7 +76,6 @@ void MiniTuning::Load()
 	this->filter_alpha = Clamp(this->filter_alpha, 0, 230);
 	this->edge_margin = Clamp(this->edge_margin, 2, 200);
 	this->edge_scroll_speed = Clamp(this->edge_scroll_speed, 100.0, 10000.0);
-	this->drag_pan_multiplier = Clamp(this->drag_pan_multiplier, 0.5, 8.0);
 	this->jump_ppt = Clamp(this->jump_ppt, MIN_PPT, MAX_PPT);
 	this->glide_ms = Clamp(this->glide_ms, 1.0, 2000.0);
 

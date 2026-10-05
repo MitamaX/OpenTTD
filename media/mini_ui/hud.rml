@@ -4,7 +4,7 @@
 	<link type="text/rcss" href="hud.rcss"/>
 </head>
 <body>
-	<map-view id="map" data-model="map" data-event-mousedown="press" data-event-mouseup="release" data-event-dragend="release" data-event-mousemove="move" data-event-mousescroll="zoom"/>
+	<map-view id="map" data-model="map" data-event-mousedown="press" data-event-mouseup="release" data-event-dragend="release" data-event-mousescroll="zoom"/>
 	<div class="dock dock-left">
 		<div id="colony" class="chrome colony" data-model="colony">
 			<div class="colony-head">

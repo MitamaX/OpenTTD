@@ -11,7 +11,6 @@
 #define MINI_INPUT_MAP_POINTER_H
 
 #include <functional>
-#include <optional>
 
 #include "../../core/geometry_type.hpp"
 #include "../ui/hud_part.h"
@@ -29,13 +28,11 @@ private:
 
 	void Press(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void Release(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
-	void Move(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void Zoom(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 
 	void Click(Point at, bool ctrl) const;
 
 	const Inspector inspect;
-	std::optional<Point> grab;
 };
 
 #endif /* MINI_INPUT_MAP_POINTER_H */

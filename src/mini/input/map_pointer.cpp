@@ -12,7 +12,6 @@
 
 #include <RmlUi/Core.h>
 
-#include "../../gfx_func.h"
 #include "../core/camera.h"
 #include "../tools/build_tool.h"
 #include "input_mode.h"
@@ -43,7 +42,6 @@ void MapPointer::Bind(Rml::DataModelConstructor &model)
 {
 	model.BindEventCallback("press", &MapPointer::Press, this);
 	model.BindEventCallback("release", &MapPointer::Release, this);
-	model.BindEventCallback("move", &MapPointer::Move, this);
 	model.BindEventCallback("zoom", &MapPointer::Zoom, this);
 }
 
@@ -60,7 +58,7 @@ void MapPointer::Press(Rml::DataModelHandle, Rml::Event &event, const Rml::Varia
 	switch (event.GetParameter<int>("button", LEFT_BUTTON)) {
 		case LEFT_BUTTON: this->Click(at, event.GetParameter<int>("ctrl_key", 0) != 0); break;
 		case RIGHT_BUTTON: _mode.Unwind(); break;
-		case MIDDLE_BUTTON: this->grab = at; break;
+		case MIDDLE_BUTTON: _camera.Grab(at.x, at.y); break;
 		default: break;
 	}
 }
@@ -68,25 +66,7 @@ void MapPointer::Press(Rml::DataModelHandle, Rml::Event &event, const Rml::Varia
 /* A build drag ends wherever the button comes up; off the map RmlUi reports it as the end of the map's drag, which names no button. */
 void MapPointer::Release(Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &)
 {
-	switch (event.GetParameter<int>("button", LEFT_BUTTON)) {
-		case LEFT_BUTTON: if (MapHoldsPointer()) _tool.Release(); break;
-		case MIDDLE_BUTTON: this->grab.reset(); break;
-		default: break;
-	}
-}
-
-/* The grabbed point follows the pointer. Over a panel the map waits, and catches up once the pointer is back. */
-void MapPointer::Move(Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &)
-{
-	if (!this->grab.has_value()) return;
-	if (!_middle_button_down) {
-		this->grab.reset();
-		return;
-	}
-
-	Point at = EventPoint(event);
-	_camera.Drag(at.x - this->grab->x, at.y - this->grab->y);
-	this->grab = at;
+	if (event.GetParameter<int>("button", LEFT_BUTTON) == LEFT_BUTTON && MapHoldsPointer()) _tool.Release();
 }
 
 /* The wheel only zooms the map: RmlUi must neither scroll with it nor start its autoscroll on a middle press. */
