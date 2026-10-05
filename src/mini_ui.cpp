@@ -92,6 +92,7 @@
 #include "mini/ui/ui_text.h"
 #include "mini/ui/view_host.h"
 #include "mini/windows/company_panel.h"
+#include "mini/windows/depot_panel.h"
 #include "mini/windows/engine_preview_panel.h"
 #include "mini/windows/finance_panel.h"
 #include "mini/windows/goal_list_panel.h"
@@ -381,7 +382,6 @@ static const uint32_t COL_CH_RED = 0xFFE05F4AU;
 static const uint32_t COL_CH_YELLOW = 0xFFE0B64AU;
 
 enum class MiniWndKind : uint8_t {
-	Fleet,
 	Group,
 	Map,
 };
@@ -394,25 +394,20 @@ static bool WndIsList(MiniWndKind kind)
 }
 
 struct MiniWnd {
-	MiniWndKind kind = MiniWndKind::Fleet;
-	VehicleID sel = VehicleID::Invalid();
+	MiniWndKind kind = MiniWndKind::Group;
 	GroupID sel_grp = ALL_GROUP;
 	EngineID sel_eng = EngineID::Invalid();
-	bool show_hidden = false;
 	int x = 0, y = 0;
 	uint8_t tab = 0;
 	bool want_raise = false;
 	bool focus_name = false;
 	GroupID rename_grp = GroupID::Invalid();
-	TileIndex rename_depot = INVALID_TILE;
-	TileIndex sell_arm = INVALID_TILE;
 	uint32_t focus_seq = 0;
 	char name_buf[128] = {};
 };
 
 static std::vector<MiniWnd> _wnds;
 
-static void OpenFleetMiniWnd(int vt);
 static void OpenGroupMiniWnd(int vt);
 static void OpenMapMiniWnd();
 static void OpenMiniWindow(MiniWin win);
@@ -451,7 +446,7 @@ static void OpenMiniWindow(MiniWin win)
 		case MiniWin::Towns: _views.Show(std::make_unique<TownListPanel>()); break;
 		case MiniWin::Industries: _views.Show(std::make_unique<IndustryListPanel>()); break;
 		case MiniWin::Subsidies: _views.Show(std::make_unique<SubsidyListPanel>()); break;
-		case MiniWin::Buy: if (company) OpenFleetMiniWnd(-1); break;
+		case MiniWin::Buy: if (company) _views.Show(std::make_unique<DepotPanel>()); break;
 		case MiniWin::Groups: if (company) OpenGroupMiniWnd(-1); break;
 		case MiniWin::Map: OpenMapMiniWnd(); break;
 		case MiniWin::Signs: OpenSignListMiniWnd(SignID::Invalid()); break;
@@ -477,7 +472,7 @@ static VehicleID FrontWndVehicle()
 
 /* Work windows and the plot run twice as wide; the other kinds keep the
  * narrow single-column shape. */
-static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Fleet || mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Map; }
+static bool WndWide(const MiniWnd &mw) { return mw.kind == MiniWndKind::Group || mw.kind == MiniWndKind::Map; }
 static int WndW(const MiniWnd &mw) { return std::min((WndWide(mw) ? 560 : 250) * _tuning.hud_scale, _fbw - 12 * _tuning.hud_scale); }
 static int WndTitleH() { return GetCharacterHeight(FS_NORMAL) + 8 * _tuning.hud_scale; }
 static int WndTabH() { return GetCharacterHeight(FS_NORMAL) + 8 * _tuning.hud_scale; }
@@ -538,11 +533,6 @@ static void CloseAllMiniWnds()
 	_wnds.clear();
 	_wnd_opens.clear();
 	_views.CloseAll();
-}
-
-static void OpenFleetMiniWnd(int vt)
-{
-	OpenMiniWnd(MiniWndKind::Fleet, (int8_t)vt);
 }
 
 void OpenVehicleWindow(VehicleID vehicle)
@@ -669,78 +659,6 @@ static void ImWndHeader(std::string_view text)
 	ImGui::SeparatorText(std::string(text).c_str());
 }
 
-struct ImStripUnit {
-	int len8 = 8;
-	uint32_t fill = 0;
-	bool engine = false;
-	bool selected = false;
-};
-
-static int ImWndUnitStrip(const std::vector<ImStripUnit> &units)
-{
-	int s = _tuning.hud_scale;
-	float bh = ImGui::GetTextLineHeight() * 1.6f;
-	float avail = ImGui::GetContentRegionAvail().x;
-	ImVec2 origin = ImGui::GetCursorScreenPos();
-	ImDrawList *dl = ImGui::GetWindowDrawList();
-	int clicked = -1;
-	float x = 0.0f;
-	ImGui::PushID(_imrow++);
-	for (size_t i = 0; i < units.size(); i++) {
-		const ImStripUnit &u = units[i];
-		float uw = (float)std::max(4 * s, 3 * s * u.len8 / 2);
-		if (x + uw > avail - 8.0f * s) {
-			dl->AddText(ImVec2(origin.x + x, origin.y), MiniImU32(COL_CH_DIM), "…");
-			break;
-		}
-		ImGui::SetCursorScreenPos(ImVec2(origin.x + x, origin.y));
-		ImGui::PushID((int)i);
-		if (ImGui::InvisibleButton("u", ImVec2(uw, bh))) clicked = (int)i;
-		ImVec2 p0 = ImGui::GetItemRectMin();
-		ImVec2 p1 = ImGui::GetItemRectMax();
-		dl->AddRectFilled(p0, p1, MiniImU32(u.fill));
-		if (u.engine) dl->AddRectFilled(ImVec2(p0.x, p1.y - 2.0f * s), p1, MiniImU32(COL_CH_ACCENT));
-		if (u.selected) dl->AddRect(p0, p1, MiniImU32(COL_CH_ACCENT), 0.0f, 0, (float)s);
-		if (ImGui::IsItemHovered()) dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 48));
-		ImGui::PopID();
-		x += uw + (float)s;
-	}
-	ImGui::PopID();
-	ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + bh + 2.0f * _tuning.hud_scale));
-	ImGui::Dummy(ImVec2(0.0f, 0.0f));
-	return clicked;
-}
-
-static int ImTrainStrip(const Train *head, VehicleID sel, std::vector<VehicleID> &ids)
-{
-	std::vector<ImStripUnit> units;
-	for (const Train *u = head; u != nullptr; u = u->GetNextUnit()) {
-		ImStripUnit su;
-		su.len8 = std::max<int>(1, u->gcache.cached_veh_length);
-		su.engine = u->GetEngine()->VehInfo<RailVehicleInfo>().railveh_type != RAILVEH_WAGON;
-		su.fill = u->cargo_cap > 0 && IsValidCargoType(u->cargo_type) ? CargoRgb(u->cargo_type) : COL_CH_TILE;
-		su.selected = sel == u->index;
-		units.push_back(su);
-		ids.push_back(u->index);
-	}
-	return ImWndUnitStrip(units);
-}
-
-static void FleetMarkUnit(MiniWnd &mw, VehicleID target, bool attach)
-{
-	const Vehicle *mv = Vehicle::GetIfValid(mw.sel);
-	const Vehicle *cv = Vehicle::GetIfValid(target);
-	if (cv == nullptr) {
-		mw.sel = VehicleID::Invalid();
-	} else if (attach && mv != nullptr && mv->type == VEH_TRAIN && cv->type == VEH_TRAIN &&
-			mv->First() != cv->First() && mv->tile == cv->tile) {
-		Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, mv->tile, mv->index, cv->Last()->index, mv->First() == mv);
-		mw.sel = VehicleID::Invalid();
-	} else {
-		mw.sel = mw.sel == target ? VehicleID::Invalid() : target;
-	}
-}
-
 /* Names are edited where they are shown: the label swaps for a text field in
  * place, Enter commits and anything else leaves the name alone. */
 static void ImWndNameEditBegin(MiniWnd &mw, std::string_view name)
@@ -770,242 +688,6 @@ static void OpenSignListMiniWnd(SignID focus)
 	Panel *list = _views.Show(std::make_unique<SignListPanel>());
 	const Sign *sign = Sign::GetIfValid(focus);
 	if (list != nullptr && sign != nullptr) list->BeginEdit(SignListPanel::EditKey(focus), sign->name);
-}
-
-static void ImFleetBody(MiniWnd &mw)
-{
-	VehicleType vt = (VehicleType)mw.tab;
-	ConsistDraft &draft = FleetDraft(vt);
-	draft.Prune();
-
-	const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
-	if (sv != nullptr && (sv->type != vt || !sv->First()->IsChainInDepot())) {
-		mw.sel = VehicleID::Invalid();
-		sv = nullptr;
-	}
-	if (mw.rename_depot != INVALID_TILE && !IsDepotTile(mw.rename_depot)) mw.rename_depot = INVALID_TILE;
-
-	float lw = ImGui::GetContentRegionAvail().x * 0.45f;
-	ImGui::BeginChild("buy", ImVec2(lw, 0.0f));
-	{
-		struct BuyRow {
-			EngineID eid;
-			std::string name;
-			Money cost;
-			int64_t score;
-			bool hidden;
-		};
-		int nhidden = 0;
-		std::vector<BuyRow> locos, wags;
-		for (const Engine *e : Engine::IterateType(vt)) {
-			if (!e->IsEnabled() || !e->company_avail.Test(_local_company)) continue;
-			bool hidden = e->IsHidden(_local_company);
-			if (hidden) {
-				nhidden++;
-				if (!mw.show_hidden) continue;
-			}
-			bool wagon = false;
-			int64_t score;
-			switch (vt) {
-				case VEH_TRAIN: {
-					const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
-					wagon = rvi.railveh_type == RAILVEH_WAGON;
-					score = wagon ? e->GetDisplayDefaultCapacity() : e->GetPower();
-					break;
-				}
-				default:
-					score = (int64_t)e->GetDisplayDefaultCapacity() * 1000 + e->GetDisplayMaxSpeed();
-					break;
-			}
-			BuyRow r;
-			r.eid = e->index;
-			r.name = GameText(STR_ENGINE_NAME, e->index);
-			r.cost = e->GetCost();
-			r.score = score;
-			r.hidden = hidden;
-			(wagon ? wags : locos).push_back(std::move(r));
-		}
-		auto by_score = [](const BuyRow &a, const BuyRow &b) { return a.score > b.score; };
-		std::sort(locos.begin(), locos.end(), by_score);
-		std::sort(wags.begin(), wags.end(), by_score);
-		if (nhidden > 0 && ImWndLink(mw.show_hidden ? fmt::format("숨긴 엔진 {}종 감추기", nhidden) : fmt::format("숨긴 엔진 {}종 보기", nhidden), COL_CH_DIM)) {
-			mw.show_hidden = !mw.show_hidden;
-		}
-		auto engine_rows = [&](const std::vector<BuyRow> &list) {
-			for (const BuyRow &r : list) {
-				bool clicked = ImWndKVLink(r.name, GetString(STR_JUST_CURRENCY_LONG, r.cost), r.hidden ? COL_CH_DIM : COL_CH_TEXT, r.hidden ? COL_CH_DIM : COL_CH_TEXT);
-				if (ImGui::IsItemHovered()) mw.sel_eng = r.eid;
-				if (clicked) draft.Add(r.eid);
-			}
-		};
-		if (vt == VEH_TRAIN) {
-			if (!locos.empty()) ImWndHeader("기관차");
-			engine_rows(locos);
-			if (!wags.empty()) ImWndHeader("화차");
-			engine_rows(wags);
-		} else {
-			ImWndHeader("엔진");
-			engine_rows(locos);
-		}
-		if (locos.empty() && wags.empty()) ImWndText("구매 가능 엔진 없음", COL_CH_DIM);
-	}
-	ImGui::EndChild();
-	ImGui::SameLine();
-	ImGui::BeginChild("yard", ImVec2(0.0f, 0.0f));
-	{
-		/* The buy row under the cursor decides what the spec panel shows, and it
-		 * keeps the last one so the panel does not blank while the cursor leaves
-		 * the list. */
-		const Engine *he = Engine::GetIfValid(mw.sel_eng);
-		if (he != nullptr && (he->type != vt || !he->IsEnabled())) {
-			mw.sel_eng = EngineID::Invalid();
-			he = nullptr;
-		}
-		if (he != nullptr) {
-			ImWndHeader(GameText(STR_ENGINE_NAME, he->index));
-			ImWndText(StrMakeValid(GetEngineInfoString(he->index), {}), COL_CH_TEXT);
-			bool wagon = vt == VEH_TRAIN && he->VehInfo<RailVehicleInfo>().railveh_type == RAILVEH_WAGON;
-			if (!wagon) ImWndKV("신뢰도", fmt::format("{}%", ToPercent16(he->reliability)), COL_CH_TEXT);
-			bool hidden = he->IsHidden(_local_company);
-			if (ImWndLink(hidden ? "· 숨김 해제" : "· 구매 목록에서 숨기기", COL_CH_DIM)) {
-				Command<CMD_SET_VEHICLE_VISIBILITY>::Post(he->index, !hidden);
-			}
-		}
-
-		ImWndHeader("설계");
-		if (draft.Empty()) {
-			ImWndText(vt == VEH_TRAIN ? "엔진 목록을 눌러 편성 구성" : "엔진 목록을 눌러 선택", COL_CH_DIM);
-		} else {
-			std::vector<ImStripUnit> units;
-			for (EngineID id : draft.Units()) {
-				const Engine *e = Engine::Get(id);
-				ImStripUnit su;
-				su.engine = vt == VEH_TRAIN && e->VehInfo<RailVehicleInfo>().railveh_type != RAILVEH_WAGON;
-				su.len8 = UnitLength(e);
-				CargoType dc = e->GetDefaultCargoType();
-				su.fill = e->GetDisplayDefaultCapacity() > 0 && IsValidCargoType(dc) ? CargoRgb(dc) : COL_CH_TILE;
-				units.push_back(su);
-			}
-			int del = ImWndUnitStrip(units);
-			if (del >= 0) draft.Remove(del);
-			DraftSummary sum = draft.Summary();
-			ImWndKV("합계", GetString(STR_JUST_CURRENCY_LONG, sum.cost), COL_CH_ACCENT);
-			if (vt == VEH_TRAIN) {
-				ImWndText(GameText(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, sum.weight, sum.power, PackVelocity(sum.speed, vt)), COL_CH_TEXT);
-				ImWndKV("길이", fmt::format("{:.1f}타일", sum.length / 16.0), COL_CH_TEXT);
-			}
-			if (sum.capacity > 0) ImWndKV("용량", fmt::format("{}", sum.capacity), COL_CH_TEXT);
-			ImWndText("차고 행 클릭으로 생산 · 블록 클릭으로 제외", COL_CH_DIM);
-		}
-		if (_deploy.Running(vt)) ImWndText(fmt::format("생산 중 {} / {}", _deploy.Unit(), _deploy.Units()), COL_CH_ACCENT);
-
-		ImWndHeader("차고");
-		if (sv != nullptr && vt == VEH_TRAIN) {
-			ImWndText("표시 차량: 같은 차고 편성 클릭으로 연결", COL_CH_ACCENT);
-			if (sv->First() != sv) {
-				if (ImWndLink("새 편성으로 분리", COL_CH_ACCENT)) {
-					Command<CMD_MOVE_RAIL_VEHICLE>::Post(STR_ERROR_CAN_T_MOVE_VEHICLE, sv->tile, sv->index, VehicleID::Invalid(), false);
-					mw.sel = VehicleID::Invalid();
-				}
-			}
-		}
-		bool anydep = false;
-		auto chain_rows = [&](const Vehicle *head) {
-			int len = 1;
-			if (vt == VEH_TRAIN) {
-				len = 0;
-				for (const Train *u = Train::From(head); u != nullptr; u = u->GetNextUnit()) len++;
-			}
-			std::string label = head->IsPrimaryVehicle()
-					? GameText(STR_VEHICLE_NAME, head->index)
-					: GameText(STR_ENGINE_NAME, head->engine_type);
-			if (len > 1) label = fmt::format("{} · {}량", label, len);
-			label = fmt::format("{}{}", mw.sel == head->index ? "▶ " : "· ", label);
-			bool stopped = head->vehstatus.Test(VehState::Stopped);
-			if (ImWndLink(label, mw.sel == head->index ? COL_CH_ACCENT : (stopped ? COL_CH_TEXT : COL_CH_YELLOW))) {
-				/* With a unit marked the row is a coupling target; otherwise it
-				 * is the only way from the yard to the consist's own window. */
-				const Vehicle *marked = Vehicle::GetIfValid(mw.sel);
-				bool couple = marked != nullptr && marked->type == VEH_TRAIN && head->type == VEH_TRAIN &&
-						marked->First() != head->First() && marked->tile == head->tile;
-				if (!couple && head->IsPrimaryVehicle()) {
-					OpenVehicleWindow(head->index);
-				} else {
-					FleetMarkUnit(mw, head->index, true);
-				}
-			}
-			if (vt == VEH_TRAIN) {
-				std::vector<VehicleID> ids;
-				int hit = ImTrainStrip(Train::From(head), mw.sel, ids);
-				if (hit >= 0 && (size_t)hit < ids.size()) FleetMarkUnit(mw, ids[hit], false);
-			}
-		};
-		/* Several depots in one town share a generated name, so the row renames
-		 * in place like a group row does. A hangar belongs to its station and
-		 * has no depot of its own to rename. */
-		auto depot_block = [&](TileIndex tile, uint dest, DepotID did) {
-			anydep = true;
-			VehicleList chains, wagons;
-			BuildDepotVehicleList(vt, tile, &chains, &wagons);
-			std::string dn = GameText(STR_DEPOT_NAME, vt, dest);
-			if (mw.rename_depot == tile) {
-				ImGui::PushID((int)tile.base());
-				int r = ImWndNameEdit(mw, ImGui::GetContentRegionAvail().x);
-				ImGui::PopID();
-				if (r == 1 && mw.name_buf[0] != '\0') {
-					Command<CMD_RENAME_DEPOT>::Post(STR_ERROR_CAN_T_RENAME_DEPOT, did, mw.name_buf);
-				}
-				if (r != 0) mw.rename_depot = INVALID_TILE;
-			} else {
-				if (ImWndLink(draft.Empty() ? dn : fmt::format("▶ {} 생산", dn), draft.Empty() ? COL_CH_TEXT : COL_CH_ACCENT)) {
-					if (!IsDepotTile(tile)) {
-						/* stale row */
-					} else if (draft.Empty()) {
-						MiniUiScrollTo(TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE);
-					} else {
-						_deploy.Start(tile, vt, draft.Units());
-					}
-				}
-				if (did != DepotID::Invalid() && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-					ImWndNameEditBegin(mw, dn);
-					mw.rename_depot = tile;
-				}
-			}
-			/* Emptying a depot cannot be taken back, so the row arms first and
-			 * sells on the next click. */
-			if (!chains.empty() || !wagons.empty()) {
-				bool armed = mw.sell_arm == tile;
-				if (ImWndLink(armed ? "· 전체 매각 · 다시 눌러 확정" : "· 전체 매각", armed ? COL_CH_RED : COL_CH_DIM)) {
-					if (armed) {
-						Command<CMD_DEPOT_SELL_ALL_VEHICLES>::Post(GetCmdSellAllVehMsg(vt), tile, vt);
-						mw.sell_arm = INVALID_TILE;
-						mw.sel = VehicleID::Invalid();
-					} else {
-						mw.sell_arm = tile;
-					}
-				}
-				if (ImWndLink("· 전체 교체", COL_CH_DIM)) {
-					Command<CMD_DEPOT_MASS_AUTOREPLACE>::Post(GetCmdAutoreplaceVehMsg(vt), tile, vt);
-				}
-			}
-			for (const Vehicle *head : chains) chain_rows(head);
-			for (const Vehicle *head : wagons) chain_rows(head);
-		};
-		if (vt == VEH_AIRCRAFT) {
-			for (const Station *st : Station::Iterate()) {
-				if (st->owner != _local_company || !st->facilities.Test(StationFacility::Airport) || !st->airport.HasHangar()) continue;
-				depot_block(st->airport.GetHangarTile(0), st->index.base(), DepotID::Invalid());
-			}
-		} else {
-			for (const Depot *d : Depot::Iterate()) {
-				if (!IsDepotTile(d->xy) || GetDepotVehicleType(d->xy) != vt) continue;
-				if (GetTileOwner(d->xy) != _local_company) continue;
-				depot_block(d->xy, d->index.base(), d->index);
-			}
-		}
-		if (!anydep) ImWndText("차고 없음", COL_CH_DIM);
-	}
-	ImGui::EndChild();
 }
 
 static void ImGroupBody(MiniWnd &mw)
@@ -1469,22 +1151,6 @@ static void ImWndCommands(MiniWnd &mw)
 {
 	ImGui::Separator();
 	switch (mw.kind) {
-		case MiniWndKind::Fleet: {
-			bool own = Company::IsValidID(_local_company);
-			const Vehicle *sv = Vehicle::GetIfValid(mw.sel);
-			if (ImWndButton("매각", own && sv != nullptr)) {
-				bool chain = sv->type == VEH_TRAIN && sv->First() == sv;
-				Command<CMD_SELL_VEHICLE>::Post(GetCmdSellVehMsg(sv->type), sv->tile, sv->index, chain, true, INVALID_CLIENT_ID);
-				mw.sel = VehicleID::Invalid();
-			}
-			ConsistDraft &draft = FleetDraft((VehicleType)mw.tab);
-			if (ImWndButton("설계 비우기", own && !draft.Empty())) draft.Clear();
-			if (ImWndButton("복제", own && sv != nullptr)) {
-				Command<CMD_CLONE_VEHICLE>::Post(GetCmdBuildVehMsg(sv->type), sv->tile, sv->First()->index, false);
-			}
-			break;
-		}
-
 		case MiniWndKind::Group: {
 			bool own = Company::IsValidID(_local_company);
 			VehicleListIdentifier vli(VL_GROUP_LIST, (VehicleType)mw.tab, _local_company, mw.sel_grp);
@@ -1543,7 +1209,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 
 	std::string title = "-";
 	switch (mw.kind) {
-		case MiniWndKind::Fleet: title = "차고"; break;
 		case MiniWndKind::Group: title = "차량군"; break;
 		case MiniWndKind::Map: title = "지도"; break;
 	}
@@ -1571,7 +1236,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 	int ntab;
 	std::string tl[8];
 	switch (mw.kind) {
-		case MiniWndKind::Fleet:
 		case MiniWndKind::Group: {
 			static const StringID type_strs[] = {STR_REPLACE_VEHICLE_TRAIN, STR_REPLACE_VEHICLE_ROAD_VEHICLE, STR_REPLACE_VEHICLE_SHIP, STR_REPLACE_VEHICLE_AIRCRAFT};
 			ntab = 4;
@@ -1598,7 +1262,6 @@ static bool DrawImGuiMiniWnd(MiniWnd &mw)
 				float cmd_h = has_cmds ? ImGui::GetFrameHeightWithSpacing() + 4.0f * s : 0.0f;
 				ImGui::BeginChild("body", ImVec2(0.0f, -cmd_h));
 				switch (mw.kind) {
-					case MiniWndKind::Fleet: ImFleetBody(mw); break;
 					case MiniWndKind::Group: ImGroupBody(mw); break;
 					case MiniWndKind::Map: ImMapBody(mw); break;
 				}
@@ -1729,7 +1392,7 @@ bool ShowMiniIndustryWindow(IndustryID industry)
 bool ShowMiniDepotWindow(TileIndex tile, VehicleType type)
 {
 	if (!_mini_active || !IsDepotTile(tile)) return false;
-	OpenFleetMiniWnd((int)type);
+	if (Panel *depot = _views.Show(std::make_unique<DepotPanel>()); depot != nullptr) depot->SelectTab(type);
 	return true;
 }
 

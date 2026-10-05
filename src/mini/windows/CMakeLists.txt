@@ -1,6 +1,8 @@
 add_files(
     company_panel.cpp
     company_panel.h
+    depot_panel.cpp
+    depot_panel.h
     directory_panel.cpp
     directory_panel.h
     engine_preview_panel.cpp
