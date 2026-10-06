@@ -180,6 +180,20 @@ static void CGDataFreeCallback(void *, const void *data, size_t)
 	delete[] (const uint32_t *)data;
 }
 
+/** Hand host order ARGB pixels over to an autoreleased Cocoa image of the given point size. */
+static NSImage *NSImageFromArgb(std::unique_ptr<uint32_t[]> pixels, uint width, uint height, NSSize size)
+{
+	CFAutoRelease<CGDataProvider> data(CGDataProviderCreateWithData(nullptr, pixels.release(), width * height * 4, &CGDataFreeCallback));
+	if (!data) return nullptr;
+
+	CGBitmapInfo info = kCGImageAlphaFirst | kCGBitmapByteOrder32Host;
+	CFAutoRelease<CGColorSpaceRef> colour_space(CGColorSpaceCreateWithName(kCGColorSpaceSRGB));
+	CFAutoRelease<CGImage> bitmap(CGImageCreate(width, height, 8, 32, width * 4, colour_space.get(), info, data.get(), nullptr, false, kCGRenderingIntentDefault));
+	if (!bitmap) return nullptr;
+
+	return [ [ [ NSImage alloc ] initWithCGImage:bitmap.get() size:size ] autorelease ];
+}
+
 /**
  * Render an OTTD sprite to a Cocoa image.
  * @param sprite_id Sprite to make a NSImage from.
@@ -195,15 +209,7 @@ static NSImage *NSImageFromSprite(SpriteID sprite_id, ZoomLevel zoom)
 	std::unique_ptr<uint32_t[]> buffer = DrawSpriteToRgbaBuffer(sprite_id, zoom);
 	if (!buffer) return nullptr; // Failed to blit sprite for some reason.
 
-	CFAutoRelease<CGDataProvider> data(CGDataProviderCreateWithData(nullptr, buffer.release(), dim.width * dim.height * 4, &CGDataFreeCallback));
-	if (!data) return nullptr;
-
-	CGBitmapInfo info = kCGImageAlphaFirst | kCGBitmapByteOrder32Host;
-	CFAutoRelease<CGColorSpaceRef> colour_space(CGColorSpaceCreateWithName(kCGColorSpaceSRGB));
-	CFAutoRelease<CGImage> bitmap(CGImageCreate(dim.width, dim.height, 8, 32, dim.width * 4, colour_space.get(), info, data.get(), nullptr, false, kCGRenderingIntentDefault));
-	if (!bitmap) return nullptr;
-
-	return [ [ [ NSImage alloc ] initWithCGImage:bitmap.get() size:NSZeroSize ] autorelease ];
+	return NSImageFromArgb(std::move(buffer), dim.width, dim.height, NSZeroSize);
 }
 
 
@@ -467,6 +473,42 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 }
 @end
 
+NSCursor *CocoaPointer::Shape() const
+{
+	static NSCursor *clear = [ NSCursor clearCocoaCursor ];
+	return this->Draws() ? this->cursor : clear;
+}
+
+bool CocoaPointer::Adopt(const CursorPicture &picture)
+{
+	auto pixels = std::make_unique<uint32_t[]>(picture.pixels.size());
+	std::ranges::transform(picture.pixels, pixels.get(), [](Colour colour) { return colour.data; });
+
+	OTTD_CocoaView *view = static_cast<VideoDriver_Cocoa *>(VideoDriver::GetInstance())->cocoaview;
+	CGFloat scale = view != nil ? [ view getContentsScale ] : 1.0;
+	NSImage *image = NSImageFromArgb(std::move(pixels), picture.width, picture.height, NSMakeSize(picture.width / scale, picture.height / scale));
+	if (image == nil) return false;
+
+	NSCursor *cursor = [ [ NSCursor alloc ] initWithImage:image hotSpot:NSMakePoint(picture.hotspot.x / scale, picture.hotspot.y / scale) ];
+	if (cursor == nil) return false;
+
+	if (this->cursor != nil && [ NSCursor currentCursor ] == this->cursor) [ cursor set ];
+	this->Release();
+	this->cursor = cursor;
+	return true;
+}
+
+void CocoaPointer::Release()
+{
+	[ this->cursor release ];
+	this->cursor = nil;
+}
+
+void CocoaPointer::Show(bool)
+{
+	if (_cursor.in_window) [ this->Shape() set ];
+}
+
 @implementation OTTD_CocoaWindow {
 	VideoDriver_Cocoa *driver;
 	bool touchbar_created;
@@ -631,7 +673,8 @@ void CocoaDialog(std::string_view title, std::string_view message, std::string_v
 /** Update mouse cursor to use for this view. */
 - (void)cursorUpdate:(NSEvent *)event
 {
-	[ (_game_mode == GM_BOOTSTRAP ? [ NSCursor arrowCursor ] : [ NSCursor clearCocoaCursor ]) set ];
+	auto *drv = static_cast<VideoDriver_Cocoa *>(VideoDriver::GetInstance());
+	[ (_game_mode == GM_BOOTSTRAP ? [ NSCursor arrowCursor ] : drv->pointer.Shape()) set ];
 }
 
 - (void)viewWillMoveToWindow:(NSWindow *)win

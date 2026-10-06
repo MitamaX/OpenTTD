@@ -8,6 +8,22 @@
 /** @file sdl2_opengl_v.h OpenGL backend of the SDL2 video driver. */
 
 #include "sdl2_v.h"
+#include "../mini/core/system_pointer.h"
+
+struct SDL_Cursor;
+
+class SdlPointer : public SystemPointer {
+public:
+	~SdlPointer() override { this->Release(); }
+
+protected:
+	bool Adopt(const CursorPicture &picture) override;
+	void Release() override;
+	void Show(bool shown) override;
+
+private:
+	SDL_Cursor *cursor = nullptr;
+};
 
 /** The OpenGL video driver for windows. */
 class VideoDriver_SDL_OpenGL : public VideoDriver_SDL_Base {
@@ -43,6 +59,7 @@ protected:
 private:
 	void  *gl_context;  ///< OpenGL context.
 	uint8_t *anim_buffer; ///< Animation buffer from OpenGL back-end.
+	SdlPointer pointer; ///< Cursor the system draws in place of the game's own.
 
 	std::optional<std::string_view> AllocateContext();
 	void DestroyContext();

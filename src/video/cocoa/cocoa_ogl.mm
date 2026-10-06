@@ -136,8 +136,9 @@ static bool _allowSoftware;
 {
 	CGLSetCurrentContext(ctx);
 
+	auto *drv = static_cast<VideoDriver_Cocoa *>(VideoDriver::GetInstance());
 	OpenGLBackend::Get()->Paint();
-	OpenGLBackend::Get()->DrawMouseCursor();
+	if (!drv->pointer.Draws()) OpenGLBackend::Get()->DrawMouseCursor();
 
 	[ super drawInCGLContext:ctx pixelFormat:pf forLayerTime:t displayTime:ts ];
 }
@@ -241,6 +242,7 @@ void VideoDriver_CocoaOpenGL::PopulateSystemSprites()
 	VideoDriver_Cocoa::PopulateSystemSprites();
 
 	OpenGLBackend::Get()->PopulateCursorCache();
+	this->pointer.Refresh();
 }
 
 void VideoDriver_CocoaOpenGL::ClearSystemSprites()
@@ -249,6 +251,7 @@ void VideoDriver_CocoaOpenGL::ClearSystemSprites()
 
 	CGLSetCurrentContext(this->gl_context);
 	OpenGLBackend::Get()->ClearCursorCache();
+	this->pointer.Forget();
 }
 
 std::optional<std::string_view> VideoDriver_CocoaOpenGL::AllocateContext(bool allow_software)

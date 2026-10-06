@@ -12,6 +12,7 @@
 
 #include "../video_driver.hpp"
 #include "../../core/geometry_type.hpp"
+#include "../../mini/core/system_pointer.h"
 
 
 extern bool _cocoa_video_started;
@@ -19,6 +20,22 @@ extern bool _cocoa_video_started;
 @class OTTD_CocoaWindowDelegate;
 @class OTTD_CocoaWindow;
 @class OTTD_CocoaView;
+@class NSCursor;
+
+class CocoaPointer : public SystemPointer {
+public:
+	~CocoaPointer() override { this->Release(); }
+
+	NSCursor *Shape() const;
+
+protected:
+	bool Adopt(const CursorPicture &picture) override;
+	void Release() override;
+	void Show(bool shown) override;
+
+private:
+	NSCursor *cursor = nil;
+};
 
 class VideoDriver_Cocoa : public VideoDriver {
 private:
@@ -31,6 +48,7 @@ public:
 	OTTD_CocoaWindow *window;    ///< Pointer to window object
 	OTTD_CocoaView *cocoaview;   ///< Pointer to view object
 	CGColorSpaceRef colour_space; ///< Window colour space
+	CocoaPointer pointer;        ///< Cursor the system draws in place of the game's own
 
 	OTTD_CocoaWindowDelegate *delegate; //!< Window delegate object
 

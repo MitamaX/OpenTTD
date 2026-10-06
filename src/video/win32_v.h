@@ -11,9 +11,25 @@
 #define VIDEO_WIN32_H
 
 #include "video_driver.hpp"
+#include "../mini/core/system_pointer.h"
 #include <mutex>
 #include <condition_variable>
 #include <windows.h>
+
+class Win32Pointer : public SystemPointer {
+public:
+	~Win32Pointer() override { this->Release(); }
+
+	HCURSOR Handle() const { return this->handle; }
+
+protected:
+	bool Adopt(const CursorPicture &picture) override;
+	void Release() override;
+	void Show(bool shown) override;
+
+private:
+	HCURSOR handle = nullptr;
+};
 
 /** Base class for Windows video drivers. */
 class VideoDriver_Win32Base : public VideoDriver {
@@ -47,6 +63,7 @@ protected:
 	int height_org = 0;     ///< Original monitor resolution height, before we changed it.
 
 	bool buffer_locked;     ///< Video buffer was locked by the main thread.
+	Win32Pointer pointer;   ///< Cursor the system draws in place of the game's own.
 
 	Dimension GetScreenSize() const override;
 	void InputLoop() override;

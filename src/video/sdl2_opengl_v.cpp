@@ -82,6 +82,7 @@ std::optional<std::string_view> VideoDriver_SDL_OpenGL::Start(const StringList &
 
 void VideoDriver_SDL_OpenGL::Stop()
 {
+	this->pointer.Reset();
 	this->DestroyContext();
 	this->VideoDriver_SDL_Base::Stop();
 }
@@ -122,14 +123,42 @@ std::optional<std::string_view> VideoDriver_SDL_OpenGL::AllocateContext()
 	return OpenGLBackend::Create(&GetOGLProcAddressCallback, this->GetScreenSize());
 }
 
+bool SdlPointer::Adopt(const CursorPicture &picture)
+{
+	SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom(const_cast<Colour *>(picture.pixels.data()), picture.width, picture.height, 32, picture.width * static_cast<int>(sizeof(Colour)), SDL_PIXELFORMAT_ARGB8888);
+	if (surface == nullptr) return false;
+	SDL_Cursor *cursor = SDL_CreateColorCursor(surface, picture.hotspot.x, picture.hotspot.y);
+	SDL_FreeSurface(surface);
+	if (cursor == nullptr) return false;
+
+	if (this->cursor != nullptr && SDL_GetCursor() == this->cursor) SDL_SetCursor(cursor);
+	this->Release();
+	this->cursor = cursor;
+	return true;
+}
+
+void SdlPointer::Release()
+{
+	if (this->cursor != nullptr) SDL_FreeCursor(this->cursor);
+	this->cursor = nullptr;
+}
+
+void SdlPointer::Show(bool shown)
+{
+	if (shown) SDL_SetCursor(this->cursor);
+	SDL_ShowCursor(shown ? SDL_ENABLE : SDL_DISABLE);
+}
+
 void VideoDriver_SDL_OpenGL::PopulateSystemSprites()
 {
 	OpenGLBackend::Get()->PopulateCursorCache();
+	this->pointer.Refresh();
 }
 
 void VideoDriver_SDL_OpenGL::ClearSystemSprites()
 {
 	OpenGLBackend::Get()->ClearCursorCache();
+	this->pointer.Forget();
 }
 
 bool VideoDriver_SDL_OpenGL::AllocateBackingStore(int w, int h, bool force)
@@ -184,7 +213,7 @@ void VideoDriver_SDL_OpenGL::Paint()
 	}
 
 	OpenGLBackend::Get()->Paint();
-	OpenGLBackend::Get()->DrawMouseCursor();
+	if (!this->pointer.Draws()) OpenGLBackend::Get()->DrawMouseCursor();
 
 	SDL_GL_SwapWindow(this->sdl_window);
 }

@@ -68,6 +68,72 @@ bool VideoDriver_Win32Base::ClaimMousePointer()
 	return true;
 }
 
+/* Set bits mark see-through pixels, rows padded to whole words as monochrome bitmaps want. */
+static HBITMAP CreateCursorMask(const CursorPicture &picture)
+{
+	int stride = Align(picture.width, 16) / 8;
+	std::vector<uint8_t> bits(static_cast<size_t>(stride) * picture.height);
+	for (int y = 0; y < picture.height; y++) {
+		for (int x = 0; x < picture.width; x++) {
+			if (picture.At(x, y).a == 0) bits[y * stride + x / 8] |= 0x80 >> (x % 8);
+		}
+	}
+	return CreateBitmap(picture.width, picture.height, 1, 1, bits.data());
+}
+
+static HBITMAP CreateCursorColour(const CursorPicture &picture)
+{
+	BITMAPV5HEADER header{};
+	header.bV5Size = sizeof(header);
+	header.bV5Width = picture.width;
+	header.bV5Height = -picture.height;
+	header.bV5Planes = 1;
+	header.bV5BitCount = 32;
+	header.bV5Compression = BI_BITFIELDS;
+	header.bV5RedMask = 0x00FF0000;
+	header.bV5GreenMask = 0x0000FF00;
+	header.bV5BlueMask = 0x000000FF;
+	header.bV5AlphaMask = 0xFF000000;
+
+	void *bits = nullptr;
+	HBITMAP colour = CreateDIBSection(nullptr, reinterpret_cast<BITMAPINFO *>(&header), DIB_RGB_COLORS, &bits, nullptr, 0);
+	if (colour != nullptr) std::ranges::copy(picture.pixels, static_cast<Colour *>(bits));
+	return colour;
+}
+
+bool Win32Pointer::Adopt(const CursorPicture &picture)
+{
+	ICONINFO info{};
+	info.fIcon = FALSE;
+	info.xHotspot = static_cast<DWORD>(picture.hotspot.x);
+	info.yHotspot = static_cast<DWORD>(picture.hotspot.y);
+	info.hbmMask = CreateCursorMask(picture);
+	info.hbmColor = CreateCursorColour(picture);
+	HCURSOR cursor = info.hbmMask != nullptr && info.hbmColor != nullptr ? CreateIconIndirect(&info) : nullptr;
+	DeleteObject(info.hbmMask);
+	DeleteObject(info.hbmColor);
+	if (cursor == nullptr) return false;
+
+	if (this->handle != nullptr && GetCursor() == this->handle) SetCursor(cursor);
+	this->Release();
+	this->handle = cursor;
+	return true;
+}
+
+void Win32Pointer::Release()
+{
+	if (this->handle != nullptr) DestroyCursor(this->handle);
+	this->handle = nullptr;
+}
+
+void Win32Pointer::Show(bool shown)
+{
+	if (!_cursor.in_window) return;
+
+	if (shown) SetCursor(this->handle);
+	MyShowCursor(shown);
+}
+
 struct Win32VkMapping {
 	uint8_t vk_from;
 	uint8_t vk_count;
@@ -592,6 +658,13 @@ LRESULT CALLBACK WndProcGdi(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if (!_left_button_down && !_right_button_down) MyShowCursor(true);
 			return 0;
 
+		case WM_SETCURSOR:
+			if (LOWORD(lParam) == HTCLIENT && video_driver->pointer.Draws()) {
+				SetCursor(video_driver->pointer.Handle());
+				return TRUE;
+			}
+			break;
+
 		case WM_MOUSEMOVE: {
 			int x = (int16_t)LOWORD(lParam);
 			int y = (int16_t)HIWORD(lParam);
@@ -626,7 +699,7 @@ LRESULT CALLBACK WndProcGdi(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				ClientToScreen(hwnd, &pt);
 				SetCursorPos(pt.x, pt.y);
 			}
-			MyShowCursor(false);
+			MyShowCursor(video_driver->pointer.Draws());
 			HandleMouseEvents();
 			return 0;
 		}
@@ -972,6 +1045,7 @@ void VideoDriver_Win32Base::Stop()
 	DestroyWindow(this->main_wnd);
 
 	if (this->fullscreen) ChangeDisplaySettings(nullptr, 0);
+	this->pointer.Reset();
 	MyShowCursor(true);
 }
 void VideoDriver_Win32Base::MakeDirty(int left, int top, int width, int height)
@@ -1555,11 +1629,13 @@ bool VideoDriver_Win32OpenGL::AfterBlitterChange()
 void VideoDriver_Win32OpenGL::PopulateSystemSprites()
 {
 	OpenGLBackend::Get()->PopulateCursorCache();
+	this->pointer.Refresh();
 }
 
 void VideoDriver_Win32OpenGL::ClearSystemSprites()
 {
 	OpenGLBackend::Get()->ClearCursorCache();
+	this->pointer.Forget();
 }
 
 bool VideoDriver_Win32OpenGL::AllocateBackingStore(int w, int h, bool force)
@@ -1615,7 +1691,7 @@ void VideoDriver_Win32OpenGL::Paint()
 	}
 
 	OpenGLBackend::Get()->Paint();
-	OpenGLBackend::Get()->DrawMouseCursor();
+	if (!this->pointer.Draws()) OpenGLBackend::Get()->DrawMouseCursor();
 
 	SwapBuffers(this->dc);
 }
