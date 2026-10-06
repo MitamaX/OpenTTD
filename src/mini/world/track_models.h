@@ -29,6 +29,7 @@ struct TrackSite {
 	WayDetail detail;
 };
 
+double RideHeight(RailLook look);
 void LayTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
 void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
 void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing);

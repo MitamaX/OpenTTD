@@ -23,6 +23,7 @@
 #include "../../safeguards.h"
 
 static constexpr double ROWS_PER_TILE = 4.0;
+static constexpr double MAGLEV_HOVER = 0.024;
 static constexpr double LIFT_STEP = 0.0012;
 static constexpr double BALLAST_VARIETY = 0.08;
 static constexpr double TIMBER_VARIETY = 0.18;
@@ -219,6 +220,16 @@ static ModelMesh MaglevPiece(const TrackPiece &piece, WayDetail detail)
 	ModelMesh mesh = piece.Body(MAGLEV_SECTION, true);
 	if (detail == WayDetail::Full) mesh.Append(piece.Pair(STRIP_SECTION, STRIP_GAP_HALF));
 	return mesh;
+}
+
+/* What a train rides on: the rail heads, the monorail beam's crown, or a hover over the maglev's guide strips. */
+double RideHeight(RailLook look)
+{
+	switch (look) {
+		case RailLook::Monorail: return MONORAIL_SECTION[2].height;
+		case RailLook::Maglev: return STRIP_SECTION[1].height + MAGLEV_HOVER;
+		default: return RAIL_TOP;
+	}
 }
 
 static ModelMesh PieceModel(const TrackSite &site, const TrackPiece &piece, uint32_t seed)

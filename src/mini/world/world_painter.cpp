@@ -20,6 +20,7 @@
 #include "network_pass.h"
 #include "structure_pass.h"
 #include "terrain_pass.h"
+#include "vehicle_pass.h"
 #include "water_pass.h"
 
 #include "../../safeguards.h"
@@ -67,6 +68,9 @@ WorldPainter::WorldPainter() : composite(SCREEN_SOURCES, COMPOSITE_SOURCES)
 	auto structures = std::make_unique<StructurePass>();
 	this->structures = structures.get();
 	this->passes.push_back(std::move(structures));
+	auto vehicles = std::make_unique<VehiclePass>();
+	this->vehicles = vehicles.get();
+	this->passes.push_back(std::move(vehicles));
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field));
 }
@@ -102,6 +106,14 @@ std::optional<TileIndex> WorldPainter::BuildingAt(const Vec3 &origin, const Vec3
 	if (!hit.has_value()) return std::nullopt;
 	if (TraceGround({origin, direction, LevelRise()}, hit->distance).has_value()) return std::nullopt;
 	return hit->tile;
+}
+
+std::optional<VehicleID> WorldPainter::VehicleAt(const Vec3 &origin, const Vec3 &direction) const
+{
+	std::optional<VehicleHit> hit = this->vehicles->Pick(origin, direction);
+	if (!hit.has_value()) return std::nullopt;
+	if (TraceGround({origin, direction, LevelRise()}, hit->distance).has_value()) return std::nullopt;
+	return hit->vehicle;
 }
 
 void WorldPainter::Release()

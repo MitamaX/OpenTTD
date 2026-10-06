@@ -36,11 +36,11 @@ struct SceneBlock {
 	std::array<float, 4> screen;
 };
 
-static float Clock()
+static double Clock()
 {
 	static const auto start = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
-	return static_cast<float>(std::fmod(elapsed.count(), CLOCK_PERIOD_SECONDS));
+	return std::fmod(elapsed.count(), CLOCK_PERIOD_SECONDS);
 }
 
 SceneView SceneView::Of(const Camera &camera)
@@ -56,6 +56,7 @@ SceneView SceneView::Of(const Camera &camera)
 	view.far = camera.Far();
 	view.fog_start = std::min(camera.FocusDistance() * FOG_START_SHARE, view.far);
 	view.shadow_reach = std::min(camera.FocusDistance() * SHADOW_REACH_SHARE, view.far);
+	view.clock = Clock();
 	view.viewport = {static_cast<uint>(camera.Width()), static_cast<uint>(camera.Height())};
 	return view;
 }
@@ -90,7 +91,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		floats(sun.x, sun.y, sun.z, 0.0),
 		floats(view.near, view.far, view.fog_start, view.far),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
-		floats(view.viewport.width, view.viewport.height, Clock(), 0.0),
+		floats(view.viewport.width, view.viewport.height, view.clock, 0.0),
 	};
 
 	if (this->buffer == 0) glGenBuffers(1, &this->buffer);

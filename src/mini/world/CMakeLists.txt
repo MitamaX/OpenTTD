@@ -4,6 +4,8 @@ add_files(
     bridge_models.h
     chunk_grid.cpp
     chunk_grid.h
+    fleet_layout.cpp
+    fleet_layout.h
     forest_field.cpp
     forest_field.h
     forest_pass.cpp
@@ -56,10 +58,14 @@ add_files(
     tree_models.h
     tunnel_models.cpp
     tunnel_models.h
+    vehicle_looks.cpp
+    vehicle_looks.h
     vehicle_models.cpp
     vehicle_models.h
     vehicle_parts.cpp
     vehicle_parts.h
+    vehicle_pass.cpp
+    vehicle_pass.h
     water_mesh.cpp
     water_mesh.h
     water_pass.cpp

@@ -78,7 +78,6 @@
 #include "mini/map/map_labels.h"
 #include "mini/map/map_overlay.h"
 #include "mini/map/vehicle_motion.h"
-#include "mini/map/vehicle_painter.h"
 #include "mini/map/world_tiles.h"
 #include "mini/tools/blueprint.h"
 #include "mini/tools/build_tool.h"
@@ -178,26 +177,13 @@ bool MiniUiActive()
 	return _mini_active;
 }
 
-/* Any unit of a consist opens its head's window, so the window always
- * describes the whole vehicle. */
+/* Any unit of a consist opens its head's window, so the window always describes the whole vehicle. */
 static bool OpenVehicleWndAt(int sx, int sy)
 {
-	const Vehicle *best = nullptr;
-	int best_d2 = 15 * 15;
-	for (const Vehicle *v : Vehicle::Iterate()) {
-		if (v->type > VEH_AIRCRAFT) continue;
-		if (v->vehstatus.Test(VehState::Hidden)) continue;
-		Point at = _camera.ScreenOf(_vehicle_motion.Position(v));
-		int dx = at.x - sx;
-		int dy = at.y - sy;
-		int d2 = dx * dx + dy * dy;
-		if (d2 < best_d2) {
-			best_d2 = d2;
-			best = v;
-		}
-	}
-	if (best != nullptr) ShowVehicleViewWindow(best->First());
-	return best != nullptr;
+	std::optional<VehicleID> picked = _world_painter.VehicleAt(_camera.Eye(), _camera.SightThrough(sx, sy));
+	const Vehicle *v = picked.has_value() ? Vehicle::GetIfValid(*picked) : nullptr;
+	if (v != nullptr) ShowVehicleViewWindow(v);
+	return v != nullptr;
 }
 
 /* A building drawn over the point answers first, so a click on a depot's roof opens the depot. */
@@ -892,12 +878,9 @@ void MiniUiFrame(uint delta_ms)
 
 	_overlay.FollowTool(ToolLayer(_tool.Kind()));
 
-	_vehicle_painter.Paint(ppt, _overlay.Filter(), VehicleTier::Grounded);
-
 	PaintBlueprint(ppt);
 
 	DrawOrderRoute();
-	_vehicle_painter.Paint(ppt, _overlay.Filter(), VehicleTier::Aloft);
 	DrawVehicleRing(ppt);
 	Present();
 }

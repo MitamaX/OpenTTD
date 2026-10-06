@@ -28,6 +28,7 @@ struct SceneView {
 	double far;
 	double fog_start;
 	double shadow_reach;
+	double clock;
 	Dimension viewport;
 
 	static SceneView Of(const Camera &camera);

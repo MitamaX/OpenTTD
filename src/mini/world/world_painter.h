@@ -14,6 +14,7 @@
 #include <optional>
 #include <vector>
 
+#include "../../vehicle_type.h"
 #include "../ui/shader_painter.h"
 #include "scene_view.h"
 #include "shader_program.h"
@@ -24,6 +25,7 @@
 #include "world_textures.h"
 
 class StructurePass;
+class VehiclePass;
 
 class WorldPainter final : public ShaderPainter {
 public:
@@ -37,6 +39,8 @@ public:
 	void Release() override;
 	/* The tile of the building a sight line from the eye meets before it meets the ground. */
 	std::optional<TileIndex> BuildingAt(const Vec3 &origin, const Vec3 &direction) const;
+	/* The vehicle a sight line from the eye meets before it meets the ground; roofs and walls do not hide it from a click. */
+	std::optional<VehicleID> VehicleAt(const Vec3 &origin, const Vec3 &direction) const;
 
 private:
 	bool Ready();
@@ -52,6 +56,7 @@ private:
 	ShaderProgram composite;
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	const StructurePass *structures = nullptr;
+	const VehiclePass *vehicles = nullptr;
 	uint32_t quad = 0;
 };
 
