@@ -32,7 +32,7 @@ static int StepFor(double tile_pixels)
 	return step;
 }
 
-/* A changed tile reshapes the walls, the shading and the seabed of the tiles beside it, so the blocks around a change go stale too. */
+/* A tile whose shape or water changed reshapes the walls, the shading and the seabed of the tiles beside it, so the blocks around it go stale too. */
 void TerrainField::Sync(const WorldChanges &changes)
 {
 	this->frame++;
@@ -44,7 +44,7 @@ void TerrainField::Sync(const WorldChanges &changes)
 		return;
 	}
 
-	this->grid.ForEachTouched(changes, SHELF_TILES, [&](size_t index) {
+	this->grid.ForEachTouched(changes.reliefs, SHELF_TILES, [&](size_t index) {
 		Chunk &chunk = this->chunks[index];
 		chunk.stale = true;
 		chunk.surveyed = false;

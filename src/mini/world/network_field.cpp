@@ -38,7 +38,7 @@ void NetworkField::Sync(const WorldChanges &changes)
 		this->Lay(size);
 		return;
 	}
-	this->grid.ForEachTouched(changes, MITRE_MARGIN, [&](size_t index) {
+	this->grid.ForEachTouched(changes.areas, MITRE_MARGIN, [&](size_t index) {
 		NetworkChunk &chunk = this->chunks[index];
 		uint32_t digest = this->Digest(index);
 		if (digest == chunk.digest) return;

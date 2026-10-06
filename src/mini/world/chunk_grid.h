@@ -11,6 +11,7 @@
 #define MINI_WORLD_CHUNK_GRID_H
 
 #include <algorithm>
+#include <span>
 
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
@@ -27,12 +28,12 @@ public:
 	size_t Count() const { return static_cast<size_t>(this->columns) * this->rows; }
 	TileSpan TilesOf(size_t index) const;
 
-	/* Every block holding a changed tile or one within the margin of it. */
+	/* Every block holding a tile of the areas or one within the margin of them. */
 	template <class Visit>
-	void ForEachTouched(const WorldChanges &changes, int margin, Visit visit) const
+	void ForEachTouched(std::span<const Rect> areas, int margin, Visit visit) const
 	{
 		if (this->Count() == 0) return;
-		for (const Rect &area : changes.areas) {
+		for (const Rect &area : areas) {
 			int x0 = std::max(area.left - margin, 0) / this->chunk_tiles;
 			int y0 = std::max(area.top - margin, 0) / this->chunk_tiles;
 			int x1 = std::min((area.right + margin) / this->chunk_tiles, this->columns - 1);

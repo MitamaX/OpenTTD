@@ -413,6 +413,7 @@ void WorldTiles::Sync()
 WorldChanges WorldTiles::TakeChanges()
 {
 	std::fill(this->changed_blocks.begin(), this->changed_blocks.end(), false);
+	std::fill(this->relief_blocks.begin(), this->relief_blocks.end(), false);
 	return std::exchange(this->changes, {});
 }
 
@@ -470,7 +471,8 @@ void WorldTiles::Rebuild()
 	this->queued.assign(count, false);
 	this->pending.clear();
 	this->changed_blocks.assign(CeilDiv(this->size.width, BLOCK_TILES) * CeilDiv(this->size.height, BLOCK_TILES), false);
-	this->changes = {{}, true, true};
+	this->relief_blocks = this->changed_blocks;
+	this->changes = {{}, {}, true, true};
 	this->sweep_next = 0;
 	this->stale = false;
 }
@@ -483,7 +485,7 @@ void WorldTiles::Repack(TileIndex tile)
 	if (packed == stored) return;
 
 	this->Store(i, packed);
-	this->MarkChanged(tile, packed.water != stored.water);
+	this->MarkChanged(tile, packed, stored);
 }
 
 /* A slow pass over the whole map catches the few changes the game never marks. */
@@ -496,17 +498,26 @@ void WorldTiles::Sweep()
 	}
 }
 
-void WorldTiles::MarkChanged(TileIndex tile, bool water_changed)
+void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels &stored)
 {
+	bool water_changed = packed.water != stored.water;
 	this->changes.water |= water_changed;
 
+	if (std::optional<Rect> block = this->ClaimBlock(tile, this->changed_blocks); block.has_value()) this->changes.areas.push_back(*block);
+	if (!water_changed && packed.surface == stored.surface) return;
+	if (std::optional<Rect> block = this->ClaimBlock(tile, this->relief_blocks); block.has_value()) this->changes.reliefs.push_back(*block);
+}
+
+/* The block holding the tile, the first time it is claimed since the changes were last taken. */
+std::optional<Rect> WorldTiles::ClaimBlock(TileIndex tile, std::vector<bool> &claimed) const
+{
 	uint bx = TileX(tile) / BLOCK_TILES;
 	uint by = TileY(tile) / BLOCK_TILES;
 	size_t block = static_cast<size_t>(by) * CeilDiv(this->size.width, BLOCK_TILES) + bx;
-	if (this->changed_blocks[block]) return;
-	this->changed_blocks[block] = true;
+	if (claimed[block]) return std::nullopt;
+	claimed[block] = true;
 
 	uint right = std::min((bx + 1) * BLOCK_TILES, this->size.width);
 	uint bottom = std::min((by + 1) * BLOCK_TILES, this->size.height);
-	this->changes.areas.push_back({static_cast<int>(bx * BLOCK_TILES), static_cast<int>(by * BLOCK_TILES), static_cast<int>(right) - 1, static_cast<int>(bottom) - 1});
+	return Rect{static_cast<int>(bx * BLOCK_TILES), static_cast<int>(by * BLOCK_TILES), static_cast<int>(right) - 1, static_cast<int>(bottom) - 1};
 }

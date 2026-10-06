@@ -11,6 +11,7 @@
 #define MINI_MAP_WORLD_TILES_H
 
 #include <array>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -122,8 +123,10 @@ struct NetworkTexel {
 	bool operator==(const NetworkTexel &) const = default;
 };
 
+/* The blocks where any texel changed, and the fewer where the ground's shape or its water did. */
 struct WorldChanges {
 	std::vector<Rect> areas;
+	std::vector<Rect> reliefs;
 	bool whole = false;
 	bool water = false;
 };
@@ -162,7 +165,8 @@ private:
 	void Rebuild();
 	void Repack(TileIndex tile);
 	void Sweep();
-	void MarkChanged(TileIndex tile, bool water_changed);
+	void MarkChanged(TileIndex tile, const Texels &packed, const Texels &stored);
+	std::optional<Rect> ClaimBlock(TileIndex tile, std::vector<bool> &claimed) const;
 
 	Dimension size{};
 	uint peak = 0;
@@ -173,6 +177,7 @@ private:
 	std::vector<TileIndex> pending;
 	std::vector<bool> queued;
 	std::vector<bool> changed_blocks;
+	std::vector<bool> relief_blocks;
 	WorldChanges changes;
 	uint sweep_next = 0;
 	bool stale = true;

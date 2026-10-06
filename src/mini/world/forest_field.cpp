@@ -125,7 +125,7 @@ void ForestField::Sync(const WorldChanges &changes)
 		this->cells = std::vector<Cell>(this->grid.Count());
 		return;
 	}
-	this->grid.ForEachTouched(changes, SHELF_TILES, [&](size_t index) { this->cells[index].planted = false; });
+	this->grid.ForEachTouched(changes.areas, SHELF_TILES, [&](size_t index) { this->cells[index].planted = false; });
 }
 
 static double FarthestDistance(const Vec3 &eye, const Vec3 &low, const Vec3 &high)
