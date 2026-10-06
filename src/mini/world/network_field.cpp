@@ -22,11 +22,13 @@
 static constexpr double FULL_DETAIL_PIXELS = 18.0;
 static constexpr double HEADROOM_LEVELS = 2.0;
 static constexpr uint64_t EVICT_FRAMES = 600;
+static constexpr int BUILDS_PER_FRAME = 8;
 
 /* A changed tile reshapes the pieces beside it, which meet it in mitres, so the blocks around a change go stale too. */
 void NetworkField::Sync(const WorldChanges &changes)
 {
 	this->frame++;
+	this->builds_left = BUILDS_PER_FRAME;
 	this->Evict();
 
 	Dimension size = _world_tiles.Size();
@@ -82,7 +84,8 @@ void NetworkField::Build(NetworkChunk &chunk, const TileSpan &tiles, WayDetail d
 	chunk.stale = false;
 }
 
-/* A block is built only once a view comes near enough to show its ways, at the detail its nearest point asks for. */
+/* A block is built only once a view comes near enough to show its ways, at the detail its nearest point asks for.
+ * A few blocks are built each frame; one still waiting shows what it was last built as, or the ground's bands. */
 void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::vector<const NetworkChunk *> &shown)
 {
 	shown.clear();
@@ -99,7 +102,11 @@ void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::
 		double pixels = camera.NearestTilePixels(low, high);
 		if (pixels < NETWORK_FADE_START) continue;
 		WayDetail detail = pixels >= FULL_DETAIL_PIXELS ? WayDetail::Full : WayDetail::Simple;
-		if (chunk.stale || !chunk.built || chunk.detail != detail) this->Build(chunk, tiles, detail);
+		if ((chunk.stale || !chunk.built || chunk.detail != detail) && this->builds_left > 0) {
+			this->Build(chunk, tiles, detail);
+			this->builds_left--;
+		}
+		if (!chunk.built) continue;
 		chunk.nearest_pixels = pixels;
 		chunk.drawn = this->frame;
 		shown.push_back(&chunk);

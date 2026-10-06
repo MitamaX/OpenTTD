@@ -54,6 +54,7 @@ private:
 	std::vector<NetworkChunk> chunks;
 	double rise = 0.0;
 	uint64_t frame = 0;
+	int builds_left = 0;
 };
 
 #endif /* MINI_WORLD_NETWORK_FIELD_H */
