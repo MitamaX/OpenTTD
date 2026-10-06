@@ -7,6 +7,7 @@ out vec4 frag_colour;
 
 const int BLUR_SPAN = 4;
 const float BLUR_DEPTH_TOLERANCE = 0.04;
+const float OCCLUSION_POWER = 1.5;
 
 /* Past where the camera's fog sets in the ground fades on into the haze, so the far clip never shows. */
 float FarFade(float distance)
@@ -41,7 +42,7 @@ vec3 Occluded(vec3 colour, ivec2 texel, float ahead, vec3 point)
 	vec3 normal = WorldDirection(ViewNormal(u_depth, texel));
 	float ambient = Luminance(AmbientLight(normal));
 	float sun = Luminance(SunRadiance()) * max(dot(normal, SunDirection()), 0.0) * SunVisibility(point, normal);
-	float open = mix(1.0, Occlusion(texel, ahead), u_occlusion_strength);
+	float open = mix(1.0, pow(Occlusion(texel, ahead), OCCLUSION_POWER), u_occlusion_strength);
 	return colour * (1.0 - ambient / (ambient + sun) * (1.0 - open));
 }
 
