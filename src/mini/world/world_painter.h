@@ -29,6 +29,7 @@ public:
 	WorldPainter();
 
 	void Reload();
+	void Prepare();
 	void Paint(const ShaderArea &area) override;
 	void Release() override;
 

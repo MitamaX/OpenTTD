@@ -884,6 +884,7 @@ void MiniUiFrame(uint delta_ms)
 
 	_camera.Update(delta_ms, _mode.FollowTarget());
 	if (std::optional<ViewAim> aim = _frame_capture.Aim(); aim.has_value()) _camera.Aim(*aim);
+	_world_painter.Prepare();
 	_volume_painter.BeginFrame();
 
 	int ppt = _camera.TilePixels();

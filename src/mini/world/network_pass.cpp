@@ -57,6 +57,22 @@ void NetworkPass::Reload()
 	this->signal_caster.Reload();
 }
 
+/* A signal's state is read anew every frame, as trains pass without the world's texels changing. */
+void NetworkPass::Prepare(const SceneView &view)
+{
+	this->field.Prepare(view, this->seen);
+	this->signals.Clear(SIGNAL_MODELS);
+	for (const NetworkChunk *chunk : this->seen) {
+		if (chunk->nearest_pixels < SIGNAL_PIXELS) continue;
+		for (const SignalSpot &spot : chunk->signals) {
+			if (!IsTileType(spot.tile, MP_RAILWAY) || !HasSignals(spot.tile) || !HasSignalOnTrackdir(spot.tile, spot.trackdir)) continue;
+			SignalVariant variant = GetSignalVariant(spot.tile, TrackdirToTrack(spot.trackdir));
+			SignalState state = GetSignalStateByTrackdir(spot.tile, spot.trackdir);
+			this->signals.Add(SignalModelIndex(variant, state), {static_cast<float>(spot.at.x), static_cast<float>(spot.at.y), static_cast<float>(spot.at.z), static_cast<float>(spot.facing)});
+		}
+	}
+}
+
 void NetworkPass::Sync(const WorldChanges &changes)
 {
 	this->field.Sync(changes);
@@ -102,22 +118,11 @@ void NetworkPass::DrawWays(const ShaderProgram &program) const
 	}
 }
 
-/* A signal's state is read anew every frame, as trains pass without the world's texels changing. */
 void NetworkPass::DrawSignals()
 {
 	if (!this->signal_models.Ready()) {
 		std::vector<ModelMesh> models = BuildSignalModels();
 		this->signal_models.Upload<ModelMesh>(models, MODEL_LAYOUT, SIGNAL_INSTANCE_LAYOUT, sizeof(SignalInstance));
-	}
-	this->signals.Clear(SIGNAL_MODELS);
-	for (const NetworkChunk *chunk : this->shown) {
-		if (chunk->nearest_pixels < SIGNAL_PIXELS) continue;
-		for (const SignalSpot &spot : chunk->signals) {
-			if (!IsTileType(spot.tile, MP_RAILWAY) || !HasSignals(spot.tile) || !HasSignalOnTrackdir(spot.tile, spot.trackdir)) continue;
-			SignalVariant variant = GetSignalVariant(spot.tile, TrackdirToTrack(spot.trackdir));
-			SignalState state = GetSignalStateByTrackdir(spot.tile, spot.trackdir);
-			this->signals.Add(SignalModelIndex(variant, state), {static_cast<float>(spot.at.x), static_cast<float>(spot.at.y), static_cast<float>(spot.at.z), static_cast<float>(spot.facing)});
-		}
 	}
 	this->signals.Draw(this->signal_models, [](size_t mesh) { return mesh; });
 }

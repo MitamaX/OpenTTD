@@ -72,6 +72,14 @@ void WorldPainter::Reload()
 	for (const auto &pass : this->passes) pass->Reload();
 }
 
+/* Called from the mini UI's frame while the game's state holds still, so passes may read the game's map. */
+void WorldPainter::Prepare()
+{
+	if (_world_tiles.Size().width == 0) return;
+	SceneView view = SceneView::Of(_camera);
+	for (const auto &pass : this->passes) pass->Prepare(view);
+}
+
 /* RmlUi's layer is put back as it was before the world is laid into it, so the map element's clipping still holds. */
 void WorldPainter::Paint(const ShaderArea &area)
 {

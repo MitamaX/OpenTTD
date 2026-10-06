@@ -11,6 +11,8 @@
 #define MINI_WORLD_NETWORK_FIELD_H
 
 #include <array>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "../gpu/mesh_buffer.h"
@@ -22,9 +24,11 @@
 inline constexpr double NETWORK_FADE_START = 3.5;
 inline constexpr double NETWORK_FADE_END = 5.0;
 
-/* A block of tiles: its meshes per layer at the detail it was last built at, its signals, and the levels its ways span. */
+/* A block of tiles: its meshes per layer, built on the game's side and waiting to be handed to the GPU or already there,
+ * the detail they were built at, its signals, the levels its ways span, and a digest of the texels its ways were built from. */
 struct NetworkChunk {
 	std::array<MeshBuffer, NETWORK_LAYERS> layers;
+	std::optional<std::array<ModelMesh, NETWORK_LAYERS>> waiting;
 	std::vector<SignalSpot> signals;
 	WayDetail detail = WayDetail::Simple;
 	double nearest_pixels = 0.0;
@@ -33,28 +37,32 @@ struct NetworkChunk {
 	bool surveyed = false;
 	uint low = 0;
 	uint high = 0;
-	uint64_t drawn = 0;
+	uint32_t digest = 0;
+	uint64_t wanted = 0;
 };
 
+/* Blocks are surveyed and built from the map in Prepare, while the game's state holds still; drawing only hands them to the GPU and culls them. */
 class NetworkField {
 public:
 	static constexpr int CHUNK_TILES = 16;
 
 	void Sync(const WorldChanges &changes);
+	void Prepare(const SceneView &camera, std::vector<const NetworkChunk *> &seen);
 	void Gather(const SceneView &camera, const Frustum &frustum, std::vector<const NetworkChunk *> &shown);
 	void Release();
 
 private:
 	void Lay(Dimension map);
+	uint32_t Digest(size_t index) const;
 	void Survey(NetworkChunk &chunk, const TileSpan &tiles) const;
 	void Build(NetworkChunk &chunk, const TileSpan &tiles, WayDetail detail) const;
+	std::pair<Vec3, Vec3> Bounds(const NetworkChunk &chunk, size_t index) const;
 	void Evict();
 
 	ChunkGrid grid{CHUNK_TILES};
 	std::vector<NetworkChunk> chunks;
 	double rise = 0.0;
 	uint64_t frame = 0;
-	int builds_left = 0;
 };
 
 #endif /* MINI_WORLD_NETWORK_FIELD_H */

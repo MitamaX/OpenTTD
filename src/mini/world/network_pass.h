@@ -23,6 +23,7 @@ public:
 	NetworkPass();
 
 	void Reload() override;
+	void Prepare(const SceneView &view) override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
@@ -33,6 +34,7 @@ private:
 	void DrawSignals();
 
 	NetworkField field;
+	std::vector<const NetworkChunk *> seen;
 	std::vector<const NetworkChunk *> shown;
 	InstancedMeshes signal_models;
 	SignalBatch signals;
