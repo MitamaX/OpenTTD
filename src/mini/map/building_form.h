@@ -34,7 +34,7 @@ inline constexpr uint TINT_JITTER_BITS = 4;
 enum class Material : uint8_t {
 	Plain, Brick, Render, Timber, Stone, Concrete, Glass, Corrugated, Metal, Planks, Lattice,
 	ClayTile, Slate, Shingle, Thatch, MetalSeam, Gravel, Membrane, RoofDeck, GlassRoof,
-	Foundation, Asphalt, End,
+	Foundation, Asphalt, Hedge, Pickets, End,
 };
 
 enum class WindowGrid : uint8_t { None, Cottage, Terrace, Apartment, Shopfront, Office, Curtain, Arched, Industrial, Doors, End };
@@ -42,7 +42,7 @@ enum class WindowGrid : uint8_t { None, Cottage, Terrace, Apartment, Shopfront, 
 inline constexpr std::array<std::string_view, to_underlying(Material::End)> MATERIAL_NAMES = {
 	"PLAIN", "BRICK", "RENDER", "TIMBER", "STONE", "CONCRETE", "GLASS", "CORRUGATED", "METAL", "PLANKS", "LATTICE",
 	"CLAY_TILE", "SLATE", "SHINGLE", "THATCH", "METAL_SEAM", "GRAVEL", "MEMBRANE", "ROOF_DECK", "GLASS_ROOF",
-	"FOUNDATION", "ASPHALT",
+	"FOUNDATION", "ASPHALT", "HEDGE", "PICKETS",
 };
 
 inline constexpr std::array<std::string_view, to_underlying(WindowGrid::End)> WINDOW_GRID_NAMES = {

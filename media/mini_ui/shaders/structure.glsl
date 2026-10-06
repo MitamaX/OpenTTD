@@ -112,11 +112,42 @@ Clad Glazed(vec2 p, vec3 frame, vec2 panes, float bar)
 	return clad;
 }
 
+float Band(float x, float low, float high)
+{
+	float pixel = fwidth(x);
+	return smoothstep(low - pixel, low + pixel, x) - smoothstep(high - pixel, high + pixel, x);
+}
+
 /* The members of a braced lattice, as a share of the point they cover. */
 float LatticeCover(vec2 p)
 {
 	vec2 cell = p * 14.0;
 	return max(max(Lines(cell.x, 0.16), Lines(cell.y, 0.16)), max(Lines(cell.x + cell.y, 0.12), Lines(cell.x - cell.y, 0.12)));
+}
+
+/* The pickets of a fence and the two rails they are nailed to. */
+float PicketCover(vec2 p)
+{
+	return max(Lines(p.x * 45.0, 0.5), max(Band(p.y, 0.006, 0.0095), Band(p.y, 0.017, 0.0205)));
+}
+
+/* How much of a point an open cladding covers; any other cladding covers it whole. */
+float Cover(uint material, vec2 p)
+{
+	switch (material) {
+		case CLAD_LATTICE: return LatticeCover(p);
+		case CLAD_PICKETS: return PicketCover(p);
+		default: return 1.0;
+	}
+}
+
+Clad Leafy(vec2 p, vec3 tint)
+{
+	float sharp = Sharpness(p.x * 60.0);
+	float clumps = mix(0.5, Noise(p * 60.0), sharp);
+	Clad clad = Matte(tint * Varied(clumps, 0.45) * Varied(mix(0.5, Noise(p * 17.0), Sharpness(p.x * 17.0)), 0.25), 0.95);
+	clad.tilt = (vec2(Noise(p * 60.0 + 3.1), Noise(p * 60.0 + 7.7)) - 0.5) * 0.9 * sharp;
+	return clad;
 }
 
 bool IsMasonry(uint material)
@@ -157,6 +188,8 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_ROOF_DECK: return Planked(p, tint, 30.0);
 		case CLAD_GLASS_ROOF: return Glazed(p, vec3(0.7), vec2(14.0, 5.0), 0.1);
 		case CLAD_ASPHALT: return Mottled(p, tint, 60.0, 0.12, 0.9);
+		case CLAD_HEDGE: return Leafy(p, tint);
+		case CLAD_PICKETS: return Matte(tint, 0.7);
 		default: return Mottled(p, tint, 10.0, 0.05, 0.85);
 	}
 }

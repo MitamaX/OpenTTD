@@ -136,6 +136,16 @@ static constexpr float ANNEX_REAR_SHARE = 0.3f;
 static constexpr float ANNEX_END_GAP = 0.03f;
 static constexpr float ANNEX_WALL_SHARE = 0.9f;
 
+static constexpr float PATH_WIDTH = 0.06f;
+static constexpr uint32_t PATH_TINT = 0xFFBFAF8AU;
+static constexpr float HEDGE_DEPTH = 0.035f;
+static constexpr float HEDGE_HEIGHT = 0.04f;
+static constexpr uint32_t HEDGE_TINT = 0xFF4E7A3AU;
+static constexpr float FENCE_DEPTH = 0.008f;
+static constexpr float FENCE_HEIGHT = 0.026f;
+static constexpr uint32_t FENCE_TINT = 0xFFEDEBE4U;
+static constexpr float GATE_WIDTH = 0.12f;
+
 static constexpr float CHIMNEY_SIDE = 0.05f;
 static constexpr float CHIMNEY_END_OFFSET = 0.25f;
 static constexpr float CHIMNEY_ABOVE_RIDGE = 0.05f;
@@ -212,8 +222,6 @@ static constexpr float STAND_RISE = 0.16f;
 static constexpr float MAST_SIDE = 0.03f;
 static constexpr float MAST_TOP = 0.6f;
 
-static constexpr float PATH_WIDTH = 0.06f;
-static constexpr uint32_t PATH_TINT = 0xFFBFAF8AU;
 static constexpr uint8_t PARK_TREES = 3;
 
 static constexpr float PLINTH_SIDE = 0.36f;
@@ -705,14 +713,41 @@ static Solid Annex(const Solid &dwelling, const Plot &plot, DiagDirection side, 
 	return RoofedAlong(Walled(area, site, WindowGrid::None, dwelling.wall * ANNEX_WALL_SHARE), site, roof, ClimatePitch(site), AXIS_X);
 }
 
+static Plot Spanning(Plot plot, Axis along, float from, float to)
+{
+	(along == AXIS_X ? plot.x0 : plot.y0) = from;
+	(along == AXIS_X ? plot.x1 : plot.y1) = to;
+	return plot;
+}
+
+/* A hedge rings the garden behind and beside the house; in front a picket fence opens on a gate, and a path runs from it to the door. */
+static void EncloseGarden(BuildingForm &form, const Solid &dwelling, const HouseSite &site, float front_depth)
+{
+	Plot lot = FootprintOf(form);
+	for (DiagDirection side : LOT_SIDES) {
+		if (side != site.front) Place(form, Part::Box(lot.Edge(side, HEDGE_DEPTH)).Detailed().Height(HEDGE_HEIGHT).Clad(Material::Hedge, HEDGE_TINT));
+	}
+
+	Axis along = AlongEdge(site.front);
+	float gate = FootprintOf(dwelling).Mid(along);
+	float low = lot.Mid(along) - lot.Span(along) / 2;
+	float high = low + lot.Span(along);
+	Plot fence = lot.Edge(site.front, FENCE_DEPTH);
+	Place(form, Part::Box(Spanning(fence, along, low, gate - GATE_WIDTH / 2)).Detailed().Height(FENCE_HEIGHT).Clad(Material::Pickets, FENCE_TINT));
+	Place(form, Part::Box(Spanning(fence, along, gate + GATE_WIDTH / 2, high)).Detailed().Height(FENCE_HEIGHT).Clad(Material::Pickets, FENCE_TINT));
+	Place(form, Part::Decal(Spanning(lot.Edge(site.front, front_depth), along, gate - PATH_WIDTH / 2, gate + PATH_WIDTH / 2)).Covered(Material::Gravel, PATH_TINT));
+}
+
 static void BuildDwelling(BuildingForm &form, const HouseSite &site)
 {
 	const Setback &setback = site.kind == HouseKind::Cottage ? COTTAGE_SETBACK : HOUSE_SETBACK;
-	Plot plot = FootprintOf(form).SetBack(site.front, Jittered(setback, site.seed, DWELLING_JITTER));
+	Setback jittered = Jittered(setback, site.seed, DWELLING_JITTER);
+	Plot plot = FootprintOf(form).SetBack(site.front, jittered);
 	std::optional<DiagDirection> annex_side = SeedPick(ANNEX_SIDES, PLAN_VARIANT.Of(site.seed));
 	Solid dwelling = RaiseBlock(form, annex_side.has_value() ? plot.Inset(*annex_side, ANNEX_WIDTH) : plot, site);
 	if (annex_side.has_value()) Place(form, Annex(dwelling, plot, *annex_side, site));
 	DressRoof(form, dwelling, site);
+	EncloseGarden(form, dwelling, site, jittered.front);
 }
 
 static void BuildTerrace(BuildingForm &form, const HouseSite &site)

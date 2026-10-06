@@ -26,14 +26,14 @@ vec3 Tilted(vec3 normal, vec2 tilt)
 	return normalize(normal + across * tilt.x + cross(normal, across) * tilt.y);
 }
 
-/* Buildings fade out where they grow too small to show, dithered; lattices show only their members, and glass mirrors the sky. */
+/* Buildings fade out where they grow too small to show, dithered; open claddings show only what they are made of, and glass mirrors the sky. */
 void main()
 {
 	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
 	float noise = ScreenNoise(gl_FragCoord.xy);
 	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) <= noise) discard;
 	uint material = v_surface.x;
-	if (material == CLAD_LATTICE && LatticeCover(v_pattern) < noise) discard;
+	if (Cover(material, v_pattern) < noise) discard;
 
 	Clad clad = CladOf(material, v_pattern, v_colour.rgb);
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
