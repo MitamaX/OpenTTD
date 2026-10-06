@@ -22,6 +22,7 @@
 #include "../../safeguards.h"
 
 static constexpr double HALF_PIXEL = 0.5;
+static constexpr double GROUND_PATH_STEP = 0.5;
 
 /* A stroke's half width once it keeps a pixel across, and the alpha it fades to for the width it lacks. */
 struct VisibleStroke {
@@ -234,6 +235,21 @@ void FrameArea(int tx0, int ty0, int tx1, int ty1, int width, uint32_t c, uint a
 	AddSideCorners(ring, tx0, ty1, DIAGDIR_NE, tiles_y);
 	if (SamePoint(ring.front(), ring.back())) ring.pop_back();
 	_canvas.FrameWorldRing(ring, width, c, alpha);
+}
+
+std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to)
+{
+	double span = std::hypot(to.first - from.first, to.second - from.second);
+	int steps = std::max(1, static_cast<int>(std::ceil(span / GROUND_PATH_STEP)));
+	std::vector<WorldPoint> path;
+	path.reserve(steps + 1);
+	for (int step = 0; step <= steps; step++) {
+		double share = static_cast<double>(step) / steps;
+		double x = from.first + (to.first - from.first) * share;
+		double y = from.second + (to.second - from.second) * share;
+		path.push_back({x, y, GroundLevel(x, y)});
+	}
+	return path;
 }
 
 void FillGroundStroke(const TileGround &ground, TilePoint from, TilePoint to, double half_width, uint32_t c, uint alpha)

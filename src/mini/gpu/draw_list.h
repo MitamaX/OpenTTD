@@ -64,12 +64,14 @@ inline uint FadedAlpha(double share, uint alpha = CHANNEL_MAX)
 
 using VertexColour = std::array<uint8_t, 4>;
 
+/* Ahead is how far in front of the eye a shape laid on the world stands there, for drawing it against the world's depth; nothing else sets it. */
 struct DrawVertex {
 	float x;
 	float y;
 	float u;
 	float v;
 	VertexColour rgba;
+	float ahead = 0.0f;
 };
 
 /* Indices count from the batch's first vertex, so each batch stands alone as a mesh. */
@@ -90,10 +92,11 @@ struct UvRect {
 
 static constexpr UvRect FULL_UV = {0.0f, 0.0f, 1.0f, 1.0f};
 
-/* A continuous screen position: pixel n spans n to n + 1. */
+/* A continuous screen position: pixel n spans n to n + 1; a point of the world also keeps how far ahead of the eye it stands. */
 struct ScreenPoint {
 	float x;
 	float y;
+	float ahead = 0.0f;
 };
 
 /* One corner of a textured shape: where it lands, the texel it samples and its tint. */
@@ -120,11 +123,11 @@ public:
 	void FillRect(int x0, int y0, int x1, int y1, uint32_t argb);
 	void FillRoundRect(int x0, int y0, int x1, int y1, int radius, uint32_t argb);
 	void FillGradient(int x0, int y0, int x1, int y1, uint32_t top_left, uint32_t top_right, uint32_t bottom_left, uint32_t bottom_right);
-	void Line(int x0, int y0, int x1, int y1, int width, uint32_t argb);
 	void FillCircle(int cx, int cy, int r, uint32_t argb);
 	void FillDiamond(int cx, int cy, int r, uint32_t argb);
 	void FillTriangle(int cx, int cy, int r, uint32_t argb);
 	void FillQuad(const std::array<ScreenPoint, 4> &corners, uint32_t argb);
+	void Stroke(const ScreenPoint &from, const ScreenPoint &to, float width, uint32_t argb);
 	void Image(TextureId texture, const Rect &dest, const UvRect &uv, uint32_t tint);
 	void Polygon(TextureId texture, std::span<const TexturedCorner> convex);
 

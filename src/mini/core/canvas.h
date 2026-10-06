@@ -70,7 +70,7 @@ public:
 	void FillWorldQuad(const std::array<WorldPoint, 4> &corners, uint32_t c, uint alpha = OPAQUE_ALPHA);
 	void FrameWorldQuad(const std::array<WorldPoint, 4> &corners, int width, uint32_t c, uint alpha = OPAQUE_ALPHA) { this->FrameWorldRing(corners, width, c, alpha); }
 	void FrameWorldRing(std::span<const WorldPoint> ring, int width, uint32_t c, uint alpha = OPAQUE_ALPHA);
-	void ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c);
+	void StrokeWorldPath(std::span<const WorldPoint> path, int width, uint32_t c, uint alpha = OPAQUE_ALPHA);
 	void FillCircle(int cx, int cy, int r, uint32_t c);
 	void FillDiamond(int cx, int cy, int r, uint32_t c);
 	void FillTriangle(int cx, int cy, int r, uint32_t c);
@@ -90,5 +90,7 @@ private:
 
 extern Canvas _canvas;
 extern DrawList _map_draw;
+/* Shapes laid on the world's ground, which the world painter draws against the world's depth. */
+extern DrawList _ground_draw;
 
 #endif /* MINI_CORE_CANVAS_H */

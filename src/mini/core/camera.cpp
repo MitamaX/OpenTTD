@@ -201,7 +201,7 @@ ExactPoint Camera::ScreenStep(MapVector step) const
 ExactPoint Camera::ExactScreenOf(const WorldPoint &point) const
 {
 	Vec3 offset = RenderPoint(point) - this->eye;
-	double ahead = -Dot(offset, this->back);
+	double ahead = this->Ahead(point);
 	double across = Dot(offset, this->right);
 	double rise = Dot(offset, this->up);
 	if (ahead >= this->near) {
@@ -212,6 +212,12 @@ ExactPoint Camera::ExactScreenOf(const WorldPoint &point) const
 	double aside = std::hypot(across, rise);
 	if (aside <= NEGLIGIBLE) return {this->width * 0.5, this->height * 0.5 + OFF_SCREEN_PX};
 	return {this->width * 0.5 + across / aside * OFF_SCREEN_PX, this->height * 0.5 - rise / aside * OFF_SCREEN_PX};
+}
+
+/* How far in front of the eye a point stands, along the way the camera looks. */
+double Camera::Ahead(const WorldPoint &point) const
+{
+	return -Dot(RenderPoint(point) - this->eye, this->back);
 }
 
 Point Camera::ScreenOf(const WorldPoint &point) const

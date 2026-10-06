@@ -11,6 +11,7 @@
 #include "world_painter.h"
 
 #include "../core/camera.h"
+#include "../core/canvas.h"
 #include "../core/ground_trace.h"
 #include "../gpu/gl_api.h"
 #include "../gpu/gl_state.h"
@@ -55,6 +56,7 @@ WorldPainter::WorldPainter()
 void WorldPainter::Reload()
 {
 	this->post.Reload();
+	this->overlay.Reload();
 	for (const auto &pass : this->passes) pass->Reload();
 }
 
@@ -66,15 +68,17 @@ void WorldPainter::Prepare()
 	for (const auto &pass : this->passes) pass->Prepare(view);
 }
 
-/* RmlUi's layer is put back as it was before the world is laid into it, so the map element's clipping still holds. */
+/* RmlUi's layer is put back as it was before the world and the shapes on its ground are laid into it, so the map element's clipping still holds. */
 void WorldPainter::Paint(const ShaderArea &area)
 {
 	if (_world_tiles.Size().width == 0 || !this->Ready()) return;
 
 	GlStateScope borrowed;
 	this->Render(SceneView::Of(_camera));
+	this->overlay.Upload(_ground_draw);
 	borrowed.Restore();
 	this->post.Present(area, this->target);
+	this->overlay.Draw(this->target);
 }
 
 std::optional<TileIndex> WorldPainter::BuildingAt(const Vec3 &origin, const Vec3 &direction) const
@@ -101,12 +105,13 @@ void WorldPainter::Release()
 	this->shadows.Release();
 	this->scene.Release();
 	this->post.Release();
+	this->overlay.Release();
 	for (const auto &pass : this->passes) pass->Release();
 }
 
 bool WorldPainter::Ready()
 {
-	return GlSupportsWorld() && this->post.Ready();
+	return GlSupportsWorld() && this->post.Ready() && this->overlay.Ready();
 }
 
 /* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, and the finishing steps work on the whole. */

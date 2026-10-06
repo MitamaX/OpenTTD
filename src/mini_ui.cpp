@@ -77,6 +77,7 @@
 #include "mini/input/pointer_router.h"
 #include "mini/map/map_labels.h"
 #include "mini/map/map_overlay.h"
+#include "mini/map/tile_shapes.h"
 #include "mini/map/vehicle_motion.h"
 #include "mini/map/world_tiles.h"
 #include "mini/tools/blueprint.h"
@@ -212,15 +213,18 @@ static bool OpenWaypointWndAt(int sx, int sy)
 
 static VehicleID FrontWndVehicle();
 
+static constexpr int ROUTE_WIDTH = 2;
+static constexpr int ROUTE_STOP_RADIUS = 4;
+
 /* Route preview for the front window's vehicle: stop-to-stop legs in
- * blueprint blue, the leg from the vehicle to its current destination
- * highlighted. */
+ * blueprint blue along the ground, the leg from the vehicle to its current
+ * destination highlighted. */
 static void DrawOrderRoute()
 {
 	const Vehicle *v = Vehicle::GetIfValid(FrontWndVehicle());
 	if (v == nullptr || v->GetNumOrders() < 1) return;
 
-	std::vector<Point> stops;
+	std::vector<TilePoint> stops;
 	int cur_stop = -1;
 	int i = 0;
 	for (const Order &o : v->Orders()) {
@@ -228,7 +232,7 @@ static void DrawOrderRoute()
 			const Station *st = Station::GetIfValid(o.GetDestination().ToStationID());
 			if (st != nullptr) {
 				if (i == v->cur_real_order_index) cur_stop = (int)stops.size();
-				stops.push_back(_camera.ScreenOfGround(TileX(st->xy) + 0.5, TileY(st->xy) + 0.5));
+				stops.push_back(TileCentre(TileX(st->xy), TileY(st->xy)));
 			}
 		}
 		i++;
@@ -236,16 +240,15 @@ static void DrawOrderRoute()
 	if (stops.empty()) return;
 
 	size_t legs = stops.size() > 2 ? stops.size() : stops.size() - 1;
-	for (size_t n = 0; n < legs; n++) {
-		const Point &from = stops[n];
-		const Point &to = stops[(n + 1) % stops.size()];
-		_canvas.ThickLine(from.x, from.y, to.x, to.y, 2, COL_BP);
+	for (size_t n = 0; n < legs; n++) _canvas.StrokeWorldPath(GroundPath(stops[n], stops[(n + 1) % stops.size()]), ROUTE_WIDTH, COL_BP);
+	for (const TilePoint &stop : stops) {
+		Point at = _camera.ScreenOfGround(stop.first, stop.second);
+		_canvas.FillCircle(at.x, at.y, ROUTE_STOP_RADIUS, COL_BP);
 	}
-	for (const Point &stop : stops) _canvas.FillCircle(stop.x, stop.y, 4, COL_BP);
 
 	if (cur_stop >= 0) {
-		Point at = _camera.ScreenOf(_vehicle_motion.Position(v));
-		_canvas.ThickLine(at.x, at.y, stops[cur_stop].x, stops[cur_stop].y, 2, COL_PAPER);
+		WorldPoint at = _vehicle_motion.Position(v);
+		_canvas.StrokeWorldPath(GroundPath({at.x, at.y}, stops[cur_stop]), ROUTE_WIDTH, COL_PAPER);
 	}
 }
 
@@ -865,6 +868,7 @@ void MiniUiFrame(uint delta_ms)
 	_toast_feed.Age(delta_ms);
 	if (VehicleID built = _deploy.Step(); built != VehicleID::Invalid()) OpenVehicleWindow(built);
 	_map_draw.Clear();
+	_ground_draw.Clear();
 
 	_camera.Update(delta_ms, _mode.FollowTarget());
 	if (std::optional<ViewAim> aim = _frame_capture.Aim(); aim.has_value()) _camera.Aim(*aim);

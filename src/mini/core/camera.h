@@ -120,6 +120,7 @@ public:
 
 	ExactPoint ScreenStep(MapVector step) const;
 	ExactPoint ExactScreenOf(const WorldPoint &point) const;
+	double Ahead(const WorldPoint &point) const;
 	Point ScreenOf(const WorldPoint &point) const;
 	Point ScreenOfGround(double tx, double ty) const;
 	double HeadingDegrees(MapVector direction) const;

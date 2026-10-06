@@ -16,6 +16,7 @@
 
 #include "../../vehicle_type.h"
 #include "../ui/shader_painter.h"
+#include "ground_overlay.h"
 #include "post_chain.h"
 #include "scene_view.h"
 #include "shadow_map.h"
@@ -53,6 +54,7 @@ private:
 	ShadowMap shadows;
 	SceneUniforms scene;
 	PostChain post;
+	GroundOverlay overlay;
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	const StructurePass *structures = nullptr;
 	const VehiclePass *vehicles = nullptr;

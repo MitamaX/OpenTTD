@@ -28,6 +28,7 @@ static constexpr uint32_t GLYPH_WHITE = 0xFFFFFFFFU;
 
 Canvas _canvas;
 DrawList _map_draw;
+DrawList _ground_draw;
 
 void Canvas::BeginFrame()
 {
@@ -63,7 +64,7 @@ void Canvas::Frame(const Rect &r, int width, uint32_t c, uint alpha)
 ScreenPoint ScreenPointOf(const WorldPoint &point)
 {
 	ExactPoint at = _camera.ExactScreenOf(point);
-	return {static_cast<float>(at.x), static_cast<float>(at.y)};
+	return {static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(_camera.Ahead(point))};
 }
 
 std::array<ScreenPoint, 4> ScreenQuadOf(const std::array<WorldPoint, 4> &corners)
@@ -112,14 +113,14 @@ static std::vector<ScreenPoint> Inset(std::span<const ScreenPoint> outline, floa
 		ScreenPoint before = InwardNormal(outline[(i + count - 1) % count], corner, winding);
 		ScreenPoint after = InwardNormal(corner, outline[(i + 1) % count], winding);
 		float reach = width / (1.0f + before.x * after.x + before.y * after.y);
-		inner[i] = {corner.x + (before.x + after.x) * reach, corner.y + (before.y + after.y) * reach};
+		inner[i] = {corner.x + (before.x + after.x) * reach, corner.y + (before.y + after.y) * reach, corner.ahead};
 	}
 	return inner;
 }
 
 void Canvas::FillWorldQuad(const std::array<WorldPoint, 4> &corners, uint32_t c, uint alpha)
 {
-	_map_draw.FillQuad(ScreenQuadOf(corners), this->Blended(c, alpha));
+	_ground_draw.FillQuad(ScreenQuadOf(corners), this->Blended(c, alpha));
 }
 
 /* Each side is a band reaching in from the outline, so the bands meet at the corners without overlapping. */
@@ -132,13 +133,18 @@ void Canvas::FrameWorldRing(std::span<const WorldPoint> ring, int width, uint32_
 	for (size_t i = 0; i < outer.size(); i++) {
 		size_t next = (i + 1) % outer.size();
 		std::array<ScreenPoint, 4> band = {outer[i], outer[next], inner[next], inner[i]};
-		if (OnScreen(band)) _map_draw.FillQuad(band, argb);
+		if (OnScreen(band)) _ground_draw.FillQuad(band, argb);
 	}
 }
 
-void Canvas::ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
+/* Each step of the path is a band the width across on screen, so the stroke keeps its width however far off it runs. */
+void Canvas::StrokeWorldPath(std::span<const WorldPoint> path, int width, uint32_t c, uint alpha)
 {
-	_map_draw.Line(x0, y0, x1, y1, std::max(width, 1), c);
+	uint32_t argb = this->Blended(c, alpha);
+	for (size_t i = 1; i < path.size(); i++) {
+		std::array<ScreenPoint, 2> step = {ScreenPointOf(path[i - 1]), ScreenPointOf(path[i])};
+		if (OnScreen(step)) _ground_draw.Stroke(step[0], step[1], static_cast<float>(std::max(width, 1)), argb);
+	}
 }
 
 /* Shape fills prefer an atlas quad so the silhouettes are already on the

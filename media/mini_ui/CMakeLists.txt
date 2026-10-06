@@ -71,6 +71,8 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/composite.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/edges.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/flora.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ground_overlay.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ground_overlay.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lighting.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/network.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/occlusion.frag

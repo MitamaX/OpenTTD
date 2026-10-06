@@ -41,7 +41,7 @@ static VertexColour Unpack(uint32_t argb)
 
 static DrawVertex CornerVertex(const TexturedCorner &corner)
 {
-	return {corner.at.x, corner.at.y, corner.u, corner.v, Unpack(corner.argb)};
+	return {corner.at.x, corner.at.y, corner.u, corner.v, Unpack(corner.argb), corner.at.ahead};
 }
 
 void DrawList::Clear()
@@ -99,18 +99,18 @@ void DrawList::FillGradient(int x0, int y0, int x1, int y1, uint32_t top_left, u
 	this->Fan(std::array{this->Plain(x0, y0, Unpack(top_left)), this->Plain(right, y0, Unpack(top_right)), this->Plain(right, bottom, Unpack(bottom_right)), this->Plain(x0, bottom, Unpack(bottom_left))});
 }
 
-/* The stroke is centred on the segment and stops square at both ends. */
-void DrawList::Line(int x0, int y0, int x1, int y1, int width, uint32_t argb)
+/* The stroke is centred on the segment and stops square at both ends; each end keeps its point's distance ahead. */
+void DrawList::Stroke(const ScreenPoint &from, const ScreenPoint &to, float width, uint32_t argb)
 {
-	float dx = x1 - x0;
-	float dy = y1 - y0;
+	float dx = to.x - from.x;
+	float dy = to.y - from.y;
 	float length = std::hypot(dx, dy);
-	if (length <= 0.0f || width <= 0) return;
+	if (length <= 0.0f || width <= 0.0f) return;
 
 	float scale = width / (2.0f * length);
 	float nx = -scale * dy;
 	float ny = scale * dx;
-	this->FillQuad({ScreenPoint{x0 - nx, y0 - ny}, ScreenPoint{x0 + nx, y0 + ny}, ScreenPoint{x1 + nx, y1 + ny}, ScreenPoint{x1 - nx, y1 - ny}}, argb);
+	this->FillQuad({ScreenPoint{from.x - nx, from.y - ny, from.ahead}, ScreenPoint{from.x + nx, from.y + ny, from.ahead}, ScreenPoint{to.x + nx, to.y + ny, to.ahead}, ScreenPoint{to.x - nx, to.y - ny, to.ahead}}, argb);
 }
 
 /* Single-pixel dots stay square; small discs need few sides. */

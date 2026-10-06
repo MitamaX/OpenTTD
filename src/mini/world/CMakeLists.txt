@@ -11,6 +11,8 @@ add_files(
     forest_pass.cpp
     forest_pass.h
     frame_units.h
+    ground_overlay.cpp
+    ground_overlay.h
     network_field.cpp
     network_field.h
     network_mesh.cpp

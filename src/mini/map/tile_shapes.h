@@ -12,6 +12,7 @@
 
 #include <array>
 #include <optional>
+#include <vector>
 
 #include "../../core/geometry_type.hpp"
 #include "../../direction_type.h"
@@ -60,6 +61,9 @@ void FillTile(int tx, int ty, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 /* Tile by tile so the fill follows the terrain, over the tiles that can show. */
 void FillArea(int tx0, int ty0, int tx1, int ty1, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void FrameArea(int tx0, int ty0, int tx1, int ty1, int width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
+
+/* Points along the ground on the straight way between two map points, close enough together to follow its rises and dips. */
+std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to);
 
 /* A band of a tile's ground between two of its points, kept a pixel across like FillAxisLine. */
 void FillGroundStroke(const TileGround &ground, TilePoint from, TilePoint to, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
