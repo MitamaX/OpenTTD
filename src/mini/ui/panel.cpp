@@ -13,6 +13,7 @@
 #include <RmlUi/Core.h>
 
 #include "model_tag.h"
+#include "pixel_style.h"
 
 #include "../../safeguards.h"
 
@@ -74,6 +75,12 @@ void Panel::Raise()
 	if (this->document != nullptr) this->document->PullToFront();
 }
 
+/* A panel is laid out again at once when it changed shape, so it is drawn at the size its slots are pinned to. */
+void Panel::Reshape()
+{
+	if (this->Shape()) this->document->UpdateDocument();
+}
+
 /* Runs once the document has been laid out, when element boxes are final for the frame. */
 void Panel::Settle()
 {
@@ -98,10 +105,12 @@ Rml::Vector2f Panel::Position() const
 	return this->document->GetAbsoluteOffset(Rml::BoxArea::Border);
 }
 
+/* A move is laid out at once, so the slots are pinned where the panel is drawn. */
 void Panel::MoveTo(Rml::Vector2f position)
 {
-	this->document->SetProperty(Rml::PropertyId::Left, Rml::Property(position.x, Rml::Unit::PX));
-	this->document->SetProperty(Rml::PropertyId::Top, Rml::Property(position.y, Rml::Unit::PX));
+	bool moved = SetPixels(*this->document, Rml::PropertyId::Left, position.x);
+	moved |= SetPixels(*this->document, Rml::PropertyId::Top, position.y);
+	if (moved) this->document->UpdateDocument();
 }
 
 void Panel::Bind(Rml::DataModelConstructor &model)
@@ -124,6 +133,11 @@ void Panel::Bind(Rml::DataModelConstructor &model)
 
 void Panel::BindSheet(Rml::DataModelConstructor &)
 {
+}
+
+bool Panel::Shape()
+{
+	return false;
 }
 
 void Panel::AfterLayout()

@@ -54,20 +54,22 @@ bool NativeDock::Docks(const Window *w) const
 	return this->Find(w) != nullptr || IsCarrier(w);
 }
 
-Window *NativeDock::Open(const DockSpec &spec, WindowNumber num) const
+/* A window is held from the moment a slot asks for it, so nothing adopts it before it is pinned. */
+Window *NativeDock::Open(const DockSpec &spec, WindowNumber num)
 {
 	Window *w = FindWindowById(spec.wc, num);
-	if (w != nullptr || spec.open == nullptr) return w;
-	spec.open(num);
-	return FindWindowById(spec.wc, num);
+	if (w == nullptr && spec.open != nullptr) {
+		spec.open(num);
+		w = FindWindowById(spec.wc, num);
+	}
+	if (w != nullptr) this->Hold(KeyOf(w), spec.open != nullptr);
+	return w;
 }
 
 /* The native is sized in whole steps to the slot and moved so its caption
- * sits just above it; the part that shows is what the slot can sample. A slot
- * not laid out yet only holds the window, so nothing adopts it meanwhile. */
-void NativeDock::Pin(Window *w, bool owned, const Rect &slot, const NativeSizing &sizing)
+ * sits just above it; the part that shows is what the slot can sample. */
+void NativeDock::Pin(Window *w, const Rect &slot, const NativeSizing &sizing)
 {
-	this->Hold(KeyOf(w), owned);
 	if (slot.Width() <= 0 || slot.Height() <= 0) return;
 
 	int crop = CaptionCrop(w);

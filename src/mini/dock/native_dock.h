@@ -45,8 +45,8 @@ public:
 	const DockedWindow *Find(const Window *w) const;
 	bool Docks(const Window *w) const;
 
-	Window *Open(const DockSpec &spec, WindowNumber num) const;
-	void Pin(Window *w, bool owned, const Rect &slot, const NativeSizing &sizing);
+	Window *Open(const DockSpec &spec, WindowNumber num);
+	void Pin(Window *w, const Rect &slot, const NativeSizing &sizing);
 	void Carry(Window *w, const Rect &slot);
 
 	void Unmark();

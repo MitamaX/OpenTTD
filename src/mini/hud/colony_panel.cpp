@@ -21,6 +21,7 @@
 #include "../../network/network.h"
 #include "../../openttd.h"
 #include "../../timer/timer_game_calendar.h"
+#include "../ui/pixel_style.h"
 #include "../ui/tone.h"
 #include "../ui/ui_text.h"
 
@@ -131,7 +132,7 @@ void ColonyPanel::HoldWidth()
 	float step = WIDTH_STEP_DP * root->GetContext()->GetDensityIndependentPixelRatio();
 	float width = std::ceil(root->GetBox().GetSize(Rml::BoxArea::Content).x / step) * step;
 	this->held_width = std::max(this->held_width, width);
-	root->SetProperty(Rml::PropertyId::MinWidth, Rml::Property(this->held_width, Rml::Unit::PX));
+	SetPixels(*root, Rml::PropertyId::MinWidth, this->held_width);
 }
 
 static void Resume()

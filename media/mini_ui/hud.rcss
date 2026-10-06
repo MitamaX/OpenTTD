@@ -123,31 +123,27 @@ map-view {
 
 .shelf.open {
 	display: flex;
-	animation: 0.22s back-out rise-in;
+	animation: 0.22s back-out rise-in, 0.22s cubic-out fade-in;
 }
 
 .shelf.drop.open {
-	animation: 0.22s back-out drop-in;
+	animation: 0.22s back-out drop-in, 0.22s cubic-out fade-in;
 }
 
 @keyframes drop-in {
 	from {
-		opacity: 0;
 		transform: translateY(-10dp) scale(0.95);
 	}
 	to {
-		opacity: 1;
 		transform: translateY(0dp) scale(1);
 	}
 }
 
 @keyframes rise-in {
 	from {
-		opacity: 0;
 		transform: translateY(10dp) scale(0.95);
 	}
 	to {
-		opacity: 1;
 		transform: translateY(0dp) scale(1);
 	}
 }

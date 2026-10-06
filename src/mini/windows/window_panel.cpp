@@ -41,13 +41,12 @@ static Rect ScreenRectOf(NativeSlot &slot)
 	return {area.Left(), area.Top(), area.Right() - 1, area.Bottom() - 1};
 }
 
-static void SetCap(Rml::Element &element, Rml::PropertyId id, std::optional<float> pixels)
+static bool SetCap(Rml::Element &element, Rml::PropertyId id, std::optional<float> pixels)
 {
-	if (pixels.has_value()) {
-		SetPixels(element, id, *pixels);
-	} else if (element.GetLocalProperty(id) != nullptr) {
-		element.RemoveProperty(id);
-	}
+	if (pixels.has_value()) return SetPixels(element, id, *pixels);
+	if (element.GetLocalProperty(id) == nullptr) return false;
+	element.RemoveProperty(id);
+	return true;
 }
 
 /* A native grows in whole resize steps, so the panel only takes sizes the native can fill exactly. */
@@ -82,14 +81,33 @@ void WindowPanel::Collect()
 	LedgerPanel::Collect();
 }
 
+/* The panel takes a size its official window fills exactly before the window is pinned into it. */
+bool WindowPanel::Shape()
+{
+	if (!this->target.has_value()) return this->Unfit();
+	std::optional<EmbedSite> site = this->Site();
+	if (!site.has_value()) return false;
+
+	NativeSizing sizing = SizingOf(site->window);
+	this->sizable = !sizing.Pinned();
+	Rml::Vector2f chrome = this->Document()->GetBox().GetSize(Rml::BoxArea::Border) - Rml::Vector2f(site->slot->ScreenRect().Size());
+	return this->Fit(sizing, chrome);
+}
+
 void WindowPanel::AfterLayout()
 {
 	if (this->shot.has_value()) this->ShowCamera(*this->shot);
-	if (this->target.has_value()) {
-		this->ShowEmbed(*this->target);
-	} else {
-		this->Unfit();
-	}
+	if (std::optional<EmbedSite> site = this->Site(); site.has_value()) _dock.Pin(site->window, ScreenRectOf(*site->slot), SizingOf(site->window));
+}
+
+/* The official window is opened here when it is not up yet. */
+std::optional<WindowPanel::EmbedSite> WindowPanel::Site() const
+{
+	if (!this->target.has_value()) return std::nullopt;
+	NativeSlot *slot = FindSlot(*this->Document(), EMBED_SLOT);
+	Window *w = slot == nullptr ? nullptr : _dock.Open(this->target->spec, this->target->number);
+	if (w == nullptr) return std::nullopt;
+	return EmbedSite{slot, w};
 }
 
 /* The carrier paints into the screen buffer below the panel layer and the slot samples it back. */
@@ -106,22 +124,8 @@ void WindowPanel::ShowCamera(const CameraShot &shot) const
 	_dock.Carry(w, area);
 }
 
-void WindowPanel::ShowEmbed(const EmbedTarget &target)
-{
-	Rml::ElementDocument &document = *this->Document();
-	NativeSlot *slot = FindSlot(document, EMBED_SLOT);
-	Window *w = slot == nullptr ? nullptr : _dock.Open(target.spec, target.number);
-	if (w == nullptr) return;
-
-	NativeSizing sizing = SizingOf(w);
-	Rml::Vector2f chrome = document.GetBox().GetSize(Rml::BoxArea::Border) - Rml::Vector2f(slot->ScreenRect().Size());
-	this->Fit(sizing, chrome);
-	this->sizable = !sizing.Pinned();
-	_dock.Pin(w, target.spec.open != nullptr, ScreenRectOf(*slot), sizing);
-}
-
 /* The panel never shrinks below the native's own minimum; an axis the native cannot resize is held at it. */
-void WindowPanel::Fit(const NativeSizing &sizing, Rml::Vector2f chrome)
+bool WindowPanel::Fit(const NativeSizing &sizing, Rml::Vector2f chrome)
 {
 	Rml::ElementDocument &document = *this->Document();
 	Rml::Vector2f base(sizing.min_w + chrome.x, sizing.min_h + chrome.y);
@@ -129,18 +133,20 @@ void WindowPanel::Fit(const NativeSizing &sizing, Rml::Vector2f chrome)
 	size.x = sizing.fix_w ? base.x : SnapToSteps(size.x, base.x, sizing.step_w);
 	size.y = sizing.fix_h ? base.y : SnapToSteps(size.y, base.y, sizing.step_h);
 
-	SetPixels(document, Rml::PropertyId::MinWidth, base.x);
-	SetPixels(document, Rml::PropertyId::MinHeight, base.y);
-	SetCap(document, Rml::PropertyId::MaxWidth, sizing.fix_w ? std::optional(base.x) : std::nullopt);
-	SetCap(document, Rml::PropertyId::MaxHeight, sizing.fix_h ? std::optional(base.y) : std::nullopt);
-	SetPixels(document, Rml::PropertyId::Width, size.x);
-	SetPixels(document, Rml::PropertyId::Height, size.y);
+	bool reshaped = SetPixels(document, Rml::PropertyId::MinWidth, base.x);
+	reshaped |= SetPixels(document, Rml::PropertyId::MinHeight, base.y);
+	reshaped |= SetCap(document, Rml::PropertyId::MaxWidth, sizing.fix_w ? std::optional(base.x) : std::nullopt);
+	reshaped |= SetCap(document, Rml::PropertyId::MaxHeight, sizing.fix_h ? std::optional(base.y) : std::nullopt);
+	reshaped |= SetPixels(document, Rml::PropertyId::Width, size.x);
+	reshaped |= SetPixels(document, Rml::PropertyId::Height, size.y);
 	this->fitted = true;
+	return reshaped;
 }
 
-void WindowPanel::Unfit()
+bool WindowPanel::Unfit()
 {
 	this->sizable = false;
-	if (!std::exchange(this->fitted, false)) return;
+	if (!std::exchange(this->fitted, false)) return false;
 	for (Rml::PropertyId id : FIT_PROPERTIES) this->Document()->RemoveProperty(id);
+	return true;
 }

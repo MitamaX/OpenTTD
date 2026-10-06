@@ -36,6 +36,7 @@ Panel *PanelStack::Show(std::unique_ptr<Panel> panel)
 	if (this->context == nullptr || !panel->IsAlive()) return nullptr;
 	if (!panel->Open(*this->context, fmt::format("panel{}", ++this->serial))) return nullptr;
 
+	panel->Reshape();
 	this->Place(*panel);
 	return this->panels.emplace_back(std::move(panel)).get();
 }
@@ -63,20 +64,14 @@ void PanelStack::Refresh()
 	}
 }
 
-void PanelStack::Confine()
-{
-	for (const auto &panel : this->panels) {
-		if (!panel->IsOpen()) continue;
-		Rml::Vector2f position = panel->Position();
-		Rml::Vector2f confined = this->Confined(panel->Size(), position);
-		if (confined != position) panel->MoveTo(confined);
-	}
-}
-
+/* Shape and screen bounds go first, so the natives are pinned to the boxes the frame draws. */
 void PanelStack::Settle()
 {
 	for (const auto &panel : this->panels) {
-		if (panel->IsOpen()) panel->Settle();
+		if (!panel->IsOpen()) continue;
+		panel->Reshape();
+		panel->MoveTo(this->Confined(panel->Size(), panel->Position()));
+		panel->Settle();
 	}
 }
 

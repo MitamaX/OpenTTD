@@ -40,6 +40,7 @@ public:
 	void Close();
 	void Dismiss();
 	void Raise();
+	void Reshape();
 	void Settle();
 
 	void SelectTab(int tab) { this->tab = tab; }
@@ -56,6 +57,7 @@ protected:
 
 	void Bind(Rml::DataModelConstructor &model) final;
 	virtual void BindSheet(Rml::DataModelConstructor &model);
+	virtual bool Shape();
 	virtual void AfterLayout();
 	virtual void OnDismiss();
 

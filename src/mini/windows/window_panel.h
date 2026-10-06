@@ -27,6 +27,8 @@ struct EmbedTarget {
 	WindowNumber number = 0;
 };
 
+class NativeSlot;
+
 class WindowPanel : public LedgerPanel {
 public:
 	void ListNatives(std::vector<NativeKey> &natives) const override;
@@ -38,13 +40,19 @@ protected:
 	virtual std::optional<EmbedTarget> Embed() const;
 
 private:
+	struct EmbedSite {
+		NativeSlot *slot;
+		Window *window;
+	};
+
 	void Collect() final;
+	bool Shape() final;
 	void AfterLayout() final;
 
+	std::optional<EmbedSite> Site() const;
 	void ShowCamera(const CameraShot &shot) const;
-	void ShowEmbed(const EmbedTarget &target);
-	void Fit(const NativeSizing &sizing, Rml::Vector2f chrome);
-	void Unfit();
+	bool Fit(const NativeSizing &sizing, Rml::Vector2f chrome);
+	bool Unfit();
 
 	std::optional<CameraShot> shot;
 	std::optional<EmbedTarget> target;

@@ -85,7 +85,6 @@ void ViewHost::Frame(int width, int height, float dp_ratio, int dock_top, std::s
 	this->panels.Refresh();
 	this->floats.Show(floating);
 	this->layer.Update(width, height, dp_ratio);
-	this->panels.Confine();
 	this->panels.Settle();
 	this->panels.Retire();
 }
@@ -124,6 +123,19 @@ PointerLayer ViewHost::LayerAt(int x, int y) const
 	const Rml::Element *element = this->layer.ElementAt(x, y);
 	if (element == nullptr || element->GetTagName() == MapView::TAG) return PointerLayer::Map;
 	return element->GetTagName() == NativeSlot::TAG ? PointerLayer::Native : PointerLayer::Panel;
+}
+
+/* Asked outside the frame too, when a lost GL context may already have taken the panels' documents with it. */
+void ViewHost::ListNatives(std::vector<NativeKey> &natives)
+{
+	this->Sync();
+	this->panels.ListNatives(natives);
+}
+
+const Panel *ViewHost::Front()
+{
+	this->Sync();
+	return this->panels.Front();
 }
 
 void ViewHost::FeedPointer()

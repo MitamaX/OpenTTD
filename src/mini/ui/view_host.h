@@ -31,8 +31,8 @@ public:
 	PointerLayer LayerAt(int x, int y) const;
 	void FeedPointer();
 	void LeavePointer(bool pressed);
-	void ListNatives(std::vector<NativeKey> &natives) const { this->panels.ListNatives(natives); }
-	const Panel *Front() const { return this->panels.Front(); }
+	void ListNatives(std::vector<NativeKey> &natives);
+	const Panel *Front();
 
 	bool IsTyping() const { return this->layer.IsTyping(); }
 	bool ProcessKey(uint keycode, char32_t character);

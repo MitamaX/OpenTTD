@@ -31,7 +31,6 @@ public:
 	void CloseAll();
 
 	void Refresh();
-	void Confine();
 	void Settle();
 	void Retire();
 

@@ -14,11 +14,12 @@
 #include <RmlUi/Core/Property.h>
 
 /* Setting a property dirties the layout even when the value is unchanged, so an equal value is left alone. */
-inline void SetPixels(Rml::Element &element, Rml::PropertyId id, float pixels)
+inline bool SetPixels(Rml::Element &element, Rml::PropertyId id, float pixels)
 {
 	const Rml::Property *current = element.GetLocalProperty(id);
-	if (current != nullptr && current->unit == Rml::Unit::PX && current->Get<float>() == pixels) return;
+	if (current != nullptr && current->unit == Rml::Unit::PX && current->Get<float>() == pixels) return false;
 	element.SetProperty(id, Rml::Property(pixels, Rml::Unit::PX));
+	return true;
 }
 
 #endif /* MINI_UI_PIXEL_STYLE_H */
