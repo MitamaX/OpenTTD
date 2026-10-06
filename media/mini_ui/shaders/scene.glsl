@@ -55,10 +55,11 @@ float TilePixelsAt(float distance)
 	return u_projection[1][1] * u_screen.y * 0.5 / max(distance, u_lens.x);
 }
 
-/* A value in [0, 1) per pixel that neighbouring pixels spread evenly over. */
+/* A value in [0, 1) per pixel that neighbouring pixels spread evenly over, moving on each frame the picture is jittered so frames blend its steps away. */
 float ScreenNoise(vec2 fragment)
 {
-	return fract(52.9829189 * fract(dot(fragment, vec2(0.06711056, 0.00583715))));
+	vec2 moved = fragment + 5.588238 * u_screen.w;
+	return fract(52.9829189 * fract(dot(moved, vec2(0.06711056, 0.00583715))));
 }
 
 vec3 RenderPoint(vec3 world)
@@ -90,12 +91,17 @@ vec3 SightAt(vec2 fragment)
 	return SightThrough(fragment / u_screen.xy * 2.0 - 1.0);
 }
 
-/* How far from the eye the depth buffer puts a surface along this sight line. */
-float SightDistance(float depth, vec3 sight)
+/* How far ahead of the eye, along the way it looks, the depth buffer puts a surface. */
+float AheadOf(float depth)
 {
 	float near = u_lens.x;
 	float far = u_lens.y;
-	float ahead = 2.0 * near * far / (far + near - (depth * 2.0 - 1.0) * (far - near));
+	return 2.0 * near * far / (far + near - (depth * 2.0 - 1.0) * (far - near));
+}
+
+/* How far from the eye the depth buffer puts a surface along this sight line. */
+float SightDistance(float depth, vec3 sight)
+{
 	vec3 back = vec3(u_view[0][2], u_view[1][2], u_view[2][2]);
-	return ahead / max(dot(sight, -back), 1e-4);
+	return AheadOf(depth) / max(dot(sight, -back), 1e-4);
 }

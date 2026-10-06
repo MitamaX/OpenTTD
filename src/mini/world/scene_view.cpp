@@ -61,6 +61,17 @@ SceneView SceneView::Of(const Camera &camera)
 	return view;
 }
 
+/* The picture shifts by a fraction of a pixel while culling keeps the camera's own frustum; the phase walks screen noise on with it. */
+SceneView SceneView::Jittered(double x_pixels, double y_pixels, uint phase) const
+{
+	SceneView jittered = *this;
+	jittered.projection.At(0, 2) -= 2.0 * x_pixels / this->viewport.width;
+	jittered.projection.At(1, 2) -= 2.0 * y_pixels / this->viewport.height;
+	jittered.view_projection = jittered.projection * jittered.view;
+	jittered.phase = phase;
+	return jittered;
+}
+
 bool SceneView::Sees(const Vec3 &low, const Vec3 &high) const
 {
 	return BoxMeets(this->frustum, low, high);
@@ -91,7 +102,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		floats(sun.x, sun.y, sun.z, 0.0),
 		floats(view.near, view.far, view.fog_start, view.far),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
-		floats(view.viewport.width, view.viewport.height, view.clock, 0.0),
+		floats(view.viewport.width, view.viewport.height, view.clock, view.phase),
 	};
 
 	if (this->buffer == 0) glGenBuffers(1, &this->buffer);

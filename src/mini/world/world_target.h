@@ -12,6 +12,14 @@
 
 #include "../../core/geometry_type.hpp"
 
+/** How a texture reads between texel centres. */
+enum class TargetSampling : uint8_t {
+	Nearest,
+	Linear,
+};
+
+uint32_t TargetTexture(int internal_format, uint32_t format, uint32_t type, Dimension size, TargetSampling sampling);
+
 class WorldTarget {
 public:
 	bool Bind(Dimension size);

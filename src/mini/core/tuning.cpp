@@ -71,6 +71,11 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "edge_scroll_speed", this->edge_scroll_speed);
 	ReadIniNumber(group, "jump_ppt", this->jump_ppt);
 	ReadIniNumber(group, "glide_ms", this->glide_ms);
+	ReadIniNumber(group, "ambient_occlusion", this->ambient_occlusion);
+	ReadIniNumber(group, "bloom", this->bloom);
+	ReadIniNumber(group, "anti_aliasing", this->anti_aliasing);
+	ReadIniNumber(group, "depth_of_field", this->depth_of_field);
+	ReadIniNumber(group, "exposure", this->exposure);
 
 	this->pan_speed = Clamp(this->pan_speed, 100.0, 10000.0);
 	this->pan_speed_fast = Clamp(this->pan_speed_fast, 100.0, 20000.0);
@@ -91,6 +96,8 @@ void MiniTuning::Load()
 	this->edge_scroll_speed = Clamp(this->edge_scroll_speed, 100.0, 10000.0);
 	this->jump_ppt = Clamp(this->jump_ppt, MIN_PPT, MAX_PPT);
 	this->glide_ms = Clamp(this->glide_ms, 1.0, 2000.0);
+	this->anti_aliasing = Clamp(this->anti_aliasing, 0, 2);
+	this->exposure = Clamp(this->exposure, -4.0, 4.0);
 
 	ini.SaveToDisk(path);
 }

@@ -30,9 +30,11 @@ struct SceneView {
 	double shadow_reach;
 	double clock;
 	Dimension viewport;
+	uint phase = 0;
 
 	static SceneView Of(const Camera &camera);
 
+	SceneView Jittered(double x_pixels, double y_pixels, uint phase) const;
 	bool Sees(const Vec3 &low, const Vec3 &high) const;
 	double TilePixelsAt(double distance) const;
 	double NearestTilePixels(const Vec3 &low, const Vec3 &high) const;

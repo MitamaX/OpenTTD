@@ -16,13 +16,14 @@
 
 #include "../../safeguards.h"
 
-static uint32_t TargetTexture(GLint internal_format, GLenum format, GLenum type, Dimension size)
+uint32_t TargetTexture(int internal_format, uint32_t format, uint32_t type, Dimension size, TargetSampling sampling)
 {
+	GLint filter = sampling == TargetSampling::Linear ? GL_LINEAR : GL_NEAREST;
 	GLuint texture = 0;
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexImage2D(GL_TEXTURE_2D, 0, internal_format, static_cast<GLsizei>(size.width), static_cast<GLsizei>(size.height), 0, format, type, nullptr);
@@ -77,8 +78,8 @@ bool WorldTarget::Build(Dimension size)
 
 bool WorldTarget::Layer::Build(Dimension size)
 {
-	this->colour = TargetTexture(GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, size);
-	this->depth = TargetTexture(GL_DEPTH_COMPONENT24, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, size);
+	this->colour = TargetTexture(GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, size, TargetSampling::Nearest);
+	this->depth = TargetTexture(GL_DEPTH_COMPONENT24, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, size, TargetSampling::Nearest);
 
 	glGenFramebuffers(1, &this->framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);

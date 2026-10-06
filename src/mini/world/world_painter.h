@@ -16,8 +16,8 @@
 
 #include "../../vehicle_type.h"
 #include "../ui/shader_painter.h"
+#include "post_chain.h"
 #include "scene_view.h"
-#include "shader_program.h"
 #include "shadow_map.h"
 #include "terrain_field.h"
 #include "world_pass.h"
@@ -46,18 +46,16 @@ private:
 	bool Ready();
 	void Render(const SceneView &view);
 	void DrawStage(WorldStage stage, const SceneView &view);
-	void Composite(const ShaderArea &area);
 
 	WorldTarget target;
 	WorldTextures textures;
 	TerrainField field;
 	ShadowMap shadows;
 	SceneUniforms scene;
-	ShaderProgram composite;
+	PostChain post;
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	const StructurePass *structures = nullptr;
 	const VehiclePass *vehicles = nullptr;
-	uint32_t quad = 0;
 };
 
 extern WorldPainter _world_painter;

@@ -32,6 +32,11 @@ struct MiniTuning {
 	double edge_scroll_speed = 1600.0;
 	double jump_ppt = 32.0;
 	double glide_ms = 250.0;
+	int ambient_occlusion = 1;
+	int bloom = 1;
+	int anti_aliasing = 2;
+	int depth_of_field = 0;
+	double exposure = 0.0;
 
 	void Load();
 };

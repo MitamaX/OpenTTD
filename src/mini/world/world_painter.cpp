@@ -10,8 +10,6 @@
 #include "../../stdafx.h"
 #include "world_painter.h"
 
-#include <array>
-
 #include "../core/camera.h"
 #include "../core/ground_trace.h"
 #include "../gpu/gl_api.h"
@@ -25,23 +23,8 @@
 
 #include "../../safeguards.h"
 
-static constexpr std::array<const char *, 1> SCREEN_SOURCES = {
-	"mini_ui/shaders/screen.vert",
-};
-static constexpr std::array<const char *, 3> COMPOSITE_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/composite.frag",
-};
-static constexpr int QUAD_CORNERS = 4;
 static constexpr GLint REQUIRED_MAJOR = 3;
 static constexpr GLint REQUIRED_MINOR = 3;
-
-/** The world target's textures, as the composite samples them. */
-enum CompositeUnit : uint8_t {
-	COLOUR_UNIT,
-	DEPTH_UNIT,
-};
 
 WorldPainter _world_painter;
 
@@ -55,13 +38,7 @@ static bool GlSupportsWorld()
 	return major > REQUIRED_MAJOR || (major == REQUIRED_MAJOR && minor >= REQUIRED_MINOR);
 }
 
-static void BindTexture(uint unit, uint32_t texture)
-{
-	glActiveTexture(GL_TEXTURE0 + unit);
-	glBindTexture(GL_TEXTURE_2D, texture);
-}
-
-WorldPainter::WorldPainter() : composite(SCREEN_SOURCES, COMPOSITE_SOURCES)
+WorldPainter::WorldPainter()
 {
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<NetworkPass>());
@@ -77,7 +54,7 @@ WorldPainter::WorldPainter() : composite(SCREEN_SOURCES, COMPOSITE_SOURCES)
 
 void WorldPainter::Reload()
 {
-	this->composite.Reload();
+	this->post.Reload();
 	for (const auto &pass : this->passes) pass->Reload();
 }
 
@@ -97,7 +74,7 @@ void WorldPainter::Paint(const ShaderArea &area)
 	GlStateScope borrowed;
 	this->Render(SceneView::Of(_camera));
 	borrowed.Restore();
-	this->Composite(area);
+	this->post.Present(area, this->target);
 }
 
 std::optional<TileIndex> WorldPainter::BuildingAt(const Vec3 &origin, const Vec3 &direction) const
@@ -123,20 +100,16 @@ void WorldPainter::Release()
 	this->field.Release();
 	this->shadows.Release();
 	this->scene.Release();
-	this->composite.Release();
+	this->post.Release();
 	for (const auto &pass : this->passes) pass->Release();
-	if (this->quad != 0) glDeleteVertexArrays(1, &this->quad);
-	this->quad = 0;
 }
 
 bool WorldPainter::Ready()
 {
-	if (!GlSupportsWorld() || !this->composite.Ready()) return false;
-	if (this->quad == 0) glGenVertexArrays(1, &this->quad);
-	return true;
+	return GlSupportsWorld() && this->post.Ready();
 }
 
-/* Shadows are cast before the solid passes draw, and surface passes draw over a snapshot of the solid world. */
+/* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, and the finishing steps work on the whole. */
 void WorldPainter::Render(const SceneView &view)
 {
 	WorldChanges changes = _world_tiles.TakeChanges();
@@ -152,7 +125,7 @@ void WorldPainter::Render(const SceneView &view)
 	glDepthFunc(GL_LESS);
 	glDepthMask(GL_TRUE);
 	glClearDepth(1.0);
-	this->scene.Upload(view);
+	this->scene.Upload(this->post.Jitter(view));
 	this->shadows.Render(view, this->passes);
 	if (!this->target.Bind(view.viewport)) return;
 
@@ -163,6 +136,7 @@ void WorldPainter::Render(const SceneView &view)
 	this->DrawStage(WorldStage::Solid, view);
 	this->target.Snapshot();
 	this->DrawStage(WorldStage::Surface, view);
+	this->post.Finish(this->target, view);
 }
 
 void WorldPainter::DrawStage(WorldStage stage, const SceneView &view)
@@ -170,20 +144,4 @@ void WorldPainter::DrawStage(WorldStage stage, const SceneView &view)
 	for (const auto &pass : this->passes) {
 		if (pass->Stage() == stage) pass->Draw(view);
 	}
-}
-
-/* The quad covers the element in RmlUi's pixels; the viewport is whichever layer RmlUi is drawing into. */
-void WorldPainter::Composite(const ShaderArea &area)
-{
-	GLint viewport[4];
-	glGetIntegerv(GL_VIEWPORT, viewport);
-	this->composite.Use();
-	glUniform4f(this->composite.Uniform("u_area"), area.left, area.top, area.right, area.bottom);
-	glUniform2f(this->composite.Uniform("u_viewport"), static_cast<float>(viewport[2]), static_cast<float>(viewport[3]));
-	this->composite.BindSampler("u_colour", COLOUR_UNIT);
-	this->composite.BindSampler("u_depth", DEPTH_UNIT);
-	BindTexture(COLOUR_UNIT, this->target.Colour());
-	BindTexture(DEPTH_UNIT, this->target.Depth());
-	glBindVertexArray(this->quad);
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, QUAD_CORNERS);
 }

@@ -17,6 +17,10 @@ add_files(
     network_mesh.h
     network_pass.cpp
     network_pass.h
+    post_chain.cpp
+    post_chain.h
+    post_target.cpp
+    post_target.h
     rail_vehicle_models.cpp
     road_models.cpp
     road_models.h
