@@ -1,0 +1,17 @@
+add_files(
+    scene_view.cpp
+    scene_view.h
+    shader_program.cpp
+    shader_program.h
+    terrain_mesh.cpp
+    terrain_mesh.h
+    terrain_pass.cpp
+    terrain_pass.h
+    world_painter.cpp
+    world_painter.h
+    world_pass.h
+    world_target.cpp
+    world_target.h
+    world_textures.cpp
+    world_textures.h
+)

@@ -21,7 +21,7 @@
 #include "tile_shapes.h"
 #include "volume_light.h"
 
-inline constexpr double STRUCTURE_RISE_LEVELS = MAX_STRUCTURE_TILES * RISE_SCALE / LEVEL_TILES;
+inline constexpr double STRUCTURE_RISE_LEVELS = MAX_STRUCTURE_TILES * MODEL_TILE_LEVELS;
 
 enum class BuildingTier : uint8_t { Massing, Shaped, Textured };
 
@@ -34,7 +34,6 @@ public:
 	void BeginFrame();
 	bool MayShow(TileIndex tile) const;
 	void Draw(const BuildingForm &form, TileIndex cell, const VolumeStyle &style);
-	void DrawStep(TileIndex tile, const StepFace &step) const;
 	std::optional<TileIndex> PickAt(Point screen) const;
 
 private:
@@ -46,8 +45,7 @@ private:
 		TileIndex tile;
 	};
 
-	bool FacesViewer(const Vec3 &unit_normal) const;
-	SolidPlacement PlacementAt(const PlanRect &footprint, double floor) const;
+	bool FacesViewer(const Vec3 &unit_normal, const WorldPoint &at) const;
 	SolidPlacement PlacementOf(const BuildingForm &form) const;
 	std::optional<Rect> PieceBounds(const BuildingForm &form, const PlanRect &cell) const;
 	bool ShowsDetail(const VolumeStyle &style) const;
@@ -56,8 +54,6 @@ private:
 	double ppt = MIN_PPT;
 	BuildingTier tier = BuildingTier::Massing;
 	Daylight daylight{};
-	MapVector toward{};
-	Vec3 view{};
 	double glazing = 0.0;
 	std::optional<uint> snow_line;
 	SolidTexel atlas{};

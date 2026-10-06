@@ -5,21 +5,18 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file sunlight.cpp The sun over the mini map, kept at the screen's upper left whichever way the view faces. */
+/** @file sunlight.cpp The sun over the mini map, standing still in the sky whichever way the view faces. */
 
 #include "../../stdafx.h"
 #include "sunlight.h"
 
-#include "camera.h"
 #include "tuning.h"
 
 #include "../../safeguards.h"
 
 SunVector Sun()
 {
-	MapVector right = _camera.Right();
-	MapVector toward = _camera.Toward();
-	return {right.x * SUN_ACROSS + toward.x * SUN_ALONG, right.y * SUN_ACROSS + toward.y * SUN_ALONG, SUN_UP};
+	return {SUN_X, SUN_Y, SUN_UP};
 }
 
 double ReliefShare()

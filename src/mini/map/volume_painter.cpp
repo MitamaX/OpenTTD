@@ -29,8 +29,6 @@
 #include "../../safeguards.h"
 
 static constexpr double VISIBLE_EPS = 1e-4;
-static constexpr uint32_t FOUNDATION_TINT = 0xFF8F887CU;
-static constexpr double STEP_FLOOR = 0.0;
 static constexpr int CYLINDER_SEGMENTS_SHAPED = 8;
 static constexpr int CYLINDER_SEGMENTS_TEXTURED = 12;
 static constexpr double SNOW_MIN_NZ = 0.5;
@@ -254,10 +252,11 @@ public:
 private:
 	bool Shows(const Face &face, const Vec3 &normal) const
 	{
-		if (!this->painter.FacesViewer(normal)) return false;
+		std::span<const FacePoint> points = face.polygon.Points();
+		const FacePoint &corner = points.front();
+		if (!this->painter.FacesViewer(normal, {corner.x, corner.y, LevelOf(this->placement.floor, corner.z)})) return false;
 		if (this->clips && OwnedByNeighbour(face, this->cell)) return false;
 
-		std::span<const FacePoint> points = face.polygon.Points();
 		std::array<ScreenPoint, MAX_POLYGON_CORNERS> outline;
 		std::ranges::transform(points, outline.begin(), [&](const FacePoint &point) { return this->Project(point); });
 		return Thickness(std::span(outline).first(points.size())) >= (IsUpright(normal) ? MIN_WALL_PX : MIN_FACE_PX);
@@ -369,8 +368,6 @@ void VolumePainter::BeginFrame()
 	this->ppt = _camera.Ppt();
 	this->tier = TierFor(this->ppt);
 	this->daylight = Daylight::Now();
-	this->toward = _camera.Toward();
-	this->view = {this->toward.x * ViewRise() / LEVEL_TILES, this->toward.y * ViewRise() / LEVEL_TILES, VIEW_DEPTH};
 	this->glazing = SmoothStep(BUILDING_TEXTURED_PPT, BUILDING_DETAIL_PPT, this->ppt);
 	this->snow_line = SnowLine();
 	this->atlas = MiniAtlasSolid();
@@ -379,15 +376,17 @@ void VolumePainter::BeginFrame()
 /* The tile's whole form, raised to the tallest structure, has to reach the screen. */
 bool VolumePainter::MayShow(TileIndex tile) const
 {
-	ExactPoint centre = _camera.ExactScreenOf(TileGround(tile).At(TileCentre(TileX(tile), TileY(tile))));
-	double across = MAX_FOOTPRINT_TILES * HALF_DIAGONAL * this->ppt;
-	double along = across * VIEW_DEPTH;
-	double rise = STRUCTURE_RISE_LEVELS * ViewRise() * this->ppt;
-	std::array<ScreenPoint, 2> reach = {{
-		{static_cast<float>(centre.x - across), static_cast<float>(centre.y - along - rise)},
-		{static_cast<float>(centre.x + across), static_cast<float>(centre.y + along)},
-	}};
-	return OnScreen(reach);
+	auto [x, y] = TileCentre(TileX(tile), TileY(tile));
+	double reach = MAX_FOOTPRINT_TILES * HALF_DIAGONAL;
+	double low = TileGround(tile).Lowest();
+	PlanRect around = {x - reach, y - reach, x + reach, y + reach};
+	std::array<PlanPoint, RECT_CORNERS> corners = CornersOf(around);
+	std::array<ScreenPoint, 2 * RECT_CORNERS> outline;
+	for (size_t i = 0; i < RECT_CORNERS; i++) {
+		outline[2 * i] = ScreenPointOf({corners[i].x, corners[i].y, low});
+		outline[2 * i + 1] = ScreenPointOf({corners[i].x, corners[i].y, low + STRUCTURE_RISE_LEVELS});
+	}
+	return OnScreen(outline);
 }
 
 void VolumePainter::Draw(const BuildingForm &form, TileIndex cell, const VolumeStyle &style)
@@ -400,26 +399,9 @@ void VolumePainter::Draw(const BuildingForm &form, TileIndex cell, const VolumeS
 	if (!bounds.has_value()) return;
 
 	SolidPlacement placement = this->PlacementOf(form);
-	std::array<uint8_t, MAX_SOLIDS> order = PaintOrder(form.Solids(), this->toward);
+	std::array<uint8_t, MAX_SOLIDS> order = PaintOrder(form.Solids(), placement.toward);
 	for (uint8_t index : std::span(order).first(form.count)) this->DrawSolid(form, form.solids[index], placement, plan, style);
 	if (form.pickable) this->picks.push_back({*bounds, cell});
-}
-
-/* The step is clad in the stone the game builds its foundations of and lit by the same sun as the buildings. */
-void VolumePainter::DrawStep(TileIndex tile, const StepFace &step) const
-{
-	Vec3 normal = {step.outward.x, step.outward.y, 0.0};
-	if (!this->FacesViewer(normal) || Thickness(ScreenQuadOf(step.ring)) < MIN_FACE_PX) return;
-
-	FacePolygon polygon;
-	for (const WorldPoint &corner : step.ring) polygon.Add({corner.x, corner.y, HeightOf(STEP_FLOOR, corner.level), normal, 1.0, false});
-	if (!polygon.IsSurface()) return;
-
-	bool textured = this->tier == BuildingTier::Textured;
-	SolidPlacement placement = this->PlacementAt(CellPlan(tile), STEP_FLOOR);
-	CoatPainter mason(*this, placement, textured);
-	Coat stone = {FOUNDATION_TINT, textured ? 1.0 : SURFACE_MEAN, this->daylight.Light(normal), false, false, mason.Sampled(MaterialUv(Material::Foundation))};
-	mason.Lay(polygon, WallUv(normal), {&stone, 1});
 }
 
 std::optional<TileIndex> VolumePainter::PickAt(Point screen) const
@@ -430,20 +412,17 @@ std::optional<TileIndex> VolumePainter::PickAt(Point screen) const
 	return std::nullopt;
 }
 
-bool VolumePainter::FacesViewer(const Vec3 &unit_normal) const
+bool VolumePainter::FacesViewer(const Vec3 &unit_normal, const WorldPoint &at) const
 {
-	return Dot(unit_normal, this->view) > VISIBLE_EPS;
+	return Dot(unit_normal, Normalised(_camera.Eye() - RenderPoint(at))) > VISIBLE_EPS;
 }
 
-SolidPlacement VolumePainter::PlacementAt(const PlanRect &footprint, double floor) const
-{
-	return {footprint, floor, this->toward, TIER_SHAPES[to_underlying(this->tier)]};
-}
-
+/* The solids of a form stand in the order the view meets them from its eye. */
 SolidPlacement VolumePainter::PlacementOf(const BuildingForm &form) const
 {
 	PlanRect footprint = {static_cast<double>(form.tx), static_cast<double>(form.ty), static_cast<double>(form.tx + form.size_x), static_cast<double>(form.ty + form.size_y)};
-	return this->PlacementAt(footprint, form.floor);
+	TilePoint middle = {(footprint.x0 + footprint.x1) / 2.0, (footprint.y0 + footprint.y1) / 2.0};
+	return {footprint, static_cast<double>(form.floor), _camera.Toward(middle), TIER_SHAPES[to_underlying(this->tier)]};
 }
 
 /* The cell's column from the form's floor, which every tile of a form stands on, up to the form's tallest top. */

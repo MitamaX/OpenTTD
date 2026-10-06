@@ -57,7 +57,7 @@ static_assert(ROAD_NW == 1 && ROAD_SW == 2 && ROAD_SE == 4 && ROAD_NE == 8);
 WorldTiles _world_tiles;
 
 /* The game folds a tile along the diagonal whose corners stand level, and along the lower pair when both do. */
-static bool FoldsWestToEast(const SurfaceTexel &surface)
+bool FoldsWestToEast(const SurfaceTexel &surface)
 {
 	return surface.west == surface.east && (surface.north != surface.south || surface.north > surface.west);
 }

@@ -5,28 +5,24 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file camera.h The dimetric camera of the mini UI: where it looks, how close, which way it faces, and how it moves. */
+/** @file camera.h The orbiting perspective camera of the mini UI: where it looks, how close, which way it faces, and how it moves. */
 
 #ifndef MINI_CORE_CAMERA_H
 #define MINI_CORE_CAMERA_H
 
 #include <array>
-#include <numbers>
 #include <optional>
 #include <utility>
 
 #include "../../core/geometry_type.hpp"
 #include "../../tile_type.h"
+#include "space.h"
 
-inline constexpr double MIN_PPT = 4.0;
-inline constexpr double MAX_PPT = 64.0;
+inline constexpr double MIN_PPT = 2.0;
+inline constexpr double MAX_PPT = 160.0;
 inline constexpr double LEVEL_TILES = static_cast<double>(TILE_HEIGHT) / TILE_SIZE;
-inline constexpr int GROUND_SEARCH_STEPS = 24;
-inline constexpr double GROUND_SEARCH_SHARE = 0.5;
-inline constexpr double VIEW_DEPTH = 0.5;
-inline constexpr double NATIVE_VIEW_RISE = 1.0 / (4.0 * std::numbers::sqrt2);
-/* Beyond this the steepest slope nears the line of sight and the ground search stops converging. */
-inline constexpr double MAX_HEIGHT_SCALE = 1.5;
+inline constexpr double MIN_PITCH = 20.0;
+inline constexpr double MAX_PITCH = 89.0;
 
 using TilePoint = std::pair<double, double>;
 
@@ -47,7 +43,7 @@ struct ExactPoint {
 };
 
 /* A view framed from outside: the ground point at the screen centre, pixels per tile there, the compass bearing
- * the view faces clockwise from map north and how far the view dips below the horizon, which a fixed-tilt camera leaves alone. */
+ * the view faces clockwise from map north and how far the view dips below the horizon. */
 struct ViewAim {
 	TilePoint focus;
 	double zoom;
@@ -63,24 +59,30 @@ struct TileSpan {
 };
 
 double GroundLevel(double tx, double ty);
-double ViewRise();
+double LevelRise();
+Vec3 RenderPoint(const WorldPoint &point);
 double SmoothStep(double edge0, double edge1, double x);
 
 class Camera {
 public:
 	Camera();
 
-	double X() const { return this->x; }
-	double Y() const { return this->y; }
 	double Ppt() const { return this->ppt; }
-	MapVector Right() const { return this->right; }
-	MapVector Toward() const { return this->toward; }
 	int TilePixels() const;
 	int Width() const { return this->width; }
 	int Height() const { return this->height; }
 
 	void SetViewport(int width, int height);
 	void SetPeak(uint level) { this->peak = level; }
+
+	const Vec3 &Eye() const { return this->eye; }
+	double Focal() const;
+	double FocusDistance() const;
+	double Near() const { return this->near; }
+	double Far() const { return this->far; }
+	Mat4 ViewMatrix() const;
+	Mat4 ProjectionMatrix() const;
+	MapVector Toward(TilePoint at) const;
 
 	ExactPoint ScreenStep(MapVector step) const;
 	ExactPoint ExactScreenOf(const WorldPoint &point) const;
@@ -93,62 +95,71 @@ public:
 
 	void CentreOn(double tx, double ty);
 	void Aim(const ViewAim &aim);
-	void PlaceCentre(TilePoint plane);
 	void GlideTo(double tx, double ty);
 	void Grab(int sx, int sy);
+	void HoldOrbit(int sx, int sy);
+	bool ReleaseOrbit();
 	void Zoom(bool in);
 	void ZoomAt(int sx, int sy, bool in);
-	void Turn(int quarters);
 	void FaceNorth();
 	void Halt();
 	void Update(uint delta_ms, std::optional<WorldPoint> chase);
 
 private:
-	TilePoint Shifted(TilePoint plane, double dx, double dy) const;
-	double Lift(double levels) const;
-	WorldPoint Sighted(double dx, double dy, double level) const;
-	WorldPoint GroundAt(double dx, double dy) const;
-	WorldPoint GroundUnder(int sx, int sy) const;
-	TilePoint Focus(const WorldPoint &point) const;
-	TilePoint GroundFocus(TilePoint ground) const;
-	bool Turning() const;
-	void SetHeading(double degrees);
-	void Face(double degrees);
+	struct Orbit {
+		Point last;
+		Point start;
+		bool turning;
+	};
+
+	double ZoomDistance() const;
+	WorldPoint FocusPoint() const;
+	Vec3 Forward() const;
+	Vec3 SightThrough(double sx, double sy) const;
+	WorldPoint GroundUnder(double sx, double sy) const;
+	void Frame();
+	void Place(TilePoint focus);
+	void Pin(const WorldPoint &ground, double sx, double sy);
 	void MoveToward(TilePoint target, double share);
 	void MoveBy(double dx, double dy);
 	void Pan(uint delta_ms);
 	void EdgeScroll(uint delta_ms);
 	void Glide(uint delta_ms);
 	void Spin(uint delta_ms);
+	void Swing();
 	void Settle(uint delta_ms);
+	void Rest(uint delta_ms, std::optional<double> level);
 	void FollowGrab();
-	void Pin(const WorldPoint &ground, int sx, int sy);
 
-	int width = 0;
-	int height = 0;
+	int width = 1;
+	int height = 1;
 
-	/* The level-0 plane point under the screen centre in tiles; ppt is pixels per tile across the screen. */
-	double x = 0.0;
-	double y = 0.0;
+	/* The ground point the view turns about, pixels per tile there, and the view's bearing and dip in degrees. */
+	TilePoint focus{};
+	double focus_level = 0.0;
 	double ppt = 16.0;
 	double dest_ppt = 16.0;
-
-	/* The map direction pointing down the screen, in degrees turned from map X toward map Y. */
-	double heading = 0.0;
-	double heading_target = 0.0;
-	MapVector right{};
-	MapVector toward{};
+	double yaw = 0.0;
+	double pitch = 50.0;
+	double spin = 0.0;
 	uint peak = 0;
 
+	Vec3 eye{};
+	Vec3 right{};
+	Vec3 up{};
+	Vec3 back{};
+	double near = 1.0;
+	double far = 100.0;
+
 	bool anchored = false;
-	int anchor_sx = 0;
-	int anchor_sy = 0;
+	Point anchor_screen{};
 	WorldPoint anchor{};
 
 	bool gliding = false;
 	TilePoint glide{};
 
 	std::optional<WorldPoint> grab;
+	std::optional<Orbit> orbit;
 
 	double pan_vx = 0.0;
 	double pan_vy = 0.0;

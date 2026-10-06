@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file sunlight.h The sun over the mini map, kept at the screen's upper left whichever way the view faces. */
+/** @file sunlight.h The sun over the mini map, standing still in the sky whichever way the view faces. */
 
 #ifndef MINI_CORE_SUNLIGHT_H
 #define MINI_CORE_SUNLIGHT_H
@@ -16,9 +16,9 @@ struct SunVector {
 	double z;
 };
 
-/* The way to the sun along the screen's right, down the screen and straight up. */
-inline constexpr double SUN_ACROSS = -0.6;
-inline constexpr double SUN_ALONG = -0.6;
+/* The way to the sun along map X, map Y and straight up: over the north east edge, where it lights a north facing view from the upper left. */
+inline constexpr double SUN_X = 0.0;
+inline constexpr double SUN_Y = -0.85;
 inline constexpr double SUN_UP = 0.53;
 
 inline constexpr double AMBIENT_LIGHT = 0.42;

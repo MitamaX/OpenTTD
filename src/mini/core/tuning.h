@@ -18,7 +18,11 @@ struct MiniTuning {
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
 	double turn_smooth_ms = 160.0;
-	double height_scale = 1.5;
+	double turn_speed = 90.0;
+	double orbit_speed = 0.25;
+	double view_fov = 40.0;
+	double view_pitch = 50.0;
+	double height_scale = 1.0;
 	int hud_scale = 2;
 	int grid_alpha = 80;
 	int contour_alpha = 120;

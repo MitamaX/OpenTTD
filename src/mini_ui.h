@@ -58,6 +58,9 @@ static constexpr uint8_t DIRKEY_DOWN = 8;
 
 uint8_t MiniUiPanBit(char32_t key);
 uint8_t MiniUiHeldPanBits(const std::function<bool(char32_t key)> &held);
+void MiniUiHoldTurnKeys(const std::function<bool(char32_t key)> &held);
+void MiniUiTrackTurnKey(char32_t key, bool down);
+int MiniUiTurnKeys();
 
 struct Vehicle;
 bool ShowMiniVehicleWindow(const Vehicle *v);

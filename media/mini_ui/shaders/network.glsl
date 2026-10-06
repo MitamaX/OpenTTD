@@ -56,11 +56,6 @@ const float WHEEL_PATH_HALF = 0.04;
 const float WHEEL_WEAR = 0.08;
 const float TRAM_BED_SHADE = 0.86;
 
-const int CATENARY_SPAN = 2;
-const float MAST_HALF = 0.016;
-const float MAST_OFFSET = 0.30;
-const float MAST_CLEARANCE = RAIL_BED_HALF + MAST_HALF;
-
 struct Field {
 	float edge;
 	float spread;
@@ -110,11 +105,6 @@ struct Street {
 	Rails rails;
 	bool kerb;
 	uint dashed_road;
-};
-
-struct Mast {
-	vec2 foot;
-	bool stands;
 };
 
 struct Network {
@@ -178,11 +168,6 @@ uvec4 NetworkTexel(ivec2 offset)
 	return network_window[slot.y * WINDOW_SPAN + slot.x];
 }
 
-float Isotropic(mat2 pixel)
-{
-	return max(sqrt(abs(determinant(pixel))), MIN_SPREAD);
-}
-
 float Inside(Field field)
 {
 	return clamp(0.5 - field.edge / field.spread, 0.0, 1.0);
@@ -238,7 +223,7 @@ Piece TrackPiece(ivec2 tile, int index)
 
 float LevelOn(ivec2 tile, vec2 at)
 {
-	return ReliefOn(SurfaceOf(network_home + tile), at - vec2(tile)).height;
+	return FacetLevel(SurfaceOf(network_home + tile), at - vec2(tile));
 }
 
 /* Where two tiles' surfaces stand apart at the joint, an open end stops at the seam and nothing of it lands on the other surface. */
@@ -460,65 +445,6 @@ vec4 Railed(vec4 paint, Rails rails, float embedded)
 	return Over(paint, STEEL, rails.shine * detail);
 }
 
-bool ClearOfBeds(vec2 foot, ivec2 tile, uint pieces)
-{
-	for (int index = 0; index < TRACK_PIECES; index++) {
-		if ((pieces & Bit(index)) == 0u) continue;
-		Piece piece = TrackPiece(tile, index);
-		if (SegmentDistance(foot, piece.from, piece.to) < MAST_CLEARANCE) return false;
-	}
-	return true;
-}
-
-Mast MastBeside(Piece piece, vec2 middle, ivec2 tile, uint others)
-{
-	float inward = dot(vec2(tile) + TILE_CENTRE - middle, piece.side);
-	vec2 offset = piece.side * (inward < 0.0 ? -MAST_OFFSET : MAST_OFFSET);
-	if (ClearOfBeds(middle + offset, tile, others)) return Mast(middle + offset, true);
-	return Mast(middle - offset, ClearOfBeds(middle - offset, tile, others));
-}
-
-float PieceCatenary(vec2 at, ivec2 tile, int index, uint others, float pole_spread, float wire_spread)
-{
-	Piece piece = TrackPiece(tile, index);
-	vec2 middle = 0.5 * (piece.from + piece.to);
-	float contact = Stroke(SegmentDistance(at, Lifted(piece.from, CATENARY_RISE), Lifted(piece.to, CATENARY_RISE)), WIRE_HALF, wire_spread);
-	Mast mast = MastBeside(piece, middle, tile, others);
-	if (!mast.stands) return contact;
-
-	vec2 top = Lifted(mast.foot, CATENARY_RISE);
-	float arm = Stroke(SegmentDistance(at, top, Lifted(middle, CATENARY_RISE)), WIRE_HALF, wire_spread);
-	float pole = Stroke(SegmentDistance(at, mast.foot, top), MAST_HALF, pole_spread);
-	return max(contact, max(arm, pole));
-}
-
-float TileCatenary(vec2 at, ivec2 tile, float pole_spread, float wire_spread)
-{
-	uvec4 texel = NetworkTexel(tile);
-	if ((texel.w & CATENARY_BIT) == 0u) return 0.0;
-	float cover = 0.0;
-	for (int index = 0; index < TRACK_PIECES; index++) {
-		if ((texel.x & Bit(index)) != 0u) cover = max(cover, PieceCatenary(at, tile, index, texel.x & ~Bit(index), pole_spread, wire_spread));
-	}
-	return cover;
-}
-
-/* Lifted less than a tile, the catenary over a pixel belongs to its own tile or to the ones beside it toward the viewer. */
-float Catenary(vec2 at, mat2 pixel)
-{
-	float shown = ZoomFade(CATENARY_FAR_PPT, CATENARY_NEAR_PPT);
-	if (shown <= 0.0) return 0.0;
-
-	float pole_spread = Spread(pixel, u_right);
-	float wire_spread = Isotropic(pixel);
-	ivec2 nearer = ivec2(sign(u_toward));
-	float cover = 0.0;
-	for (int j = 0; j < CATENARY_SPAN; j++) {
-		for (int i = 0; i < CATENARY_SPAN; i++) cover = max(cover, TileCatenary(at, nearer * ivec2(i, j), pole_spread, wire_spread));
-	}
-	return cover * shown;
-}
-
 Network NetworkAt(vec2 p, mat2 pixel)
 {
 	ivec2 home = ivec2(floor(p));
@@ -533,6 +459,5 @@ Network NetworkAt(vec2 p, mat2 pixel)
 	vec4 paint = TrackBed(tracks, p);
 	paint = Paved(paint, street, at, p, pixel);
 	paint = Railed(paint, Merged(tracks.rails, street.rails), paved);
-	paint = Over(paint, WIRE, Catenary(at, pixel));
 	return Network(paint, vec2(Inside(tracks.body), paved));
 }

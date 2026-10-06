@@ -5,13 +5,13 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file camera.cpp The dimetric camera of the mini UI: where it looks, how close, which way it faces, and how it moves. */
+/** @file camera.cpp The orbiting perspective camera of the mini UI: where it looks, how close, which way it faces, and how it moves. */
 
 #include "../../stdafx.h"
 #include "camera.h"
 
-#include <ranges>
-#include <tuple>
+#include <algorithm>
+#include <numbers>
 
 #include "../../core/math_func.hpp"
 #include "../../gfx_func.h"
@@ -19,6 +19,7 @@
 #include "../../mini_ui.h"
 #include "../input/pointer_router.h"
 #include "../map/world_tiles.h"
+#include "ground_trace.h"
 #include "tuning.h"
 
 #include "../../safeguards.h"
@@ -27,10 +28,23 @@ static constexpr double MS_PER_SECOND = 1000.0;
 static constexpr double PAN_STOP_SPEED = 5.0;
 static constexpr double GLIDE_SNAP_PX = 0.5;
 static constexpr double ZOOM_SNAP_SHARE = 0.002;
+static constexpr double SPIN_STOP_SPEED = 0.5;
 static constexpr double DEGREES_PER_RADIAN = 180.0 / std::numbers::pi;
-static constexpr double NORTH_UP_HEADING = 45.0;
+static constexpr double FULL_TURN_DEGREES = 360.0;
 static constexpr double QUARTER_TURN_DEGREES = 90.0;
-static constexpr double TURN_SNAP_DEGREES = 0.02;
+static constexpr double NEAR_SHARE = 0.03;
+static constexpr double MIN_NEAR = 0.05;
+static constexpr double FAR_SHARE = 24.0;
+static constexpr double FAR_MARGIN = 64.0;
+static constexpr double EYE_CLEARANCE = 0.75;
+static constexpr double STEP_PROBE = 1e-3;
+static constexpr double NEGLIGIBLE = 1e-9;
+static constexpr int ORBIT_START_PX = 4;
+static constexpr double OFF_SCREEN_PX = 1e5;
+static constexpr double SMALLEST_SHOWN_TILE_PX = 2.0;
+static constexpr Vec3 SKY = {0.0, 0.0, 1.0};
+static constexpr Vec3 NORTH = {-std::numbers::sqrt2 / 2.0, -std::numbers::sqrt2 / 2.0, 0.0};
+static constexpr Vec3 EAST = {-std::numbers::sqrt2 / 2.0, std::numbers::sqrt2 / 2.0, 0.0};
 
 Camera _camera;
 
@@ -39,9 +53,9 @@ static double Approach(uint delta_ms, double time_constant_ms)
 	return 1.0 - std::exp(delta_ms / -time_constant_ms);
 }
 
-static double Travel(double pixels_per_second, uint delta_ms)
+static double Travel(double per_second, uint delta_ms)
 {
-	return pixels_per_second * delta_ms / MS_PER_SECOND;
+	return per_second * delta_ms / MS_PER_SECOND;
 }
 
 /* A held axis takes its velocity directly so movement starts instantly; a
@@ -54,24 +68,16 @@ static double AxisVelocity(double velocity, bool negative, bool positive, double
 	return std::abs(velocity) < PAN_STOP_SPEED ? 0.0 : velocity;
 }
 
-static double Dot(MapVector a, MapVector b)
-{
-	return a.x * b.x + a.y * b.y;
-}
-
 static TilePoint Confined(TilePoint point)
 {
 	return {Clamp<double>(point.first, 0.0, static_cast<double>(Map::SizeX())), Clamp<double>(point.second, 0.0, static_cast<double>(Map::SizeY()))};
 }
 
-static int FirstTile(double from)
+/* The bearing clockwise from map north as a horizontal direction in the map's plane. */
+static Vec3 Bearing(double degrees)
 {
-	return std::max(0, static_cast<int>(std::floor(from)));
-}
-
-static int LastTile(double to, uint last)
-{
-	return std::min(static_cast<int>(last), static_cast<int>(std::floor(to)));
+	double radians = degrees / DEGREES_PER_RADIAN;
+	return NORTH * std::cos(radians) + EAST * std::sin(radians);
 }
 
 double GroundLevel(double tx, double ty)
@@ -80,6 +86,17 @@ double GroundLevel(double tx, double ty)
 	uint column = std::min(static_cast<uint>(x), Map::MaxX());
 	uint row = std::min(static_cast<uint>(y), Map::MaxY());
 	return FacetLevel(_world_tiles.SurfaceAt(TileXY(column, row)), x - column, y - row);
+}
+
+/* How high one height level stands in the 3D world, in tile widths. */
+double LevelRise()
+{
+	return LEVEL_TILES * _tuning.height_scale;
+}
+
+Vec3 RenderPoint(const WorldPoint &point)
+{
+	return {point.x, point.y, point.level * LevelRise()};
 }
 
 double SmoothStep(double edge0, double edge1, double x)
@@ -100,37 +117,101 @@ int Camera::TilePixels() const
 
 void Camera::SetViewport(int width, int height)
 {
-	this->width = width;
-	this->height = height;
+	this->width = std::max(width, 1);
+	this->height = std::max(height, 1);
+	this->Frame();
 }
 
+/* Pixels per tile one tile width away from the eye. */
+double Camera::Focal() const
+{
+	return this->height / (2.0 * std::tan(_tuning.view_fov / 2.0 / DEGREES_PER_RADIAN));
+}
+
+/* How far back the zoom asks the eye to stand from the focus. */
+double Camera::ZoomDistance() const
+{
+	return this->Focal() / this->ppt;
+}
+
+/* How far the eye stands from the ground point it turns about, once lifted clear of the hills. */
+double Camera::FocusDistance() const
+{
+	return Length(this->eye - RenderPoint(this->FocusPoint()));
+}
+
+WorldPoint Camera::FocusPoint() const
+{
+	return {this->focus.first, this->focus.second, this->focus_level};
+}
+
+Vec3 Camera::Forward() const
+{
+	return Bearing(this->yaw);
+}
+
+/* The eye sits back along the view's dip from the focus, lifted clear of any hill behind it. */
+void Camera::Frame()
+{
+	double dip = this->pitch / DEGREES_PER_RADIAN;
+	Vec3 target = RenderPoint(this->FocusPoint());
+	this->eye = target + (this->Forward() * -std::cos(dip) + SKY * std::sin(dip)) * this->ZoomDistance();
+	this->eye.z = std::max(this->eye.z, GroundLevel(this->eye.x, this->eye.y) * LevelRise() + EYE_CLEARANCE);
+
+	this->back = Normalised(this->eye - target);
+	this->right = Bearing(this->yaw + QUARTER_TURN_DEGREES);
+	this->up = Cross(this->back, this->right);
+	double sight = this->FocusDistance();
+	this->near = std::max(sight * NEAR_SHARE, MIN_NEAR);
+	this->far = sight * FAR_SHARE + FAR_MARGIN;
+}
+
+Mat4 Camera::ViewMatrix() const
+{
+	return Mat4::View(this->eye, this->right, this->up, this->back);
+}
+
+Mat4 Camera::ProjectionMatrix() const
+{
+	double focal = this->Focal();
+	return Mat4::Perspective(2.0 * focal / this->width, 2.0 * focal / this->height, this->near, this->far);
+}
+
+/* The map direction from a ground point toward the eye, which is the way down the screen there. */
+MapVector Camera::Toward(TilePoint at) const
+{
+	MapVector toward = {this->eye.x - at.first, this->eye.y - at.second};
+	double length = std::hypot(toward.x, toward.y);
+	if (length > NEGLIGIBLE) return {toward.x / length, toward.y / length};
+	Vec3 forward = this->Forward();
+	return {-forward.x, -forward.y};
+}
+
+/* How a short step from the focus shows on screen, per tile. */
 ExactPoint Camera::ScreenStep(MapVector step) const
 {
-	return {Dot(step, this->right) * this->ppt, Dot(step, this->toward) * VIEW_DEPTH * this->ppt};
+	WorldPoint from = this->FocusPoint();
+	WorldPoint to = {from.x + step.x * STEP_PROBE, from.y + step.y * STEP_PROBE, from.level};
+	ExactPoint a = this->ExactScreenOf(from);
+	ExactPoint b = this->ExactScreenOf(to);
+	return {(b.x - a.x) / STEP_PROBE, (b.y - a.y) / STEP_PROBE};
 }
 
-/* The plane point that shows dx, dy pixels away from where the given plane point shows. */
-TilePoint Camera::Shifted(TilePoint plane, double dx, double dy) const
-{
-	double across = dx / this->ppt;
-	double along = dy / (this->ppt * VIEW_DEPTH);
-	return {plane.first + this->right.x * across + this->toward.x * along, plane.second + this->right.y * across + this->toward.y * along};
-}
-
-double ViewRise()
-{
-	return NATIVE_VIEW_RISE * _tuning.height_scale;
-}
-
-double Camera::Lift(double levels) const
-{
-	return levels * ViewRise() * this->ppt;
-}
-
+/* A point behind the near plane is thrown far off the screen on its own side, so a shape reaching behind the eye runs off the screen's edge and nothing behind the eye shows. */
 ExactPoint Camera::ExactScreenOf(const WorldPoint &point) const
 {
-	ExactPoint step = this->ScreenStep({point.x - this->x, point.y - this->y});
-	return {this->width * 0.5 + step.x, this->height * 0.5 + step.y - this->Lift(point.level)};
+	Vec3 offset = RenderPoint(point) - this->eye;
+	double ahead = -Dot(offset, this->back);
+	double across = Dot(offset, this->right);
+	double rise = Dot(offset, this->up);
+	if (ahead >= this->near) {
+		double scale = this->Focal() / ahead;
+		return {this->width * 0.5 + across * scale, this->height * 0.5 - rise * scale};
+	}
+
+	double aside = std::hypot(across, rise);
+	if (aside <= NEGLIGIBLE) return {this->width * 0.5, this->height * 0.5 + OFF_SCREEN_PX};
+	return {this->width * 0.5 + across / aside * OFF_SCREEN_PX, this->height * 0.5 - rise / aside * OFF_SCREEN_PX};
 }
 
 Point Camera::ScreenOf(const WorldPoint &point) const
@@ -151,31 +232,22 @@ double Camera::HeadingDegrees(MapVector direction) const
 	return std::atan2(step.x, -step.y) * DEGREES_PER_RADIAN;
 }
 
-/* The world point that shows dx, dy pixels from the screen centre when it stands this many levels high. */
-WorldPoint Camera::Sighted(double dx, double dy, double level) const
+/* The unit direction from the eye through a screen point. */
+Vec3 Camera::SightThrough(double sx, double sy) const
 {
-	auto [tx, ty] = this->Shifted({this->x, this->y}, dx, dy + this->Lift(level));
-	return {tx, ty, level};
+	double focal = this->Focal();
+	return Normalised(this->right * ((sx - this->width * 0.5) / focal) - this->up * ((sy - this->height * 0.5) / focal) - this->back);
 }
 
-/* No surface rises as fast as the sight line, so closing a share of the gap per step down from the peak never passes the surface nearest the viewer. */
-WorldPoint Camera::GroundAt(double dx, double dy) const
+/* A sight line that misses the map lands on the sea level plane, or as far as the view reaches when it rises. */
+WorldPoint Camera::GroundUnder(double sx, double sy) const
 {
-	double level = this->peak;
-	std::optional<double> walled;
-	for (int step = 0; step < GROUND_SEARCH_STEPS; step++) {
-		WorldPoint sighted = this->Sighted(dx, dy, level);
-		double ground = GroundLevel(sighted.x, sighted.y);
-		/* Only over a wall facing the viewer does the sight line pass below the ground, and there it is on the wall's own tile. */
-		if (ground > level) walled = level;
-		level = std::lerp(level, ground, GROUND_SEARCH_SHARE);
-	}
-	return this->Sighted(dx, dy, walled.value_or(level));
-}
+	SightLine sight = {this->eye, this->SightThrough(sx, sy), LevelRise()};
+	if (std::optional<GroundHit> hit = TraceGround(sight, this->far); hit.has_value()) return {hit->x, hit->y, hit->level};
 
-WorldPoint Camera::GroundUnder(int sx, int sy) const
-{
-	return this->GroundAt(sx - this->width * 0.5, sy - this->height * 0.5);
+	double t = sight.direction.z < -NEGLIGIBLE ? -this->eye.z / sight.direction.z : this->far;
+	Vec3 at = sight.At(std::min(t, this->far));
+	return {at.x, at.y, std::max(at.z, 0.0) / LevelRise()};
 }
 
 TilePoint Camera::MapAt(int sx, int sy) const
@@ -184,22 +256,51 @@ TilePoint Camera::MapAt(int sx, int sy) const
 	return {ground.x, ground.y};
 }
 
-/* The far edge shows the lowest ground, the near edge may show ground and raised work lifted up from below the screen. */
+/* The ground and whatever stands raised on it lies between sea level and the peak's top, inside the view's frustum
+ * and no farther than where a tile still spans a couple of pixels. */
 TileSpan Camera::VisibleTiles(double raised_levels) const
 {
-	TilePoint centre{this->x, this->y};
-	double half_width = this->width * 0.5;
-	double half_height = this->height * 0.5;
-	double near_reach = half_height + this->Lift(this->peak + raised_levels);
-	std::array<TilePoint, 4> reach{
-		this->Shifted(centre, -half_width, -half_height),
-		this->Shifted(centre, half_width, -half_height),
-		this->Shifted(centre, half_width, near_reach),
-		this->Shifted(centre, -half_width, near_reach),
+	double focal = this->Focal();
+	double reach = std::min(this->far, focal / SMALLEST_SHOWN_TILE_PX);
+	double half_x = this->width * 0.5 / focal;
+	double half_y = this->height * 0.5 / focal;
+	std::array<Vec3, 8> corners;
+	for (int corner = 0; corner < 4; corner++) {
+		double across = (corner == 1 || corner == 2) ? half_x : -half_x;
+		double down = corner >= 2 ? half_y : -half_y;
+		Vec3 ray = this->right * across - this->up * down - this->back;
+		corners[corner] = this->eye + ray * this->near;
+		corners[corner + 4] = this->eye + ray * reach;
+	}
+
+	double top = (this->peak + raised_levels) * LevelRise();
+	double x_low = Map::SizeX();
+	double y_low = Map::SizeY();
+	double x_high = 0.0;
+	double y_high = 0.0;
+	auto include = [&](const Vec3 &point) {
+		x_low = std::min(x_low, point.x);
+		y_low = std::min(y_low, point.y);
+		x_high = std::max(x_high, point.x);
+		y_high = std::max(y_high, point.y);
 	};
-	auto [x_low, x_high] = std::ranges::minmax(reach | std::views::keys);
-	auto [y_low, y_high] = std::ranges::minmax(reach | std::views::values);
-	return {FirstTile(x_low), FirstTile(y_low), LastTile(x_high, Map::MaxX()), LastTile(y_high, Map::MaxY())};
+	auto cut = [&](const Vec3 &from, const Vec3 &to) {
+		for (double plane : {0.0, top}) {
+			if ((from.z - plane) * (to.z - plane) < 0.0) include(from + (to - from) * ((plane - from.z) / (to.z - from.z)));
+		}
+	};
+	for (int corner = 0; corner < 8; corner++) {
+		if (corners[corner].z >= 0.0 && corners[corner].z <= top) include(corners[corner]);
+	}
+	for (int corner = 0; corner < 4; corner++) {
+		cut(corners[corner], corners[(corner + 1) % 4]);
+		cut(corners[corner + 4], corners[(corner + 1) % 4 + 4]);
+		cut(corners[corner], corners[corner + 4]);
+	}
+
+	auto first = [](double from) { return std::max(0, static_cast<int>(std::floor(from))); };
+	auto last = [](double to, uint edge) { return std::min(static_cast<int>(edge), static_cast<int>(std::floor(to))); };
+	return {first(x_low), first(y_low), last(x_high, Map::MaxX()), last(y_high, Map::MaxY())};
 }
 
 std::array<TilePoint, 4> Camera::ViewCorners() const
@@ -207,37 +308,26 @@ std::array<TilePoint, 4> Camera::ViewCorners() const
 	return {this->MapAt(0, 0), this->MapAt(this->width, 0), this->MapAt(this->width, this->height), this->MapAt(0, this->height)};
 }
 
-/* The plane point that puts a world point at the screen centre. */
-TilePoint Camera::Focus(const WorldPoint &point) const
+void Camera::Place(TilePoint focus)
 {
-	return this->Shifted({point.x, point.y}, 0.0, -this->Lift(point.level));
-}
-
-TilePoint Camera::GroundFocus(TilePoint ground) const
-{
-	auto [tx, ty] = ground;
-	return this->Focus({tx, ty, GroundLevel(tx, ty)});
+	this->focus = Confined(focus);
+	this->Frame();
 }
 
 void Camera::CentreOn(double tx, double ty)
 {
-	this->PlaceCentre(this->GroundFocus({tx, ty}));
+	this->focus_level = GroundLevel(tx, ty);
+	this->Place({tx, ty});
 }
 
-/* A growing heading turns the view counterclockwise, a growing bearing clockwise. */
 void Camera::Aim(const ViewAim &aim)
 {
 	this->Halt();
 	this->dest_ppt = Clamp(aim.zoom, MIN_PPT, MAX_PPT);
 	this->ppt = this->dest_ppt;
-	this->heading_target = NORTH_UP_HEADING - aim.yaw;
-	this->SetHeading(this->heading_target);
+	this->yaw = aim.yaw;
+	this->pitch = Clamp(aim.pitch, MIN_PITCH, MAX_PITCH);
 	this->CentreOn(aim.focus.first, aim.focus.second);
-}
-
-void Camera::PlaceCentre(TilePoint plane)
-{
-	std::tie(this->x, this->y) = Confined(plane);
 }
 
 void Camera::GlideTo(double tx, double ty)
@@ -254,6 +344,19 @@ void Camera::Grab(int sx, int sy)
 	this->grab = this->GroundUnder(sx, sy);
 }
 
+/* A right press turns the view once the pointer moves; a press that never moves stays a click. */
+void Camera::HoldOrbit(int sx, int sy)
+{
+	this->orbit = Orbit{{sx, sy}, {sx, sy}, false};
+}
+
+bool Camera::ReleaseOrbit()
+{
+	bool turned = this->orbit.has_value() && this->orbit->turning;
+	this->orbit.reset();
+	return turned;
+}
+
 void Camera::Zoom(bool in)
 {
 	double factor = in ? _tuning.zoom_step : 1.0 / _tuning.zoom_step;
@@ -266,28 +369,24 @@ void Camera::Zoom(bool in)
 void Camera::ZoomAt(int sx, int sy, bool in)
 {
 	this->Zoom(in);
-	this->anchor_sx = sx;
-	this->anchor_sy = sy;
+	this->anchor_screen = {sx, sy};
 	this->anchor = this->GroundUnder(sx, sy);
 	this->anchored = true;
 }
 
-void Camera::Turn(int quarters)
-{
-	this->heading_target += quarters * QUARTER_TURN_DEGREES;
-}
-
 void Camera::FaceNorth()
 {
-	this->heading_target = NORTH_UP_HEADING;
-	this->SetHeading(NORTH_UP_HEADING);
+	this->yaw = 0.0;
+	this->pitch = Clamp(_tuning.view_pitch, MIN_PITCH, MAX_PITCH);
+	this->spin = 0.0;
+	this->Frame();
 }
 
 void Camera::Halt()
 {
 	this->anchored = false;
 	this->gliding = false;
-	if (this->Turning()) this->Face(this->heading_target);
+	this->spin = 0.0;
 }
 
 void Camera::Update(uint delta_ms, std::optional<WorldPoint> chase)
@@ -296,43 +395,27 @@ void Camera::Update(uint delta_ms, std::optional<WorldPoint> chase)
 	this->EdgeScroll(delta_ms);
 	if (chase.has_value()) {
 		this->gliding = false;
-		this->MoveToward(this->Focus(*chase), Approach(delta_ms, _tuning.glide_ms));
+		this->MoveToward({chase->x, chase->y}, Approach(delta_ms, _tuning.glide_ms));
 	}
 	this->Glide(delta_ms);
 	this->Spin(delta_ms);
+	this->Swing();
 	this->Settle(delta_ms);
+	this->Rest(delta_ms, chase.has_value() ? std::optional<double>(chase->level) : std::nullopt);
 	this->FollowGrab();
-}
-
-bool Camera::Turning() const
-{
-	return this->heading != this->heading_target;
-}
-
-void Camera::SetHeading(double degrees)
-{
-	this->heading = degrees;
-	double radians = degrees / DEGREES_PER_RADIAN;
-	this->toward = {std::cos(radians), std::sin(radians)};
-	this->right = {-this->toward.y, this->toward.x};
-}
-
-/* The view turns about the ground point under the screen centre, which stays put. */
-void Camera::Face(double degrees)
-{
-	WorldPoint pivot = this->GroundAt(0.0, 0.0);
-	this->SetHeading(degrees);
-	this->PlaceCentre(this->Focus(pivot));
 }
 
 void Camera::MoveToward(TilePoint target, double share)
 {
-	this->PlaceCentre({this->x + (target.first - this->x) * share, this->y + (target.second - this->y) * share});
+	this->Place({this->focus.first + (target.first - this->focus.first) * share, this->focus.second + (target.second - this->focus.second) * share});
 }
 
+/* Pixels across and down the screen move the focus as far as they span at the focus, along the ground. */
 void Camera::MoveBy(double dx, double dy)
 {
-	this->PlaceCentre(this->Shifted({this->x, this->y}, dx, dy));
+	Vec3 across = this->right * (dx / this->ppt);
+	Vec3 down = this->Forward() * (-dy / this->ppt);
+	this->Place({this->focus.first + across.x + down.x, this->focus.second + across.y + down.y});
 }
 
 /* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
@@ -358,7 +441,7 @@ void Camera::Pan(uint delta_ms)
 
 void Camera::EdgeScroll(uint delta_ms)
 {
-	if (_tuning.edge_scroll == 0 || !_pointer.OnMap() || _middle_button_down) return;
+	if (_tuning.edge_scroll == 0 || !_pointer.OnMap() || _middle_button_down || _right_button_down) return;
 
 	double step = Travel(_tuning.edge_scroll_speed, delta_ms);
 	double ex = 0.0;
@@ -374,26 +457,50 @@ void Camera::EdgeScroll(uint delta_ms)
 	this->MoveBy(ex, ey);
 }
 
-/* The turn moves the plane point under a raised ground point, so the glide aims at its ground point anew each frame. */
 void Camera::Glide(uint delta_ms)
 {
 	if (!this->gliding) return;
 
-	TilePoint target = Confined(this->GroundFocus(this->glide));
+	TilePoint target = Confined(this->glide);
 	this->MoveToward(target, Approach(delta_ms, _tuning.glide_ms));
-	ExactPoint gap = this->ScreenStep({target.first - this->x, target.second - this->y});
-	if (std::abs(gap.x) >= GLIDE_SNAP_PX || std::abs(gap.y) >= GLIDE_SNAP_PX) return;
+	double gap = std::hypot(target.first - this->focus.first, target.second - this->focus.second) * this->ppt;
+	if (gap >= GLIDE_SNAP_PX) return;
 
-	this->PlaceCentre(target);
+	this->Place(target);
 	this->gliding = false;
 }
 
+/* The turn keys spin the view about its focus, easing into and out of their full speed. */
 void Camera::Spin(uint delta_ms)
 {
-	if (!this->Turning()) return;
+	int turn = MiniUiTurnKeys();
+	this->spin += (turn * _tuning.turn_speed - this->spin) * Approach(delta_ms, _tuning.turn_smooth_ms);
+	if (turn == 0 && std::abs(this->spin) < SPIN_STOP_SPEED) this->spin = 0.0;
+	if (this->spin == 0.0) return;
 
-	double turned = this->heading + (this->heading_target - this->heading) * Approach(delta_ms, _tuning.turn_smooth_ms);
-	this->Face(std::abs(this->heading_target - turned) < TURN_SNAP_DEGREES ? this->heading_target : turned);
+	this->yaw = std::fmod(this->yaw + Travel(this->spin, delta_ms) + FULL_TURN_DEGREES, FULL_TURN_DEGREES);
+	this->Frame();
+}
+
+/* Dragging with the right button held turns the view across and tips it up and down. */
+void Camera::Swing()
+{
+	if (!this->orbit.has_value()) return;
+	if (!_right_button_down) {
+		this->orbit.reset();
+		return;
+	}
+
+	Orbit &orbit = *this->orbit;
+	Point now = _cursor.pos;
+	if (!orbit.turning && std::max(std::abs(now.x - orbit.start.x), std::abs(now.y - orbit.start.y)) >= ORBIT_START_PX) orbit.turning = true;
+	if (orbit.turning) {
+		this->anchored = false;
+		this->yaw = std::fmod(this->yaw + (now.x - orbit.last.x) * _tuning.orbit_speed + FULL_TURN_DEGREES, FULL_TURN_DEGREES);
+		this->pitch = Clamp(this->pitch + (now.y - orbit.last.y) * _tuning.orbit_speed, MIN_PITCH, MAX_PITCH);
+		this->Frame();
+	}
+	orbit.last = now;
 }
 
 /* The scale changes before the anchor is pinned, so the anchored ground point stays under the pointer. */
@@ -403,11 +510,23 @@ void Camera::Settle(uint delta_ms)
 		double share = Approach(delta_ms, _tuning.zoom_smooth_ms);
 		this->ppt = std::exp(std::log(this->ppt) + (std::log(this->dest_ppt) - std::log(this->ppt)) * share);
 		if (std::abs(this->dest_ppt - this->ppt) < this->dest_ppt * ZOOM_SNAP_SHARE) this->ppt = this->dest_ppt;
+		this->Frame();
 	}
 	if (!this->anchored) return;
 
-	this->Pin(this->anchor, this->anchor_sx, this->anchor_sy);
+	this->Pin(this->anchor, this->anchor_screen.x, this->anchor_screen.y);
 	if (this->ppt == this->dest_ppt) this->anchored = false;
+}
+
+/* The focus rides the ground under it, or the vehicle it follows, except while a pinned point must stay put. */
+void Camera::Rest(uint delta_ms, std::optional<double> level)
+{
+	if (this->anchored || this->grab.has_value()) return;
+
+	double wanted = level.value_or(GroundLevel(this->focus.first, this->focus.second));
+	if (wanted == this->focus_level) return;
+	this->focus_level += (wanted - this->focus_level) * Approach(delta_ms, _tuning.glide_ms);
+	this->Frame();
 }
 
 /* The grab is placed from where the pointer is now, not from how far it moved, so
@@ -427,8 +546,15 @@ void Camera::FollowGrab()
 	this->Pin(*this->grab, _cursor.pos.x, _cursor.pos.y);
 }
 
-/* The ground point keeps its own height, so it stays under the pointer while the plane moves. */
-void Camera::Pin(const WorldPoint &ground, int sx, int sy)
+/* Sliding the eye level along keeps every sight line's direction, so the one through the screen point is moved onto the ground point. */
+void Camera::Pin(const WorldPoint &ground, double sx, double sy)
 {
-	this->PlaceCentre(this->Shifted(this->Focus(ground), this->width * 0.5 - sx, this->height * 0.5 - sy));
+	Vec3 target = RenderPoint(ground);
+	Vec3 sight = this->SightThrough(sx, sy);
+	if (sight.z > -NEGLIGIBLE) return;
+
+	double t = (target.z - this->eye.z) / sight.z;
+	if (t <= 0.0) return;
+	Vec3 shift = target - sight * t - this->eye;
+	this->Place({this->focus.first + shift.x, this->focus.second + shift.y});
 }

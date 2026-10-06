@@ -33,7 +33,6 @@ public:
 
 private:
 	void Survey(const TileSpan &span);
-	bool ShowsStep(int tx, int ty) const;
 	bool HidesPortal(TileIndex tile) const;
 	void EachPass(void (MapPainter::*paint)());
 	void PaintGroundPass();
@@ -52,7 +51,6 @@ private:
 	void DrawSignals(TileIndex tile, int tx, int ty);
 	void DrawOneWay(TileIndex tile, int tx, int ty);
 
-	void DrawSteps(TileIndex tile, int tx, int ty);
 	void DrawVolume(TileIndex tile);
 	void DrawRaised(TileIndex tile, int tx, int ty);
 	void DrawSpan(TileIndex head, const AxisRun &run);
@@ -62,7 +60,6 @@ private:
 	int ppt = 0;
 	MiniLayer filter = MiniLayer::None;
 	MiniLayer pass = MiniLayer::None;
-	DiagDirections facing{};
 	std::vector<std::pair<int, int>> tiles;
 };
 

@@ -22,6 +22,11 @@ constexpr uint32_t Mix(uint32_t dst, uint32_t src, uint alpha)
 	return 0xFF000000U | (rb & 0xFF00FFU) | (g & 0x00FF00U);
 }
 
+constexpr float ChannelShare(double channel)
+{
+	return static_cast<float>(channel / CHANNEL_MAX);
+}
+
 /* Ink draws outlines, paper draws highlights; everything else is a fill. */
 inline constexpr uint32_t COL_INK = 0xFF14181CU;
 inline constexpr uint32_t COL_PAPER = 0xFFEDF2F7U;

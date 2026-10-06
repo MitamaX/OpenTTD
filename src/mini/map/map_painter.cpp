@@ -157,7 +157,7 @@ void MapPainter::EachPass(void (MapPainter::*paint)())
 	(this->*paint)();
 }
 
-/* Bare ground, open water, trees, rails and roads belong to the ground shader; only what stands on them is drawn here. */
+/* Bare ground, its steps, open water, trees, rails and roads belong to the terrain; only what stands on them is drawn here. */
 static bool CarriesStructure(TileIndex tile)
 {
 	if (IsBridgeAbove(tile)) return true;
@@ -173,50 +173,31 @@ static bool CarriesStructure(TileIndex tile)
 	}
 }
 
-/* The coordinate i steps into lo..hi from the end farther from the viewer. */
-static int FarToNear(int lo, int hi, double toward, int i)
-{
-	return toward < 0.0 ? hi - i : lo + i;
-}
-
-/* A step shows only on a side whose outward face turns toward the viewer. */
-static DiagDirections FacingSides(MapVector toward)
-{
-	DiagDirections facing{};
-	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
-		MapVector outward = Outward(side);
-		if (outward.x * toward.x + outward.y * toward.y > 0.0) facing.Set(side);
-	}
-	return facing;
-}
-
-/* Walking each axis from its far end leaves out of depth order only tiles a tile's width apart across the screen, which cannot hide each other. */
+/* Tiles go down from the farthest from the eye to the nearest, so whatever stands nearer covers what stands behind it. */
 void MapPainter::Survey(const TileSpan &span)
 {
 	this->tiles.clear();
-	MapVector toward = _camera.Toward();
-	this->facing = FacingSides(toward);
-	for (int i = 0; i <= span.tx1 - span.tx0; i++) {
-		int tx = FarToNear(span.tx0, span.tx1, toward.x, i);
-		for (int j = 0; j <= span.ty1 - span.ty0; j++) {
-			int ty = FarToNear(span.ty0, span.ty1, toward.y, j);
-			if (CarriesStructure(TileXY(tx, ty)) || this->ShowsStep(tx, ty)) this->tiles.emplace_back(tx, ty);
+	for (int tx = span.tx0; tx <= span.tx1; tx++) {
+		for (int ty = span.ty0; ty <= span.ty1; ty++) {
+			if (CarriesStructure(TileXY(tx, ty))) this->tiles.emplace_back(tx, ty);
 		}
 	}
+
+	const Vec3 &eye = _camera.Eye();
+	auto distance = [&eye](const std::pair<int, int> &tile) {
+		auto [x, y] = TileCentre(tile.first, tile.second);
+		return (x - eye.x) * (x - eye.x) + (y - eye.y) * (y - eye.y);
+	};
+	std::ranges::sort(this->tiles, std::ranges::greater{}, distance);
 }
 
-bool MapPainter::ShowsStep(int tx, int ty) const
-{
-	for (DiagDirection side : this->facing) {
-		if (StepFaceOf(tx, ty, side).has_value()) return true;
-	}
-	return false;
-}
-
-/* A portal lies on the step the hill shows over its tunnel's cut, so it shows only where that step turns toward the viewer. */
+/* A portal lies on the hill's face over its tunnel's cut, so it shows only where that face turns toward the eye. */
 bool MapPainter::HidesPortal(TileIndex tile) const
 {
-	return IsTunnelTile(tile) && !this->facing.Test(ReverseDiagDir(GetTunnelBridgeDirection(tile)));
+	if (!IsTunnelTile(tile)) return false;
+	MapVector outward = Outward(ReverseDiagDir(GetTunnelBridgeDirection(tile)));
+	MapVector toward = _camera.Toward(TileCentre(TileX(tile), TileY(tile)));
+	return outward.x * toward.x + outward.y * toward.y <= 0.0;
 }
 
 void MapPainter::PaintGroundPass()
@@ -224,12 +205,11 @@ void MapPainter::PaintGroundPass()
 	for (auto [tx, ty] : this->tiles) this->DrawGround(TileXY(tx, ty), tx, ty);
 }
 
-/* Steps, buildings and raised spans go down tile by tile from far to near, so nothing beside a pier covers its deck. */
+/* Buildings and raised spans go down tile by tile from far to near, so nothing beside a pier covers its deck. */
 void MapPainter::PaintRaisedPass()
 {
 	for (auto [tx, ty] : this->tiles) {
 		TileIndex tile = TileXY(tx, ty);
-		this->DrawSteps(tile, tx, ty);
 		this->DrawVolume(tile);
 		this->DrawRaised(tile, tx, ty);
 	}
@@ -410,16 +390,6 @@ static AxisRun DeckRun(TileIndex head, int tx, int ty)
 VolumeStyle MapPainter::VolumeStyleOf() const
 {
 	return this->Accented() ? VolumeStyle{this->Accent()} : VolumeStyle{};
-}
-
-/* A step belongs to the higher tile and goes before what stands on it; it is bare ground, so the overlay greys it with the terrain. */
-void MapPainter::DrawSteps(TileIndex tile, int tx, int ty)
-{
-	if (this->Accented()) return;
-	for (DiagDirection side : this->facing) {
-		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
-		if (step.has_value()) _volume_painter.DrawStep(tile, *step);
-	}
 }
 
 /* A building is drawn piece by piece, each tile's piece in that tile's turn of the far to near walk. */

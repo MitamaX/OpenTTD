@@ -20,8 +20,7 @@
 #include "../core/space.h"
 #include "building_form.h"
 
-inline constexpr double RISE_SCALE = 2.2360679774997896;
-inline constexpr double MODEL_TILE_LEVELS = RISE_SCALE / LEVEL_TILES;
+inline constexpr double MODEL_TILE_LEVELS = 1.0 / LEVEL_TILES;
 inline constexpr size_t MAX_POLYGON_CORNERS = 32;
 inline constexpr size_t RECT_CORNERS = 4;
 inline constexpr double VERTICAL_NZ = 0.2;

@@ -58,10 +58,6 @@ enum class TreeAge : uint8_t {
 	End,
 };
 
-inline constexpr std::array<std::string_view, static_cast<size_t>(TreeAge::End)> TREE_AGE_NAMES = {
-	"SAPLING", "YOUNG", "GROWN", "DYING",
-};
-
 enum class RailLook : uint8_t {
 	Rail,
 	Monorail,
@@ -94,6 +90,7 @@ struct SurfaceTexel {
 	bool operator==(const SurfaceTexel &) const = default;
 };
 
+bool FoldsWestToEast(const SurfaceTexel &surface);
 double FacetLevel(const SurfaceTexel &surface, double fx, double fy);
 
 struct GroundTexel {

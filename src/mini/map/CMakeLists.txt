@@ -1,7 +1,5 @@
 add_files(
     building_form.h
-    ground_painter.cpp
-    ground_painter.h
     house_forms.cpp
     house_forms.h
     house_kinds.cpp

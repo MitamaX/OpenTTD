@@ -75,7 +75,6 @@
 #include "mini/input/input_mode.h"
 #include "mini/input/map_pointer.h"
 #include "mini/input/pointer_router.h"
-#include "mini/map/ground_painter.h"
 #include "mini/map/map_labels.h"
 #include "mini/map/map_overlay.h"
 #include "mini/map/map_painter.h"
@@ -94,6 +93,7 @@
 #include "mini/ui/shader_painter.h"
 #include "mini/ui/ui_text.h"
 #include "mini/ui/view_host.h"
+#include "mini/world/world_painter.h"
 #include "mini/windows/company_panel.h"
 #include "mini/windows/depot_panel.h"
 #include "mini/windows/engine_preview_panel.h"
@@ -606,8 +606,8 @@ void MiniUiToggle()
 
 	_tuning.Load();
 	MiniAtlasReload();
-	RegisterShaderPainter(GroundPainter::NAME, _ground_painter);
-	_ground_painter.Reload();
+	RegisterShaderPainter(WorldPainter::NAME, _world_painter);
+	_world_painter.Reload();
 	_world_tiles.Reset();
 	_views.ReloadDesign();
 	UndrawMouseCursor();
@@ -620,9 +620,9 @@ void MiniUiToggle()
 
 	_camera.FaceNorth();
 	if (Window *w = GetMainWindow(); w != nullptr && w->viewport != nullptr) {
-		/* The native centre is a level-0 plane point, and facing north the mini map projects as the native view does. */
+		/* The native centre is a level-0 plane point; the mini map turns about the ground there. */
 		Point centre = InverseRemapCoords(w->viewport->virtual_left + w->viewport->virtual_width / 2, w->viewport->virtual_top + w->viewport->virtual_height / 2);
-		_camera.PlaceCentre({centre.x / (double)TILE_SIZE, centre.y / (double)TILE_SIZE});
+		_camera.CentreOn(centre.x / (double)TILE_SIZE, centre.y / (double)TILE_SIZE);
 	} else {
 		_camera.CentreOn(Map::SizeX() / 2.0, Map::SizeY() / 2.0);
 	}
@@ -756,14 +756,6 @@ bool MiniUiHandleKeypress(uint keycode, char32_t key)
 			UnwindEscape();
 			break;
 
-		case 'Q':
-			_camera.Turn(-1);
-			break;
-
-		case 'E':
-			_camera.Turn(1);
-			break;
-
 		/* R turns the blueprint and nothing else, Shift turning it back: every
 		 * type choice belongs to the build panel. It is modal, not a global
 		 * shortcut, so it only lives while a placement tool is in hand. */
@@ -820,6 +812,37 @@ uint8_t MiniUiHeldPanBits(const std::function<bool(char32_t key)> &held)
 		if (held(letter)) bits |= bit;
 	}
 	return bits;
+}
+
+/* Q and E spin the view for as long as they are held, Q one way and E the other. */
+static constexpr std::pair<char32_t, int> TURN_LETTERS[] = {
+	{'Q', 1},
+	{'E', -1},
+};
+
+static std::array<bool, std::size(TURN_LETTERS)> _turn_held{};
+
+void MiniUiHoldTurnKeys(const std::function<bool(char32_t key)> &held)
+{
+	for (size_t i = 0; i < std::size(TURN_LETTERS); i++) _turn_held[i] = _mini_active && held(TURN_LETTERS[i].first);
+}
+
+void MiniUiTrackTurnKey(char32_t key, bool down)
+{
+	for (size_t i = 0; i < std::size(TURN_LETTERS); i++) {
+		if (TURN_LETTERS[i].first == key) _turn_held[i] = down && _mini_active;
+	}
+}
+
+/* The way the held turn keys spin the view, unless a text field takes them as typing. */
+int MiniUiTurnKeys()
+{
+	if (TextInputFocused()) return 0;
+	int turn = 0;
+	for (size_t i = 0; i < std::size(TURN_LETTERS); i++) {
+		if (_turn_held[i]) turn += TURN_LETTERS[i].second;
+	}
+	return turn;
 }
 
 bool MiniUiHandleTextInput(std::string_view text, bool marked)

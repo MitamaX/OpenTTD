@@ -54,6 +54,10 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "zoom_step", this->zoom_step);
 	ReadIniNumber(group, "zoom_smooth_ms", this->zoom_smooth_ms);
 	ReadIniNumber(group, "turn_smooth_ms", this->turn_smooth_ms);
+	ReadIniNumber(group, "turn_speed", this->turn_speed);
+	ReadIniNumber(group, "orbit_speed", this->orbit_speed);
+	ReadIniNumber(group, "view_fov", this->view_fov);
+	ReadIniNumber(group, "view_pitch", this->view_pitch);
 	ReadIniNumber(group, "height_scale", this->height_scale);
 	ReadIniNumber(group, "hud_scale", this->hud_scale);
 	ReadIniNumber(group, "grid_alpha", this->grid_alpha);
@@ -72,7 +76,11 @@ void MiniTuning::Load()
 	this->zoom_step = Clamp(this->zoom_step, 1.05, 2.0);
 	this->zoom_smooth_ms = Clamp(this->zoom_smooth_ms, 1.0, 500.0);
 	this->turn_smooth_ms = Clamp(this->turn_smooth_ms, 1.0, 1000.0);
-	this->height_scale = Clamp(this->height_scale, 1.0, MAX_HEIGHT_SCALE);
+	this->turn_speed = Clamp(this->turn_speed, 10.0, 720.0);
+	this->orbit_speed = Clamp(this->orbit_speed, 0.02, 2.0);
+	this->view_fov = Clamp(this->view_fov, 20.0, 70.0);
+	this->view_pitch = Clamp(this->view_pitch, MIN_PITCH, MAX_PITCH);
+	this->height_scale = Clamp(this->height_scale, 0.25, 2.0);
 	this->hud_scale = Clamp(this->hud_scale, 1, 4);
 	this->grid_alpha = Clamp(this->grid_alpha, 0, 255);
 	this->contour_alpha = Clamp(this->contour_alpha, 0, 255);
