@@ -32,6 +32,7 @@
 #include "../map/zoom_detail.h"
 #include "forest_field.h"
 #include "frame_units.h"
+#include "network_field.h"
 #include "scene_view.h"
 #include "structure_mesh.h"
 #include "tree_models.h"
@@ -131,6 +132,7 @@ static std::string ShaderHeader()
 	DefineFloat(header, "RESOLVED_REPEAT_PIXELS", RESOLVED_REPEAT_PIXELS);
 	DefineFloat(header, "INFRASTRUCTURE_PPT", INFRASTRUCTURE_PPT);
 	DefineFloat(header, "GRID_FADE_PPT", GRID_FADE_PPT);
+	DefineFloat(header, "NETWORK_OPAQUE_PPT", NETWORK_FADE_END);
 	DefineInt(header, "TREE_DETAILS", static_cast<int>(TREE_DETAILS));
 	DefineFloats(header, "TREE_DETAIL_FLOORS", TREE_DETAIL_FLOORS);
 	DefineFloats(header, "TREE_AGE_SCALES", TREE_AGE_SCALES);

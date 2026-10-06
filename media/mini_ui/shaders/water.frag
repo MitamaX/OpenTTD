@@ -48,22 +48,6 @@ struct Body {
 	float sea;
 };
 
-/* Value noise with its gradient, smooth enough in both to light waves with. */
-vec3 NoiseSlope(vec2 p)
-{
-	ivec2 cell = ivec2(floor(p));
-	vec2 f = fract(p);
-	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-	vec2 du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
-	float a = Hash(cell);
-	float b = Hash(cell + ivec2(1, 0));
-	float c = Hash(cell + ivec2(0, 1));
-	float d = Hash(cell + ivec2(1, 1));
-	float twist = a - b - c + d;
-	float value = a + (b - a) * u.x + (c - a) * u.y + twist * u.x * u.y;
-	return vec3(value, du * (vec2(b - a, c - a) + twist * u.yx));
-}
-
 /* Octaves of noise swell turned against each other, each drifting at its own pace; octaves finer than the pixels can show give their share to roughness instead. */
 vec4 Waves(vec2 p, float calm)
 {
