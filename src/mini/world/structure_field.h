@@ -22,12 +22,13 @@
 inline constexpr double STRUCTURE_FADE_START = 1.2;
 inline constexpr double STRUCTURE_FADE_END = 2.2;
 
-/* A block of tiles: its mesh, built on the game's side and waiting to be handed to the GPU or already there, the boxes clicks meet,
+/* A block of tiles: its mesh, built on the game's side and waiting to be handed to the GPU or already there, the boxes clicks meet, the stacks that smoke,
  * the detail it was built at, and the box it fills, guessed from the ground until it is built. */
 struct StructureChunk {
 	MeshBuffer mesh;
 	std::optional<StructureMesh> waiting;
 	std::vector<StructurePick> picks;
+	std::vector<SmokeVent> vents;
 	StructureDetail detail = StructureDetail::Simple;
 	Vec3 low{};
 	Vec3 high{};

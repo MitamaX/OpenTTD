@@ -26,6 +26,8 @@ add_files(
     shadow_map.h
     signal_models.cpp
     signal_models.h
+    smoke_plumes.cpp
+    smoke_plumes.h
     station_models.cpp
     station_models.h
     street_furniture.cpp

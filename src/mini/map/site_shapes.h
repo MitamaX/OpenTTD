@@ -157,6 +157,7 @@ public:
 	Part On(float base) const;
 	Part Detailed() const;
 	Part Fixed(Fixture fixture) const;
+	Part Smoking() const;
 	Part Height(float wall) const;
 	Part Taper(float taper) const;
 	Part Scaled(float share) const;

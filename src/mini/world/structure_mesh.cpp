@@ -165,6 +165,15 @@ private:
 	StructureMesh &mesh;
 };
 
+/* Smoke leaves a stack through the top of its last slice, as wide as the slice narrows to. */
+static void AddVent(const BuildingForm &form, const Solid &solid, double floor, std::vector<SmokeVent> &vents)
+{
+	if (solid.fixture != Fixture::Smokestack) return;
+	double top_share = 1.0 - 2.0 * solid.taper;
+	Vec3 mouth = {form.tx + (solid.x0 + solid.x1) / 2.0, form.ty + (solid.y0 + solid.y1) / 2.0, floor + solid.Top() * FORM_HEIGHT_SCALE};
+	vents.push_back({mouth, std::min(solid.x1 - solid.x0, solid.y1 - solid.y0) / 2.0 * top_share});
+}
+
 static void AddPick(const BuildingForm &form, const Solid &solid, double floor, std::vector<StructurePick> &picks)
 {
 	if (solid.kind == SolidKind::Decal) return;
@@ -175,7 +184,7 @@ static void AddPick(const BuildingForm &form, const Solid &solid, double floor, 
 	});
 }
 
-void BuildStructure(const BuildingForm &form, StructureDetail detail, MiniLayer layer, StructureMesh &mesh, std::vector<StructurePick> &picks)
+void BuildStructure(const BuildingForm &form, StructureDetail detail, MiniLayer layer, StructureParts &parts)
 {
 	FormStyle style(form, layer);
 	PlanRect footprint = {static_cast<double>(form.tx), static_cast<double>(form.ty), static_cast<double>(form.tx + form.size_x), static_cast<double>(form.ty + form.size_y)};
@@ -184,11 +193,12 @@ void BuildStructure(const BuildingForm &form, StructureDetail detail, MiniLayer 
 	double footing = FootingOf(form);
 	uint decals = 0;
 	for (const Solid &solid : form.Solids()) {
-		AddPick(form, solid, style.Floor(), picks);
+		AddPick(form, solid, style.Floor(), parts.picks);
+		AddVent(form, solid, style.Floor(), parts.vents);
 		if (solid.role == SolidRole::Detail && !full) continue;
-		if (full) DressSolid(style, solid, footprint, mesh);
+		if (full) DressSolid(style, solid, footprint, parts.mesh);
 		if (full && ReplacesSolid(solid)) continue;
-		SolidMesher mesher(style, solid, footing, decals, mesh);
+		SolidMesher mesher(style, solid, footing, decals, parts.mesh);
 		BuildFaces(solid, placement, mesher);
 		if (solid.kind == SolidKind::Decal) decals++;
 	}

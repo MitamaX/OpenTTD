@@ -312,6 +312,11 @@ Part Part::Fixed(Fixture fixture) const
 	});
 }
 
+Part Part::Smoking() const
+{
+	return this->With([](Solid &solid) { solid.fixture = Fixture::Smokestack; });
+}
+
 Part Part::Height(float wall) const
 {
 	return this->With([wall](Solid &solid) { solid.wall = wall; });
@@ -786,13 +791,13 @@ static void BuildStack(BuildingForm &form, const SiteLot &, const SiteLook &look
 	Spire chimney{Part::Disc(LOT_CENTRE, LOT_CENTRE, CHIMNEY_RADIUS).On(LevelAbove(plinth)).Clad(Material::Concrete, livery.wall), height, CHIMNEY_TAPER};
 	form.Add(plinth);
 	if ((look.variant & BANDED_STACK) == 0) {
-		form.Add(chimney.Slice(0.0f, height).Covered(Material::Concrete, SOOT_TINT));
+		form.Add(chimney.Slice(0.0f, height).Covered(Material::Concrete, SOOT_TINT).Smoking());
 		return;
 	}
 	float bands_from = height - CHIMNEY_BANDS * CHIMNEY_BAND;
 	form.Add(chimney.Slice(0.0f, bands_from));
 	form.Add(chimney.Slice(bands_from, bands_from + CHIMNEY_BAND).Tinted(COL_STOP));
-	form.Add(chimney.Slice(bands_from + CHIMNEY_BAND, height).Tinted(COL_PAPER).Covered(Material::Concrete, SOOT_TINT));
+	form.Add(chimney.Slice(bands_from + CHIMNEY_BAND, height).Tinted(COL_PAPER).Covered(Material::Concrete, SOOT_TINT).Smoking());
 }
 
 static void BuildColumn(BuildingForm &form, const SiteLot &, const SiteLook &look, const SiteLivery &livery)

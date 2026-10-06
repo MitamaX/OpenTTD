@@ -133,16 +133,17 @@ void StructureField::Survey(StructureChunk &chunk, size_t index) const
 void StructureField::Build(StructureChunk &chunk, size_t index, StructureDetail detail)
 {
 	TileSpan tiles = this->grid.TilesOf(index);
-	StructureMesh mesh;
-	chunk.picks.clear();
+	StructureParts parts;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			TileIndex tile = TileXY(tx, ty);
 			std::optional<BuildingForm> form = AnchoredForm(tile);
 			this->digests[tile.base()] = DigestOf(form);
-			if (form.has_value()) BuildStructure(*form, detail, LayerOf(tile), mesh, chunk.picks);
+			if (form.has_value()) BuildStructure(*form, detail, LayerOf(tile), parts);
 		}
 	}
+
+	StructureMesh &mesh = parts.mesh;
 
 	if (!mesh.vertices.empty()) {
 		auto [x0, x1] = std::ranges::minmax(mesh.vertices | std::views::transform([](const StructureVertex &vertex) { return vertex.model.x; }));
@@ -152,6 +153,8 @@ void StructureField::Build(StructureChunk &chunk, size_t index, StructureDetail 
 		chunk.high = {x1, y1, z1};
 	}
 	chunk.waiting = std::move(mesh);
+	chunk.picks = std::move(parts.picks);
+	chunk.vents = std::move(parts.vents);
 	chunk.detail = detail;
 	chunk.built = true;
 	chunk.stale = false;
@@ -232,6 +235,7 @@ void StructureField::Evict()
 		chunk.mesh.Release();
 		chunk.waiting.reset();
 		chunk.picks.clear();
+		chunk.vents.clear();
 		chunk.built = false;
 		chunk.surveyed = false;
 	}

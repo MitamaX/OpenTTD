@@ -109,8 +109,8 @@ constexpr int StoreysFor(WindowGrid grid, float wall_tiles)
 
 enum class SolidKind : uint8_t { Box, Cylinder, Decal };
 enum class SolidRole : uint8_t { Body, Detail };
-/* What a small solid stands for, so a detailed model can dress it as one. */
-enum class Fixture : uint8_t { None, Chimney, RooftopUnit, WaterTank };
+/* What a solid stands for, so a detailed model can dress it as one; smoke rises from the top of a smokestack. */
+enum class Fixture : uint8_t { None, Chimney, RooftopUnit, WaterTank, Smokestack };
 enum class RoofShape : uint8_t { Flat, Parapet, Gable, Hip, Pyramid, Shed, Sawtooth, Vault, Dome, Cone };
 
 struct Solid {

@@ -76,6 +76,8 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shadow.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/signal.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/sky.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/smoke.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/smoke.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.frag

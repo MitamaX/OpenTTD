@@ -34,6 +34,7 @@ private:
 	void DrawChunks() const;
 
 	StructureField field;
+	SmokePlumes plumes;
 	std::vector<const StructureChunk *> shown;
 	ShaderProgram program;
 	ShaderProgram caster;

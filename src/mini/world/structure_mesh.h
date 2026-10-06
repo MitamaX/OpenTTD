@@ -20,6 +20,7 @@
 #include "../map/building_form.h"
 #include "../map/map_overlay.h"
 #include "../model/model_mesh.h"
+#include "smoke_plumes.h"
 
 /* Forms count a storey an eighth of a tile; standing a sixth of a tile tall, it keeps a building in scale with the ground under it. */
 inline constexpr double FORM_HEIGHT_SCALE = 1.3;
@@ -68,6 +69,13 @@ struct StructureMesh : TriangleList<StructureVertex> {
 	void Polygon(std::span<const StructureVertex> corners);
 };
 
+/* Everything forms stand as: their mesh, the boxes clicks meet and the stacks smoke rises from. */
+struct StructureParts {
+	StructureMesh mesh;
+	std::vector<StructurePick> picks;
+	std::vector<SmokeVent> vents;
+};
+
 /* Everything one form stands as, shared by the solids and the fixtures dressing them. */
 class FormStyle {
 public:
@@ -85,6 +93,6 @@ private:
 
 /* Form heights stand scaled up from model tiles, which tilts a face's normal toward upright. */
 Vec3 RenderNormalOf(const Vec3 &model_normal);
-void BuildStructure(const BuildingForm &form, StructureDetail detail, MiniLayer layer, StructureMesh &mesh, std::vector<StructurePick> &picks);
+void BuildStructure(const BuildingForm &form, StructureDetail detail, MiniLayer layer, StructureParts &parts);
 
 #endif /* MINI_WORLD_STRUCTURE_MESH_H */
