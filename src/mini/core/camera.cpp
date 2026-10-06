@@ -41,7 +41,7 @@ static constexpr double STEP_PROBE = 1e-3;
 static constexpr double NEGLIGIBLE = 1e-9;
 static constexpr int ORBIT_START_PX = 4;
 static constexpr double OFF_SCREEN_PX = 1e5;
-static constexpr double SMALLEST_SHOWN_TILE_PX = 2.0;
+static constexpr double SMALLEST_SHOWN_TILE_PX = 3.0;
 static constexpr Vec3 SKY = {0.0, 0.0, 1.0};
 static constexpr Vec3 NORTH = {-std::numbers::sqrt2 / 2.0, -std::numbers::sqrt2 / 2.0, 0.0};
 static constexpr Vec3 EAST = {-std::numbers::sqrt2 / 2.0, std::numbers::sqrt2 / 2.0, 0.0};
@@ -257,7 +257,7 @@ TilePoint Camera::MapAt(int sx, int sy) const
 }
 
 /* The ground and whatever stands raised on it lies between sea level and the peak's top, inside the view's frustum
- * and no farther than where a tile still spans a couple of pixels. */
+ * and no farther than where a tile still spans a few pixels. */
 TileSpan Camera::VisibleTiles(double raised_levels) const
 {
 	double focal = this->Focal();
