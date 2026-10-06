@@ -24,7 +24,7 @@ const float INDEX_CONTOUR_WEIGHT = 1.6;
 const float CROWDED_CONTOUR_PIXELS = 3.0;
 const float SPACED_CONTOUR_PIXELS = 9.0;
 const float MIN_RELIEF_SPAN = 6.0;
-const vec3 LOWLAND = vec3(0.80, 0.95, 0.83);
+const vec3 LOWLAND = vec3(0.88, 0.94, 0.84);
 const vec3 HIGHLAND = vec3(1.26, 1.12, 0.90);
 const float TERRAIN_ROUGHNESS = 0.85;
 const float WALL_MARK = 0.5;
@@ -143,11 +143,11 @@ float Contour(float height, float levels_per_pixel)
 
 vec3 GrassTone(float shade, bool lush)
 {
-	vec3 dark = vec3(0.36, 0.52, 0.26);
-	vec3 light = vec3(0.53, 0.66, 0.33);
+	vec3 dark = vec3(0.33, 0.43, 0.21);
+	vec3 light = vec3(0.50, 0.56, 0.30);
 	if (lush) {
-		dark = vec3(0.19, 0.40, 0.19);
-		light = vec3(0.29, 0.53, 0.25);
+		dark = vec3(0.20, 0.35, 0.17);
+		light = vec3(0.31, 0.47, 0.23);
 	} else if (u_landscape == LANDSCAPE_ARCTIC) {
 		dark = vec3(0.38, 0.47, 0.34);
 		light = vec3(0.53, 0.60, 0.44);

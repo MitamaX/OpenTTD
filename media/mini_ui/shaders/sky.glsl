@@ -1,7 +1,7 @@
 const float PI = 3.14159265;
 
-const vec3 ZENITH = vec3(0.08, 0.24, 0.70);
-const vec3 HORIZON = vec3(0.45, 0.62, 0.90);
+const vec3 ZENITH = vec3(0.04, 0.17, 0.66);
+const vec3 HORIZON = vec3(0.34, 0.56, 0.95);
 const vec3 SUN_GLOW = vec3(1.0, 0.70, 0.42);
 const float SKY_BRIGHTNESS = 1.35;
 const float SKY_CURVE = 0.45;
