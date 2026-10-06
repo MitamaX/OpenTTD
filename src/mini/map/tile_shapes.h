@@ -67,6 +67,7 @@ struct StepFace {
 	std::array<WorldPoint, 4> ring;
 };
 
+bool OnMap(int tx, int ty);
 MapVector Outward(DiagDirection side);
 std::optional<StepFace> StepFaceOf(int tx, int ty, DiagDirection side);
 

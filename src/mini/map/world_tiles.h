@@ -80,6 +80,8 @@ inline constexpr uint8_t FLORA_KIND_SHIFT = 5;
 inline constexpr uint8_t NETWORK_RAIL_LOOK_MASK = 0x03;
 inline constexpr uint8_t NETWORK_CATENARY_BIT = 0x04;
 inline constexpr uint8_t NETWORK_KERB_BIT = 0x08;
+inline constexpr uint8_t FULL_WATER = 0xFF;
+inline constexpr uint8_t HALF_WATER = 0x80;
 
 struct SurfaceTexel {
 	uint8_t north;
@@ -140,6 +142,8 @@ public:
 	const WaterTexel *Water() const { return this->water.data(); }
 	const NetworkTexel *Network() const { return this->network.data(); }
 	SurfaceTexel SurfaceAt(TileIndex tile) const;
+	GroundTexel GroundAt(TileIndex tile) const;
+	WaterTexel WaterAt(TileIndex tile) const;
 
 private:
 	struct Texels {

@@ -6,7 +6,7 @@ uniform float u_sink;
 
 in vec3 v_world;
 in vec3 v_normal;
-in float v_wall;
+in float v_mark;
 
 out vec4 frag_colour;
 
@@ -29,6 +29,8 @@ const float MIN_RELIEF_SPAN = 6.0;
 const vec3 LOWLAND = vec3(0.80, 0.95, 0.83);
 const vec3 HIGHLAND = vec3(1.26, 1.12, 0.90);
 const float TERRAIN_ROUGHNESS = 0.85;
+const float WALL_MARK = 0.5;
+const float SUBMERGED_MARK = 0.08;
 
 const float BLEND_WIDTH = 0.28;
 const float NATURAL_WARP = 0.32;
@@ -41,16 +43,14 @@ const vec3 ROUGH_TINT = vec3(0.46, 0.44, 0.29);
 const vec3 ROCK = vec3(0.55, 0.54, 0.51);
 const vec3 SNOW = vec3(0.93, 0.95, 0.98);
 const vec3 SAND = vec3(0.86, 0.77, 0.55);
-const vec3 BEACH = vec3(0.87, 0.81, 0.64);
+const vec3 BEACH = vec3(0.80, 0.74, 0.58);
 const vec3 PAVING = vec3(0.57, 0.55, 0.51);
 const vec3 YARD = vec3(0.49, 0.41, 0.32);
 const vec3 BANK = vec3(0.50, 0.50, 0.48);
-const vec3 SEA_SHALLOW = vec3(0.23, 0.53, 0.62);
-const vec3 SEA_DEEP = vec3(0.10, 0.26, 0.44);
-const vec3 RIVER = vec3(0.22, 0.46, 0.56);
-const vec3 CANAL = vec3(0.20, 0.41, 0.52);
-const vec3 FOAM = vec3(0.92, 0.96, 0.98);
-const vec3 GLINT = vec3(1.0, 0.98, 0.92);
+const vec3 WET_SAND = vec3(0.52, 0.48, 0.38);
+const vec3 SILT = vec3(0.38, 0.40, 0.33);
+const vec3 MUD = vec3(0.40, 0.36, 0.27);
+const vec3 CANAL_FLOOR = vec3(0.45, 0.45, 0.42);
 
 const int CROP_COUNT = 6;
 const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
@@ -332,28 +332,14 @@ vec3 Banks(vec3 land, Water water)
 	return mix(walled, BEACH, smoothstep(0.26, 0.44, water.sea));
 }
 
-float Ripple(vec2 p)
-{
-	vec2 drift = vec2(Clock() * 0.11, Clock() * 0.07);
-	float swell = Noise(p * 1.6 + drift) + Noise(p * 2.7 - drift.yx * 1.3);
-	return mix(0.5, swell * 0.5, Resolved(2.7));
-}
-
-vec3 Glinting(vec3 tone, float ripple)
-{
-	return tone * (0.95 + 0.1 * ripple) + GLINT * pow(smoothstep(0.66, 0.92, ripple), 3.0) * 0.22 * Resolved(2.7);
-}
-
-vec3 WaterTone(Water water, vec2 p)
+/* The ground under water: wet sand along sea shores giving way to silt in the deep, mud under rivers and dressed stone in canals. */
+vec3 Seabed(Water water, Grain grain)
 {
 	float sea = clamp(water.share.x, 0.0, 1.0);
 	float canal = clamp(water.share.y, 0.0, 1.0 - sea);
 	float river = 1.0 - sea - canal;
-	vec3 tone = Glinting(mix(SEA_SHALLOW, SEA_DEEP, water.depth) * sea + CANAL * canal + RIVER * river, Ripple(p));
-
-	float surf = smoothstep(0.5, 0.54, water.level) * (1.0 - smoothstep(0.54, 0.68, water.level));
-	float churn = 0.55 + 0.45 * Noise(p * 4.0 + vec2(Clock() * 0.3, -Clock() * 0.2));
-	return mix(tone, FOAM, surf * churn * sea * 0.65 * Resolved(6.0));
+	vec3 bed = mix(WET_SAND, SILT, water.depth) * sea + CANAL_FLOOR * canal + MUD * river;
+	return bed * (0.92 + 0.16 * grain.local);
 }
 
 int TreeCount(uvec4 codes)
@@ -414,12 +400,6 @@ bool OutsideMap(vec2 p)
 	return !OnMap(tile) || texelFetch(u_tiles, tile, 0).r == MAT_VOID;
 }
 
-/* The map floats in an open sea that runs on to the horizon. */
-vec3 OuterSea(vec2 p)
-{
-	return Glinting(SEA_DEEP, Ripple(p));
-}
-
 /* Only foundations part the ground into walls, and they are laid in dressed stone courses. */
 vec3 WallFace(vec3 normal)
 {
@@ -444,12 +424,10 @@ vec3 GroundTone(vec2 p, mat2 pixel, Water water, float slope, float levels_per_p
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
 
 	vec3 land = Altitude(Surface(p, grain, ErosionAt(slope, grain)), v_world.z);
-	land = Banks(land, water);
-	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel);
+	land = mix(Banks(land, water), Seabed(water, grain), clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0));
+	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 
-	vec3 colour = land;
-	if (water.cover > 0.0) colour = mix(land, WaterTone(water, p), water.cover);
-	colour = Composite(colour, network.paint);
+	vec3 colour = Composite(land, network.paint);
 	colour *= 1.0 - grid * u_grid * GRID_DEPTH * GridLine(p, pixel) * (1.0 - water.cover);
 	colour = Composite(colour, forest.paint);
 	occlusion = 1.0 - forest.shade;
@@ -469,8 +447,8 @@ void main()
 	vec3 albedo;
 	float occlusion = 1.0;
 	if (OutsideMap(p)) {
-		albedo = Greyed(OuterSea(p));
-	} else if (v_wall > 0.5) {
+		albedo = Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p)));
+	} else if (v_mark > WALL_MARK) {
 		albedo = Greyed(WallFace(normal));
 	} else {
 		albedo = GroundTone(p, pixel, water, SlopeOf(normal), levels_per_pixel, occlusion);

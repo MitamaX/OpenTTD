@@ -2,6 +2,8 @@ add_files(
     frame_units.h
     scene_view.cpp
     scene_view.h
+    seabed.cpp
+    seabed.h
     shader_program.cpp
     shader_program.h
     shadow_map.cpp
@@ -12,6 +14,10 @@ add_files(
     terrain_mesh.h
     terrain_pass.cpp
     terrain_pass.h
+    water_mesh.cpp
+    water_mesh.h
+    water_pass.cpp
+    water_pass.h
     world_painter.cpp
     world_painter.h
     world_pass.h

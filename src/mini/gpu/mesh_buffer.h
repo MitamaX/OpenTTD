@@ -26,12 +26,42 @@ struct VertexAttribute {
 	size_t offset;
 };
 
+/* Triangles over a list of vertices, as built on the CPU before upload. */
+template <class Vertex>
+struct TriangleList {
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
+	uint32_t Add(const Vertex &vertex)
+	{
+		this->vertices.push_back(vertex);
+		return static_cast<uint32_t>(this->vertices.size() - 1);
+	}
+
+	void Triangle(uint32_t a, uint32_t b, uint32_t c)
+	{
+		this->indices.insert(this->indices.end(), {a, b, c});
+	}
+
+	void Quad(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+	{
+		this->Triangle(a, b, c);
+		this->Triangle(a, c, d);
+	}
+};
+
 class MeshBuffer {
 public:
 	template <class Vertex>
 	void Upload(std::span<const Vertex> vertices, std::span<const VertexAttribute> layout, std::span<const uint32_t> indices)
 	{
 		this->Upload(std::as_bytes(vertices), sizeof(Vertex), layout, indices);
+	}
+
+	template <class Vertex>
+	void Upload(const TriangleList<Vertex> &mesh, std::span<const VertexAttribute> layout)
+	{
+		this->Upload<Vertex>(mesh.vertices, layout, mesh.indices);
 	}
 
 	void Upload(std::span<const std::byte> vertices, size_t stride, std::span<const VertexAttribute> layout, std::span<const uint32_t> indices);

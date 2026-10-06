@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file terrain_field.cpp The map's ground as meshes, one per block of tiles, built as views ask for them. */
+/** @file terrain_field.cpp The map's ground and water surface as meshes, one pair per block of tiles, built as views ask for them. */
 
 #include "../../stdafx.h"
 #include "terrain_field.h"
@@ -14,7 +14,9 @@
 
 #include "../../core/math_func.hpp"
 #include "../../map_func.h"
+#include "seabed.h"
 #include "terrain_mesh.h"
+#include "water_mesh.h"
 
 #include "../../safeguards.h"
 
@@ -22,7 +24,6 @@ static constexpr double OUTER_SEA_REACH = 8192.0;
 static constexpr double FINEST_CELL_PIXELS = 3.0;
 static constexpr int COARSEST_STEP = 8;
 static constexpr uint64_t EVICT_FRAMES = 600;
-static constexpr int CHANGE_REACH = 1;
 
 /* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles. */
 static int StepFor(double tile_pixels)
@@ -32,7 +33,7 @@ static int StepFor(double tile_pixels)
 	return step;
 }
 
-/* A changed tile reshapes the walls and the shading of the tiles beside it, so the blocks around a change go stale too. */
+/* A changed tile reshapes the walls, the shading and the seabed of the tiles beside it, so the blocks around a change go stale too. */
 void TerrainField::Sync(const WorldChanges &changes)
 {
 	this->frame++;
@@ -46,10 +47,10 @@ void TerrainField::Sync(const WorldChanges &changes)
 
 	uint rows = static_cast<uint>(this->chunks.size()) / std::max(this->columns, 1u);
 	for (const Rect &area : changes.areas) {
-		uint x0 = static_cast<uint>(std::max(area.left - CHANGE_REACH, 0)) / CHUNK_TILES;
-		uint y0 = static_cast<uint>(std::max(area.top - CHANGE_REACH, 0)) / CHUNK_TILES;
-		uint x1 = std::min(static_cast<uint>(area.right + CHANGE_REACH) / CHUNK_TILES, this->columns - 1);
-		uint y1 = std::min(static_cast<uint>(area.bottom + CHANGE_REACH) / CHUNK_TILES, rows - 1);
+		uint x0 = static_cast<uint>(std::max(area.left - SHELF_TILES, 0)) / CHUNK_TILES;
+		uint y0 = static_cast<uint>(std::max(area.top - SHELF_TILES, 0)) / CHUNK_TILES;
+		uint x1 = std::min(static_cast<uint>(area.right + SHELF_TILES) / CHUNK_TILES, this->columns - 1);
+		uint y1 = std::min(static_cast<uint>(area.bottom + SHELF_TILES) / CHUNK_TILES, rows - 1);
 		for (uint y = y0; y <= y1; y++) {
 			for (uint x = x0; x <= x1; x++) {
 				Chunk &chunk = this->chunks[y * this->columns + x];
@@ -68,8 +69,8 @@ void TerrainField::Lay(Dimension map)
 	this->chunks = std::vector<Chunk>(static_cast<size_t>(this->columns) * CeilDiv(map.height, CHUNK_TILES));
 	if (this->chunks.empty()) return;
 
-	TerrainMesh sea = BuildOuterSea(map, OUTER_SEA_REACH);
-	this->outer_sea.Upload<TerrainVertex>(sea.vertices, TERRAIN_LAYOUT, sea.indices);
+	this->outer_bed.Upload(BuildOuterBed(map, OUTER_SEA_REACH), TERRAIN_LAYOUT);
+	this->outer_water.Upload(BuildOuterWater(map, OUTER_SEA_REACH), WATER_LAYOUT);
 }
 
 TileSpan TerrainField::TilesOf(size_t index) const
@@ -101,15 +102,15 @@ TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera
 	if (!chunk.surveyed) this->Survey(chunk, tiles);
 
 	double rise = LevelRise();
-	Vec3 low = {static_cast<double>(tiles.tx0), static_cast<double>(tiles.ty0), chunk.low * rise};
+	Vec3 low = {static_cast<double>(tiles.tx0), static_cast<double>(tiles.ty0), (chunk.low - DEEPEST_SINK) * rise};
 	Vec3 high = {tiles.tx1 + 1.0, tiles.ty1 + 1.0, chunk.high * rise};
 	if (!BoxMeets(frustum, low, high)) return nullptr;
 
 	Vec3 nearest = {Clamp(camera.eye.x, low.x, high.x), Clamp(camera.eye.y, low.y, high.y), Clamp(camera.eye.z, low.z, high.z)};
 	int step = StepFor(camera.TilePixelsAt(Length(camera.eye - nearest)));
 	if (chunk.stale || chunk.step != step) {
-		TerrainMesh mesh = BuildTerrain(tiles, step);
-		chunk.ground.Upload<TerrainVertex>(mesh.vertices, TERRAIN_LAYOUT, mesh.indices);
+		chunk.ground.Upload(BuildTerrain(tiles, step), TERRAIN_LAYOUT);
+		if (chunk.stale) chunk.water.Upload(BuildWaterSurface(tiles), WATER_LAYOUT);
 		chunk.step = step;
 		chunk.stale = false;
 	}
@@ -120,27 +121,41 @@ TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera
 void TerrainField::DrawGround(const SceneView &camera, const Frustum &frustum)
 {
 	if (this->chunks.empty()) return;
-	this->outer_sea.Draw();
+	this->outer_bed.Draw();
 	for (size_t index = 0; index < this->chunks.size(); index++) {
 		if (Chunk *chunk = this->Prepare(index, camera, frustum); chunk != nullptr) chunk->ground.Draw();
 	}
 }
 
-/* A block long out of every view gives its mesh back, so a big map only holds the ground near the view. */
+void TerrainField::DrawWater(const SceneView &camera)
+{
+	if (this->chunks.empty()) return;
+	this->outer_water.Draw();
+	for (size_t index = 0; index < this->chunks.size(); index++) {
+		if (Chunk *chunk = this->Prepare(index, camera, camera.frustum); chunk != nullptr) chunk->water.Draw();
+	}
+}
+
+/* A block long out of every view gives its meshes back, so a big map only holds the ground near the view. */
 void TerrainField::Evict()
 {
 	for (Chunk &chunk : this->chunks) {
 		if (chunk.ground.Empty() || this->frame - chunk.drawn < EVICT_FRAMES) continue;
 		chunk.ground.Release();
+		chunk.water.Release();
 		chunk.stale = true;
 	}
 }
 
 void TerrainField::Release()
 {
-	for (Chunk &chunk : this->chunks) chunk.ground.Release();
+	for (Chunk &chunk : this->chunks) {
+		chunk.ground.Release();
+		chunk.water.Release();
+	}
 	this->chunks.clear();
-	this->outer_sea.Release();
+	this->outer_bed.Release();
+	this->outer_water.Release();
 	this->map = {};
 	this->columns = 0;
 }

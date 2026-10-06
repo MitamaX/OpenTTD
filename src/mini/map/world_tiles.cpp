@@ -37,8 +37,6 @@
 
 static constexpr uint BLOCK_TILES = 32;
 static constexpr uint SWEEP_TILES_PER_SYNC = 2048;
-static constexpr uint8_t FULL_WATER = 0xFF;
-static constexpr uint8_t HALF_WATER = 0x80;
 static constexpr uint TEMPERATE_CONIFER_EVERY = 3;
 static constexpr uint ARCTIC_BROADLEAF_EVERY = 4;
 static constexpr uint8_t NO_STYLE = 0;
@@ -406,6 +404,16 @@ WorldChanges WorldTiles::TakeChanges()
 SurfaceTexel WorldTiles::SurfaceAt(TileIndex tile) const
 {
 	return tile.base() < this->surfaces.size() ? this->surfaces[tile.base()] : SurfaceTexel{};
+}
+
+GroundTexel WorldTiles::GroundAt(TileIndex tile) const
+{
+	return tile.base() < this->ground.size() ? this->ground[tile.base()] : GroundTexel{};
+}
+
+WaterTexel WorldTiles::WaterAt(TileIndex tile) const
+{
+	return tile.base() < this->water.size() ? this->water[tile.base()] : WaterTexel{};
 }
 
 WorldTiles::Texels WorldTiles::Pack(TileIndex tile)

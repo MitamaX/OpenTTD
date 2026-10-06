@@ -13,6 +13,12 @@
 #include "../map/world_tiles.h"
 #include "scene_view.h"
 
+/** When a pass draws: solid passes first, then surface passes over a snapshot of what the solid ones drew. */
+enum class WorldStage : uint8_t {
+	Solid,
+	Surface,
+};
+
 /* A pass draws into the bound world target with depth testing on; the scene and shadow blocks are bound and every pass gets each frame's world changes.
  * A pass that casts shadows draws its meshes depth only in Cast, through a program made by CasterProgram from its own vertex sources. */
 class WorldPass {
@@ -24,6 +30,7 @@ public:
 	virtual void Cast([[maybe_unused]] const ShadowView &view) {}
 	virtual void Draw(const SceneView &view) = 0;
 	virtual void Release() = 0;
+	virtual WorldStage Stage() const { return WorldStage::Solid; }
 };
 
 #endif /* MINI_WORLD_WORLD_PASS_H */

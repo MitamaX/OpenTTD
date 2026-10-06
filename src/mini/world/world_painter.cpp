@@ -16,6 +16,7 @@
 #include "../gpu/gl_api.h"
 #include "../gpu/gl_state.h"
 #include "terrain_pass.h"
+#include "water_pass.h"
 
 #include "../../safeguards.h"
 
@@ -58,6 +59,7 @@ static void BindTexture(uint unit, uint32_t texture)
 WorldPainter::WorldPainter() : composite(SCREEN_SOURCES, COMPOSITE_SOURCES)
 {
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
+	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field));
 }
 
 void WorldPainter::Reload()
@@ -97,7 +99,7 @@ bool WorldPainter::Ready()
 	return true;
 }
 
-/* Shadows are cast before the passes draw. */
+/* Shadows are cast before the solid passes draw, and surface passes draw over a snapshot of the solid world. */
 void WorldPainter::Render(const SceneView &view)
 {
 	WorldChanges changes = _world_tiles.TakeChanges();
@@ -121,7 +123,16 @@ void WorldPainter::Render(const SceneView &view)
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	this->shadows.Bind();
-	for (const auto &pass : this->passes) pass->Draw(view);
+	this->DrawStage(WorldStage::Solid, view);
+	this->target.Snapshot();
+	this->DrawStage(WorldStage::Surface, view);
+}
+
+void WorldPainter::DrawStage(WorldStage stage, const SceneView &view)
+{
+	for (const auto &pass : this->passes) {
+		if (pass->Stage() == stage) pass->Draw(view);
+	}
 }
 
 /* The quad covers the element in RmlUi's pixels; the viewport is whichever layer RmlUi is drawing into. */

@@ -15,6 +15,8 @@
 /** Units above the world's tile textures; every world shader finds these samplers there. */
 enum FrameUnit : uint8_t {
 	SHADOW_UNIT = 4,
+	SCENE_COLOUR_UNIT,
+	SCENE_DEPTH_UNIT,
 };
 
 struct FrameSampler {
@@ -22,8 +24,10 @@ struct FrameSampler {
 	FrameUnit unit;
 };
 
-inline constexpr std::array<FrameSampler, 1> FRAME_SAMPLERS = {{
+inline constexpr std::array<FrameSampler, 3> FRAME_SAMPLERS = {{
 	{"u_shadow_map", SHADOW_UNIT},
+	{"u_scene_colour", SCENE_COLOUR_UNIT},
+	{"u_scene_depth", SCENE_DEPTH_UNIT},
 }};
 
 inline constexpr uint32_t SHADOWS_BINDING = 1;

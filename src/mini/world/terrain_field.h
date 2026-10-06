@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file terrain_field.h The map's ground as meshes, one per block of tiles, built as views ask for them. */
+/** @file terrain_field.h The map's ground and water surface as meshes, one pair per block of tiles, built as views ask for them. */
 
 #ifndef MINI_WORLD_TERRAIN_FIELD_H
 #define MINI_WORLD_TERRAIN_FIELD_H
@@ -22,12 +22,14 @@ public:
 
 	void Sync(const WorldChanges &changes);
 	void DrawGround(const SceneView &camera, const Frustum &frustum);
+	void DrawWater(const SceneView &camera);
 	void Release();
 
 private:
-	/* A block of tiles: the mesh it was last built at and the height range its ground spans. */
+	/* A block of tiles: the meshes it was last built at and the height range its ground spans. */
 	struct Chunk {
 		MeshBuffer ground;
+		MeshBuffer water;
 		int step = 0;
 		bool stale = true;
 		bool surveyed = false;
@@ -43,7 +45,8 @@ private:
 	void Evict();
 
 	std::vector<Chunk> chunks;
-	MeshBuffer outer_sea;
+	MeshBuffer outer_bed;
+	MeshBuffer outer_water;
 	Dimension map{};
 	uint columns = 0;
 	uint64_t frame = 0;

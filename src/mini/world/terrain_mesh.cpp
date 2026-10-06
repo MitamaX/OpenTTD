@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file terrain_mesh.cpp The ground of the map as triangles: each tile's facets, the walls where tiles step apart, and the sea beyond the edge. */
+/** @file terrain_mesh.cpp The ground of the map as triangles: each tile's facets, the walls where tiles step apart, and the seabed beyond the edge. */
 
 #include "../../stdafx.h"
 #include "terrain_mesh.h"
@@ -16,6 +16,7 @@
 #include "../../map_func.h"
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
+#include "seabed.h"
 
 #include "../../safeguards.h"
 
@@ -42,21 +43,14 @@ static int8_t NormalByte(double component)
 	return static_cast<int8_t>(std::lround(std::clamp(component, -1.0, 1.0) * NORMAL_SCALE));
 }
 
-uint32_t TerrainMesh::Add(const WorldPoint &at, const Vec3 &normal, bool wall)
+uint32_t TerrainMesh::Add(const WorldPoint &at, const Vec3 &normal, double mark)
 {
-	this->vertices.push_back({static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.level), {NormalByte(normal.x), NormalByte(normal.y), NormalByte(normal.z), static_cast<int8_t>(wall ? NORMAL_SCALE : 0)}});
-	return static_cast<uint32_t>(this->vertices.size() - 1);
+	return this->Add({static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.level), {NormalByte(normal.x), NormalByte(normal.y), NormalByte(normal.z), NormalByte(mark)}});
 }
 
-void TerrainMesh::Triangle(uint32_t a, uint32_t b, uint32_t c)
+double SunkMark(double sink)
 {
-	this->indices.insert(this->indices.end(), {a, b, c});
-}
-
-void TerrainMesh::Quad(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
-{
-	this->Triangle(a, b, c);
-	this->Triangle(a, c, d);
+	return -sink / DEEPEST_SINK;
 }
 
 static uint8_t CornerLevel(const SurfaceTexel &surface, TileCorner corner)
@@ -117,11 +111,6 @@ private:
 	SurfaceTexel surface;
 };
 
-static bool OnMap(int tx, int ty)
-{
-	return tx >= 0 && ty >= 0 && tx <= static_cast<int>(Map::MaxX()) && ty <= static_cast<int>(Map::MaxY());
-}
-
 /* Every tile meeting at a corner point at the same height shares its facets there, so the ground shades smoothly wherever it runs on unbroken. */
 static Vec3 SmoothNormal(int cx, int cy, uint8_t level)
 {
@@ -136,13 +125,56 @@ static Vec3 SmoothNormal(int cx, int cy, uint8_t level)
 	return Length(sum) > 0.0 ? Normalised(sum) : UPRIGHT;
 }
 
-static void AddTile(TerrainMesh &mesh, int tx, int ty)
+/* One side of a tile going round from its first corner: where its middle lies on the half tile lattice and which tile lies across it. */
+struct BasinSide {
+	TileCorner from;
+	TileCorner to;
+	int half_x;
+	int half_y;
+	int across_x;
+	int across_y;
+};
+
+static constexpr std::array<BasinSide, CORNER_COUNT> BASIN_SIDES = {{
+	{NORTH, WEST, 1, 0, 0, -1},
+	{WEST, SOUTH, 2, 1, 1, 0},
+	{SOUTH, EAST, 1, 2, 0, 1},
+	{EAST, NORTH, 0, 1, -1, 0},
+}};
+
+/* A tile of open water dips toward its middle, and toward the middles of its sides where open water runs on, so even a narrow stream has a channel under it. */
+static void AddBasin(TerrainMesh &mesh, const Seabed &bed, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty)
+{
+	auto at = [&](int half_x, int half_y, double level) {
+		return mesh.Add({half_x * HALF_TILE, half_y * HALF_TILE, level}, bed.Normal(half_x, half_y, 1), SunkMark(SurfaceLevelOf(tx, ty) - level));
+	};
+	uint32_t centre = at(2 * tx + 1, 2 * ty + 1, bed.Level(2 * tx + 1, 2 * ty + 1));
+	for (const BasinSide &side : BASIN_SIDES) {
+		int half_x = 2 * tx + side.half_x;
+		int half_y = 2 * ty + side.half_y;
+		double ends = (mesh.vertices[corners[side.from]].level + mesh.vertices[corners[side.to]].level) * 0.5;
+		double level = SharesBasin(tx, ty, tx + side.across_x, ty + side.across_y) ? bed.Level(half_x, half_y) : ends;
+		uint32_t middle = at(half_x, half_y, level);
+		mesh.Triangle(corners[side.from], middle, centre);
+		mesh.Triangle(middle, corners[side.to], centre);
+	}
+}
+
+static void AddTile(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 {
 	TileSurface tile(tx, ty);
 	std::array<uint32_t, CORNER_COUNT> corners;
 	for (TileCorner corner : {NORTH, WEST, EAST, SOUTH}) {
 		WorldPoint at = tile.Corner(corner);
-		corners[corner] = mesh.Add(at, SmoothNormal(static_cast<int>(at.x), static_cast<int>(at.y), tile.Level(corner)), false);
+		int cx = static_cast<int>(at.x);
+		int cy = static_cast<int>(at.y);
+		double sink = bed.Sink(cx, cy);
+		Vec3 normal = sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : SmoothNormal(cx, cy, tile.Level(corner));
+		corners[corner] = mesh.Add({at.x, at.y, at.level - sink}, normal, SunkMark(sink));
+	}
+	if (WaterFormOf(tx, ty) == WaterForm::Open) {
+		AddBasin(mesh, bed, corners, tx, ty);
+		return;
 	}
 	for (const Facet &facet : tile.Facets()) mesh.Triangle(corners[facet[0]], corners[facet[1]], corners[facet[2]]);
 }
@@ -154,17 +186,18 @@ static void AddWalls(TerrainMesh &mesh, int tx, int ty)
 		if (!step.has_value()) continue;
 		Vec3 outward = {step->outward.x, step->outward.y, 0.0};
 		std::array<uint32_t, 4> ring;
-		std::ranges::transform(step->ring, ring.begin(), [&](const WorldPoint &corner) { return mesh.Add(corner, outward, true); });
+		std::ranges::transform(step->ring, ring.begin(), [&](const WorldPoint &corner) { return mesh.Add(corner, outward, WALL_MARK); });
 		mesh.Quad(ring[0], ring[1], ring[2], ring[3]);
 	}
 }
 
 static TerrainMesh BuildTiles(const TileSpan &tiles)
 {
+	Seabed bed(tiles);
 	TerrainMesh mesh;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
-			AddTile(mesh, tx, ty);
+			AddTile(mesh, bed, tx, ty);
 			AddWalls(mesh, tx, ty);
 		}
 	}
@@ -180,23 +213,16 @@ static std::vector<int> LatticeLines(int first, int last, int step)
 	return lines;
 }
 
-static Vec3 LatticeNormal(double x, double y, double step)
-{
-	double rise = LevelRise();
-	double slope_x = (GroundLevel(x + step, y) - GroundLevel(x - step, y)) * rise / (2.0 * step);
-	double slope_y = (GroundLevel(x, y + step) - GroundLevel(x, y - step)) * rise / (2.0 * step);
-	return Normalised({-slope_x, -slope_y, 1.0});
-}
-
 static TerrainMesh BuildLattice(const TileSpan &tiles, int step)
 {
+	Seabed bed(tiles);
 	std::vector<int> xs = LatticeLines(tiles.tx0, tiles.tx1, step);
 	std::vector<int> ys = LatticeLines(tiles.ty0, tiles.ty1, step);
 	size_t columns = xs.size();
 	TerrainMesh mesh;
 	auto at = [&](size_t i, size_t j) { return static_cast<uint32_t>(j * columns + i); };
 	for (int y : ys) {
-		for (int x : xs) mesh.Add({static_cast<double>(x), static_cast<double>(y), GroundLevel(x, y)}, LatticeNormal(x, y, step), false);
+		for (int x : xs) mesh.Add({static_cast<double>(x), static_cast<double>(y), bed.Level(2 * x, 2 * y)}, bed.Normal(2 * x, 2 * y, 2 * step), SunkMark(bed.Sink(x, y)));
 	}
 	for (size_t j = 0; j + 1 < ys.size(); j++) {
 		for (size_t i = 0; i + 1 < columns; i++) mesh.Quad(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1));
@@ -206,7 +232,7 @@ static TerrainMesh BuildLattice(const TileSpan &tiles, int step)
 	auto skirt = [&](uint32_t from, uint32_t to) {
 		auto lowered = [&](uint32_t index) {
 			const TerrainVertex &top = mesh.vertices[index];
-			return mesh.Add({top.x, top.y, top.level - drop}, UPRIGHT, false);
+			return mesh.Add({top.x, top.y, top.level - drop}, UPRIGHT, DRY_MARK);
 		};
 		mesh.Quad(from, to, lowered(to), lowered(from));
 	};
@@ -227,18 +253,45 @@ TerrainMesh BuildTerrain(const TileSpan &tiles, int step)
 	return step <= 1 ? BuildTiles(tiles) : BuildLattice(tiles, step);
 }
 
-/* Four strips around the map at sea level, meeting its edge where the border tiles lie. */
-TerrainMesh BuildOuterSea(Dimension map, double reach)
+/* The seabed falls from the map's edge to the open sea's floor over a shelf, then lies flat out to the horizon. */
+TerrainMesh BuildOuterBed(Dimension map, double reach)
 {
 	double width = map.width;
 	double height = map.height;
+	double shelf = SHELF_TILES;
+	double floor = -DEEPEST_SINK;
 	TerrainMesh mesh;
-	auto strip = [&](double x0, double y0, double x1, double y1) {
-		mesh.Quad(mesh.Add({x0, y0, 0.0}, UPRIGHT, false), mesh.Add({x1, y0, 0.0}, UPRIGHT, false), mesh.Add({x1, y1, 0.0}, UPRIGHT, false), mesh.Add({x0, y1, 0.0}, UPRIGHT, false));
+	auto add = [&](double x, double y, double level) { return mesh.Add({x, y, level}, UPRIGHT, SunkMark(-level)); };
+	auto edge = [&](int corners, int cx, int cy, int step_x, int step_y, double out_x, double out_y) {
+		for (int corner = 0; corner < corners; corner++) {
+			int ax = cx + corner * step_x;
+			int ay = cy + corner * step_y;
+			int bx = ax + step_x;
+			int by = ay + step_y;
+			mesh.Quad(add(ax, ay, -CornerSink(ax, ay)), add(bx, by, -CornerSink(bx, by)), add(bx + out_x, by + out_y, floor), add(ax + out_x, ay + out_y, floor));
+		}
 	};
-	strip(-reach, -reach, width + reach, 0.0);
-	strip(-reach, height, width + reach, height + reach);
-	strip(-reach, 0.0, 0.0, height);
-	strip(width, 0.0, width + reach, height);
+	int columns = static_cast<int>(map.width);
+	int rows = static_cast<int>(map.height);
+	edge(columns, 0, 0, 1, 0, 0.0, -shelf);
+	edge(columns, 0, rows, 1, 0, 0.0, shelf);
+	edge(rows, 0, 0, 0, 1, -shelf, 0.0);
+	edge(rows, columns, 0, 0, 1, shelf, 0.0);
+
+	auto nook = [&](int cx, int cy, double dx, double dy) {
+		mesh.Quad(add(cx, cy, -CornerSink(cx, cy)), add(cx + dx, cy, floor), add(cx + dx, cy + dy, floor), add(cx, cy + dy, floor));
+	};
+	nook(0, 0, -shelf, -shelf);
+	nook(columns, 0, shelf, -shelf);
+	nook(0, rows, -shelf, shelf);
+	nook(columns, rows, shelf, shelf);
+
+	auto strip = [&](double x0, double y0, double x1, double y1) {
+		mesh.Quad(add(x0, y0, floor), add(x1, y0, floor), add(x1, y1, floor), add(x0, y1, floor));
+	};
+	strip(-reach, -reach, width + reach, -shelf);
+	strip(-reach, height + shelf, width + reach, height + reach);
+	strip(-reach, -shelf, -shelf, height + shelf);
+	strip(width + shelf, -shelf, width + reach, height + shelf);
 	return mesh;
 }

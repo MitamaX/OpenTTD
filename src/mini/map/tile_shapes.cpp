@@ -112,7 +112,7 @@ MapVector Outward(DiagDirection side)
 	return {static_cast<double>(step.x), static_cast<double>(step.y)};
 }
 
-static bool OnMap(int tx, int ty)
+bool OnMap(int tx, int ty)
 {
 	return tx >= 0 && ty >= 0 && tx <= static_cast<int>(Map::MaxX()) && ty <= static_cast<int>(Map::MaxY());
 }

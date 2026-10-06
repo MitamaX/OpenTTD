@@ -20,6 +20,7 @@
 #include "../gpu/gl_api.h"
 #include "../map/world_tiles.h"
 #include "frame_units.h"
+#include "seabed.h"
 
 #include "../../safeguards.h"
 
@@ -131,7 +132,7 @@ ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, double near, dou
 	centre.x = std::floor(centre.x / texel) * texel;
 	centre.y = std::floor(centre.y / texel) * texel;
 
-	double tallest = (_world_tiles.Peak() + CASTER_HEADROOM_LEVELS) * LevelRise();
+	double tallest = (_world_tiles.Peak() + CASTER_HEADROOM_LEVELS + DEEPEST_SINK) * LevelRise();
 	double toward_sun = tallest / std::max(SunWay().z, LOWEST_SUN_RISE);
 	Vec3 low = {centre.x - radius, centre.y - radius, centre.z - radius - DEPTH_MARGIN};
 	Vec3 high = {centre.x + radius, centre.y + radius, centre.z + radius + toward_sun};

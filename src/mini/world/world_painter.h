@@ -35,6 +35,7 @@ public:
 private:
 	bool Ready();
 	void Render(const SceneView &view);
+	void DrawStage(WorldStage stage, const SceneView &view);
 	void Composite(const ShaderArea &area);
 
 	WorldTarget target;
