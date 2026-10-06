@@ -14,6 +14,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "../map/tile_shapes.h"
 #include "../model/model_shapes.h"
 
 #include "../../safeguards.h"
@@ -30,6 +31,16 @@ static MapVector OnCut(const MapVector &joint, const MapVector &right, const Map
 {
 	MapVector cut = RightOf(Unit(arriving + leaving));
 	return joint + cut * (lateral / Dot(cut, right));
+}
+
+Footing GroundFooting(int tx, int ty)
+{
+	return [ground = TileGround(tx, ty)](double x, double y) { return ground.Level(x, y); };
+}
+
+Footing LevelFooting(double level)
+{
+	return [level](double, double) { return level; };
 }
 
 std::array<SectionPoint, 5> BoxSection(double from, double to, double low, double high, uint32_t top, uint32_t sides, double gloss)

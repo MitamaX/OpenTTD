@@ -29,6 +29,10 @@ enum class WayDetail : uint8_t {
 /* What a shape is laid on: the level, in height levels, under a point of the map. */
 using Footing = std::function<double(double x, double y)>;
 
+/* A tile's own ground, read for every point laid on the tile, and a level surface at one height. */
+Footing GroundFooting(int tx, int ty);
+Footing LevelFooting(double level);
+
 /* A point of a cross section: how far right of the run's centre line it lies and how high, with the paint of the face from it to the next point.
  * Points go over the top from left to right, so every face looks outward. */
 struct SectionPoint {

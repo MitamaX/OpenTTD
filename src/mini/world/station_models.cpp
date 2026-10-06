@@ -91,11 +91,6 @@ static constexpr uint32_t SIGN = 0xE8C440;
 static constexpr double GLASS_GLOSS = 0.8;
 static constexpr double FRAME_GLOSS = 0.4;
 
-static Footing GroundOf(TileIndex tile)
-{
-	return [ground = TileGround(tile)](double x, double y) { return ground.Level(x, y); };
-}
-
 /* A run along an axis through the middle of a tile, edge to edge. */
 static Stretch MiddleRun(TileIndex tile, Axis axis)
 {
@@ -233,7 +228,7 @@ private:
 void LayRailStop(ModelMesh &mesh, TileIndex tile, WayDetail detail)
 {
 	ModelMesh stop = StopBuilder(tile, detail).Build();
-	mesh.Append(Drape(stop, GroundOf(tile)));
+	mesh.Append(Drape(stop, GroundFooting(TileX(tile), TileY(tile))));
 }
 
 /* A glass shelter stands on the pavement at one side of a drive through bus stop. */
@@ -247,5 +242,5 @@ void LayBusShelter(ModelMesh &mesh, TileIndex tile, WayDetail detail)
 	shelter.Append(Laid(run, roof, 1));
 	shelter.Append(EndCap(run, roof, false));
 	shelter.Append(EndCap(run, roof, true));
-	mesh.Append(Drape(shelter, GroundOf(tile)));
+	mesh.Append(Drape(shelter, GroundFooting(TileX(tile), TileY(tile))));
 }

@@ -131,5 +131,5 @@ void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 	portal.Append(reveal.Paint(REVEAL_STONE));
 	portal.Append(opening.Paint(MOUTH));
 	portal.Append(cornice.Paint(CORNICE_STONE));
-	mesh.Append(Drape(portal, [floor](double, double) { return floor; }));
+	mesh.Append(Drape(portal, LevelFooting(floor)));
 }

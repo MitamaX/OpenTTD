@@ -130,7 +130,7 @@ static const BridgeLook &LookOf(const BridgeSite &bridge)
 
 Footing DeckFooting(const BridgeSite &bridge)
 {
-	return [level = static_cast<double>(bridge.deck)](double, double) { return level; };
+	return LevelFooting(bridge.deck);
 }
 
 /* The direction a head's ramp climbs in, from its outer edge onto the bridge. */

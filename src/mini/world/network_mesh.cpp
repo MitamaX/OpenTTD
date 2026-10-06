@@ -75,11 +75,6 @@ public:
 	NetworkMeshes Finish() { return std::move(this->meshes); }
 
 private:
-	static Footing Ground(int tx, int ty)
-	{
-		return [ground = TileGround(tx, ty)](double x, double y) { return ground.Level(x, y); };
-	}
-
 	/* The world's texel names the track pieces a tile lays, a crossing's and a station's among them. */
 	TrackSite TrackOf(TileIndex tile, int tx, int ty) const
 	{
@@ -104,13 +99,13 @@ private:
 
 	void Railway(TileIndex tile, int tx, int ty)
 	{
-		this->LayTrackOn(this->TrackOf(tile, tx, ty), Ground(tx, ty));
+		this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
 		if (IsPlainRailTile(tile) && HasSignals(tile)) this->Signals(tile, tx, ty);
 	}
 
 	void Road(TileIndex tile, int tx, int ty)
 	{
-		Footing ground = Ground(tx, ty);
+		Footing ground = GroundFooting(tx, ty);
 		bool crossing = IsLevelCrossingTile(tile);
 		LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, crossing), ground);
 		if (!crossing) return;
@@ -122,13 +117,13 @@ private:
 	void Station(TileIndex tile, int tx, int ty)
 	{
 		if (HasStationRail(tile)) {
-			this->LayTrackOn(this->TrackOf(tile, tx, ty), Ground(tx, ty));
+			this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
 			LayRailStop(this->meshes.Layer(MiniLayer::Rail), tile, this->detail);
 		} else if (IsAnyRoadStop(tile)) {
 			ModelMesh &road = this->meshes.Layer(MiniLayer::Road);
 			RoadSite site = this->RoadOf(tile, tx, ty, false);
 			site.kerbed = IsDriveThroughStopTile(tile);
-			LayRoad(road, site, Ground(tx, ty));
+			LayRoad(road, site, GroundFooting(tx, ty));
 			if (IsDriveThroughStopTile(tile) && IsBusStop(tile)) LayBusShelter(road, tile, this->detail);
 		}
 	}
@@ -143,9 +138,9 @@ private:
 		}
 		TransportType transport = GetTunnelBridgeTransportType(tile);
 		if (transport == TRANSPORT_RAIL) {
-			this->LayTrackOn(this->TrackOf(tile, tx, ty), Ground(tx, ty));
+			this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
 		} else {
-			LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, false), Ground(tx, ty));
+			LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, false), GroundFooting(tx, ty));
 		}
 		LayTunnelPortal(this->Layer(transport), tile);
 	}
