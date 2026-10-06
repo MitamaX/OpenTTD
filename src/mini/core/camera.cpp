@@ -224,6 +224,17 @@ void Camera::CentreOn(double tx, double ty)
 	this->PlaceCentre(this->GroundFocus({tx, ty}));
 }
 
+/* A growing heading turns the view counterclockwise, a growing bearing clockwise. */
+void Camera::Aim(const ViewAim &aim)
+{
+	this->Halt();
+	this->dest_ppt = Clamp(aim.zoom, MIN_PPT, MAX_PPT);
+	this->ppt = this->dest_ppt;
+	this->heading_target = NORTH_UP_HEADING - aim.yaw;
+	this->SetHeading(this->heading_target);
+	this->CentreOn(aim.focus.first, aim.focus.second);
+}
+
 void Camera::PlaceCentre(TilePoint plane)
 {
 	std::tie(this->x, this->y) = Confined(plane);

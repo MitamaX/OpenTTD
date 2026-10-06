@@ -24,6 +24,10 @@ map-view {
 	pointer-events: none;
 }
 
+.map-only .dock {
+	display: none;
+}
+
 .chrome {
 	padding: 6dp;
 	background-color: var(--panel);

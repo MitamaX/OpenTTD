@@ -60,6 +60,7 @@
 #include "mini/dock/native_window.h"
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
+#include "mini/gpu/frame_capture.h"
 #include "mini/gpu/gpu_frame.h"
 #include "mini/hud/build_dock.h"
 #include "mini/hud/clear_panel.h"
@@ -834,7 +835,7 @@ void MiniUiFrame(uint delta_ms)
 		last_mode = _game_mode;
 		if (!_mini_active && !_network_dedicated && (_game_mode == GM_NORMAL || _game_mode == GM_EDITOR)) {
 			_tuning.Load();
-			if (_tuning.start_active != 0) MiniUiToggle();
+			if (_tuning.start_active != 0 || _frame_capture.Active()) MiniUiToggle();
 		}
 	}
 
@@ -859,6 +860,7 @@ void MiniUiFrame(uint delta_ms)
 	_map_draw.Clear();
 
 	_camera.Update(delta_ms, _mode.FollowTarget());
+	if (std::optional<ViewAim> aim = _frame_capture.Aim(); aim.has_value()) _camera.Aim(*aim);
 	_volume_painter.BeginFrame();
 
 	int ppt = _camera.TilePixels();

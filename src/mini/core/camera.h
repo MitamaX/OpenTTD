@@ -46,6 +46,15 @@ struct ExactPoint {
 	double y;
 };
 
+/* A view framed from outside: the ground point at the screen centre, pixels per tile there, the compass bearing
+ * the view faces clockwise from map north and how far the view dips below the horizon, which a fixed-tilt camera leaves alone. */
+struct ViewAim {
+	TilePoint focus;
+	double zoom;
+	double yaw;
+	double pitch;
+};
+
 struct TileSpan {
 	int tx0;
 	int ty0;
@@ -83,6 +92,7 @@ public:
 	std::array<TilePoint, 4> ViewCorners() const;
 
 	void CentreOn(double tx, double ty);
+	void Aim(const ViewAim &aim);
 	void PlaceCentre(TilePoint plane);
 	void GlideTo(double tx, double ty);
 	void Grab(int sx, int sy);

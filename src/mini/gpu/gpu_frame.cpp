@@ -12,6 +12,7 @@
 
 #include <utility>
 
+#include "frame_capture.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
@@ -36,6 +37,7 @@ void GpuFrame::Compose()
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	if (this->layer != nullptr) this->layer->Render(size);
+	_frame_capture.Grab(size);
 }
 
 /* The back-end is going away with its context; everything made in it goes first. */

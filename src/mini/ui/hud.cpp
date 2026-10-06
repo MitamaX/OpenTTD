@@ -12,9 +12,12 @@
 
 #include <RmlUi/Core.h>
 
+#include "../gpu/frame_capture.h"
+
 #include "../../safeguards.h"
 
 static constexpr const char HUD_DOCUMENT[] = "mini_ui/hud.rml";
+static constexpr const char MAP_ONLY_CLASS[] = "map-only";
 
 Hud::Hud(std::vector<std::unique_ptr<HudPart>> parts) : parts(std::move(parts))
 {
@@ -34,6 +37,7 @@ void Hud::Reset(Rml::Context *context)
 	if (this->document == nullptr) return;
 
 	for (const auto &part : this->parts) part->Place(this->document->GetElementById(part->ModelName()));
+	this->document->SetClass(MAP_ONLY_CLASS, _frame_capture.HidesHud());
 	this->document->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
 }
 

@@ -5,6 +5,8 @@ add_files(
     data_texture.h
     draw_list.cpp
     draw_list.h
+    frame_capture.cpp
+    frame_capture.h
     gl_api.cpp
     gl_api.h
     gl_program.cpp
