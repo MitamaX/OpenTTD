@@ -11,6 +11,7 @@
 #define MINI_WORLD_WORLD_PAINTER_H
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "../ui/shader_painter.h"
@@ -22,6 +23,8 @@
 #include "world_target.h"
 #include "world_textures.h"
 
+class StructurePass;
+
 class WorldPainter final : public ShaderPainter {
 public:
 	static constexpr const char NAME[] = "world";
@@ -32,6 +35,8 @@ public:
 	void Prepare();
 	void Paint(const ShaderArea &area) override;
 	void Release() override;
+	/* The tile of the building a sight line from the eye meets before it meets the ground. */
+	std::optional<TileIndex> BuildingAt(const Vec3 &origin, const Vec3 &direction) const;
 
 private:
 	bool Ready();
@@ -46,6 +51,7 @@ private:
 	SceneUniforms scene;
 	ShaderProgram composite;
 	std::vector<std::unique_ptr<WorldPass>> passes;
+	const StructurePass *structures = nullptr;
 	uint32_t quad = 0;
 };
 

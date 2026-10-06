@@ -10,6 +10,10 @@
 #include "../../stdafx.h"
 #include "space.h"
 
+#include <algorithm>
+#include <limits>
+#include <utility>
+
 #include "../../safeguards.h"
 
 static constexpr int ROWS = 4;
@@ -164,4 +168,26 @@ bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high)
 		if (plane.Distance(farthest) < 0.0) return false;
 	}
 	return true;
+}
+
+/* The ray's span inside each pair of faces, narrowed axis by axis; a ray running parallel to a pair stays inside only between them. */
+std::optional<double> BoxEntry(const Vec3 &origin, const Vec3 &direction, const Vec3 &low, const Vec3 &high)
+{
+	double enter = 0.0;
+	double leave = std::numeric_limits<double>::max();
+	for (auto axis : {&Vec3::x, &Vec3::y, &Vec3::z}) {
+		double start = origin.*axis;
+		double step = direction.*axis;
+		if (step == 0.0) {
+			if (start < low.*axis || start > high.*axis) return std::nullopt;
+			continue;
+		}
+		double near = (low.*axis - start) / step;
+		double far = (high.*axis - start) / step;
+		if (near > far) std::swap(near, far);
+		enter = std::max(enter, near);
+		leave = std::min(leave, far);
+		if (enter > leave) return std::nullopt;
+	}
+	return enter;
 }

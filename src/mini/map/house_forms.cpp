@@ -151,7 +151,8 @@ static constexpr float FLATS_JITTER = 0.06f;
 
 static constexpr Setback SHOPS_SETBACK = {0.03f, 0.10f, 0.02f};
 static constexpr float AWNING_DEPTH = 0.03f;
-static constexpr float AWNING_THICKNESS = 0.015f;
+static constexpr float AWNING_THICKNESS = 0.008f;
+static constexpr float AWNING_RISE = 0.02f;
 
 static constexpr float PENTHOUSE_LENGTH = 0.16f;
 static constexpr float PENTHOUSE_WIDTH = 0.24f;
@@ -646,7 +647,7 @@ static void AddChimney(BuildingForm &form, const Solid &roofed, float offset, co
 	Plot stack = SquareOnRidge(roofed, offset, CHIMNEY_SIDE);
 	float base = LowestRoofUnder(roofed, stack);
 	float top = roofed.Top() + CHIMNEY_ABOVE_RIDGE;
-	Place(form, Part::Box(stack).On(base).Detailed().Height(top - base).Clad(Material::Brick, SwatchTint(Swatch::Brick, WALL_COLOUR.Of(site.seed))));
+	Place(form, Part::Box(stack).On(base).Fixed(Fixture::Chimney).Height(top - base).Clad(Material::Brick, SwatchTint(Swatch::Brick, WALL_COLOUR.Of(site.seed))));
 }
 
 static float ChimneyOffset(const Solid &roofed, uint32_t seed)
@@ -657,7 +658,7 @@ static float ChimneyOffset(const Solid &roofed, uint32_t seed)
 static void AddWaterTank(BuildingForm &form, const Solid &roofed)
 {
 	Plot roof = FootprintOf(roofed);
-	Place(form, Part::Square(roof.Mid(AXIS_X), roof.Mid(AXIS_Y), TANK_SIDE).On(LevelAbove(roofed)).Detailed().Height(TANK_HEIGHT).Clad(Material::Metal, TANK_TINT));
+	Place(form, Part::Square(roof.Mid(AXIS_X), roof.Mid(AXIS_Y), TANK_SIDE).On(LevelAbove(roofed)).Fixed(Fixture::WaterTank).Height(TANK_HEIGHT).Clad(Material::Metal, TANK_TINT));
 }
 
 static bool IsDwelling(HouseKind kind)
@@ -690,7 +691,8 @@ static void AddAwning(BuildingForm &form, const Solid &mass, const HouseSite &si
 {
 	Plot awning = FootprintOf(mass).Outside(site.front, AWNING_DEPTH).Narrowed(AlongEdge(site.front), length);
 	float ground = GroundStoreyTiles(mass.windows);
-	Place(form, Part::Box(awning).On(ground - AWNING_THICKNESS).Detailed().Height(AWNING_THICKNESS).Clad(Material::Plain, AccentTint(site)));
+	Place(form, Part::Box(awning).On(ground - AWNING_THICKNESS - AWNING_RISE).Detailed().Height(AWNING_THICKNESS).Clad(Material::Plain, AccentTint(site))
+		.Roof(RoofShape::Shed, AWNING_RISE).HighSide(ReverseDiagDir(site.front)));
 }
 
 static Solid Annex(const Solid &dwelling, const Plot &plot, DiagDirection side, const HouseSite &site)

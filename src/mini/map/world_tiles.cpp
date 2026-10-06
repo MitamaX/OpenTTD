@@ -406,6 +406,7 @@ void WorldTiles::Sync()
 		this->queued[tile.base()] = false;
 		this->Repack(tile);
 	}
+	std::swap(this->touched, this->pending);
 	this->pending.clear();
 	this->Sweep();
 }
@@ -470,6 +471,7 @@ void WorldTiles::Rebuild()
 
 	this->queued.assign(count, false);
 	this->pending.clear();
+	this->touched.clear();
 	this->changed_blocks.assign(CeilDiv(this->size.width, BLOCK_TILES) * CeilDiv(this->size.height, BLOCK_TILES), false);
 	this->relief_blocks = this->changed_blocks;
 	this->changes = {{}, {}, true, true};

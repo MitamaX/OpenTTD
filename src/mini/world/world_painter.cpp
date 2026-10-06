@@ -13,10 +13,12 @@
 #include <array>
 
 #include "../core/camera.h"
+#include "../core/ground_trace.h"
 #include "../gpu/gl_api.h"
 #include "../gpu/gl_state.h"
 #include "forest_pass.h"
 #include "network_pass.h"
+#include "structure_pass.h"
 #include "terrain_pass.h"
 #include "water_pass.h"
 
@@ -62,6 +64,9 @@ WorldPainter::WorldPainter() : composite(SCREEN_SOURCES, COMPOSITE_SOURCES)
 {
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<NetworkPass>());
+	auto structures = std::make_unique<StructurePass>();
+	this->structures = structures.get();
+	this->passes.push_back(std::move(structures));
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field));
 }
@@ -89,6 +94,14 @@ void WorldPainter::Paint(const ShaderArea &area)
 	this->Render(SceneView::Of(_camera));
 	borrowed.Restore();
 	this->Composite(area);
+}
+
+std::optional<TileIndex> WorldPainter::BuildingAt(const Vec3 &origin, const Vec3 &direction) const
+{
+	std::optional<StructureHit> hit = this->structures->Pick(origin, direction);
+	if (!hit.has_value()) return std::nullopt;
+	if (TraceGround({origin, direction, LevelRise()}, hit->distance).has_value()) return std::nullopt;
+	return hit->tile;
 }
 
 void WorldPainter::Release()

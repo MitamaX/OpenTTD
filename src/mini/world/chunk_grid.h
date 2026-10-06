@@ -27,6 +27,7 @@ public:
 	Dimension Map() const { return this->map; }
 	size_t Count() const { return static_cast<size_t>(this->columns) * this->rows; }
 	TileSpan TilesOf(size_t index) const;
+	size_t IndexOf(int tx, int ty) const { return static_cast<size_t>(ty / this->chunk_tiles) * this->columns + tx / this->chunk_tiles; }
 
 	/* Every block holding a tile of the areas or one within the margin of them. */
 	template <class Visit>

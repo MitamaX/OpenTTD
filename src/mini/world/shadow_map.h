@@ -17,8 +17,9 @@
 #include "shader_program.h"
 #include "world_pass.h"
 
-/* A depth only program for a pass's meshes, built from the same vertex sources the pass draws them with. */
+/* A depth only program for a pass's meshes, built from the same vertex sources the pass draws them with; fragment sources may cut holes into what casts. */
 ShaderProgram CasterProgram(std::span<const char *const> vertex_sources);
+ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::span<const char *const> fragment_sources);
 
 class ShadowMap {
 public:

@@ -12,6 +12,7 @@
 
 #include <array>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -137,6 +138,8 @@ public:
 	void Touch(TileIndex tile);
 	void Sync();
 	WorldChanges TakeChanges();
+	/* The tiles the game marked that the last sync read again, whether their texels changed or not. */
+	std::span<const TileIndex> Touched() const { return this->touched; }
 
 	Dimension Size() const { return this->size; }
 	uint Peak() const { return this->peak; }
@@ -175,6 +178,7 @@ private:
 	std::vector<WaterTexel> water;
 	std::vector<NetworkTexel> network;
 	std::vector<TileIndex> pending;
+	std::vector<TileIndex> touched;
 	std::vector<bool> queued;
 	std::vector<bool> changed_blocks;
 	std::vector<bool> relief_blocks;

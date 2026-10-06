@@ -25,6 +25,7 @@ inline constexpr size_t MAX_POLYGON_CORNERS = 32;
 inline constexpr size_t RECT_CORNERS = 4;
 inline constexpr double VERTICAL_NZ = 0.2;
 inline constexpr double PLACE_EPS = 1e-9;
+inline constexpr double EAVE_OVERHANG = 0.03;
 
 Vec3 RenderNormal(const Vec3 &model_normal);
 

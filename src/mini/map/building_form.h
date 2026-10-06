@@ -14,6 +14,7 @@
 #include <array>
 #include <cassert>
 #include <span>
+#include <string_view>
 
 #include "../../core/enum_type.hpp"
 #include "../../direction_type.h"
@@ -38,15 +39,27 @@ enum class Material : uint8_t {
 
 enum class WindowGrid : uint8_t { None, Cottage, Terrace, Apartment, Shopfront, Office, Curtain, Arched, Industrial, Doors, End };
 
+inline constexpr std::array<std::string_view, to_underlying(Material::End)> MATERIAL_NAMES = {
+	"PLAIN", "BRICK", "RENDER", "TIMBER", "STONE", "CONCRETE", "GLASS", "CORRUGATED", "METAL", "PLANKS", "LATTICE",
+	"CLAY_TILE", "SLATE", "SHINGLE", "THATCH", "METAL_SEAM", "GRAVEL", "MEMBRANE", "ROOF_DECK", "GLASS_ROOF",
+	"FOUNDATION", "ASPHALT",
+};
+
+inline constexpr std::array<std::string_view, to_underlying(WindowGrid::End)> WINDOW_GRID_NAMES = {
+	"NONE", "COTTAGE", "TERRACE", "APARTMENT", "SHOPFRONT", "OFFICE", "CURTAIN", "ARCHED", "INDUSTRIAL", "DOORS",
+};
+
+/* A facade's ground band and storeys, the bays whole numbers of which fit a wall, and the windows standing evenly across each bay. */
 struct FacadeMetrics {
 	uint8_t ground_texels;
 	uint8_t storey_texels;
 	uint8_t bay_texels;
+	uint8_t pitch_texels;
 };
 
 inline constexpr std::array<FacadeMetrics, to_underlying(WindowGrid::End)> FACADE_METRICS = {{
-	{8, 8, 64}, {8, 8, 32}, {8, 8, 16}, {8, 8, 16}, {12, 8, 16},
-	{12, 8, 8}, {12, 8, 8}, {16, 16, 16}, {16, 16, 32}, {16, 16, 32},
+	{8, 8, 64, 64}, {8, 8, 64, 16}, {8, 8, 32, 16}, {8, 8, 16, 16}, {12, 8, 16, 16},
+	{12, 8, 8, 8}, {12, 8, 8, 8}, {16, 16, 16, 16}, {16, 16, 32, 32}, {16, 16, 32, 32},
 }};
 
 struct FacadeStrip {
@@ -96,11 +109,14 @@ constexpr int StoreysFor(WindowGrid grid, float wall_tiles)
 
 enum class SolidKind : uint8_t { Box, Cylinder, Decal };
 enum class SolidRole : uint8_t { Body, Detail };
+/* What a small solid stands for, so a detailed model can dress it as one. */
+enum class Fixture : uint8_t { None, Chimney, RooftopUnit, WaterTank };
 enum class RoofShape : uint8_t { Flat, Parapet, Gable, Hip, Pyramid, Shed, Sawtooth, Vault, Dome, Cone };
 
 struct Solid {
 	SolidKind kind = SolidKind::Box;
 	SolidRole role = SolidRole::Body;
+	Fixture fixture = Fixture::None;
 	float x0 = 0.0f;
 	float y0 = 0.0f;
 	float x1 = 1.0f;

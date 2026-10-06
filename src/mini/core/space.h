@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cmath>
+#include <optional>
 
 struct Vec3 {
 	double x;
@@ -89,5 +90,8 @@ using Frustum = std::array<Plane, 6>;
 
 Frustum FrustumOf(const Mat4 &view_projection);
 bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high);
+
+/* How far along a ray it enters a box, or nothing when it misses; a ray starting inside enters at once. */
+std::optional<double> BoxEntry(const Vec3 &origin, const Vec3 &direction, const Vec3 &low, const Vec3 &high);
 
 #endif /* MINI_CORE_SPACE_H */

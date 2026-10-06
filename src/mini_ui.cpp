@@ -205,7 +205,7 @@ static bool OpenVehicleWndAt(int sx, int sy)
 /* A building drawn over the point answers first, so a click on a depot's roof opens the depot. */
 static std::optional<TileIndex> InspectedTile(int sx, int sy)
 {
-	std::optional<TileIndex> picked = _volume_painter.PickAt({sx, sy});
+	std::optional<TileIndex> picked = _world_painter.BuildingAt(_camera.Eye(), _camera.SightThrough(sx, sy));
 	return picked.has_value() ? picked : TileUnder(_camera.MapAt(sx, sy));
 }
 
@@ -896,7 +896,6 @@ void MiniUiFrame(uint delta_ms)
 	_overlay.FollowTool(ToolLayer(_tool.Kind()));
 
 	_vehicle_painter.Paint(ppt, _overlay.Filter(), VehicleTier::Grounded);
-	_map_painter.Paint(_overlay.Filter());
 
 	PaintBlueprint(ppt);
 

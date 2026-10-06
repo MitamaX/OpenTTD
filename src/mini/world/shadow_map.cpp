@@ -48,9 +48,14 @@ struct ShadowsBlock {
 
 ShaderProgram CasterProgram(std::span<const char *const> vertex_sources)
 {
+	return CasterProgram(vertex_sources, CASTER_FRAGMENT_SOURCES);
+}
+
+ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::span<const char *const> fragment_sources)
+{
 	std::vector<const char *> sources = {CASTER_DEFINES};
 	sources.insert(sources.end(), vertex_sources.begin(), vertex_sources.end());
-	return ShaderProgram(sources, CASTER_FRAGMENT_SOURCES);
+	return ShaderProgram(sources, fragment_sources);
 }
 
 static Vec3 SunWay()

@@ -25,7 +25,6 @@
 
 static constexpr double PARAPET_INSET = 0.04;
 static constexpr double PARAPET_INNER_SHADE = 0.9;
-static constexpr double EAVE_OVERHANG = 0.03;
 static constexpr double HIP_SQUARE_EPS = 0.02;
 static constexpr double SAWTOOTH_PITCH = 0.33;
 static constexpr double SAWTOOTH_GLASS_SHARE = 0.15;
@@ -418,12 +417,24 @@ private:
 		this->Emit(lid, {cladding, UvMapping::Plan});
 	}
 
+	/* The parapet's coping rings the roof, which lies sunk behind it at the eaves. */
 	void BuildParapet()
 	{
 		double rim = this->Eave() + PARAPET_HEIGHT;
-		this->BuildLid(this->top_plan, rim, Cladding::Wall);
 		PlanRect inner = Grown(this->top_plan, -PARAPET_INSET, -PARAPET_INSET);
-		if (HasArea(inner)) this->BuildLid(inner, rim, Cladding::Roof, PARAPET_INNER_SHADE);
+		if (!HasArea(inner)) {
+			this->BuildLid(this->top_plan, rim, Cladding::Wall);
+			return;
+		}
+
+		std::array<PlanPoint, RECT_CORNERS> outside = CornersOf(this->top_plan);
+		std::array<PlanPoint, RECT_CORNERS> inside = CornersOf(inner);
+		for (size_t side = 0; side < RECT_CORNERS; side++) {
+			size_t next = (side + 1) % RECT_CORNERS;
+			this->Emit({this->At(outside[side], rim), this->At(outside[next], rim), this->At(inside[next], rim), this->At(inside[side], rim)}, {Cladding::Wall, UvMapping::Plan});
+			this->Emit({this->At(inside[next], this->Eave(), PARAPET_INNER_SHADE), this->At(inside[side], this->Eave(), PARAPET_INNER_SHADE), this->At(inside[side], rim), this->At(inside[next], rim)}, {Cladding::Wall, UvMapping::Wall});
+		}
+		this->BuildLid(inner, this->Eave(), Cladding::Roof, PARAPET_INNER_SHADE);
 	}
 
 	/* Every slope runs on past the walls by the overhang, so its eaves drop below the wall tops. */

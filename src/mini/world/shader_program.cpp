@@ -33,6 +33,7 @@
 #include "forest_field.h"
 #include "frame_units.h"
 #include "scene_view.h"
+#include "structure_mesh.h"
 #include "tree_models.h"
 
 #include "../../safeguards.h"
@@ -92,6 +93,19 @@ static void DefineFloats(std::string &header, std::string_view name, const std::
 	header += fmt::format("#define {} float[{}]({:.6f})\n", name, N, fmt::join(values, ", "));
 }
 
+template <class Field>
+static void DefineFacadeTexels(std::string &header, std::string_view name, Field field)
+{
+	std::array<double, FACADE_METRICS.size()> texels;
+	std::ranges::transform(FACADE_METRICS, texels.begin(), [&](const FacadeMetrics &metrics) { return static_cast<double>(metrics.*field); });
+	DefineFloats(header, name, texels);
+}
+
+static void DefineSurfaceFlag(std::string &header, std::string_view name, SurfaceFlag flag)
+{
+	DefineUnsigned(header, name, SurfaceFlags{flag}.base());
+}
+
 static double LumaShare(uint weight)
 {
 	return static_cast<double>(weight) / (1u << LUMA_SHIFT);
@@ -138,6 +152,17 @@ static std::string ShaderHeader()
 	DefineInt(header, "LAYER_NONE", to_underlying(MiniLayer::None));
 	DefineInt(header, "LAYER_RAIL", to_underlying(MiniLayer::Rail));
 	DefineInt(header, "LAYER_ROAD", to_underlying(MiniLayer::Road));
+	DefineCodes(header, "CLAD_", MATERIAL_NAMES);
+	DefineCodes(header, "WINDOWS_", WINDOW_GRID_NAMES);
+	DefineInt(header, "TEXELS_PER_TILE", TEXELS_PER_TILE);
+	DefineFacadeTexels(header, "FACADE_GROUND", &FacadeMetrics::ground_texels);
+	DefineFacadeTexels(header, "FACADE_STOREY", &FacadeMetrics::storey_texels);
+	DefineFacadeTexels(header, "FACADE_BAY", &FacadeMetrics::bay_texels);
+	DefineFacadeTexels(header, "FACADE_PITCH", &FacadeMetrics::pitch_texels);
+	DefineSurfaceFlag(header, "SURFACE_FACADE", SurfaceFlag::Facade);
+	DefineSurfaceFlag(header, "SURFACE_FRONT", SurfaceFlag::Front);
+	DefineSurfaceFlag(header, "SURFACE_ROOF", SurfaceFlag::Roof);
+	DefineSurfaceFlag(header, "SURFACE_DECAL", SurfaceFlag::Decal);
 	return header;
 }
 

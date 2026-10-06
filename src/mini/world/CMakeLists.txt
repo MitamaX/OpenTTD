@@ -30,6 +30,14 @@ add_files(
     station_models.h
     street_furniture.cpp
     street_furniture.h
+    structure_dressing.cpp
+    structure_dressing.h
+    structure_field.cpp
+    structure_field.h
+    structure_mesh.cpp
+    structure_mesh.h
+    structure_pass.cpp
+    structure_pass.h
     terrain_field.cpp
     terrain_field.h
     terrain_mesh.cpp

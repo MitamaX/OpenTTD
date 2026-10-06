@@ -304,6 +304,14 @@ Part Part::Detailed() const
 	return this->With([](Solid &solid) { solid.role = SolidRole::Detail; });
 }
 
+Part Part::Fixed(Fixture fixture) const
+{
+	return this->With([fixture](Solid &solid) {
+		solid.role = SolidRole::Detail;
+		solid.fixture = fixture;
+	});
+}
+
 Part Part::Height(float wall) const
 {
 	return this->With([wall](Solid &solid) { solid.wall = wall; });
@@ -507,6 +515,12 @@ SiteLivery LiveryFor(Finish finish, Material roof, uint32_t seed, uint32_t trim)
 
 float LevelAbove(const Solid &host)
 {
+	return host.Top();
+}
+
+/* A band on a parapeted host stands on its coping, as wide as the host itself. */
+static float CopingLevel(const Solid &host)
+{
 	return host.Top() + (host.roof == RoofShape::Parapet ? PARAPET_HEIGHT : 0.0f);
 }
 
@@ -525,7 +539,7 @@ Part CottageMass(const Plot &plot, float height, Axis ridge, DiagDirections fron
 
 Part CrownBand(const Solid &host, float height, uint32_t tint)
 {
-	return Part::Box(FootprintOf(host)).On(LevelAbove(host)).Detailed().Height(height).Clad(Material::Metal, tint).Parapeted(host.roof_material, host.roof_tint);
+	return Part::Box(FootprintOf(host)).On(CopingLevel(host)).Detailed().Height(height).Clad(Material::Metal, tint).Parapeted(host.roof_material, host.roof_tint);
 }
 
 static float SlotCentre(const Plot &deck, float slot, uint index)
@@ -546,7 +560,7 @@ void AddRooftopKit(BuildingForm &form, const Solid &roof, uint32_t seed)
 		float side = std::min(std::lerp(ROOFTOP_MIN_SIDE, ROOFTOP_MAX_SIDE, SeedShare(kit, first, KIT_FIELD_BITS)), slot);
 		float height = std::lerp(ROOFTOP_MIN_HEIGHT, ROOFTOP_MAX_HEIGHT, SeedShare(kit, first + KIT_FIELD_BITS, KIT_FIELD_BITS));
 		float cy = std::lerp(deck.y0 + side / 2.0f, deck.y1 - side / 2.0f, SeedShare(kit, first + 2 * KIT_FIELD_BITS, KIT_FIELD_BITS));
-		form.Add(Part::Square(SlotCentre(deck, slot, (unit + shift) % ROOFTOP_SLOTS), cy, side).On(LevelAbove(roof)).Detailed().Height(height).Clad(Material::Metal, ROOFTOP_TINT));
+		form.Add(Part::Square(SlotCentre(deck, slot, (unit + shift) % ROOFTOP_SLOTS), cy, side).On(LevelAbove(roof)).Fixed(Fixture::RooftopUnit).Height(height).Clad(Material::Metal, ROOFTOP_TINT));
 	}
 }
 

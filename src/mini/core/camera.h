@@ -115,6 +115,7 @@ public:
 	double Far() const { return this->far; }
 	Mat4 ViewMatrix() const;
 	Mat4 ProjectionMatrix() const;
+	Vec3 SightThrough(double sx, double sy) const;
 	MapVector Toward(TilePoint at) const;
 
 	ExactPoint ScreenStep(MapVector step) const;
@@ -148,7 +149,6 @@ private:
 	double ZoomDistance() const;
 	WorldPoint FocusPoint() const;
 	Vec3 Forward() const;
-	Vec3 SightThrough(double sx, double sy) const;
 	WorldPoint GroundUnder(double sx, double sy) const;
 	void Frame();
 	void Place(TilePoint focus);

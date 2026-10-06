@@ -78,6 +78,10 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/sky.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure_caster.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.frag
