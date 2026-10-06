@@ -74,6 +74,7 @@ RailLook RailLookOf(RailType railtype);
 inline constexpr uint8_t GROUND_DENSITY_MASK = 0x03;
 inline constexpr uint8_t GROUND_LUSH_BIT = 0x04;
 inline constexpr uint8_t FLORA_COUNT_MASK = 0x07;
+inline constexpr uint8_t FLORA_MOST_TREES = 4;
 inline constexpr uint8_t FLORA_AGE_SHIFT = 3;
 inline constexpr uint8_t FLORA_AGE_MASK = 0x03;
 inline constexpr uint8_t FLORA_KIND_SHIFT = 5;

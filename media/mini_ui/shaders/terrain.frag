@@ -63,31 +63,9 @@ const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
 );
 const float FURROWS_PER_TILE = 6.0;
 
-const int TREE_KINDS = 6;
-const vec3 TREE_DARK[TREE_KINDS] = vec3[TREE_KINDS](
-	vec3(0.16, 0.29, 0.11),
-	vec3(0.09, 0.21, 0.14),
-	vec3(0.07, 0.25, 0.09),
-	vec3(0.21, 0.35, 0.12),
-	vec3(0.25, 0.39, 0.23),
-	vec3(0.66, 0.28, 0.42)
-);
-const vec3 TREE_LIGHT[TREE_KINDS] = vec3[TREE_KINDS](
-	vec3(0.37, 0.52, 0.20),
-	vec3(0.22, 0.37, 0.24),
-	vec3(0.22, 0.47, 0.16),
-	vec3(0.47, 0.59, 0.24),
-	vec3(0.47, 0.61, 0.38),
-	vec3(0.98, 0.72, 0.82)
-);
 const float FOREST_COVER = 0.9;
-const float CROWNS_PER_TILE = 3.2;
-const float CROWN_RADIUS = 0.48;
-const float CROWN_SOFTNESS = 0.25;
-const float CROWN_THINNING = 0.35;
-const float CROWN_ROUNDNESS = 0.8;
-const float CROWN_AMBIENT = 0.55;
-const float GAP_COVER = 0.6;
+const float CANOPY_OCCLUSION = 0.45;
+const float CANOPY_VARIETY = 0.2;
 const float GRID_DEPTH = 0.6;
 
 const float COURSES_PER_TILE = 6.0;
@@ -342,17 +320,12 @@ vec3 Seabed(Water water, Grain grain)
 	return bed * (0.92 + 0.16 * grain.local);
 }
 
-int TreeCount(uvec4 codes)
-{
-	return int(codes.b & FLORA_COUNT_MASK);
-}
-
 float TileCover(ivec2 tile)
 {
-	return float(TreeCount(CodesAt(tile))) / 4.0;
+	return FloraCover(CodesAt(tile));
 }
 
-/* Until trees stand on their own, a forest is a canopy of round crowns lit by the sun, thinning out toward its edge. */
+/* The ground under a forest: kept from the sky by the crowns, and painted their colour where distance has thinned the trees themselves away. */
 Canopy Forest(vec2 p)
 {
 	vec2 q = p - TILE_CENTRE;
@@ -362,15 +335,10 @@ Canopy Forest(vec2 p)
 	if (density <= 0.0) return Canopy(vec4(0.0), 0.0);
 
 	uvec4 home = CodesAt(ivec2(floor(p)));
-	int kind = TreeCount(home) > 0 ? int(home.b >> FLORA_KIND_SHIFT) : int(TREE_BROADLEAF);
-	float shown = Resolved(CROWNS_PER_TILE);
-	vec2 offset = CellOffset(p * CROWNS_PER_TILE) / CROWN_RADIUS;
-	float filled = 1.0 - smoothstep(1.0 - CROWN_SOFTNESS, 1.0, length(offset) + (1.0 - density) * CROWN_THINNING);
-	vec3 dome = normalize(vec3(offset * CROWN_ROUNDNESS, sqrt(max(1.0 - dot(offset, offset), 0.0))));
-	float lit = mix(1.0, mix(CROWN_AMBIENT, 1.0, max(dot(dome, SunDirection()), 0.0)), shown * filled);
-	vec3 tone = mix(TREE_DARK[kind], TREE_LIGHT[kind], clamp(0.3 + 0.4 * Octave(p, 1.1), 0.0, 1.0)) * lit;
-	float alpha = density * FOREST_COVER * mix(1.0, mix(GAP_COVER, 1.0, filled), shown);
-	return Canopy(vec4(tone, 1.0) * alpha, density * TREE_SHADOW_DEPTH * 0.5);
+	uint kind = TreeCount(home) > 0 ? home.b >> FLORA_KIND_SHIFT : TREE_BROADLEAF;
+	float tint = ForestTint(TilePixelsAt(distance(Eye(), RenderPoint(v_world))));
+	vec3 tone = TREE_CANOPY[kind] * Varied(Octave(p, 1.1), CANOPY_VARIETY);
+	return Canopy(vec4(tone, 1.0) * density * FOREST_COVER * tint, density * CANOPY_OCCLUSION);
 }
 
 float GridLine(vec2 p, mat2 pixel)

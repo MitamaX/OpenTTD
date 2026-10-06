@@ -1,6 +1,10 @@
 add_files(
     chunk_grid.cpp
     chunk_grid.h
+    forest_field.cpp
+    forest_field.h
+    forest_pass.cpp
+    forest_pass.h
     frame_units.h
     scene_view.cpp
     scene_view.h
@@ -16,6 +20,8 @@ add_files(
     terrain_mesh.h
     terrain_pass.cpp
     terrain_pass.h
+    tree_models.cpp
+    tree_models.h
     water_mesh.cpp
     water_mesh.h
     water_pass.cpp

@@ -67,6 +67,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/caster.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/composite.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/flora.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lighting.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/network.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/scene.glsl
@@ -75,6 +76,8 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/sky.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/water.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/water.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/theme.rcss

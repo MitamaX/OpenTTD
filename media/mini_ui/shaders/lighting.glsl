@@ -4,6 +4,7 @@ const float SKY_TOWARD_SUN = 0.15;
 const float DIELECTRIC_REFLECTANCE = 0.04;
 const float SMOOTHEST = 0.04;
 const float GAMMA = 2.2;
+const float GLOW_FOCUS_POWER = 4.0;
 
 /* Colours picked on screen to the light they reflect. */
 vec3 Linear(vec3 display)
@@ -22,6 +23,11 @@ vec3 AmbientLight(vec3 normal)
 	vec2 toward = normalize(SunDirection().xy);
 	vec3 sky = SKY_LIGHT * (1.0 + SKY_TOWARD_SUN * dot(normal.xy, toward));
 	return mix(GROUND_BOUNCE, sky, normal.z * 0.5 + 0.5);
+}
+
+vec3 Diffuse(vec3 albedo, vec3 sun, vec3 normal, float occlusion)
+{
+	return albedo * (1.0 - DIELECTRIC_REFLECTANCE) * (sun + AmbientLight(normal) * occlusion);
 }
 
 /* A microfacet highlight, scaled so that a surface lit straight on by light it reflects whole comes out as bright as that light. */
@@ -47,6 +53,16 @@ vec3 Radiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float oc
 	vec3 light = SunDirection();
 	vec3 view = normalize(Eye() - position);
 	vec3 sun = SunRadiance() * max(dot(normal, light), 0.0) * SunVisibility(position, normal);
-	vec3 diffuse = albedo * (1.0 - DIELECTRIC_REFLECTANCE) * (sun + AmbientLight(normal) * occlusion);
-	return diffuse + sun * Highlight(normal, view, light, roughness);
+	return Diffuse(albedo, sun, normal, occlusion) + sun * Highlight(normal, view, light, roughness);
+}
+
+/* Leaves let light through: the sun wraps on past where they turn away from it, and glows through them where they are seen against it. */
+vec3 FoliageRadiance(vec3 albedo, vec3 normal, vec3 position, float translucency, float occlusion)
+{
+	vec3 light = SunDirection();
+	vec3 view = normalize(Eye() - position);
+	float wrapped = max(dot(normal, light) + translucency, 0.0) / (1.0 + translucency);
+	float glow = translucency * pow(max(dot(-view, light), 0.0), GLOW_FOCUS_POWER);
+	vec3 sun = SunRadiance() * (wrapped + glow) * SunVisibility(position, normal);
+	return Diffuse(albedo, sun, normal, occlusion);
 }

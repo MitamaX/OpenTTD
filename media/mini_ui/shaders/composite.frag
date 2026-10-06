@@ -27,7 +27,7 @@ vec3 Tonemap(vec3 radiance)
 /* Half a display step of noise breaks the sky's smooth gradients into steps too fine to see. */
 float Dither(vec2 fragment)
 {
-	return (fract(52.9829189 * fract(dot(fragment, vec2(0.06711056, 0.00583715)))) - 0.5) * DITHER;
+	return (ScreenNoise(fragment) - 0.5) * DITHER;
 }
 
 void main()

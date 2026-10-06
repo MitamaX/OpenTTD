@@ -23,15 +23,16 @@
 #include "../../debug.h"
 #include "../../settings_type.h"
 #include "../core/canvas.h"
-#include "../core/sunlight.h"
 #include "../core/tones.h"
 #include "../gpu/gl_api.h"
 #include "../map/map_overlay.h"
 #include "../map/network_style.h"
 #include "../map/world_tiles.h"
 #include "../map/zoom_detail.h"
+#include "forest_field.h"
 #include "frame_units.h"
 #include "scene_view.h"
+#include "tree_models.h"
 
 #include "../../safeguards.h"
 
@@ -58,19 +59,41 @@ static void DefineFloat(std::string &header, std::string_view name, double value
 	header += fmt::format("#define {} {:.6f}\n", name, value);
 }
 
-static void DefineVector(std::string &header, std::string_view name, double x, double y, double z)
-{
-	header += fmt::format("#define {} vec3({:.4f}, {:.4f}, {:.4f})\n", name, x, y, z);
-}
-
 static void DefineLookWidths(std::string &header, std::string_view name, double RailLookWidths::*width)
 {
 	header += fmt::format("#define {} float[RAIL_LOOKS]({:.4f})\n", name, fmt::join(RAIL_LOOK_WIDTHS | std::views::transform(width), ", "));
 }
 
+static std::string Vector(double x, double y, double z)
+{
+	return fmt::format("vec3({:.4f}, {:.4f}, {:.4f})", x, y, z);
+}
+
+static std::string Tone(uint32_t argb)
+{
+	return Vector(ChannelShare(Red(argb)), ChannelShare(Green(argb)), ChannelShare(Blue(argb)));
+}
+
+static void DefineVector(std::string &header, std::string_view name, const std::string &vector)
+{
+	header += fmt::format("#define {} {}\n", name, vector);
+}
+
 static void DefineTone(std::string &header, std::string_view name, uint32_t argb)
 {
-	DefineVector(header, name, ChannelShare(Red(argb)), ChannelShare(Green(argb)), ChannelShare(Blue(argb)));
+	DefineVector(header, name, Tone(argb));
+}
+
+template <size_t N>
+static void DefineTones(std::string &header, std::string_view name, const std::array<uint32_t, N> &tones)
+{
+	header += fmt::format("#define {} vec3[{}]({})\n", name, N, fmt::join(tones | std::views::transform(Tone), ", "));
+}
+
+template <size_t N>
+static void DefineFloats(std::string &header, std::string_view name, const std::array<double, N> &values)
+{
+	header += fmt::format("#define {} float[{}]({:.6f})\n", name, N, fmt::join(values, ", "));
 }
 
 static double LumaShare(uint weight)
@@ -90,6 +113,9 @@ static std::string ShaderHeader()
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
 	DefineUnsigned(header, "FLORA_COUNT_MASK", FLORA_COUNT_MASK);
 	DefineUnsigned(header, "FLORA_KIND_SHIFT", FLORA_KIND_SHIFT);
+	DefineUnsigned(header, "FLORA_AGE_SHIFT", FLORA_AGE_SHIFT);
+	DefineUnsigned(header, "FLORA_AGE_MASK", FLORA_AGE_MASK);
+	DefineUnsigned(header, "FLORA_MOST_TREES", FLORA_MOST_TREES);
 	DefineUnsigned(header, "RAIL_LOOK_MASK", NETWORK_RAIL_LOOK_MASK);
 	DefineUnsigned(header, "KERB_BIT", NETWORK_KERB_BIT);
 	DefineFloat(header, "RAIL_BED_HALF", RAIL_BED_HALF);
@@ -107,7 +133,14 @@ static std::string ShaderHeader()
 	DefineFloat(header, "RESOLVED_REPEAT_PIXELS", RESOLVED_REPEAT_PIXELS);
 	DefineFloat(header, "INFRASTRUCTURE_PPT", INFRASTRUCTURE_PPT);
 	DefineFloat(header, "GRID_FADE_PPT", GRID_FADE_PPT);
-	DefineFloat(header, "TREE_SHADOW_DEPTH", SHADOW_DEPTH);
+	DefineInt(header, "TREE_DETAILS", static_cast<int>(TREE_DETAILS));
+	DefineFloats(header, "TREE_DETAIL_FLOORS", TREE_DETAIL_FLOORS);
+	DefineFloats(header, "TREE_AGE_SCALES", TREE_AGE_SCALES);
+	DefineInt(header, "TREE_GROWN", to_underlying(TreeAge::Grown));
+	DefineFloat(header, "TREE_CROSSFADE", TREE_CROSSFADE_OCTAVES);
+	DefineFloat(header, "TREE_SWAY_HEIGHT", TREE_SWAY_HEIGHT);
+	DefineFloat(header, "TREE_LARGEST_SCALE", TREE_LARGEST_SCALE);
+	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "BALLAST", COL_BALLAST);
 	DefineTone(header, "CONCRETE", COL_CONCRETE);
@@ -117,7 +150,7 @@ static std::string ShaderHeader()
 	DefineTone(header, "DISTANT_ROAD", COL_ROAD);
 	DefineTone(header, "RAIL_ACCENT", COL_RAIL_ACCENT);
 	DefineTone(header, "ROAD_ACCENT", COL_ROAD_ACCENT);
-	DefineVector(header, "LUMA_WEIGHTS", LumaShare(LUMA_RED), LumaShare(LUMA_GREEN), LumaShare(LUMA_BLUE));
+	DefineVector(header, "LUMA_WEIGHTS", Vector(LumaShare(LUMA_RED), LumaShare(LUMA_GREEN), LumaShare(LUMA_BLUE)));
 	DefineFloat(header, "GREY_FLOOR", ChannelShare(GREY_FLOOR));
 	DefineInt(header, "LANDSCAPE_ARCTIC", to_underlying(LandscapeType::Arctic));
 	DefineInt(header, "LANDSCAPE_TROPIC", to_underlying(LandscapeType::Tropic));

@@ -49,6 +49,18 @@ vec3 Eye()
 	return u_eye.xyz;
 }
 
+/* How many screen pixels one tile spans this far from the eye. */
+float TilePixelsAt(float distance)
+{
+	return u_projection[1][1] * u_screen.y * 0.5 / max(distance, u_lens.x);
+}
+
+/* A value in [0, 1) per pixel that neighbouring pixels spread evenly over. */
+float ScreenNoise(vec2 fragment)
+{
+	return fract(52.9829189 * fract(dot(fragment, vec2(0.06711056, 0.00583715))));
+}
+
 vec3 RenderPoint(vec3 world)
 {
 	return vec3(world.xy, world.z * LevelRise());
