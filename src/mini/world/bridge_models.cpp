@@ -82,9 +82,12 @@ static constexpr double MEMBER_HALF = 0.012;
 static constexpr double THIN_HALF = 0.004;
 static constexpr double TOWER_LATERAL = 0.43;
 static constexpr double TOWER_HALF = 0.03;
-static constexpr double TOWER_TOP = 0.9;
+static constexpr double TOWER_SHARE = 1.0 / 6.0;
+static constexpr double TOWER_LEAST = 0.9;
+static constexpr double TOWER_PER_TILE = 0.06;
+static constexpr double TOWER_MOST = 1.8;
 static constexpr double CABLE_LATERAL = 0.4;
-static constexpr double CABLE_TOP = 0.84;
+static constexpr double CABLE_BELOW_TOP = 0.06;
 static constexpr double CABLE_SAG = 0.1;
 static constexpr double ARCH_LATERAL = 0.37;
 static constexpr double ARCH_RISE_BASE = 0.2;
@@ -333,7 +336,7 @@ private:
 		}
 	}
 
-	/* Towers stand over the first and the last middle tile; the cables sag between them and fall back to the heads beyond. */
+	/* Towers stand a sixth of the way in from either head, taller the longer the span; the cables sag between them and fall back to the heads beyond. */
 	void Suspension(ModelMesh &mesh) const
 	{
 		double length = this->frame.Length();
@@ -341,22 +344,24 @@ private:
 			this->Beam(mesh);
 			return;
 		}
-		double near = HALF_TILE;
-		double far = length - HALF_TILE;
+		double near = std::floor(length * TOWER_SHARE) + HALF_TILE;
+		double far = length - near;
+		double top = std::clamp(TOWER_LEAST + TOWER_PER_TILE * length, TOWER_LEAST, TOWER_MOST);
+		double saddle = top - CABLE_BELOW_TOP;
 		auto cable = [=](double span) {
-			if (span <= near) return CABLE_TOP * span / near;
-			if (span >= far) return CABLE_TOP * (length - span) / (length - far);
+			if (span <= near) return saddle * span / near;
+			if (span >= far) return saddle * (length - span) / (length - far);
 			double share = (span - near) / (far - near) * 2.0 - 1.0;
-			return CABLE_SAG + (CABLE_TOP - CABLE_SAG) * share * share;
+			return CABLE_SAG + (saddle - CABLE_SAG) * share * share;
 		};
 		this->Hung(mesh, CABLE_LATERAL, cable);
 		double middle = this->first + HALF_TILE;
 		if (std::abs(middle - near) > 0.01 && std::abs(middle - far) > 0.01) return;
 		for (double side : {-1.0, 1.0}) {
 			double lateral = side * TOWER_LATERAL;
-			this->Member(mesh, this->frame.Point(middle, lateral, this->BedDepth(middle, lateral)), this->frame.Point(middle, lateral, TOWER_TOP), TOWER_HALF);
+			this->Member(mesh, this->frame.Point(middle, lateral, this->BedDepth(middle, lateral)), this->frame.Point(middle, lateral, top), TOWER_HALF);
 		}
-		for (double height : {-DECK_DEPTH - TOWER_HALF, CABLE_TOP - TOWER_HALF, TOWER_TOP - TOWER_HALF}) {
+		for (double height : {-DECK_DEPTH - TOWER_HALF, saddle - TOWER_HALF, top - TOWER_HALF}) {
 			this->Member(mesh, this->frame.Point(middle, -TOWER_LATERAL, height), this->frame.Point(middle, TOWER_LATERAL, height), TOWER_HALF * 0.8);
 		}
 	}
