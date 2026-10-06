@@ -68,7 +68,7 @@ bool InputMode::Unwind()
 	return true;
 }
 
-std::optional<TilePoint> InputMode::FollowTarget()
+std::optional<WorldPoint> InputMode::FollowTarget()
 {
 	if (!this->Following()) return std::nullopt;
 

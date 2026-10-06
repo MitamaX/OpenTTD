@@ -18,7 +18,7 @@
 uint32_t PaletteRgb(PixelColour p)
 {
 	Colour c = _cur_palette.palette[p.p];
-	return 0xFF000000U | (static_cast<uint32_t>(c.r) << 16) | (static_cast<uint32_t>(c.g) << 8) | c.b;
+	return PackArgb(CHANNEL_MAX, c.r, c.g, c.b);
 }
 
 uint32_t CargoRgb(CargoType ct)

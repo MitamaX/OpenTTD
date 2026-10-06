@@ -11,6 +11,7 @@
 #include "rml_renderer.h"
 
 #include <RmlUi/Core/Core.h>
+#include <RmlUi/Core/Dictionary.h>
 
 #include "../../core/format.hpp"
 #include "../../core/string_consumer.hpp"
@@ -19,6 +20,12 @@
 #include "../../safeguards.h"
 
 static constexpr std::string_view TEXTURE_PREFIX = "?texture/";
+static constexpr const char SHADER_DECORATOR[] = "shader";
+
+RmlRenderer::~RmlRenderer()
+{
+	ReleaseShaderPainters();
+}
 
 Rml::String RmlRenderer::TextureSource(TextureId texture)
 {
@@ -59,4 +66,35 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i &texture_dimensions, c
 void RmlRenderer::ReleaseTexture(Rml::TextureHandle texture_handle)
 {
 	if (this->lent.erase(texture_handle) == 0) RenderInterface_GL3::ReleaseTexture(texture_handle);
+}
+
+/* `decorator: shader(name)` reaches a registered painter by its name; any other shader stays upstream's. */
+Rml::CompiledShaderHandle RmlRenderer::CompileShader(const Rml::String &name, const Rml::Dictionary &parameters)
+{
+	ShaderPainter *painter = name == SHADER_DECORATOR ? FindShaderPainter(Rml::Get(parameters, "value", Rml::String())) : nullptr;
+	if (painter == nullptr) return RenderInterface_GL3::CompileShader(name, parameters);
+
+	auto shader = std::make_unique<PaintedShader>(PaintedShader{painter, Rml::Get(parameters, "dimensions", Rml::Vector2f(0.0f))});
+	Rml::CompiledShaderHandle handle = reinterpret_cast<Rml::CompiledShaderHandle>(shader.get());
+	this->painted.emplace(handle, std::move(shader));
+	return handle;
+}
+
+/* A painter draws with its own program, so the program upstream believes is bound no longer is. */
+void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shader_handle, Rml::CompiledGeometryHandle geometry_handle, Rml::Vector2f translation, Rml::TextureHandle texture)
+{
+	auto it = this->painted.find(shader_handle);
+	if (it == this->painted.end()) {
+		RenderInterface_GL3::RenderShader(shader_handle, geometry_handle, translation, texture);
+		return;
+	}
+
+	const PaintedShader &shader = *it->second;
+	shader.painter->Paint({translation.x, translation.y, translation.x + shader.size.x, translation.y + shader.size.y});
+	this->ResetProgram();
+}
+
+void RmlRenderer::ReleaseShader(Rml::CompiledShaderHandle shader_handle)
+{
+	if (this->painted.erase(shader_handle) == 0) RenderInterface_GL3::ReleaseShader(shader_handle);
 }

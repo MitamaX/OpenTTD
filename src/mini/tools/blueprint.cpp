@@ -22,7 +22,6 @@
 #include "../../tile_map.h"
 #include "../../waypoint_func.h"
 #include "../core/camera.h"
-#include "../core/canvas.h"
 #include "../core/tones.h"
 #include "../input/pointer_router.h"
 #include "../map/tile_shapes.h"
@@ -45,14 +44,29 @@ static constexpr uint SITE_ALPHA = 35;
 static constexpr uint SITE_EDGE_ALPHA = 130;
 static constexpr uint CATCHMENT_ALPHA = 26;
 
-static int TrackWidth(int ppt)
+static double HalfTiles(int pixels)
 {
-	return std::max(2, ppt / 5);
+	return pixels / (2.0 * _camera.Ppt());
 }
 
-static int BandWidth(int ppt)
+static double TrackHalfWidth(int ppt)
 {
-	return std::max(2, ppt / 3);
+	return HalfTiles(std::max(2, ppt / 5));
+}
+
+static double BandHalfWidth(int ppt)
+{
+	return HalfTiles(std::max(2, ppt / 3));
+}
+
+static double SpanHalfWidth(int ppt)
+{
+	return HalfTiles(std::max(2, ppt / 2));
+}
+
+static double PlatformRailHalfWidth(int ppt)
+{
+	return HalfTiles(std::max(1, ppt / 6));
 }
 
 static int EdgeWidth(int ppt)
@@ -70,18 +84,11 @@ static uint32_t DragColour()
 	return _tool.Removing() ? COL_BP_RM : COL_BP;
 }
 
-static void PaintFacing(const Rect &tile, DiagDirection d, int ppt, int width, uint32_t c)
-{
-	int cx = (tile.left + tile.right) / 2;
-	int cy = (tile.top + tile.bottom) / 2;
-	_canvas.ThickLine(cx, cy, cx + _diag_dx[d] * (ppt / 2), cy + _diag_dy[d] * (ppt / 2), width, c);
-}
-
 static void PaintFootprint(TileIndex tile, int w, int h, uint32_t c)
 {
 	int tx = TileX(tile);
 	int ty = TileY(tile);
-	_canvas.BlendRect(_camera.AreaRect(tx, ty, tx + w - 1, ty + h - 1), c, FOOTPRINT_ALPHA);
+	FillArea(tx, ty, tx + w - 1, ty + h - 1, c, FOOTPRINT_ALPHA);
 }
 
 static void PaintRail(const RailPlan &plan, int ppt)
@@ -89,7 +96,7 @@ static void PaintRail(const RailPlan &plan, int ppt)
 	uint32_t c = DragColour();
 	for (size_t i = 0; i < plan.pieces.size(); i++) {
 		auto [tile, track] = plan.pieces[i];
-		DrawTrackPiece(track, _camera.TileRect(tile), TrackWidth(ppt), _estimate.PlanColour(c, i));
+		DrawTrackPiece(track, TileX(tile), TileY(tile), TrackHalfWidth(ppt), _estimate.PlanColour(c, i));
 	}
 }
 
@@ -97,20 +104,21 @@ static void PaintRoad(const LinePlan &plan, int ppt)
 {
 	uint32_t c = DragColour();
 	for (size_t i = 0; i < plan.tiles.size(); i++) {
-		DrawAxisBand(plan.axis, _camera.TileRect(plan.tiles[i]), BandWidth(ppt), _estimate.PlanColour(c, i));
+		TileIndex tile = plan.tiles[i];
+		DrawAxisBand(plan.axis, TileX(tile), TileY(tile), BandHalfWidth(ppt), _estimate.PlanColour(c, i));
 	}
 }
 
 static void PaintBridge(const LinePlan &plan, int ppt)
 {
 	uint32_t c = plan.BridgeLength() > 0 ? _estimate.PlanColour(COL_BP) : COL_BP_RM;
-	int w = std::max(2, ppt / 2);
 	for (size_t i = 0; i < plan.tiles.size(); i++) {
-		Rect r = _camera.TileRect(plan.tiles[i]);
+		int tx = TileX(plan.tiles[i]);
+		int ty = TileY(plan.tiles[i]);
 		if (i == 0 || i + 1 == plan.tiles.size()) {
-			_canvas.BlendRect(r, c, RAMP_ALPHA);
+			FillTile(tx, ty, c, RAMP_ALPHA);
 		} else {
-			DrawAxisBand(plan.axis, r, w, c);
+			DrawAxisBand(plan.axis, tx, ty, SpanHalfWidth(ppt), c);
 		}
 	}
 }
@@ -119,22 +127,18 @@ static void PaintSignals(const SignalPlan &plan, int ppt)
 {
 	uint32_t c = DragColour();
 	for (size_t i = 0; i < plan.tiles.size(); i++) {
-		Rect r = _camera.TileRect(plan.tiles[i]);
+		int tx = TileX(plan.tiles[i]);
+		int ty = TileY(plan.tiles[i]);
 		uint32_t tc = _estimate.PlanColour(c, i);
-		_canvas.BlendRect(r, tc, CUE_ALPHA);
-		DrawTrackPiece(plan.track, r, TrackWidth(ppt), tc);
+		FillTile(tx, ty, tc, CUE_ALPHA);
+		DrawTrackPiece(plan.track, tx, ty, TrackHalfWidth(ppt), tc);
 	}
 }
 
-static AreaPlan OnScreen(const AreaPlan &area)
+static AreaPlan VisiblePart(const AreaPlan &area)
 {
-	return {
-		true,
-		std::max(area.x0, static_cast<int>(std::floor(_camera.MapXAt(0)))),
-		std::max(area.y0, static_cast<int>(std::floor(_camera.MapYAt(0)))),
-		std::min(area.x1, static_cast<int>(std::floor(_camera.MapXAt(_camera.Height() - 1)))),
-		std::min(area.y1, static_cast<int>(std::floor(_camera.MapYAt(_camera.Width() - 1)))),
-	};
+	TileSpan seen = _camera.VisibleTiles();
+	return {true, std::max(area.x0, seen.tx0), std::max(area.y0, seen.ty0), std::min(area.x1, seen.tx1), std::min(area.y1, seen.ty1)};
 }
 
 static void PaintArea(MiniTool kind, const AreaPlan &area, int ppt)
@@ -142,19 +146,14 @@ static void PaintArea(MiniTool kind, const AreaPlan &area, int ppt)
 	if (!area.valid) return;
 
 	uint32_t c = _estimate.PlanColour((_tool.Removing() || kind == MiniTool::Demolish) ? COL_BP_RM : COL_BP);
-	Rect frame = _camera.AreaRect(area.x0, area.y0, area.x1, area.y1);
 	/* A filter leaves most of the area standing, so the fill goes on the tiles
 	 * that come off and the frame keeps showing how far the drag reaches. The
 	 * area can be the whole map, so only what is on screen is walked. */
 	bool filtered = _tool.FiltersClear();
-	if (filtered) {
-		OnScreen(area).ForEach([&](int tx, int ty) {
-			if (_clear_filter.Matches(TileXY(tx, ty))) _canvas.BlendRect(_camera.TileRect(tx, ty), c, FILL_ALPHA);
-		});
-	} else {
-		_canvas.BlendRect(frame, c, FILL_ALPHA);
-	}
-	_canvas.Frame(frame, EdgeWidth(ppt), c);
+	VisiblePart(area).ForEach([&](int tx, int ty) {
+		if (!filtered || _clear_filter.Matches(TileXY(tx, ty))) FillTile(tx, ty, c, FILL_ALPHA);
+	});
+	FrameArea(area.x0, area.y0, area.x1, area.y1, EdgeWidth(ppt), c);
 
 	/* A refused patch is painted over the area, so the run shows its holes
 	 * before the drag is let go. */
@@ -164,14 +163,13 @@ static void PaintArea(MiniTool kind, const AreaPlan &area, int ppt)
 			/* Outside the filter is not a hole; nothing was going to come
 			 * off there in the first place. */
 			if (filtered && !_clear_filter.Matches(TileXY(tx, ty))) return;
-			_canvas.BlendRect(_camera.TileRect(tx, ty), COL_BP_NO, HOLE_ALPHA);
+			FillTile(tx, ty, COL_BP_NO, HOLE_ALPHA);
 		});
 	}
 
 	if (kind != MiniTool::Station || _tool.Removing()) return;
 	Axis axis = _choices.StationAxis();
-	int rail_w = std::max(1, ppt / 6);
-	area.ForEach([&](int tx, int ty) { DrawAxisBand(axis, _camera.TileRect(tx, ty), rail_w, c); });
+	area.ForEach([&](int tx, int ty) { DrawAxisBand(axis, tx, ty, PlatformRailHalfWidth(ppt), c); });
 }
 
 static void PaintDrag(MiniTool kind, int ppt)
@@ -196,16 +194,17 @@ static void PaintSites(int ppt)
 	int b = FineEdgeWidth(ppt);
 	for (TileIndex tile : _sites.Tiles()) {
 		if (tile == hover) continue;
-		Rect r = _camera.TileRect(tile);
-		_canvas.BlendRect(r, COL_BP, SITE_ALPHA);
-		_canvas.Frame(r, b, COL_BP, SITE_EDGE_ALPHA);
+		int tx = TileX(tile);
+		int ty = TileY(tile);
+		FillTile(tx, ty, COL_BP, SITE_ALPHA);
+		FrameArea(tx, ty, tx, ty, b, COL_BP, SITE_EDGE_ALPHA);
 	}
 }
 
-static void PaintSlopeFacing(TileIndex tile, const Rect &r, int ppt, uint32_t c)
+static void PaintSlopeFacing(TileIndex tile, int ppt, uint32_t c)
 {
 	DiagDirection d = GetInclinedSlopeDirection(GetTileSlope(tile));
-	if (d != INVALID_DIAGDIR) PaintFacing(r, d, ppt, TrackWidth(ppt), c);
+	if (d != INVALID_DIAGDIR) DrawFacing(TileX(tile), TileY(tile), d, TrackHalfWidth(ppt), c);
 }
 
 /* The bore runs straight, so the box between the two mouths is the tunnel;
@@ -218,10 +217,9 @@ static void PaintBore(TileIndex mouth, int ppt, uint32_t c)
 
 	int tx = TileX(mouth), ty = TileY(mouth);
 	int ex = TileX(end), ey = TileY(end);
-	_canvas.BlendRect(_camera.AreaRect(std::min(tx, ex), std::min(ty, ey), std::max(tx, ex), std::max(ty, ey)), c, BORE_ALPHA);
-	Rect far = _camera.TileRect(end);
-	_canvas.BlendRect(far, c, FILL_ALPHA);
-	_canvas.Frame(far, EdgeWidth(ppt), c);
+	FillArea(std::min(tx, ex), std::min(ty, ey), std::max(tx, ex), std::max(ty, ey), c, BORE_ALPHA);
+	FillTile(ex, ey, c, FILL_ALPHA);
+	FrameArea(ex, ey, ex, ey, EdgeWidth(ppt), c);
 }
 
 static void PaintClick(MiniTool kind, int ppt)
@@ -229,42 +227,43 @@ static void PaintClick(MiniTool kind, int ppt)
 	uint32_t c = _estimate.PlanColour(_ctrl_pressed ? COL_BP_RM : COL_BP);
 	TilePoint at = CursorPoint();
 	TileIndex tile = SiteTileAt(at);
-	Rect r = _camera.TileRect(tile);
-	_canvas.BlendRect(r, c, FILL_ALPHA);
+	int tx = TileX(tile);
+	int ty = TileY(tile);
+	FillTile(tx, ty, c, FILL_ALPHA);
 	if (_ctrl_pressed) return;
 
 	switch (kind) {
 		case MiniTool::Signal: {
 			Track track = SignalTrackAt(tile, at);
-			if (track != INVALID_TRACK) DrawTrackPiece(track, r, TrackWidth(ppt), c);
+			if (track != INVALID_TRACK) DrawTrackPiece(track, tx, ty, TrackHalfWidth(ppt), c);
 			break;
 		}
 
 		case MiniTool::BusStop:
 		case MiniTool::TruckStop:
 			if (_choices.StopThrough()) {
-				DrawAxisBand(DiagDirToAxis(_choices.StopFacing()), r, BandWidth(ppt), c);
+				DrawAxisBand(DiagDirToAxis(_choices.StopFacing()), tx, ty, BandHalfWidth(ppt), c);
 			} else {
-				PaintFacing(r, _choices.StopFacing(), ppt, BandWidth(ppt), c);
+				DrawFacing(tx, ty, _choices.StopFacing(), BandHalfWidth(ppt), c);
 			}
 			break;
 
 		case MiniTool::RailWaypoint:
 		case MiniTool::RoadWaypoint: {
 			Axis axis = kind == MiniTool::RailWaypoint ? GetAxisForNewRailWaypoint(tile) : GetAxisForNewRoadWaypoint(tile);
-			if (IsValidAxis(axis)) DrawAxisBand(axis, r, BandWidth(ppt), c);
+			if (IsValidAxis(axis)) DrawAxisBand(axis, tx, ty, BandHalfWidth(ppt), c);
 			break;
 		}
 
 		case MiniTool::RailTunnel:
 		case MiniTool::RoadTunnel:
-			PaintSlopeFacing(tile, r, ppt, c);
+			PaintSlopeFacing(tile, ppt, c);
 			PaintBore(tile, ppt, c);
 			break;
 
 		case MiniTool::Dock:
 		case MiniTool::Lock:
-			PaintSlopeFacing(tile, r, ppt, c);
+			PaintSlopeFacing(tile, ppt, c);
 			break;
 
 		/* The depot spans two tiles along its axis; show the real footprint. */
@@ -286,7 +285,7 @@ static void PaintClick(MiniTool kind, int ppt)
 
 		case MiniTool::TrainDepot:
 		case MiniTool::RoadDepot:
-			PaintFacing(r, _choices.PointFacing(), ppt, TrackWidth(ppt), c);
+			DrawFacing(tx, ty, _choices.PointFacing(), TrackHalfWidth(ppt), c);
 			break;
 
 		default:
@@ -303,7 +302,7 @@ static void PaintHover(MiniTool kind)
 	/* The filter would take nothing here, so the cue stays but drops the
 	 * removal red. */
 	if (_tool.FiltersClear() && !_clear_filter.Matches(*tile)) c = COL_BP_NO;
-	_canvas.BlendRect(_camera.TileRect(*tile), c, CUE_ALPHA);
+	FillTile(TileX(*tile), TileY(*tile), c, CUE_ALPHA);
 }
 
 static uint CatchmentRadius(MiniTool kind)
@@ -364,13 +363,12 @@ static void PaintCatchment(MiniTool kind, int ppt)
 		std::min<int>(Map::SizeX() - 1, core->x1 + r),
 		std::min<int>(Map::SizeY() - 1, core->y1 + r),
 	};
-	Rect frame = _camera.AreaRect(served.x0, served.y0, served.x1, served.y1);
-	_canvas.BlendRect(frame, MINI_CH_ACCENT, CATCHMENT_ALPHA);
-	_canvas.Frame(frame, FineEdgeWidth(ppt), MINI_CH_ACCENT);
+	FillArea(served.x0, served.y0, served.x1, served.y1, MINI_CH_ACCENT, CATCHMENT_ALPHA);
+	FrameArea(served.x0, served.y0, served.x1, served.y1, FineEdgeWidth(ppt), MINI_CH_ACCENT);
 
 	served.ForEach([](int tx, int ty) {
 		TileType tt = GetTileType(TileXY(tx, ty));
-		if (tt == MP_HOUSE || tt == MP_INDUSTRY) _canvas.BlendRect(_camera.TileRect(tx, ty), MINI_CH_ACCENT, FILL_ALPHA);
+		if (tt == MP_HOUSE || tt == MP_INDUSTRY) FillTile(tx, ty, MINI_CH_ACCENT, FILL_ALPHA);
 	});
 }
 

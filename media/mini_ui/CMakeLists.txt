@@ -63,6 +63,10 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/map.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ground.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ground.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/network.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/theme.rcss
 )
 

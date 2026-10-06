@@ -405,7 +405,7 @@
 			"pause_text": "일시 정지",
 			"tool_shown": true,
 			"title": "철도역  철도",
-			"hint": "드래그로 배치  Q/E 회전",
+			"hint": "드래그로 배치  R 회전",
 			"cost": "예상 비용: $12,400",
 			"cost_tone": "plain"
 		}

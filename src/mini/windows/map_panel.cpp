@@ -12,7 +12,6 @@
 
 #include <RmlUi/Core.h>
 
-#include "../../gfx_func.h"
 #include "../../map_func.h"
 #include "../../town.h"
 #include "../core/camera.h"
@@ -48,6 +47,31 @@ static bool Overlaps(const Rml::Rectanglef &a, const Rml::Rectanglef &b)
 	return a.Left() < b.Right() && b.Left() < a.Right() && a.Top() < b.Bottom() && b.Top() < a.Bottom();
 }
 
+struct Footprint {
+	ExactPoint centre;
+	double width;
+	double height;
+	double turn;
+};
+
+static ExactPoint Midpoint(ExactPoint a, ExactPoint b)
+{
+	return {(a.x + b.x) / 2, (a.y + b.y) / 2};
+}
+
+/* The sides are measured between the midpoints of opposite edges, so ground that bends the corners still gives a rectangle. */
+static Footprint FootprintOf(const std::array<ExactPoint, 4> &corners)
+{
+	auto [top_left, top_right, bottom_right, bottom_left] = corners;
+	ExactPoint left = Midpoint(top_left, bottom_left);
+	ExactPoint right = Midpoint(top_right, bottom_right);
+	ExactPoint top = Midpoint(top_left, top_right);
+	ExactPoint bottom = Midpoint(bottom_left, bottom_right);
+	double across_x = right.x - left.x;
+	double across_y = right.y - left.y;
+	return {Midpoint(left, right), std::hypot(across_x, across_y), std::hypot(bottom.x - top.x, bottom.y - top.y), std::atan2(across_y, across_x)};
+}
+
 MapPanel::MapPanel() : Panel("map", MAP_DOCUMENT, "지도", MapTabs())
 {
 	this->wide = true;
@@ -75,22 +99,42 @@ void MapPanel::Collect()
 	}
 }
 
-/* Scanning every tile costs too much to repeat per frame, so the picture is repainted on a slow beat. */
-void MapPanel::AfterLayout()
+Rml::Element *MapPanel::Frame() const
 {
-	Rml::ElementDocument &document = *this->Document();
-	Rml::Element *area = document.GetElementById("map");
-	Rml::Element *frame = document.GetElementById("map-frame");
-	if (area == nullptr || frame == nullptr) return;
+	return this->Document()->GetElementById("map-frame");
+}
+
+/* The frame keeps the map's proportions inside the room the panel gives it. */
+std::optional<Rml::Vector2i> MapPanel::FrameSize() const
+{
+	Rml::Element *area = this->Document()->GetElementById("map");
+	if (area == nullptr) return std::nullopt;
 
 	Rml::Vector2f room = area->GetBox().GetSize(Rml::BoxArea::Content);
 	float scale = std::min(room.x / Map::SizeY(), room.y / Map::SizeX());
-	Rml::Vector2i size(std::max(1, static_cast<int>(Map::SizeY() * scale)), std::max(1, static_cast<int>(Map::SizeX() * scale)));
-	SetPixels(*frame, Rml::PropertyId::Width, static_cast<float>(size.x));
-	SetPixels(*frame, Rml::PropertyId::Height, static_cast<float>(size.y));
+	return Rml::Vector2i(std::max(1, static_cast<int>(Map::SizeY() * scale)), std::max(1, static_cast<int>(Map::SizeX() * scale)));
+}
+
+bool MapPanel::Shape()
+{
+	Rml::Element *frame = this->Frame();
+	std::optional<Rml::Vector2i> size = this->FrameSize();
+	if (frame == nullptr || !size.has_value()) return false;
+
+	bool resized = SetPixels(*frame, Rml::PropertyId::Width, static_cast<float>(size->x));
+	resized |= SetPixels(*frame, Rml::PropertyId::Height, static_cast<float>(size->y));
+	return resized;
+}
+
+/* Scanning every tile costs too much to repeat per frame, so the picture is repainted on a slow beat. */
+void MapPanel::AfterLayout()
+{
+	Rml::Element *frame = this->Frame();
+	std::optional<Rml::Vector2i> size = this->FrameSize();
+	if (frame == nullptr || !size.has_value()) return;
 
 	bool stale = std::chrono::steady_clock::now() - this->painted_at >= REPAINT_INTERVAL;
-	if (stale || this->Mode() != this->painted_mode || size != Rml::Vector2i(this->overview.Width(), this->overview.Height())) this->Repaint(*frame, size);
+	if (stale || this->Mode() != this->painted_mode || *size != Rml::Vector2i(this->overview.Width(), this->overview.Height())) this->Repaint(*frame, *size);
 	this->PlaceView(*frame);
 	this->PlaceTowns(*frame);
 }
@@ -103,19 +147,21 @@ void MapPanel::Repaint(Rml::Element &frame, Rml::Vector2i size)
 	if (auto *image = dynamic_cast<RasterImage *>(frame.GetElementById("map-image")); image != nullptr) image->Show(this->overview.Pixels(), size);
 }
 
+/* The camera sees a turned rectangle of the map, so its box is laid out upright around the centre and turned onto it. */
 void MapPanel::PlaceView(Rml::Element &frame)
 {
 	Rml::Element *view = frame.GetElementById("map-view");
 	if (view == nullptr) return;
 
-	double half_y = _screen.width * 0.5 / _camera.Ppt();
-	double half_x = _screen.height * 0.5 / _camera.Ppt();
-	Point top_left = this->overview.PixelOf(_camera.X() - half_x, _camera.Y() - half_y);
-	Point bottom_right = this->overview.PixelOf(_camera.X() + half_x, _camera.Y() + half_y);
-	SetPixels(*view, Rml::PropertyId::Left, static_cast<float>(top_left.x));
-	SetPixels(*view, Rml::PropertyId::Top, static_cast<float>(top_left.y));
-	SetPixels(*view, Rml::PropertyId::Width, static_cast<float>(bottom_right.x - top_left.x));
-	SetPixels(*view, Rml::PropertyId::Height, static_cast<float>(bottom_right.y - top_left.y));
+	std::array<TilePoint, 4> seen = _camera.ViewCorners();
+	std::array<ExactPoint, 4> corners;
+	std::ranges::transform(seen, corners.begin(), [this](const TilePoint &corner) { return this->overview.ExactPixelOf(corner.first, corner.second); });
+	Footprint footprint = FootprintOf(corners);
+	SetPixels(*view, Rml::PropertyId::Left, static_cast<float>(footprint.centre.x - footprint.width / 2));
+	SetPixels(*view, Rml::PropertyId::Top, static_cast<float>(footprint.centre.y - footprint.height / 2));
+	SetPixels(*view, Rml::PropertyId::Width, static_cast<float>(footprint.width));
+	SetPixels(*view, Rml::PropertyId::Height, static_cast<float>(footprint.height));
+	view->SetProperty(Rml::PropertyId::Transform, Rml::Transform::MakeProperty({Rml::Transforms::Rotate2D(static_cast<float>(footprint.turn), Rml::Unit::RAD)}));
 }
 
 /* A name sits centred above its town; one that would leave the map or land on a name already placed is hidden. */

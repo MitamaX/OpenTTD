@@ -10,6 +10,9 @@
 #include "../../stdafx.h"
 #include "vehicle_motion.h"
 
+#include <algorithm>
+
+#include "../../tile_map.h"
 #include "../../timer/timer_game_tick.h"
 #include "../../vehicle_base.h"
 
@@ -23,6 +26,12 @@ static constexpr uint64_t STALE_TICKS = 64;
 static constexpr int32_t MAX_GLIDE_DISTANCE = 2 * TILE_SIZE;
 
 VehicleMotion _vehicle_motion;
+
+/* Inside a tunnel or on a bridge the game keeps one of its ends as the vehicle's tile. */
+static bool RidesDrawnGround(const Vehicle *v)
+{
+	return v->IsGroundVehicle() && !IsTileType(v->tile, MP_TUNNELBRIDGE);
+}
 
 void VehicleMotion::Advance(uint delta_ms)
 {
@@ -40,28 +49,38 @@ void VehicleMotion::Advance(uint delta_ms)
 	}
 }
 
-/* Returns the display position in tile units. Entries older than one tick
- * and jumps wider than two tiles snap instead of streaking. */
-TilePoint VehicleMotion::Position(const Vehicle *v)
+/* Returns the display position in tiles and height levels. Entries older
+ * than one tick and jumps wider than two tiles snap instead of streaking. */
+WorldPoint VehicleMotion::Position(const Vehicle *v)
 {
 	Snapshot &e = this->snapshots[v->index.base()];
 	if (e.tick != this->tick) {
-		if (e.tick + 1 == this->tick) {
-			e.px = e.cx;
-			e.py = e.cy;
-		} else {
-			e.px = v->x_pos;
-			e.py = v->y_pos;
-		}
-		e.cx = v->x_pos;
-		e.cy = v->y_pos;
+		e.previous = (e.tick + 1 == this->tick) ? e.current : PositionOf(v);
+		e.current = PositionOf(v);
 		e.tick = this->tick;
 	}
-	if (std::abs(e.cx - e.px) > MAX_GLIDE_DISTANCE || std::abs(e.cy - e.py) > MAX_GLIDE_DISTANCE) {
-		e.px = e.cx;
-		e.py = e.cy;
+	if (std::abs(e.current.x - e.previous.x) > MAX_GLIDE_DISTANCE || std::abs(e.current.y - e.previous.y) > MAX_GLIDE_DISTANCE) {
+		e.previous = e.current;
 	}
-	return {(e.px + (e.cx - e.px) * this->alpha) / TILE_SIZE, (e.py + (e.cy - e.py) * this->alpha) / TILE_SIZE};
+	double x = this->Interpolated(e.previous.x, e.current.x) / TILE_SIZE;
+	double y = this->Interpolated(e.previous.y, e.current.y) / TILE_SIZE;
+	return Grounded(v, {x, y, this->Interpolated(e.previous.z, e.current.z) / TILE_HEIGHT});
+}
+
+WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)
+{
+	if (!RidesDrawnGround(v)) return point;
+	return {point.x, point.y, GroundLevel(point.x, point.y)};
+}
+
+VehicleMotion::TickPosition VehicleMotion::PositionOf(const Vehicle *v)
+{
+	return {v->x_pos, v->y_pos, v->z_pos};
+}
+
+double VehicleMotion::Interpolated(int32_t previous, int32_t current) const
+{
+	return previous + (current - previous) * this->alpha;
 }
 
 void VehicleMotion::Clear()

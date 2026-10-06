@@ -21,6 +21,7 @@
 #include "../core/camera.h"
 #include "../core/canvas.h"
 #include "../core/tones.h"
+#include "tile_shapes.h"
 #include "zoom_detail.h"
 
 #include "../../table/strings.h"
@@ -29,14 +30,18 @@
 
 static constexpr int PLATE_PAD = 3;
 static constexpr int OFFSCREEN_MARGIN = 300;
-static constexpr uint LIGHT_PLATE_LUMINANCE = 140;
+static constexpr uint TRANSPARENT_PLATE_ALPHA = 0xAA;
 
 MapLabels _map_labels;
 
 static TextColour PlateTextColour(uint32_t c)
 {
-	uint lum = (77 * ((c >> 16) & 0xFFU) + 151 * ((c >> 8) & 0xFFU) + 28 * (c & 0xFFU)) >> 8;
-	return lum >= LIGHT_PLATE_LUMINANCE ? TC_BLACK : TC_WHITE;
+	return IsLightTone(c) ? TC_BLACK : TC_WHITE;
+}
+
+static Point TileAnchor(TileIndex tile)
+{
+	return ScreenOfTileCentre(TileX(tile), TileY(tile));
 }
 
 /* Town names always show for navigation; station and industry names join
@@ -49,27 +54,28 @@ void MapLabels::Paint(int ppt)
 
 	/* Signs are the player's own notes, so they show at every zoom tier. */
 	for (const Sign *si : Sign::Iterate()) {
-		if (si->name.empty()) continue;
-		this->Place(_camera.ScreenX(si->y / (double)TILE_SIZE), _camera.ScreenY(si->x / (double)TILE_SIZE), si->name, COL_ST_BUOY, false, PlateTextColour(COL_ST_BUOY), si->index);
+		Point at = _camera.ScreenOf({si->x / (double)TILE_SIZE, si->y / (double)TILE_SIZE, si->z / (double)TILE_HEIGHT});
+		if (si->name.empty() || !this->Visible(at)) continue;
+		this->Place(at, si->name, COL_ST_BUOY, false, PlateTextColour(COL_ST_BUOY), si->index);
 	}
 	for (const Town *t : Town::Iterate()) {
-		if (!detail.all_town_names && !t->larger_town) continue;
-		std::string str = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
-		this->Place(_camera.ScreenX(TileY(t->xy) + 0.5), _camera.ScreenY(TileX(t->xy) + 0.5), str, MINI_CH_PANEL, true, TC_WHITE, t->index);
+		Point at = TileAnchor(t->xy);
+		if ((!detail.all_town_names && !t->larger_town) || !this->Visible(at)) continue;
+		this->Place(at, GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population), MINI_CH_PANEL, true, TC_WHITE, t->index);
 	}
 	if (!detail.station_names) return;
 
 	/* Oil rigs already carry the plate of their neutral station. */
 	for (const Industry *ind : Industry::Iterate()) {
-		if (ind->neutral_station != nullptr) continue;
-		TileIndex tile = ind->location.GetCenterTile();
-		std::string str = GetString(STR_INDUSTRY_NAME, ind->index);
-		this->Place(_camera.ScreenX(TileY(tile) + 0.5), _camera.ScreenY(TileX(tile) + 0.5), str, COL_IND, false, PlateTextColour(COL_IND), ind->index);
+		Point at = TileAnchor(ind->location.GetCenterTile());
+		if (ind->neutral_station != nullptr || !this->Visible(at)) continue;
+		this->Place(at, GetString(STR_INDUSTRY_NAME, ind->index), COL_IND, false, PlateTextColour(COL_IND), ind->index);
 	}
 	for (const Station *st : Station::Iterate()) {
-		std::string str = GetString(STR_VIEWPORT_STATION, st->index, st->facilities);
+		Point at = TileAnchor(st->xy);
+		if (!this->Visible(at)) continue;
 		uint32_t plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COL_OBJ : _company_rgb[_company_colours[st->owner]];
-		this->Place(_camera.ScreenX(TileY(st->xy) + 0.5), _camera.ScreenY(TileX(st->xy) + 0.5), str, plate, false, PlateTextColour(plate), st->index);
+		this->Place(at, GetString(STR_VIEWPORT_STATION, st->index, st->facilities), plate, false, PlateTextColour(plate), st->index);
 	}
 }
 
@@ -84,25 +90,23 @@ std::optional<LabelTarget> MapLabels::HitAt(int x, int y) const
 	return hit->target;
 }
 
-bool MapLabels::Visible(int cx, int cy) const
+bool MapLabels::Visible(Point at) const
 {
 	int below = GetCharacterHeight(FS_NORMAL) + 20;
-	return cx >= -OFFSCREEN_MARGIN && cy >= 0 && cx < _camera.Width() + OFFSCREEN_MARGIN && cy < _camera.Height() + below;
+	return at.x >= -OFFSCREEN_MARGIN && at.y >= 0 && at.x < _camera.Width() + OFFSCREEN_MARGIN && at.y < _camera.Height() + below;
 }
 
 /* Flat mini-style plate; drawn in mini UI screen space because the native
  * sign kdtree lives in viewport coordinates. */
-void MapLabels::Place(int cx, int cy, std::string_view str, uint32_t fill, bool transparent, TextColour tc, LabelTarget target)
+void MapLabels::Place(Point at, std::string_view str, uint32_t fill, bool transparent, TextColour tc, LabelTarget target)
 {
-	if (!this->Visible(cx, cy)) return;
-
 	const CanvasText *e = _canvas.Text(str);
 	int tw = e != nullptr ? e->w : (int)GetStringBoundingBox(str).width;
 	int w = tw + 2 * PLATE_PAD;
 	int h = GetCharacterHeight(FS_NORMAL) + 2 * PLATE_PAD;
-	Rect r = {cx - w / 2, cy - h - 3, cx - w / 2 + w - 1, cy - 4};
+	Rect r = {at.x - w / 2, at.y - h - 3, at.x - w / 2 + w - 1, at.y - 4};
 	if (transparent) {
-		_map_draw.FillRoundRect(r.left, r.top, r.right, r.bottom, PLATE_PAD, (fill & 0x00FFFFFFU) | 0xAA000000U);
+		_map_draw.FillRoundRect(r.left, r.top, r.right, r.bottom, PLATE_PAD, WithAlpha(fill, TRANSPARENT_PLATE_ALPHA));
 	} else {
 		_map_draw.FillRoundRect(r.left, r.top, r.right, r.bottom, PLATE_PAD, MINI_CH_EDGE);
 		_map_draw.FillRoundRect(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1, PLATE_PAD, fill);

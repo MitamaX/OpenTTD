@@ -29,7 +29,8 @@ protected:
 	void OnRender() override;
 
 private:
-	void Draw(Rml::RenderManager &render_manager, Rml::Geometry &geometry, const DrawBatch &batch) const;
+	void DrawBatches(Rml::RenderManager &render_manager, const DrawList &list);
+	void Draw(Rml::RenderManager &render_manager, Rml::Geometry &geometry, const DrawList &list, const DrawBatch &batch) const;
 
 	std::vector<Rml::Geometry> batches;
 };

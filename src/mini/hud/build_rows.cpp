@@ -19,10 +19,12 @@
 #include "../../core/format.hpp"
 #include "../../direction_func.h"
 #include "../../industrytype.h"
+#include "../../map_func.h"
 #include "../../newgrf_airport.h"
 #include "../../rail.h"
 #include "../../road.h"
 #include "../../strings_func.h"
+#include "../core/camera.h"
 #include "../tools/build_tool.h"
 #include "../tools/tool_choices.h"
 #include "../ui/menu_tile.h"
@@ -32,12 +34,16 @@
 
 #include "../../safeguards.h"
 
-/* The map is drawn with north-east up, so each diagonal direction is a
- * quarter turn clockwise from the one before it. */
-static constexpr int DEGREES_PER_DIAGDIR = 90;
-
 static constexpr DiagDirection FACING_TURNS[] = {DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_NW};
 static constexpr DiagDirection FACING_AXES[] = {DIAGDIR_SW, DIAGDIR_SE};
+
+/* An icon points the way its direction runs across the screen, so the row turns with the view. */
+static Rml::String ScreenTurn(DiagDirection d)
+{
+	TileIndexDiffC step = TileIndexDiffCByDiagDir(d);
+	double heading = _camera.HeadingDegrees({static_cast<double>(step.x), static_cast<double>(step.y)});
+	return fmt::format("rotate({:.1f}deg)", heading);
+}
 
 class RowList {
 public:
@@ -64,7 +70,7 @@ public:
 		BuildRow row;
 		row.option = to_underlying(option);
 		row.mark = IconPath(axis ? "axis" : "arrow");
-		for (DiagDirection d : facings) row.cells.push_back({d, fmt::format("rotate({}deg)", d * DEGREES_PER_DIAGDIR), d == current});
+		for (DiagDirection d : facings) row.cells.push_back({d, ScreenTurn(d), d == current});
 		this->rows.push_back(std::move(row));
 	}
 

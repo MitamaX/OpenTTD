@@ -1,0 +1,12 @@
+add_files(
+    facade_painters.cpp
+    facade_painters.h
+    luma_cell.cpp
+    luma_cell.h
+    material_atlas.cpp
+    material_atlas.h
+    pattern_noise.cpp
+    pattern_noise.h
+    surface_painters.cpp
+    surface_painters.h
+)

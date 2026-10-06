@@ -5,51 +5,51 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file mini_atlas.cpp Builds the mini UI sprite atlas at run time and draws tinted sub-rectangle quads from it. */
+/** @file mini_atlas.cpp Builds the map atlas at run time and draws tinted sprite quads from it. */
 
 #include "stdafx.h"
 
+#include <algorithm>
 #include <cmath>
+#include <numeric>
+#include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "fileio_func.h"
 #include "mini_atlas.h"
+#include "mini/art/material_atlas.h"
 #include "mini/core/canvas.h"
 #include "mini/gpu/art_image.h"
+#include "mini/gpu/texture_store.h"
 
 #include "safeguards.h"
 
-/* Cells keep a wide transparent gutter so mipmap levels never blend
- * neighbouring sprites into each other. */
-static const int ATLAS_CELL = 64;
-static const int ATLAS_GUTTER = 8;
-static const int ATLAS_COLS = 4;
 /* One cell past the sprites is solid white, the texel untextured map shapes sample. */
-static const int SOLID_CELL = (int)MiniSprite::End;
-static const int ATLAS_ROWS = (SOLID_CELL + ATLAS_COLS) / ATLAS_COLS;
-static const int ATLAS_WIDTH = ATLAS_COLS * ATLAS_CELL;
-static const int ATLAS_HEIGHT = ATLAS_ROWS * ATLAS_CELL;
-static const int ATLAS_CONTENT = ATLAS_CELL - 2 * ATLAS_GUTTER;
+static constexpr int SOLID_CELL = to_underlying(MiniSprite::End);
+static constexpr int SPRITE_TEXELS = SPRITE_GRID.content_w;
+static constexpr int SAMPLES_PER_AXIS = 4;
+static constexpr int SAMPLES_PER_TEXEL = SAMPLES_PER_AXIS * SAMPLES_PER_AXIS;
+static constexpr double SAMPLE_CENTRE = 0.5;
+static constexpr uint32_t CLEAR_WHITE = 0x00FFFFFFU;
+static constexpr uint32_t OPAQUE_WHITE = 0xFFFFFFFFU;
+
+static_assert(SOLID_CELL < SPRITE_GRID.columns * SPRITE_GRID.rows);
+static_assert(SPRITE_GRID.content_w == SPRITE_GRID.content_h);
 
 static TextureId _atlas_tex = NO_TEXTURE;
-static bool _has_art[(size_t)MiniSprite::End];
-static TextureId _tile_tex[(size_t)MiniSprite::End];
-
-/* Ground kinds also get a standalone repeat-wrapped texture, so merged runs
- * of equal tiles can draw as one quad without per-tile seams. */
-static bool IsGroundSlot(MiniSprite s)
-{
-	return s >= MiniSprite::Grass && s <= MiniSprite::Water;
-}
 
 /* Art file base names inside mini_art, one per MiniSprite slot. */
 static const char *_slot_names[] = {
-	"disc", "diamond", "triangle", "tree", "road_vehicle", "ship", "aircraft",
-	"grass", "field", "rock", "snow", "desert", "water",
-	"house", "industry", "station", "object", "depot", "tunnel",
+	"disc", "diamond", "triangle", "road_vehicle", "ship", "aircraft",
 };
-static_assert(lengthof(_slot_names) == (size_t)MiniSprite::End);
+static_assert(lengthof(_slot_names) == to_underlying(MiniSprite::End));
+
+static size_t TexelIndex(int x, int y)
+{
+	return static_cast<size_t>(y) * ATLAS_WIDTH + x;
+}
 
 /* Shapes live in a unit square; x grows right, y grows down. */
 static bool SpriteHit(MiniSprite sprite, double x, double y)
@@ -58,7 +58,6 @@ static bool SpriteHit(MiniSprite sprite, double x, double y)
 	double dy = y - 0.5;
 	switch (sprite) {
 		case MiniSprite::Disc:
-		case MiniSprite::Tree:
 		case MiniSprite::RoadVeh:
 			return dx * dx + dy * dy <= 0.25;
 		case MiniSprite::Diamond:
@@ -71,89 +70,98 @@ static bool SpriteHit(MiniSprite sprite, double x, double y)
 	}
 }
 
+/* A texel is as opaque as the share of its samples the shape covers. */
+static uint32_t PlaceholderTexel(MiniSprite sprite, int x, int y)
+{
+	uint hits = 0;
+	for (int sy = 0; sy < SAMPLES_PER_AXIS; sy++) {
+		for (int sx = 0; sx < SAMPLES_PER_AXIS; sx++) {
+			double u = (x + (sx + SAMPLE_CENTRE) / SAMPLES_PER_AXIS) / SPRITE_TEXELS;
+			double v = (y + (sy + SAMPLE_CENTRE) / SAMPLES_PER_AXIS) / SPRITE_TEXELS;
+			if (SpriteHit(sprite, u, v)) hits++;
+		}
+	}
+	return WithAlpha(OPAQUE_WHITE, hits * CHANNEL_MAX / SAMPLES_PER_TEXEL);
+}
+
+static void PaintPlaceholder(std::span<uint32_t> px, Point origin, MiniSprite sprite)
+{
+	for (int y = 0; y < SPRITE_TEXELS; y++) {
+		for (int x = 0; x < SPRITE_TEXELS; x++) px[TexelIndex(origin.x + x, origin.y + y)] = PlaceholderTexel(sprite, x, y);
+	}
+}
+
+static void CopyArt(std::span<uint32_t> px, Point origin, std::span<const uint32_t> art)
+{
+	for (int y = 0; y < SPRITE_TEXELS; y++) std::ranges::copy(art.subspan(static_cast<size_t>(y) * SPRITE_TEXELS, SPRITE_TEXELS), px.begin() + TexelIndex(origin.x, origin.y + y));
+}
+
+/* A sprite without an art file of its own stands in as a white shape. */
+static void PlaceSprite(std::span<uint32_t> px, MiniSprite sprite, std::span<uint32_t> art)
+{
+	std::string path = _personal_dir + "mini_art/" + _slot_names[to_underlying(sprite)] + ".png";
+	Point origin = ContentOrigin(SPRITE_GRID, to_underlying(sprite));
+	if (LoadArtImage(path, art, SPRITE_TEXELS, SPRITE_TEXELS)) {
+		CopyArt(px, origin, art);
+	} else {
+		PaintPlaceholder(px, origin, sprite);
+	}
+}
+
+/* The gutter is white too, so every mipmap level still samples white at the cell's centre. */
+static void PaintSolidCell(std::span<uint32_t> px)
+{
+	Point content = ContentOrigin(SPRITE_GRID, SOLID_CELL);
+	for (int y = 0; y < SPRITE_GRID.pitch_y; y++) {
+		std::fill_n(px.begin() + TexelIndex(content.x - ATLAS_GUTTER, content.y - ATLAS_GUTTER + y), SPRITE_GRID.pitch_x, OPAQUE_WHITE);
+	}
+}
+
 void MiniAtlasEnsure()
 {
 	if (_atlas_tex != NO_TEXTURE) return;
 
-	std::vector<uint32_t> px((size_t)ATLAS_WIDTH * ATLAS_HEIGHT, 0x00FFFFFFU);
-	std::vector<uint32_t> art((size_t)ATLAS_CONTENT * ATLAS_CONTENT);
+	std::vector<uint32_t> px(static_cast<size_t>(ATLAS_WIDTH) * ATLAS_HEIGHT, CLEAR_WHITE);
+	std::vector<uint32_t> art(static_cast<size_t>(SPRITE_TEXELS) * SPRITE_TEXELS);
+	for (int sprite = 0; sprite < to_underlying(MiniSprite::End); sprite++) PlaceSprite(px, static_cast<MiniSprite>(sprite), art);
+	PaintSolidCell(px);
+	PaintMaterialCells(px);
 
-	for (int i = 0; i < (int)MiniSprite::End; i++) {
-		int ox = (i % ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
-		int oy = (i / ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
-		std::string path = _personal_dir + "mini_art/" + _slot_names[i] + ".png";
-		_has_art[i] = LoadArtImage(path, art, ATLAS_CONTENT, ATLAS_CONTENT);
-		if (_has_art[i]) {
-			for (int y = 0; y < ATLAS_CONTENT; y++) {
-				std::copy_n(&art[(size_t)y * ATLAS_CONTENT], ATLAS_CONTENT, &px[(size_t)(oy + y) * ATLAS_WIDTH + ox]);
-			}
-			if (IsGroundSlot((MiniSprite)i)) _tile_tex[i] = _textures.Add(art, Dimension(ATLAS_CONTENT, ATLAS_CONTENT), TextureFilter::Mipmapped, TextureWrap::Repeat);
-			continue;
-		}
-		for (int y = 0; y < ATLAS_CONTENT; y++) {
-			for (int x = 0; x < ATLAS_CONTENT; x++) {
-				int hits = 0;
-				for (int sy = 0; sy < 4; sy++) {
-					for (int sx = 0; sx < 4; sx++) {
-						double u = (x + (sx + 0.5) / 4.0) / ATLAS_CONTENT;
-						double v = (y + (sy + 0.5) / 4.0) / ATLAS_CONTENT;
-						if (SpriteHit((MiniSprite)i, u, v)) hits++;
-					}
-				}
-				uint32_t a = hits * 255 / 16;
-				px[(size_t)(oy + y) * ATLAS_WIDTH + ox + x] = (a << 24) | 0x00FFFFFFU;
-			}
-		}
-	}
-
-	int solid_x = (SOLID_CELL % ATLAS_COLS) * ATLAS_CELL;
-	int solid_y = (SOLID_CELL / ATLAS_COLS) * ATLAS_CELL;
-	for (int y = 0; y < ATLAS_CELL; y++) std::fill_n(&px[(size_t)(solid_y + y) * ATLAS_WIDTH + solid_x], ATLAS_CELL, 0xFFFFFFFFU);
-
-	_atlas_tex = _textures.Add(px, Dimension(ATLAS_WIDTH, ATLAS_HEIGHT), TextureFilter::Mipmapped);
-	_map_draw.SetSolid({_atlas_tex, (solid_x + ATLAS_CELL / 2.0f) / ATLAS_WIDTH, (solid_y + ATLAS_CELL / 2.0f) / ATLAS_HEIGHT});
+	_atlas_tex = _textures.Add(px, Dimension(ATLAS_WIDTH, ATLAS_HEIGHT), TextureFilter::Mipmapped, TextureWrap::Clamp, MAX_MIP_LEVEL);
+	_map_draw.SetSolid(MiniAtlasSolid());
 }
 
-/* Frees the textures so the next frame rebuilds them and re-reads art files. */
+/* Frees the texture so the next frame rebuilds it and re-reads the art files; the materials come back from their cache. */
 void MiniAtlasReload()
 {
 	_map_draw.SetSolid({});
 	_textures.Remove(std::exchange(_atlas_tex, NO_TEXTURE));
-	for (TextureId &t : _tile_tex) _textures.Remove(std::exchange(t, NO_TEXTURE));
 }
 
-bool MiniAtlasHasArt(MiniSprite sprite)
+SolidTexel MiniAtlasSolid()
 {
-	return sprite < MiniSprite::End && _has_art[(size_t)sprite];
+	UvRect cell = ContentUv(SPRITE_GRID, SOLID_CELL);
+	return {_atlas_tex, std::midpoint(cell.left, cell.right), std::midpoint(cell.top, cell.bottom)};
 }
 
-static bool AtlasSprite(MiniSprite sprite, int x0, int y0, int x1, int y1, int angle_deg, uint32_t argb)
+static bool Drawable(MiniSprite sprite)
 {
-	if (_atlas_tex == NO_TEXTURE || sprite >= MiniSprite::End || x1 < x0 || y1 < y0) return false;
-	float left = ((int)sprite % ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
-	float top = ((int)sprite / ATLAS_COLS) * ATLAS_CELL + ATLAS_GUTTER;
-	UvRect cell = {left / ATLAS_WIDTH, top / ATLAS_HEIGHT, (left + ATLAS_CONTENT) / ATLAS_WIDTH, (top + ATLAS_CONTENT) / ATLAS_HEIGHT};
-	_map_draw.Image(_atlas_tex, {x0, y0, x1, y1}, cell, angle_deg, argb);
+	return _atlas_tex != NO_TEXTURE && sprite < MiniSprite::End;
+}
+
+static bool AtlasSprite(MiniSprite sprite, int x0, int y0, int x1, int y1, float angle_deg, uint32_t argb)
+{
+	if (!Drawable(sprite) || x1 < x0 || y1 < y0) return false;
+	_map_draw.Image(_atlas_tex, {x0, y0, x1, y1}, ContentUv(SPRITE_GRID, to_underlying(sprite)), angle_deg, argb);
 	return true;
 }
 
 bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t argb)
 {
-	return AtlasSprite(sprite, x0, y0, x1, y1, 0, argb);
+	return AtlasSprite(sprite, x0, y0, x1, y1, 0.0f, argb);
 }
 
-bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, int angle_deg, uint32_t argb)
+bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, float angle_deg, uint32_t argb)
 {
 	return AtlasSprite(sprite, cx - r, cy - r, cx + r, cy + r, angle_deg, argb);
-}
-
-/* One quad for a vertical run of equal tiles; the repeat wrap keeps the
- * pattern continuous, so no per-tile draw calls and no seams. */
-bool MiniAtlasTileRun(MiniSprite sprite, int x0, int y0, int x1, int y1, int run_tiles, uint32_t argb)
-{
-	if (sprite >= MiniSprite::End || x1 < x0 || y1 < y0) return false;
-	TextureId tex = _tile_tex[(size_t)sprite];
-	if (tex == NO_TEXTURE) return false;
-	_map_draw.Image(tex, {x0, y0, x1, y1}, {0.0f, 0.0f, 1.0f, static_cast<float>(std::max(run_tiles, 1))}, 0, argb);
-	return true;
 }

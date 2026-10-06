@@ -3,6 +3,9 @@ add_files(
     camera.h
     canvas.cpp
     canvas.h
+    seed.h
+    sunlight.cpp
+    sunlight.h
     system_pointer.cpp
     system_pointer.h
     tones.cpp

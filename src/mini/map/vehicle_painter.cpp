@@ -5,29 +5,48 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file vehicle_painter.cpp Vehicles on the top-down map: consists, silhouettes, headings and cargo. */
+/** @file vehicle_painter.cpp Vehicles on the map: consists, silhouettes, headings and cargo. */
 
 #include "../../stdafx.h"
 #include "vehicle_painter.h"
 
+#include <cmath>
+#include <numbers>
+
+#include "../../bridge_map.h"
 #include "../../company_base.h"
 #include "../../company_func.h"
 #include "../../ground_vehicle.hpp"
+#include "../../map_func.h"
 #include "../../vehicle_base.h"
 #include "../core/camera.h"
 #include "../core/canvas.h"
 #include "../core/tones.h"
+#include "tile_shapes.h"
 #include "vehicle_motion.h"
 
 #include "../../safeguards.h"
 
+static constexpr double HALF_TURN_DEGREES = 180.0;
+static constexpr double HEAD_DOT_REACH = 0.62;
+static constexpr double HALF_UNIT = 0.5;
+static constexpr double ALOFT_LEVELS = 0.75;
+
 VehiclePainter _vehicle_painter;
 
-static constexpr int8_t _dir_dx[8] = {-1, 0, 1, 1, 1, 0, -1, -1};
-static constexpr int8_t _dir_dy[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
+/* The map direction a vehicle facing this way moves along, one tile long. */
+static MapVector Heading(Direction direction)
+{
+	TileIndexDiffC step = TileIndexDiffCByDir(direction);
+	double length = std::hypot(step.x, step.y);
+	return {step.x / length, step.y / length};
+}
 
-/* Screen-space heading in degrees clockwise from up, per Direction. */
-static constexpr int16_t _dir_angle[8] = {-45, 0, 45, 90, 135, 180, -135, -90};
+/* Screen degrees clockwise from up, the way silhouettes are turned. */
+static float ScreenHeading(Direction direction)
+{
+	return static_cast<float>(_camera.HeadingDegrees(Heading(direction)));
+}
 
 bool VehiclePainter::InLayer(VehicleType vt) const
 {
@@ -40,13 +59,12 @@ bool VehiclePainter::InLayer(VehicleType vt) const
 
 /* Shapes without a clear nose carry a paper dot on the leading edge, the
  * same accent as the train head dot. */
-static void DrawHeadingDot(int cx, int cy, int r, Direction dir)
+static void DrawHeadingDot(int cx, int cy, int r, float heading)
 {
 	if (r < 3) return;
-	int d = dir;
-	double inv = (_dir_dx[d] != 0 && _dir_dy[d] != 0) ? 0.70710678 : 1.0;
-	int px = cx + (int)std::lround(_dir_dx[d] * inv * 0.62 * r);
-	int py = cy + (int)std::lround(_dir_dy[d] * inv * 0.62 * r);
+	double radians = heading * std::numbers::pi / HALF_TURN_DEGREES;
+	int px = cx + static_cast<int>(std::lround(std::sin(radians) * HEAD_DOT_REACH * r));
+	int py = cy - static_cast<int>(std::lround(std::cos(radians) * HEAD_DOT_REACH * r));
 	_canvas.FillCircle(px, py, std::max(1, (r + 1) / 3), COL_PAPER);
 }
 
@@ -78,20 +96,28 @@ static MiniSprite Silhouette(VehicleType type)
 	}
 }
 
+static double UnitTiles(const Vehicle *u)
+{
+	return u->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(TILE_SIZE);
+}
+
 /* A consist draws as one polyline through its unit centres. The game spaces
  * units in path steps, and a cardinal step moves both map axes, so raw
- * centres sit sqrt(2) apart on diagonals; the native isometric projection
- * cancels that but a top-down view shows it as a stretched train. Units are
- * therefore re-laid along their own polyline at true unit lengths from the
- * head, which keeps the drawn length constant on any mix of track. Ink
- * underlays the whole line before the colour pass, so joints stay clean. */
+ * centres sit sqrt(2) apart on diagonals. Units are therefore re-laid along
+ * their own polyline at true unit lengths from the head, which keeps the
+ * length on the map constant on any mix of track. Ink underlays the whole
+ * line before the colour pass, so joints stay clean. */
 void VehiclePainter::PaintConsist(const Vehicle *head, int ppt)
 {
-	static std::vector<std::pair<double, double>> raw;
+	static std::vector<WorldPoint> raw;
+	static std::vector<const Vehicle *> units;
+	static std::vector<WorldPoint> laid;
 	static std::vector<double> arc;
 	static std::vector<double> want;
 	static std::vector<std::pair<int, int>> pts;
 	raw.clear();
+	units.clear();
+	laid.clear();
 	arc.clear();
 	want.clear();
 	pts.clear();
@@ -104,9 +130,9 @@ void VehiclePainter::PaintConsist(const Vehicle *head, int ppt)
 	double prev_len = 0.0;
 	for (const Vehicle *u = head; u != nullptr; u = u->Next()) {
 		if (u->vehstatus.Test(VehState::Hidden)) continue;
-		auto [ux, uy] = _vehicle_motion.Position(u);
-		raw.emplace_back(_camera.ExactScreenX(uy), _camera.ExactScreenY(ux));
-		double len = u->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
+		raw.push_back(_vehicle_motion.Position(u));
+		units.push_back(u);
+		double len = UnitTiles(u);
 		if (!want.empty()) s += (prev_len + len) * 0.5;
 		want.push_back(s);
 		prev_len = len;
@@ -117,50 +143,39 @@ void VehiclePainter::PaintConsist(const Vehicle *head, int ppt)
 
 	arc.resize(raw.size());
 	arc[0] = 0.0;
-	for (size_t i = 1; i < raw.size(); i++) {
-		double dx = raw[i].first - raw[i - 1].first;
-		double dy = raw[i].second - raw[i - 1].second;
-		arc[i] = arc[i - 1] + std::sqrt(dx * dx + dy * dy);
-	}
+	for (size_t i = 1; i < raw.size(); i++) arc[i] = arc[i - 1] + std::hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y);
 
 	size_t seg = 0;
 	for (size_t i = 0; i < raw.size(); i++) {
 		double t = want[i];
-		double x, y;
 		if (t >= arc.back()) {
-			x = raw.back().first;
-			y = raw.back().second;
+			WorldPoint end = raw.back();
 			if (raw.size() >= 2) {
-				double dx = x - raw[raw.size() - 2].first;
-				double dy = y - raw[raw.size() - 2].second;
-				double d = std::sqrt(dx * dx + dy * dy);
-				if (d > 0.0) {
-					x += dx / d * (t - arc.back());
-					y += dy / d * (t - arc.back());
-				}
+				const WorldPoint &prev = raw[raw.size() - 2];
+				double d = std::hypot(end.x - prev.x, end.y - prev.y);
+				if (d > 0.0) end = Between(prev, end, 1.0 + (t - arc.back()) / d);
 			}
+			laid.push_back(VehicleMotion::Grounded(units[i], end));
 		} else {
 			while (seg + 2 < raw.size() && arc[seg + 1] <= t) seg++;
 			double span = arc[seg + 1] - arc[seg];
-			double f = span > 0.0 ? (t - arc[seg]) / span : 0.0;
-			x = raw[seg].first + (raw[seg + 1].first - raw[seg].first) * f;
-			y = raw[seg].second + (raw[seg + 1].second - raw[seg].second) * f;
+			laid.push_back(VehicleMotion::Grounded(units[i], Between(raw[seg], raw[seg + 1], span > 0.0 ? (t - arc[seg]) / span : 0.0)));
 		}
-		pts.emplace_back((int)std::lround(x), (int)std::lround(y));
 	}
 
 	/* The nose and tail stick out half a unit length past the end centres. */
-	auto overhang = [&](const Vehicle *u, int sign) {
-		double len = u->GetGroundVehicleCache()->cached_veh_length * ppt / (double)TILE_SIZE;
-		double inv = (_dir_dx[u->direction] != 0 && _dir_dy[u->direction] != 0) ? 0.70710678 : 1.0;
-		return std::pair<int, int>(
-				(int)std::lround(sign * _dir_dx[u->direction] * inv * len * 0.5),
-				(int)std::lround(sign * _dir_dy[u->direction] * inv * len * 0.5));
+	auto overhang = [](const Vehicle *u, const WorldPoint &centre, int sign) {
+		MapVector heading = Heading(u->direction);
+		double reach = sign * UnitTiles(u) * HALF_UNIT;
+		return VehicleMotion::Grounded(u, {centre.x + heading.x * reach, centre.y + heading.y * reach, centre.level});
 	};
-	auto [nx, ny] = overhang(first, 1);
-	pts.insert(pts.begin(), {pts.front().first + nx, pts.front().second + ny});
-	auto [bx, by] = overhang(tail, -1);
-	pts.emplace_back(pts.back().first + bx, pts.back().second + by);
+	auto project = [](const WorldPoint &point) {
+		Point at = _camera.ScreenOf(point);
+		return std::pair<int, int>(at.x, at.y);
+	};
+	pts.push_back(project(overhang(first, laid.front(), 1)));
+	for (const WorldPoint &point : laid) pts.push_back(project(point));
+	pts.push_back(project(overhang(tail, laid.back(), -1)));
 
 	int w = std::max(2, ppt / 4);
 	int m = w + 2;
@@ -191,19 +206,48 @@ void VehiclePainter::PaintConsist(const Vehicle *head, int ppt)
 	}
 }
 
-void VehiclePainter::Paint(int ppt, MiniLayer filter)
+/* An aircraft shows alone; its shadow and rotor ride behind it in its chain. */
+static const Vehicle *UnitsEnd(const Vehicle *head)
+{
+	return head->type == VEH_AIRCRAFT ? head->Next() : nullptr;
+}
+
+static bool IsShown(const Vehicle *unit)
+{
+	return !unit->vehstatus.Test(VehState::Hidden);
+}
+
+/* A ground vehicle on a bridge or ramp is aloft however low the bridge, so the deck never hides it. */
+static bool IsAloft(const Vehicle *unit)
+{
+	if (unit->type == VEH_SHIP) return false;
+	WorldPoint at = _vehicle_motion.Position(unit);
+	bool raised = at.level > GroundLevel(at.x, at.y) + ALOFT_LEVELS;
+	return raised || (unit->type != VEH_AIRCRAFT && IsBridgeTile(unit->tile));
+}
+
+/* A consist goes over the buildings whole as soon as one unit in view is aloft. */
+static VehicleTier TierOf(const Vehicle *head)
+{
+	for (const Vehicle *unit = head; unit != UnitsEnd(head); unit = unit->Next()) {
+		if (IsShown(unit) && IsAloft(unit)) return VehicleTier::Aloft;
+	}
+	return VehicleTier::Grounded;
+}
+
+void VehiclePainter::Paint(int ppt, MiniLayer filter, VehicleTier tier)
 {
 	this->detail = ZoomDetail::For(ppt);
 	this->filter = filter;
 	for (const Vehicle *v : Vehicle::Iterate()) {
-		if (v->type > VEH_AIRCRAFT) continue;
+		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle() || TierOf(v) != tier) continue;
 		if (v->type == VEH_TRAIN && this->detail.vehicle_shapes) {
-			if (v->IsPrimaryVehicle()) this->PaintConsist(v, ppt);
+			this->PaintConsist(v, ppt);
 			continue;
 		}
-		if (v->vehstatus.Test(VehState::Hidden)) continue;
-		if (v->type == VEH_AIRCRAFT && !v->IsPrimaryVehicle()) continue;
-		this->PaintUnit(v, ppt);
+		for (const Vehicle *unit = v; unit != UnitsEnd(v); unit = unit->Next()) {
+			if (IsShown(unit)) this->PaintUnit(unit, ppt);
+		}
 	}
 }
 
@@ -211,9 +255,7 @@ void VehiclePainter::PaintUnit(const Vehicle *v, int ppt)
 {
 	int half = UnitHalf(ppt);
 	int r = (v->type == VEH_SHIP || v->type == VEH_AIRCRAFT) ? half + 2 : half;
-	auto [wx, wy] = _vehicle_motion.Position(v);
-	int cx = _camera.ScreenX(wy);
-	int cy = _camera.ScreenY(wx);
+	auto [cx, cy] = _camera.ScreenOf(_vehicle_motion.Position(v));
 	if (cx < -r - 1 || cy < -r - 1 || cx >= _camera.Width() + r + 1 || cy >= _camera.Height() + r + 1) return;
 
 	Tones tones = this->TonesOf(v);
@@ -223,14 +265,14 @@ void VehiclePainter::PaintUnit(const Vehicle *v, int ppt)
 	}
 
 	MiniSprite silhouette = Silhouette(v->type);
-	int angle = _dir_angle[v->direction];
-	_canvas.FillShapeRot(silhouette, cx, cy, r + 1, angle, tones.ink);
-	_canvas.FillShapeRot(silhouette, cx, cy, r, angle, tones.fill);
+	float heading = ScreenHeading(v->direction);
+	_canvas.FillShapeRot(silhouette, cx, cy, r + 1, heading, tones.ink);
+	_canvas.FillShapeRot(silhouette, cx, cy, r, heading, tones.fill);
 	if (tones.dim) return;
 
 	/* The diamond only shows its axis when rotated; the head dot
 	 * picks which end leads. */
-	if (v->type != VEH_AIRCRAFT) DrawHeadingDot(cx, cy, r, v->direction);
+	if (v->type != VEH_AIRCRAFT) DrawHeadingDot(cx, cy, r, heading);
 	if (this->detail.cargo_dots && v->cargo_cap > 0 && IsValidCargoType(v->cargo_type)) DrawCargoDot(cx, cy, CargoDotRadius(ppt), v->cargo_type);
 }
 

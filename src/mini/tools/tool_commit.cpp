@@ -210,7 +210,7 @@ static void RemoveAt(MiniTool kind, TileIndex tile)
 }
 
 /* Point tools place on click: the blueprint floats on the hover tile and
- * Q/E turn its facing, so no drag gesture is involved. */
+ * R turns its facing, so no drag gesture is involved. */
 void CommitClick(MiniTool kind, TileIndex tile, bool remove)
 {
 	if (!IsClickTool(kind)) return;

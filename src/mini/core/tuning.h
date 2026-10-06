@@ -17,8 +17,10 @@ struct MiniTuning {
 	double pan_smooth_ms = 60.0;
 	double zoom_step = 1.25;
 	double zoom_smooth_ms = 80.0;
+	double turn_smooth_ms = 160.0;
+	double height_scale = 1.5;
 	int hud_scale = 2;
-	int grid_alpha = 32;
+	int grid_alpha = 80;
 	int contour_alpha = 120;
 	int relief_strength = 22;
 	int filter_alpha = 150;

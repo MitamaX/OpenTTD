@@ -1,10 +1,14 @@
 add_files(
     art_image.cpp
     art_image.h
+    data_texture.cpp
+    data_texture.h
     draw_list.cpp
     draw_list.h
     gl_api.cpp
     gl_api.h
+    gl_program.cpp
+    gl_program.h
     gpu_frame.cpp
     gpu_frame.h
     screen_target.cpp

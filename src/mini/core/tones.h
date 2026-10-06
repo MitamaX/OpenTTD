@@ -12,10 +12,11 @@
 
 #include "../../cargo_type.h"
 #include "../../gfx_type.h"
+#include "../gpu/draw_list.h"
 
 constexpr uint32_t Mix(uint32_t dst, uint32_t src, uint alpha)
 {
-	uint inv = 255 - alpha;
+	uint inv = CHANNEL_MAX - alpha;
 	uint32_t rb = ((dst & 0xFF00FFU) * inv + (src & 0xFF00FFU) * alpha) >> 8;
 	uint32_t g = ((dst & 0x00FF00U) * inv + (src & 0x00FF00U) * alpha) >> 8;
 	return 0xFF000000U | (rb & 0xFF00FFU) | (g & 0x00FF00U);
@@ -45,25 +46,25 @@ inline constexpr uint32_t COL_ROAD = 0xFF61686EU;
 inline constexpr uint32_t COL_BRIDGE = 0xFF9AA0A6U;
 inline constexpr uint32_t COL_TUNNEL = 0xFF1E2124U;
 inline constexpr uint32_t COL_CATENARY = 0xFFE8C94AU;
-inline constexpr uint32_t COL_DEPOT = 0xFF3A3F45U;
+inline constexpr uint32_t COL_BALLAST = 0xFF6E6A63U;
+inline constexpr uint32_t COL_CONCRETE = 0xFFA3A199U;
+inline constexpr uint32_t COL_STEEL = 0xFFB4B8BCU;
+inline constexpr uint32_t COL_ASPHALT = 0xFF45484CU;
+inline constexpr uint32_t COL_WIRE = 0xFF2A2D30U;
+inline constexpr uint32_t COL_RAIL_ACCENT = COL_PAPER;
+inline constexpr uint32_t COL_ROAD_ACCENT = COL_CATENARY;
 
 inline constexpr uint32_t COL_HOUSE = 0xFF9C8A76U;
-inline constexpr uint32_t COL_HOUSE_B = Darken(COL_HOUSE);
 inline constexpr uint32_t COL_IND = 0xFFD07A4AU;
-inline constexpr uint32_t COL_IND_B = Darken(COL_IND);
 inline constexpr uint32_t COL_OBJ = 0xFFB0B4B8U;
-inline constexpr uint32_t COL_OBJ_B = Darken(COL_OBJ);
 
 inline constexpr uint32_t COL_ST_RAIL = 0xFF4A6FA5U;
 inline constexpr uint32_t COL_ST_RAIL_B = Darken(COL_ST_RAIL);
 inline constexpr uint32_t COL_ST_AIR = 0xFF8E6FB8U;
-inline constexpr uint32_t COL_ST_AIR_B = Darken(COL_ST_AIR);
 inline constexpr uint32_t COL_ST_ROAD = 0xFF7FA8C9U;
 inline constexpr uint32_t COL_ST_ROAD_B = Darken(COL_ST_ROAD);
 inline constexpr uint32_t COL_ST_DOCK = 0xFF9A7FA8U;
-inline constexpr uint32_t COL_ST_DOCK_B = Darken(COL_ST_DOCK);
 inline constexpr uint32_t COL_ST_BUOY = 0xFFD8C86AU;
-inline constexpr uint32_t COL_ST_BUOY_B = Darken(COL_ST_BUOY);
 
 inline constexpr uint32_t COL_GO = 0xFF3FCB6AU;
 inline constexpr uint32_t COL_STOP = 0xFFE04B4BU;

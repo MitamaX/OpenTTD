@@ -10,6 +10,7 @@
 #include "../../stdafx.h"
 #include "overview.h"
 
+#include "../../clear_map.h"
 #include "../../company_base.h"
 #include "../../company_func.h"
 #include "../../industry.h"
@@ -24,13 +25,13 @@
 #include "../../tree_map.h"
 #include "../../vehicle_base.h"
 #include "../core/tones.h"
-#include "ground.h"
 
 #include "../../safeguards.h"
 
 static constexpr int VEHICLE_DOT_RADIUS = 1;
 static constexpr int FLOW_THICKNESS = 1;
 static constexpr int FLOW_EXTRA_AT_FULL_LOAD = 2;
+static constexpr uint TOP_RAMP_LEVEL = lengthof(_height_ramp) - 1;
 
 static uint32_t Faded(uint32_t c)
 {
@@ -52,6 +53,20 @@ static uint32_t StationColour(TileIndex tile)
 	}
 }
 
+static uint32_t GroundColour(TileIndex tile)
+{
+	if (IsTileType(tile, MP_CLEAR)) {
+		switch (GetClearGround(tile)) {
+			case CLEAR_FIELDS: return COL_FIELDS;
+			case CLEAR_ROCKS: return COL_ROCKS;
+			case CLEAR_SNOW: return COL_SNOW;
+			case CLEAR_DESERT: return COL_DESERT;
+			default: break;
+		}
+	}
+	return _height_ramp[std::min(TileHeight(tile), TOP_RAMP_LEVEL)];
+}
+
 static uint32_t BaseColour(TileIndex tile)
 {
 	switch (GetTileType(tile)) {
@@ -65,7 +80,7 @@ static uint32_t BaseColour(TileIndex tile)
 		case MP_STATION: return StationColour(tile);
 		case MP_TUNNELBRIDGE: return COL_BRIDGE;
 		case MP_OBJECT: return COL_OBJ;
-		default: return GroundColour(tile, TileHeight(tile));
+		default: return GroundColour(tile);
 	}
 }
 
@@ -113,7 +128,7 @@ static uint32_t TileColour(TileIndex tile, OverviewMode mode)
 							default: break;
 						}
 					}
-					return GroundColour(tile, TileHeight(tile));
+					return GroundColour(tile);
 				default: return Faded(BaseColour(tile));
 			}
 
@@ -154,9 +169,15 @@ void Overview::Paint(int width, int height, OverviewMode mode)
 }
 
 /* The map is drawn turned so its north corner points up-left: pixel columns follow the tile y axis, pixel rows the tile x axis. */
+ExactPoint Overview::ExactPixelOf(double tile_x, double tile_y) const
+{
+	return {tile_y * this->width / Map::SizeY(), tile_x * this->height / Map::SizeX()};
+}
+
 Point Overview::PixelOf(double tile_x, double tile_y) const
 {
-	return {static_cast<int>(tile_y * this->width / Map::SizeY()), static_cast<int>(tile_x * this->height / Map::SizeX())};
+	ExactPoint pixel = this->ExactPixelOf(tile_x, tile_y);
+	return {static_cast<int>(pixel.x), static_cast<int>(pixel.y)};
 }
 
 TileIndex Overview::TileAt(int x, int y) const

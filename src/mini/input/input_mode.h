@@ -35,7 +35,7 @@ public:
 	void Unfollow() { this->follow = VehicleID::Invalid(); }
 	bool Unwind();
 
-	std::optional<TilePoint> FollowTarget();
+	std::optional<WorldPoint> FollowTarget();
 	bool AppendOrder(TileIndex tile) const;
 	void PickOrderAt(TilePoint at);
 

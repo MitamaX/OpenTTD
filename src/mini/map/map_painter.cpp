@@ -5,520 +5,460 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file map_painter.cpp The tile pass of the top-down map: terrain, infrastructure and the overlay layer. */
+/** @file map_painter.cpp The structure pass of the map: the steps between tiles, what stands on the ground, the bridges above it, and the overlay layer. */
 
 #include "../../stdafx.h"
 #include "map_painter.h"
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <optional>
+
 #include "../../bridge_map.h"
+#include "../../direction_func.h"
+#include "../../elrail_func.h"
 #include "../../map_func.h"
 #include "../../rail_map.h"
 #include "../../road_map.h"
+#include "../../settings_type.h"
 #include "../../station_map.h"
 #include "../../tile_map.h"
+#include "../../track_func.h"
 #include "../../tunnelbridge_map.h"
 #include "../../water_map.h"
-#include "../../depot_map.h"
-#include "../../elrail_func.h"
-#include "../../gfx_func.h"
-#include "../core/camera.h"
 #include "../core/canvas.h"
 #include "../core/tones.h"
-#include "../core/tuning.h"
-#include "ground.h"
-#include "tile_shapes.h"
+#include "network_style.h"
+#include "structure_forms.h"
+#include "volume_painter.h"
+#include "world_tiles.h"
 
 #include "../../safeguards.h"
 
+/* A deck stands at most one level above the highest ground, and a wire stands above its deck. */
+static constexpr double DECK_LEVELS = 1.0;
+static constexpr double CATENARY_LEVELS = CATENARY_RISE / LEVEL_TILES;
+static constexpr double RAISED_LEVELS = DECK_LEVELS + CATENARY_LEVELS;
+static constexpr std::array<double, 2> BOTH_SIDES = {-1.0, 1.0};
+static constexpr double EDGE_HALF = 0.025;
+
+/* The game stands a signal about a quarter tile in from the edge its trackdir enters by. */
+static constexpr double SIGNAL_ALONG = 0.25;
+static constexpr double SIGNAL_CLEARANCE = 0.08;
+static constexpr double SIGNAL_OFFSET = RAIL_BED_HALF + SIGNAL_CLEARANCE;
+static constexpr uint8_t SIGNAL_SIDE_LEFT = 0;
+static constexpr uint8_t SIGNAL_SIDE_RIGHT = 2;
+static constexpr uint8_t ROAD_SIDE_LEFT = 0;
+static constexpr double LEFT_OF_TRAVEL = -1.0;
+static constexpr double RIGHT_OF_TRAVEL = 1.0;
+
+static constexpr int SIGNAL_RADIUS_SHARE = 10;
+static constexpr int MIN_SIGNAL_RADIUS = 1;
+static constexpr double ARROW_HALF_LENGTH = 0.125;
+static constexpr double ARROW_HALF_BASE = 0.125;
+static constexpr double NO_ENTRY_HALF_LENGTH = 0.25;
+static constexpr double NO_ENTRY_HALF_WIDTH = 1.0 / 12.0;
+
+static constexpr StructureTones DECK_TONES = {COL_BRIDGE, Darken(COL_BRIDGE)};
+static constexpr StructureTones RAIL_STOP_TONES = {COL_ST_RAIL, COL_ST_RAIL_B};
+static constexpr StructureTones ROAD_STOP_TONES = {COL_ST_ROAD, COL_ST_ROAD_B};
+
+/* A rail or road surface as the ground shader draws it at the current zoom, so spans and platforms meet it edge to edge. */
+struct Way {
+	double half;
+	uint32_t tone;
+	double rail_half;
+	bool wired;
+};
+
 MapPainter _map_painter;
 
-void MapPainter::Paint(int ppt, MiniLayer filter)
+static int SignalRadius(int ppt)
+{
+	return std::max(MIN_SIGNAL_RADIUS, ppt / SIGNAL_RADIUS_SHARE);
+}
+
+/* How far a detail repeating this often per tile has faded in, exactly as the ground shader resolves it. */
+static double Resolved(double frequency)
+{
+	return SmoothStep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS, _camera.Ppt() / frequency);
+}
+
+static double CatenaryShown()
+{
+	return SmoothStep(CATENARY_FAR_PPT, CATENARY_NEAR_PPT, _camera.Ppt());
+}
+
+static Way RailWay(RailType railtype)
+{
+	RailLook look = RailLookOf(railtype);
+	const RailLookWidths &widths = RAIL_LOOK_WIDTHS[to_underlying(look)];
+	double detail = Resolved(SLEEPERS_PER_TILE);
+	uint32_t surface = look == RailLook::Rail ? COL_BALLAST : COL_CONCRETE;
+	return {
+		.half = std::lerp(DISTANT_RAIL_HALF, widths.body, detail),
+		.tone = Mix(COL_RAIL, surface, FadedAlpha(detail)),
+		.rail_half = widths.strip,
+		.wired = HasRailCatenaryDrawn(railtype),
+	};
+}
+
+static Way RoadWay(TileIndex tile)
+{
+	bool asphalt = HasTileRoadType(tile, RTT_ROAD);
+	uint32_t surface = asphalt ? COL_ASPHALT : COL_CONCRETE;
+	return {
+		.half = asphalt ? ROAD_HALF : TRAM_BED_HALF,
+		.tone = Mix(COL_ROAD, surface, FadedAlpha(Resolved(MARKING_FREQUENCY))),
+		.rail_half = HasTileRoadType(tile, RTT_TRAM) ? RAIL_HALF : NO_RAILS,
+		.wired = false,
+	};
+}
+
+static void DrawRails(const AxisRun &run, double rail_half)
+{
+	uint alpha = FadedAlpha(Resolved(RAIL_FREQUENCY));
+	for (double side : BOTH_SIDES) FillAxisLine(run, side * RAIL_GAUGE_HALF, rail_half, COL_STEEL, alpha);
+}
+
+static void DrawCatenary(const AxisRun &run)
+{
+	FillAxisLine(run.Lifted(CATENARY_LEVELS), 0.0, WIRE_HALF, COL_WIRE, FadedAlpha(CatenaryShown()));
+}
+
+/* The ground pass surveys the tiles both passes walk, far enough out for the tallest and the widest building. */
+void MapPainter::PaintGround(int ppt, MiniLayer filter)
 {
 	this->detail = ZoomDetail::For(ppt);
-	TileSpan span = VisibleTiles();
-	bool layered = filter != MiniLayer::None;
+	this->ppt = ppt;
+	this->filter = filter;
+	this->Survey(StructureSurvey(_camera.VisibleTiles(std::max(RAISED_LEVELS, STRUCTURE_RISE_LEVELS))));
+	this->EachPass(&MapPainter::PaintGroundPass);
+}
 
-	this->tree_dots.clear();
-	this->layer_tiles.clear();
+void MapPainter::PaintRaised()
+{
+	this->EachPass(&MapPainter::PaintRaisedPass);
+}
+
+/* The overlay paints the whole map as dark greyscale, then repaints the active
+ * layer's structures in its accent so they carry the frame. */
+void MapPainter::EachPass(void (MapPainter::*paint)())
+{
+	bool layered = this->filter != MiniLayer::None;
 	_canvas.SetGrey(layered);
-	_canvas.FillRect(0, 0, _camera.Width() - 1, _camera.Height() - 1, COL_VOID);
-	for (int ty = span.ty0; ty <= span.ty1; ty++) this->PaintRow(span, ty, ppt, layered);
-	this->PaintGrid(span, ppt);
-	this->PaintTrees(ppt);
+	this->pass = MiniLayer::None;
+	(this->*paint)();
 	_canvas.SetGrey(false);
-	if (layered) this->PaintLayer(ppt, filter);
+	if (!layered) return;
+
+	this->pass = this->filter;
+	(this->*paint)();
 }
 
-MapPainter::TileSpan MapPainter::VisibleTiles()
+/* Bare ground, open water, trees, rails and roads belong to the ground shader; only what stands on them is drawn here. */
+static bool CarriesStructure(TileIndex tile)
 {
-	return {
-		std::max(0, (int)std::floor(_camera.MapXAt(0))),
-		std::max(0, (int)std::floor(_camera.MapYAt(0))),
-		std::min<int>(Map::SizeX() - 1, (int)std::floor(_camera.MapXAt(_camera.Height() - 1))),
-		std::min<int>(Map::SizeY() - 1, (int)std::floor(_camera.MapYAt(_camera.Width() - 1))),
-	};
+	if (IsBridgeAbove(tile)) return true;
+	switch (GetTileType(tile)) {
+		case MP_VOID:
+		case MP_CLEAR:
+		case MP_TREES:
+			return false;
+		case MP_WATER:
+			return IsShipDepot(tile);
+		default:
+			return true;
+	}
 }
 
-void MapPainter::PaintRow(const TileSpan &span, int ty, int ppt, bool layered)
+/* The coordinate i steps into lo..hi from the end farther from the viewer. */
+static int FarToNear(int lo, int hi, double toward, int i)
 {
-	int run_start = -1;
-	uint32_t run_c = 0;
-	MiniSprite run_art = MiniSprite::End;
-	auto flush = [&](int tx_end) {
-		if (run_start < 0) return;
-		auto [x0, y0, x1, y1] = _camera.AreaRect(run_start, ty, tx_end - 1, ty);
-		if (run_art == MiniSprite::End || !MiniAtlasTileRun(run_art, x0, y0, x1, y1, tx_end - run_start, _canvas.Tone(run_c))) {
-			_canvas.FillRect(x0, y0, x1, y1, run_c);
+	return toward < 0.0 ? hi - i : lo + i;
+}
+
+/* A step shows only on a side whose outward face turns toward the viewer. */
+static DiagDirections FacingSides(MapVector toward)
+{
+	DiagDirections facing{};
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		MapVector outward = Outward(side);
+		if (outward.x * toward.x + outward.y * toward.y > 0.0) facing.Set(side);
+	}
+	return facing;
+}
+
+/* Walking each axis from its far end leaves out of depth order only tiles a tile's width apart across the screen, which cannot hide each other. */
+void MapPainter::Survey(const TileSpan &span)
+{
+	this->tiles.clear();
+	MapVector toward = _camera.Toward();
+	this->facing = FacingSides(toward);
+	for (int i = 0; i <= span.tx1 - span.tx0; i++) {
+		int tx = FarToNear(span.tx0, span.tx1, toward.x, i);
+		for (int j = 0; j <= span.ty1 - span.ty0; j++) {
+			int ty = FarToNear(span.ty0, span.ty1, toward.y, j);
+			if (CarriesStructure(TileXY(tx, ty)) || this->ShowsStep(tx, ty)) this->tiles.emplace_back(tx, ty);
 		}
-		run_start = -1;
-	};
-	for (int tx = span.tx0; tx <= span.tx1; tx++) {
+	}
+}
+
+bool MapPainter::ShowsStep(int tx, int ty) const
+{
+	for (DiagDirection side : this->facing) {
+		if (StepFaceOf(tx, ty, side).has_value()) return true;
+	}
+	return false;
+}
+
+/* A portal lies on the step the hill shows over its tunnel's cut, so it shows only where that step turns toward the viewer. */
+bool MapPainter::HidesPortal(TileIndex tile) const
+{
+	return IsTunnelTile(tile) && !this->facing.Test(ReverseDiagDir(GetTunnelBridgeDirection(tile)));
+}
+
+void MapPainter::PaintGroundPass()
+{
+	for (auto [tx, ty] : this->tiles) this->DrawGround(TileXY(tx, ty), tx, ty);
+}
+
+/* Steps, buildings and raised spans go down tile by tile from far to near, so nothing beside a pier covers its deck. */
+void MapPainter::PaintRaisedPass()
+{
+	for (auto [tx, ty] : this->tiles) {
 		TileIndex tile = TileXY(tx, ty);
-		uint32_t c;
-		bool tree_dot;
-		MiniSprite art;
-		if (this->TileRunColour(tile, tx, ty, ppt, c, tree_dot, art)) {
-			if (run_start >= 0 && (c != run_c || art != run_art)) flush(tx);
-			if (run_start < 0) {
-				run_start = tx;
-				run_c = c;
-				run_art = art;
-			}
-			if (tree_dot) this->tree_dots.emplace_back(tx, ty);
-		} else {
-			flush(tx);
-			this->DrawTile(tile, tx, ty, ppt);
-			if (layered) this->layer_tiles.emplace_back(tx, ty);
-		}
+		this->DrawSteps(tile, tx, ty);
+		this->DrawVolume(tile);
+		this->DrawRaised(tile, tx, ty);
 	}
-	flush(span.tx1 + 1);
 }
 
-/* Deliberate tile grid at build zooms: merged runs are seamless, so tile
- * boundaries return as their own faint overlay instead of draw artefacts. */
-void MapPainter::PaintGrid(const TileSpan &span, int ppt)
+bool MapPainter::Shows(MiniLayer layer) const
 {
-	if (ppt < INFRASTRUCTURE_PPT || _tuning.grid_alpha <= 0) return;
-
-	int gx0 = std::max(0, _camera.ScreenX(span.ty0));
-	int gx1 = std::min(_camera.Width() - 1, _camera.ScreenX(span.ty1 + 1) - 1);
-	int gy0 = std::max(0, _camera.ScreenY(span.tx0));
-	int gy1 = std::min(_camera.Height() - 1, _camera.ScreenY(span.tx1 + 1) - 1);
-	for (int ty = span.ty0; ty <= span.ty1 + 1; ty++) {
-		int x = _camera.ScreenX(ty);
-		if (x >= 0 && x < _camera.Width()) _canvas.BlendRect(x, gy0, x, gy1, COL_SHADOW, _tuning.grid_alpha);
-	}
-	for (int tx = span.tx0; tx <= span.tx1 + 1; tx++) {
-		int y = _camera.ScreenY(tx);
-		if (y >= 0 && y < _camera.Height()) _canvas.BlendRect(gx0, y, gx1, y, COL_SHADOW, _tuning.grid_alpha);
-	}
+	return this->pass == MiniLayer::None || this->pass == layer;
 }
 
-void MapPainter::PaintTrees(int ppt)
+bool MapPainter::Accented() const
 {
-	int tree_r = std::max(1, ppt / 8);
-	for (auto [tx, ty] : this->tree_dots) {
-		_canvas.FillShapeRot(MiniSprite::Tree, (_camera.ScreenX(ty) + _camera.ScreenX(ty + 1) - 1) / 2, (_camera.ScreenY(tx) + _camera.ScreenY(tx + 1) - 1) / 2, tree_r, 0, COL_TREE);
+	return this->pass != MiniLayer::None;
+}
+
+uint32_t MapPainter::Accent() const
+{
+	return this->pass == MiniLayer::Rail ? COL_RAIL_ACCENT : COL_ROAD_ACCENT;
+}
+
+StructureTones MapPainter::Tones(const StructureTones &natural) const
+{
+	if (!this->Accented()) return natural;
+	return {Darken(this->Accent()), this->Accent()};
+}
+
+static MiniLayer LayerOf(TransportType transport)
+{
+	switch (transport) {
+		case TRANSPORT_RAIL: return MiniLayer::Rail;
+		case TRANSPORT_ROAD: return MiniLayer::Road;
+		default: return MiniLayer::None;
 	}
 }
 
-/* Runs only merge bare ground and water, so every tile that can carry
- * layer content already went through DrawTile and sits in layer_tiles. */
-void MapPainter::PaintLayer(int ppt, MiniLayer filter)
+static MiniLayer GroundLayer(TileIndex tile)
 {
-	for (auto [tx, ty] : this->layer_tiles) this->DrawTileLayer(TileXY(tx, ty), tx, ty, ppt, filter);
+	switch (GetTileType(tile)) {
+		case MP_RAILWAY: return MiniLayer::Rail;
+		case MP_ROAD: return MiniLayer::Road;
+		case MP_STATION:
+			if (HasStationRail(tile)) return MiniLayer::Rail;
+			return IsAnyRoadStop(tile) ? MiniLayer::Road : MiniLayer::None;
+		case MP_TUNNELBRIDGE: return LayerOf(GetTunnelBridgeTransportType(tile));
+		default: return MiniLayer::None;
+	}
 }
 
-void MapPainter::DrawSignals(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
+void MapPainter::DrawGround(TileIndex tile, int tx, int ty)
+{
+	if (!this->Shows(GroundLayer(tile))) return;
+	if (OnScreen(ScreenQuadOf(TileQuad(tx, ty)))) this->DrawStructure(tile, tx, ty);
+}
+
+/* Buildings, depots and tunnel portals stand as volumes in the raised pass; the ground pass keeps what lies flat. */
+void MapPainter::DrawStructure(TileIndex tile, int tx, int ty)
+{
+	switch (GetTileType(tile)) {
+		case MP_RAILWAY:
+			if (HasSignals(tile)) this->DrawSignals(tile, tx, ty);
+			break;
+
+		case MP_ROAD:
+			if (IsNormalRoad(tile)) this->DrawOneWay(tile, tx, ty);
+			break;
+
+		case MP_STATION:
+			this->DrawStation(tile, tx, ty);
+			break;
+
+		default:
+			break;
+	}
+}
+
+void MapPainter::DrawStation(TileIndex tile, int tx, int ty)
+{
+	if (HasStationRail(tile)) {
+		this->DrawRailStop(tile, tx, ty);
+	} else if (IsDriveThroughStopTile(tile)) {
+		this->DrawPlatforms({tx, ty, GetDriveThroughStopAxis(tile)}, RoadWay(tile).half, ROAD_STOP_TONES);
+	}
+}
+
+/* The ground shader leaves a station's wire to this pass, so the platforms never cover it. */
+void MapPainter::DrawRailStop(TileIndex tile, int tx, int ty)
+{
+	AxisRun run{tx, ty, GetRailStationAxis(tile)};
+	Way way = RailWay(GetRailType(tile));
+	this->DrawPlatforms(run, way.half, RAIL_STOP_TONES);
+	if (way.wired && !this->Accented()) DrawCatenary(run);
+}
+
+void MapPainter::DrawPlatforms(const AxisRun &run, double inner, const StructureTones &natural)
+{
+	StructureTones tones = this->Tones(natural);
+	for (double side : BOTH_SIDES) {
+		FillAxisStrip(run, side * inner, side * HALF_TILE, tones.fill);
+		if (this->detail.block_borders) FillAxisLine(run, side * (inner + EDGE_HALF), EDGE_HALF, tones.edge);
+	}
+}
+
+static double SignalSide()
+{
+	switch (_settings_game.construction.train_signal_side) {
+		case SIGNAL_SIDE_LEFT: return LEFT_OF_TRAVEL;
+		case SIGNAL_SIDE_RIGHT: return RIGHT_OF_TRAVEL;
+		default: return _settings_game.vehicle.road_side == ROAD_SIDE_LEFT ? LEFT_OF_TRAVEL : RIGHT_OF_TRAVEL;
+	}
+}
+
+void MapPainter::DrawSignals(TileIndex tile, int tx, int ty)
 {
 	if (!this->detail.signals) return;
-	int r = std::max(1, ppt / 10);
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int off = (int)((x1 - x0 + 1) * 0.36);
-	for (Track t : {TRACK_X, TRACK_Y, TRACK_UPPER, TRACK_LOWER, TRACK_LEFT, TRACK_RIGHT}) {
-		if (!HasSignalOnTrack(tile, t)) continue;
+	int r = SignalRadius(this->ppt);
+	double offset = SignalSide() * SIGNAL_OFFSET;
+	for (Track t : SetTrackBitIterator(GetTrackBits(tile))) {
 		for (Trackdir td : {TrackToTrackdir(t), ReverseTrackdir(TrackToTrackdir(t))}) {
 			if (!HasSignalOnTrackdir(tile, td)) continue;
-			DiagDirection d = TrackdirToExitdir(td);
-			int px = cx + _diag_dx[d] * off;
-			int py = cy + _diag_dy[d] * off;
-			uint32_t c = GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_GREEN ? COL_GO : COL_STOP;
+			auto [px, py] = _camera.ScreenOf(TrackdirGroundPoint(tx, ty, td, SIGNAL_ALONG, offset));
 			_canvas.FillCircle(px, py, r + 1, COL_INK);
-			_canvas.FillCircle(px, py, r, c);
+			_canvas.FillCircle(px, py, r, GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_GREEN ? COL_GO : COL_STOP);
 		}
 	}
 }
 
-void MapPainter::DrawOneWay(TileIndex tile, int x0, int y0, int x1, int y1, int ppt)
+/* An arrowhead lying on the ground at the tile centre, pointing out of the heading side. */
+static void FillArrow(int tx, int ty, DiagDirection heading, uint32_t c)
+{
+	TileGround ground(tx, ty);
+	TilePoint centre = TileCentre(tx, ty);
+	TilePoint tail = Shifted(centre, heading, -ARROW_HALF_LENGTH);
+	DiagDirection side = ChangeDiagDir(heading, DIAGDIRDIFF_90RIGHT);
+	_canvas.FillWorldQuad({
+		ground.At(Shifted(centre, heading, ARROW_HALF_LENGTH)),
+		ground.At(Shifted(tail, side, ARROW_HALF_BASE)),
+		ground.At(tail),
+		ground.At(Shifted(tail, side, -ARROW_HALF_BASE)),
+	}, c);
+}
+
+/* A bar across the road, closed to traffic both ways. */
+static void FillNoEntry(int tx, int ty, Axis road, uint32_t c)
+{
+	TilePoint centre = TileCentre(tx, ty);
+	DiagDirection across = AxisToDiagDir(OtherAxis(road));
+	FillGroundStroke(TileGround(tx, ty), Shifted(centre, across, -NO_ENTRY_HALF_LENGTH), Shifted(centre, across, NO_ENTRY_HALF_LENGTH), NO_ENTRY_HALF_WIDTH, c);
+}
+
+void MapPainter::DrawOneWay(TileIndex tile, int tx, int ty)
 {
 	if (!this->detail.oneway) return;
 	DisallowedRoadDirections drd = GetDisallowedRoadDirections(tile);
 	if (drd == DRD_NONE) return;
-
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int s = std::max(2, ppt / 4);
-
-	if (drd == DRD_BOTH) {
-		_canvas.FillRect(cx - s, cy - s / 3, cx + s, cy + s / 3, COL_STOP);
-		return;
-	}
 
 	RoadBits rb = GetRoadBits(tile, RTT_ROAD);
 	bool axis_x = (rb & ROAD_X) == ROAD_X;
 	bool axis_y = (rb & ROAD_Y) == ROAD_Y;
 	if (axis_x == axis_y) return;
 
-	/* Northbound traffic heads toward smaller map coordinates. */
-	int dir = drd == DRD_SOUTHBOUND ? -1 : 1;
-	for (int i = 0; i <= s; i++) {
-		int w = (s - i) / 2;
-		if (axis_x) {
-			int py = cy + dir * (i - s / 2);
-			_canvas.FillRect(cx - w, py, cx + w, py, COL_PAPER);
-		} else {
-			int px = cx + dir * (i - s / 2);
-			_canvas.FillRect(px, cy - w, px, cy + w, COL_PAPER);
-		}
-	}
-}
-
-void MapPainter::DrawBlock(MiniSprite s, int x0, int y0, int x1, int y1, int ppt, uint32_t fill, uint32_t border)
-{
-	if (ppt >= INFRASTRUCTURE_PPT && MiniAtlasHasArt(s) && MiniAtlasQuad(s, x0, y0, x1, y1, _canvas.Tone(fill))) return;
-	if (!this->detail.block_borders) {
-		_canvas.FillRect(x0, y0, x1, y1, fill);
+	Axis road = axis_x ? AXIS_X : AXIS_Y;
+	if (drd == DRD_BOTH) {
+		FillNoEntry(tx, ty, road, COL_STOP);
 		return;
 	}
-	int inset = std::max(1, ppt / 10);
-	int b = std::max(1, ppt / 10);
-	_canvas.FillRect(x0 + inset, y0 + inset, x1 - inset, y1 - inset, border);
-	_canvas.FillRect(x0 + inset + b, y0 + inset + b, x1 - inset - b, y1 - inset - b, fill);
+
+	/* Northbound traffic heads toward smaller map coordinates. */
+	DiagDirection southward = AxisToDiagDir(road);
+	FillArrow(tx, ty, drd == DRD_SOUTHBOUND ? ReverseDiagDir(southward) : southward, COL_PAPER);
 }
 
-/* Dark block with a bright tick pointing out of the exit side. Depot art is
- * authored exit-up and rotates to the real exit instead of the tick. */
-void MapPainter::DrawDepot(int x0, int y0, int x1, int y1, int ppt, DiagDirection exit)
+static AxisRun DeckRun(TileIndex head, int tx, int ty)
 {
-	if (ppt >= INFRASTRUCTURE_PPT && MiniAtlasHasArt(MiniSprite::Depot)) {
-		if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, _canvas.Tone(COL_DEPOT))) return;
+	RunEnd deck = GetBridgeHeight(head);
+	return {tx, ty, DiagDirToAxis(GetTunnelBridgeDirection(head)), deck, deck};
+}
+
+VolumeStyle MapPainter::VolumeStyleOf() const
+{
+	return this->Accented() ? VolumeStyle{this->Accent()} : VolumeStyle{};
+}
+
+/* A step belongs to the higher tile and goes before what stands on it; it is bare ground, so the overlay greys it with the terrain. */
+void MapPainter::DrawSteps(TileIndex tile, int tx, int ty)
+{
+	if (this->Accented()) return;
+	for (DiagDirection side : this->facing) {
+		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
+		if (step.has_value()) _volume_painter.DrawStep(tile, *step);
 	}
-	DrawBlock(MiniSprite::Depot, x0, y0, x1, y1, ppt, COL_DEPOT, COL_INK);
+}
+
+/* A building is drawn piece by piece, each tile's piece in that tile's turn of the far to near walk. */
+void MapPainter::DrawVolume(TileIndex tile)
+{
+	if (!this->Shows(GroundLayer(tile)) || this->HidesPortal(tile) || !_volume_painter.MayShow(tile)) return;
+	std::optional<BuildingForm> form = StructureForm(tile);
+	if (form.has_value()) _volume_painter.Draw(*form, tile, this->VolumeStyleOf());
+}
+
+/* A bridge passes over a tile at its own deck height, not at the ground below. */
+void MapPainter::DrawRaised(TileIndex tile, int tx, int ty)
+{
+	if (IsBridgeTile(tile)) this->DrawSpan(tile, RampRun(tile));
+	if (!IsBridgeAbove(tile)) return;
+
+	TileIndex head = GetSouthernBridgeEnd(tile);
+	this->DrawSpan(head, DeckRun(head, tx, ty));
+}
+
+void MapPainter::DrawSpan(TileIndex head, const AxisRun &run)
+{
+	MiniLayer layer = LayerOf(GetTunnelBridgeTransportType(head));
+	if (!this->Shows(layer)) return;
+
+	this->DrawSlab(run);
+	if (layer == MiniLayer::None) return;
+
+	Way way = layer == MiniLayer::Rail ? RailWay(GetRailType(head)) : RoadWay(head);
+	FillAxisBand(run, way.half, this->Accented() ? this->Accent() : way.tone);
+	if (this->Accented()) return;
+	if (way.rail_half > NO_RAILS) DrawRails(run, way.rail_half);
+	if (way.wired) DrawCatenary(run);
+}
+
+void MapPainter::DrawSlab(const AxisRun &run)
+{
+	StructureTones tones = this->Tones(DECK_TONES);
+	FillAxisBand(run, DECK_HALF, tones.fill);
 	if (!this->detail.block_borders) return;
-	int cx = (x0 + x1) / 2;
-	int cy = (y0 + y1) / 2;
-	int w = std::max(2, ppt / 5);
-	_canvas.ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, COL_PAPER);
-}
-
-static void DrawWater(int x0, int y0, int x1, int y1, int ppt)
-{
-	if (ppt >= INFRASTRUCTURE_PPT && MiniAtlasHasArt(MiniSprite::Water) && MiniAtlasQuad(MiniSprite::Water, x0, y0, x1, y1, _canvas.Tone(COL_WATER))) return;
-	_canvas.FillRect(x0, y0, x1, y1, COL_WATER);
-}
-
-void MapPainter::DrawTile(TileIndex tile, int tx, int ty, int ppt)
-{
-	auto [x0, y0, x1, y1] = _camera.TileRect(tx, ty);
-	if (x1 < 0 || y1 < 0 || x0 >= _camera.Width() || y0 >= _camera.Height()) return;
-
-	int rail_w = std::max(1, ppt / 6);
-	int road_w = std::max(2, ppt / 3);
-	int cat_w = rail_w >= 2 ? std::max(1, rail_w / 3) : 0;
-
-	bool water_tile = false;
-
-	switch (GetTileType(tile)) {
-		case MP_VOID:
-			_canvas.FillRect(x0, y0, x1, y1, COL_VOID);
-			return;
-
-		case MP_WATER:
-			DrawWater(x0, y0, x1, y1, ppt);
-			water_tile = true;
-			if (IsShipDepot(tile)) DrawDepot(x0, y0, x1, y1, ppt, GetShipDepotDirection(tile));
-			break;
-
-		case MP_CLEAR:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			break;
-
-		case MP_TREES: {
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			if (this->detail.tree_dots) {
-				int cx = (x0 + x1) / 2;
-				int cy = (y0 + y1) / 2;
-				int r = std::max(1, ppt / 8);
-				_canvas.FillShapeRot(MiniSprite::Tree, cx, cy, r, 0, COL_TREE);
-			}
-			break;
-		}
-
-		case MP_RAILWAY:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			if (IsRailDepot(tile)) {
-				DrawDepot(x0, y0, x1, y1, ppt, GetRailDepotDirection(tile));
-			} else {
-				TrackBits bits = GetTrackBits(tile);
-				DrawTrackBitsPx(bits, x0, y0, x1, y1, rail_w, COL_RAIL);
-				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-					DrawTrackBitsPx(bits, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-				if (HasSignals(tile)) DrawSignals(tile, x0, y0, x1, y1, ppt);
-			}
-			break;
-
-		case MP_ROAD:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			if (IsLevelCrossing(tile)) {
-				DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
-				DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
-			} else if (IsRoadDepot(tile)) {
-				DrawDepot(x0, y0, x1, y1, ppt, GetRoadDepotDirection(tile));
-			} else {
-				RoadBits bits = GetAnyRoadBits(tile, RTT_ROAD, true) | GetAnyRoadBits(tile, RTT_TRAM, true);
-				DrawRoadBitsPx(bits, x0, y0, x1, y1, road_w, COL_ROAD);
-				if (IsNormalRoad(tile)) DrawOneWay(tile, x0, y0, x1, y1, ppt);
-			}
-			break;
-
-		case MP_HOUSE:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(MiniSprite::House, x0, y0, x1, y1, ppt, COL_HOUSE, COL_HOUSE_B);
-			break;
-
-		case MP_INDUSTRY:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(MiniSprite::Industry, x0, y0, x1, y1, ppt, COL_IND, COL_IND_B);
-			break;
-
-		case MP_STATION: {
-			uint32_t fill, border;
-			bool on_water = false;
-			switch (GetStationType(tile)) {
-				case StationType::Rail:
-				case StationType::RailWaypoint: fill = COL_ST_RAIL; border = COL_ST_RAIL_B; break;
-				case StationType::Airport: fill = COL_ST_AIR; border = COL_ST_AIR_B; break;
-				case StationType::Truck:
-				case StationType::Bus:
-				case StationType::RoadWaypoint: fill = COL_ST_ROAD; border = COL_ST_ROAD_B; break;
-				case StationType::Dock: fill = COL_ST_DOCK; border = COL_ST_DOCK_B; on_water = true; break;
-				case StationType::Buoy: fill = COL_ST_BUOY; border = COL_ST_BUOY_B; on_water = true; break;
-				default: fill = COL_OBJ; border = COL_OBJ_B; on_water = true; break;
-			}
-			if (on_water) {
-				DrawWater(x0, y0, x1, y1, ppt);
-				water_tile = true;
-			} else {
-				DrawGround(tile, x0, y0, x1, y1, ppt);
-			}
-			DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, fill, border);
-			if (IsDriveThroughStopTile(tile)) {
-				DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, COL_ROAD);
-			}
-			if (HasStationRail(tile)) {
-				DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, COL_RAIL);
-				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-					DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-			}
-			break;
-		}
-
-		case MP_OBJECT:
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			DrawBlock(MiniSprite::Object, x0, y0, x1, y1, ppt, COL_OBJ, COL_OBJ_B);
-			break;
-
-		case MP_TUNNELBRIDGE: {
-			DrawGround(tile, x0, y0, x1, y1, ppt);
-			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
-			if (IsTunnel(tile)) {
-				DrawBlock(MiniSprite::Tunnel, x0, y0, x1, y1, ppt, COL_TUNNEL, COL_RAIL);
-			} else {
-				DrawAxisBand(axis, x0, y0, x1, y1, road_w, COL_BRIDGE);
-				if (cat_w > 0 && GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL && HasRailCatenary(GetRailType(tile))) {
-					DrawAxisBand(axis, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-			}
-			break;
-		}
-
-		default:
-			_canvas.FillRect(x0, y0, x1, y1, COL_OBJ);
-			break;
-	}
-
-	if (IsBridgeAbove(tile)) {
-		DrawAxisBand(GetBridgeAxis(tile), x0, y0, x1, y1, road_w, COL_BRIDGE);
-	}
-
-	if (!water_tile) {
-		int cw = std::max(1, ppt / 8);
-		uint h = TileHeight(tile);
-		if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) _canvas.BlendRect(x0, y1 - cw + 1, x1, y1, COL_SHADOW, _tuning.contour_alpha);
-		if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) _canvas.BlendRect(x1 - cw + 1, y0, x1, y1, COL_SHADOW, _tuning.contour_alpha);
-	}
-}
-
-/* Second pass for the overlay: the base map went down as dark greyscale and
- * the active layer's content is repainted in a bright accent so it carries
- * the frame. Rail reads as paper-white lines, road as catenary-yellow. */
-void MapPainter::DrawTileLayer(TileIndex tile, int tx, int ty, int ppt, MiniLayer layer)
-{
-	auto [x0, y0, x1, y1] = _camera.TileRect(tx, ty);
-	if (x1 < 0 || y1 < 0 || x0 >= _camera.Width() || y0 >= _camera.Height()) return;
-
-	int rail_w = std::max(1, ppt / 6);
-	int road_w = std::max(2, ppt / 3);
-	int cat_w = rail_w >= 2 ? std::max(1, rail_w / 3) : 0;
-	bool rail = layer == MiniLayer::Rail;
-	uint32_t accent = rail ? COL_PAPER : COL_CATENARY;
-
-	auto depot = [&](DiagDirection exit) {
-		if (ppt >= INFRASTRUCTURE_PPT && MiniAtlasHasArt(MiniSprite::Depot)) {
-			if (MiniAtlasQuadRot(MiniSprite::Depot, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0 + 1) / 2, exit * 90, _canvas.Tone(accent))) return;
-		}
-		uint32_t fill = Darken(accent);
-		DrawBlock(MiniSprite::Depot, x0, y0, x1, y1, ppt, fill, accent);
-		if (!this->detail.block_borders) return;
-		uint lum = (77 * ((fill >> 16) & 0xFFU) + 151 * ((fill >> 8) & 0xFFU) + 28 * (fill & 0xFFU)) >> 8;
-		int cx = (x0 + x1) / 2;
-		int cy = (y0 + y1) / 2;
-		int w = std::max(2, ppt / 5);
-		_canvas.ThickLine(cx, cy, cx + _diag_dx[exit] * (ppt / 2), cy + _diag_dy[exit] * (ppt / 2), w, lum >= 140 ? COL_INK : COL_PAPER);
-	};
-
-	switch (GetTileType(tile)) {
-		case MP_RAILWAY:
-			if (!rail) break;
-			if (IsRailDepot(tile)) {
-				depot(GetRailDepotDirection(tile));
-			} else {
-				TrackBits bits = GetTrackBits(tile);
-				DrawTrackBitsPx(bits, x0, y0, x1, y1, rail_w, accent);
-				if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-					DrawTrackBitsPx(bits, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-				if (HasSignals(tile)) DrawSignals(tile, x0, y0, x1, y1, ppt);
-			}
-			break;
-
-		case MP_ROAD:
-			if (IsLevelCrossing(tile)) {
-				if (rail) {
-					DrawTrackBitsPx(GetCrossingRailBits(tile), x0, y0, x1, y1, rail_w, accent);
-				} else {
-					DrawAxisBand(GetCrossingRoadAxis(tile), x0, y0, x1, y1, road_w, accent);
-				}
-			} else if (!rail) {
-				if (IsRoadDepot(tile)) {
-					depot(GetRoadDepotDirection(tile));
-				} else {
-					RoadBits bits = GetAnyRoadBits(tile, RTT_ROAD, true) | GetAnyRoadBits(tile, RTT_TRAM, true);
-					DrawRoadBitsPx(bits, x0, y0, x1, y1, road_w, accent);
-					if (IsNormalRoad(tile)) DrawOneWay(tile, x0, y0, x1, y1, ppt);
-				}
-			}
-			break;
-
-		case MP_STATION:
-			switch (GetStationType(tile)) {
-				case StationType::Rail:
-				case StationType::RailWaypoint:
-					if (!rail) break;
-					DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, COL_ST_RAIL, COL_ST_RAIL_B);
-					DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, rail_w, accent);
-					if (cat_w > 0 && HasRailCatenary(GetRailType(tile))) {
-						DrawAxisBand(GetRailStationAxis(tile), x0, y0, x1, y1, cat_w, COL_CATENARY);
-					}
-					break;
-				case StationType::Truck:
-				case StationType::Bus:
-				case StationType::RoadWaypoint:
-					if (rail) break;
-					DrawBlock(MiniSprite::Station, x0, y0, x1, y1, ppt, COL_ST_ROAD, COL_ST_ROAD_B);
-					if (IsDriveThroughStopTile(tile)) {
-						DrawAxisBand(GetDriveThroughStopAxis(tile), x0, y0, x1, y1, road_w, accent);
-					}
-					break;
-				default:
-					break;
-			}
-			break;
-
-		case MP_TUNNELBRIDGE: {
-			TransportType tt = GetTunnelBridgeTransportType(tile);
-			if (rail ? tt != TRANSPORT_RAIL : tt != TRANSPORT_ROAD) break;
-			Axis axis = DiagDirToAxis(GetTunnelBridgeDirection(tile));
-			if (IsTunnel(tile)) {
-				DrawBlock(MiniSprite::Tunnel, x0, y0, x1, y1, ppt, COL_TUNNEL, accent);
-			} else {
-				DrawAxisBand(axis, x0, y0, x1, y1, road_w, accent);
-				if (cat_w > 0 && rail && HasRailCatenary(GetRailType(tile))) {
-					DrawAxisBand(axis, x0, y0, x1, y1, cat_w, COL_CATENARY);
-				}
-			}
-			break;
-		}
-
-		default:
-			break;
-	}
-
-	if (IsBridgeAbove(tile)) {
-		TransportType tt = GetTunnelBridgeTransportType(GetSouthernBridgeEnd(tile));
-		if (rail ? tt == TRANSPORT_RAIL : tt == TRANSPORT_ROAD) {
-			DrawAxisBand(GetBridgeAxis(tile), x0, y0, x1, y1, road_w, accent);
-		}
-	}
-}
-
-/* A tile whose whole footprint is one solid colour can join a horizontal run
- * with equal neighbours; one rect per run keeps the command count far below
- * one per tile on open terrain and water. Tree tiles merge their ground too
- * and only defer the dot on top. Ground with art still merges: the run draws
- * as one repeat-wrapped quad instead of a rect, keyed by the art slot. */
-bool MapPainter::TileRunColour(TileIndex tile, int tx, int ty, int ppt, uint32_t &c, bool &tree_dot, MiniSprite &art)
-{
-	tree_dot = false;
-	art = MiniSprite::End;
-	if (IsBridgeAbove(tile)) return false;
-	switch (GetTileType(tile)) {
-		case MP_VOID:
-			c = COL_VOID;
-			return true;
-
-		case MP_WATER:
-			if (IsShipDepot(tile)) return false;
-			c = COL_WATER;
-			if (ppt >= INFRASTRUCTURE_PPT && MiniAtlasHasArt(MiniSprite::Water)) art = MiniSprite::Water;
-			return true;
-
-		case MP_TREES:
-			tree_dot = this->detail.tree_dots;
-			[[fallthrough]];
-		case MP_CLEAR: {
-			auto [s, hbase] = GetTileSlopeZ(tile);
-			if (s == SLOPE_FLAT) {
-				c = GroundColour(tile, hbase);
-				if (ppt >= INFRASTRUCTURE_PPT) {
-					MiniSprite g = GroundSlot(tile);
-					if (MiniAtlasHasArt(g)) art = g;
-				}
-			} else if (ppt < INFRASTRUCTURE_PPT) {
-				c = GroundOverviewColour(tile, s, hbase);
-			} else {
-				return false;
-			}
-			uint h = TileHeight(tile);
-			if (tx + 1 < (int)Map::SizeX() && TileHeight(TileXY(tx + 1, ty)) != h) return false;
-			if (ty + 1 < (int)Map::SizeY() && TileHeight(TileXY(tx, ty + 1)) != h) return false;
-			return true;
-		}
-
-		default:
-			return false;
-	}
+	for (double side : BOTH_SIDES) FillAxisLine(run, side * (DECK_HALF - EDGE_HALF), EDGE_HALF, tones.edge);
 }

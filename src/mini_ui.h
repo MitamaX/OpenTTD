@@ -29,6 +29,7 @@
 
 void MiniUiToggle();
 void MiniUiResetGameState();
+void MiniUiTileChanged(TileIndex tile);
 void MiniUiFrame(uint delta_ms);
 bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);

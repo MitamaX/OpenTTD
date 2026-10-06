@@ -11,6 +11,7 @@
 #define MINI_WINDOWS_MAP_PANEL_H
 
 #include <chrono>
+#include <optional>
 #include <vector>
 
 #include "../map/overview.h"
@@ -25,9 +26,12 @@ public:
 private:
 	void BindSheet(Rml::DataModelConstructor &model) override;
 	void Collect() override;
+	bool Shape() override;
 	void AfterLayout() override;
 
 	OverviewMode Mode() const { return static_cast<OverviewMode>(this->tab); }
+	Rml::Element *Frame() const;
+	std::optional<Rml::Vector2i> FrameSize() const;
 	void Repaint(Rml::Element &frame, Rml::Vector2i size);
 	void PlaceView(Rml::Element &frame);
 	void PlaceTowns(Rml::Element &frame);

@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file vehicle_painter.h Vehicles on the top-down map: consists, silhouettes, headings and cargo. */
+/** @file vehicle_painter.h Vehicles on the map: consists, silhouettes, headings and cargo. */
 
 #ifndef MINI_MAP_VEHICLE_PAINTER_H
 #define MINI_MAP_VEHICLE_PAINTER_H
@@ -16,9 +16,12 @@
 
 struct Vehicle;
 
+/* Grounded vehicles go under the buildings in front of them, aloft ones over every building. */
+enum class VehicleTier : uint8_t { Grounded, Aloft };
+
 class VehiclePainter {
 public:
-	void Paint(int ppt, MiniLayer filter);
+	void Paint(int ppt, MiniLayer filter, VehicleTier tier);
 
 private:
 	struct Tones {

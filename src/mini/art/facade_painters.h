@@ -5,18 +5,16 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file ground.h The colour and art of bare ground, by height, slope and cover. */
+/** @file facade_painters.h Wall strips: a wall material stacked storey over storey with its openings, and the glazing laid over them. */
 
-#ifndef MINI_MAP_GROUND_H
-#define MINI_MAP_GROUND_H
+#ifndef MINI_ART_FACADE_PAINTERS_H
+#define MINI_ART_FACADE_PAINTERS_H
 
-#include "../../mini_atlas.h"
-#include "../../slope_type.h"
-#include "../../tile_type.h"
+#include "../map/building_form.h"
+#include "luma_cell.h"
 
-uint32_t GroundColour(TileIndex tile, int h);
-MiniSprite GroundSlot(TileIndex tile);
-uint32_t GroundOverviewColour(TileIndex tile, Slope s, int hbase);
-void DrawGround(TileIndex tile, int x0, int y0, int x1, int y1, int ppt);
+LumaCell PaintFacadeStrip(const LumaCell &surface, Material wall, WindowGrid grid);
+LumaCell PaintGlazingStrip(WindowGrid grid);
+float StoreyMean(const LumaCell &strip, WindowGrid grid);
 
-#endif /* MINI_MAP_GROUND_H */
+#endif /* MINI_ART_FACADE_PAINTERS_H */

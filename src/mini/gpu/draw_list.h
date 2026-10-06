@@ -5,17 +5,62 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file draw_list.h Shapes and textured quads recorded for one frame, batched by texture. */
+/** @file draw_list.h Shapes and textured quads recorded for one frame as indexed vertices, batched by texture. */
 
 #ifndef MINI_GPU_DRAW_LIST_H
 #define MINI_GPU_DRAW_LIST_H
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <span>
 #include <vector>
 
 #include "../../core/geometry_type.hpp"
 #include "texture_store.h"
+
+inline constexpr uint CHANNEL_MAX = 0xFF;
+inline constexpr uint ALPHA_SHIFT = 24;
+inline constexpr uint RED_SHIFT = 16;
+inline constexpr uint GREEN_SHIFT = 8;
+inline constexpr uint BLUE_SHIFT = 0;
+inline constexpr size_t TRIANGLE_CORNERS = 3;
+
+constexpr uint Alpha(uint32_t argb)
+{
+	return (argb >> ALPHA_SHIFT) & CHANNEL_MAX;
+}
+
+constexpr uint Red(uint32_t argb)
+{
+	return (argb >> RED_SHIFT) & CHANNEL_MAX;
+}
+
+constexpr uint Green(uint32_t argb)
+{
+	return (argb >> GREEN_SHIFT) & CHANNEL_MAX;
+}
+
+constexpr uint Blue(uint32_t argb)
+{
+	return (argb >> BLUE_SHIFT) & CHANNEL_MAX;
+}
+
+constexpr uint32_t PackArgb(uint alpha, uint red, uint green, uint blue)
+{
+	return (alpha << ALPHA_SHIFT) | (red << RED_SHIFT) | (green << GREEN_SHIFT) | (blue << BLUE_SHIFT);
+}
+
+constexpr uint32_t WithAlpha(uint32_t argb, uint alpha)
+{
+	return PackArgb(alpha, Red(argb), Green(argb), Blue(argb));
+}
+
+/* The alpha that keeps this share of a full alpha, from none at 0 to all of it at 1. */
+inline uint FadedAlpha(double share, uint alpha = CHANNEL_MAX)
+{
+	return static_cast<uint>(std::lround(alpha * std::clamp(share, 0.0, 1.0)));
+}
 
 using VertexColour = std::array<uint8_t, 4>;
 
@@ -27,10 +72,13 @@ struct DrawVertex {
 	VertexColour rgba;
 };
 
+/* Indices count from the batch's first vertex, so each batch stands alone as a mesh. */
 struct DrawBatch {
 	TextureId texture;
-	uint32_t first;
-	uint32_t count;
+	uint32_t first_vertex;
+	uint32_t vertex_count;
+	uint32_t first_index;
+	uint32_t index_count;
 };
 
 struct UvRect {
@@ -41,6 +89,20 @@ struct UvRect {
 };
 
 static constexpr UvRect FULL_UV = {0.0f, 0.0f, 1.0f, 1.0f};
+
+/* A continuous screen position: pixel n spans n to n + 1. */
+struct ScreenPoint {
+	float x;
+	float y;
+};
+
+/* One corner of a textured shape: where it lands, the texel it samples and its tint. */
+struct TexturedCorner {
+	ScreenPoint at;
+	float u;
+	float v;
+	uint32_t argb;
+};
 
 /* A plain white texel inside a texture sprites draw from, so untextured shapes join the sprites' batches. */
 struct SolidTexel {
@@ -62,20 +124,26 @@ public:
 	void FillCircle(int cx, int cy, int r, uint32_t argb);
 	void FillDiamond(int cx, int cy, int r, uint32_t argb);
 	void FillTriangle(int cx, int cy, int r, uint32_t argb);
-	void Image(TextureId texture, const Rect &dest, const UvRect &uv, int angle_deg, uint32_t tint);
+	void FillQuad(const std::array<ScreenPoint, 4> &corners, uint32_t argb);
+	void Image(TextureId texture, const Rect &dest, const UvRect &uv, float angle_deg, uint32_t tint);
+	void Polygon(TextureId texture, std::span<const TexturedCorner> convex);
 
 	std::span<const DrawVertex> Vertices() const { return this->vertices; }
+	std::span<const uint32_t> Indices() const { return this->indices; }
 	std::span<const DrawBatch> Batches() const { return this->batches; }
 
 private:
 	DrawVertex Plain(float x, float y, const VertexColour &colour) const;
 	void Use(TextureId texture);
-	void Triangle(const DrawVertex &a, const DrawVertex &b, const DrawVertex &c);
-	void Quad(const DrawVertex &top_left, const DrawVertex &top_right, const DrawVertex &bottom_right, const DrawVertex &bottom_left);
+	uint32_t Add(const DrawVertex &vertex);
+	void FanFrom(uint32_t hub);
+	template <typename Outline>
+	void Fan(const Outline &outline);
 	void Box(float left, float top, float right, float bottom, const VertexColour &colour);
 	void Wedge(float cx, float cy, float radius, float start_deg, float sweep_deg, int segments, const VertexColour &colour);
 
 	std::vector<DrawVertex> vertices;
+	std::vector<uint32_t> indices;
 	std::vector<DrawBatch> batches;
 	SolidTexel solid;
 };

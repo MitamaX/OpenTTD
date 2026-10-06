@@ -53,6 +53,8 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "pan_smooth_ms", this->pan_smooth_ms);
 	ReadIniNumber(group, "zoom_step", this->zoom_step);
 	ReadIniNumber(group, "zoom_smooth_ms", this->zoom_smooth_ms);
+	ReadIniNumber(group, "turn_smooth_ms", this->turn_smooth_ms);
+	ReadIniNumber(group, "height_scale", this->height_scale);
 	ReadIniNumber(group, "hud_scale", this->hud_scale);
 	ReadIniNumber(group, "grid_alpha", this->grid_alpha);
 	ReadIniNumber(group, "contour_alpha", this->contour_alpha);
@@ -69,6 +71,8 @@ void MiniTuning::Load()
 	this->pan_smooth_ms = Clamp(this->pan_smooth_ms, 1.0, 500.0);
 	this->zoom_step = Clamp(this->zoom_step, 1.05, 2.0);
 	this->zoom_smooth_ms = Clamp(this->zoom_smooth_ms, 1.0, 500.0);
+	this->turn_smooth_ms = Clamp(this->turn_smooth_ms, 1.0, 1000.0);
+	this->height_scale = Clamp(this->height_scale, 1.0, MAX_HEIGHT_SCALE);
 	this->hud_scale = Clamp(this->hud_scale, 1, 4);
 	this->grid_alpha = Clamp(this->grid_alpha, 0, 255);
 	this->contour_alpha = Clamp(this->contour_alpha, 0, 255);

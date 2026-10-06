@@ -28,6 +28,7 @@
 #include "../tools/clear_filter.h"
 #include "../tools/tool_choices.h"
 #include "../tools/tool_estimate.h"
+#include "../ui/pixel_style.h"
 #include "../ui/tone.h"
 #include "../ui/ui_text.h"
 #include "build_catalog.h"
@@ -48,14 +49,14 @@ static std::string_view ToolHint(MiniTool kind)
 		case MiniTool::Convert:
 		case MiniTool::RoadConvert: return "DRAG AREA / RMB CANCEL";
 		case MiniTool::Road: return "DRAG LINE / CTRL REMOVE / RMB CANCEL";
-		case MiniTool::Station: return "DRAG AREA / Q E TURN / CTRL REMOVE / RMB CANCEL";
+		case MiniTool::Station: return "DRAG AREA / R TURN / CTRL REMOVE / RMB CANCEL";
 		case MiniTool::BusStop:
-		case MiniTool::TruckStop: return "CLICK ROAD / Q E TURN / CTRL REMOVE / RMB CANCEL";
+		case MiniTool::TruckStop: return "CLICK ROAD / R TURN / CTRL REMOVE / RMB CANCEL";
 		case MiniTool::RailWaypoint: return "CLICK TRACK / CTRL REMOVE / RMB CANCEL";
 		case MiniTool::RoadWaypoint: return "CLICK ROAD / CTRL REMOVE / RMB CANCEL";
 		case MiniTool::TrainDepot:
-		case MiniTool::RoadDepot: return "Q E ROTATE EXIT / CTRL REMOVE / RMB CANCEL";
-		case MiniTool::ShipDepot: return "Q E ROTATE / CTRL REMOVE / RMB CANCEL";
+		case MiniTool::RoadDepot: return "R ROTATE EXIT / CTRL REMOVE / RMB CANCEL";
+		case MiniTool::ShipDepot: return "R ROTATE / CTRL REMOVE / RMB CANCEL";
 		case MiniTool::Dock: return "CLICK SHORE SLOPE / CTRL REMOVE / RMB CANCEL";
 		case MiniTool::Buoy: return "CLICK WATER / CTRL REMOVE / RMB CANCEL";
 		case MiniTool::Airport: return "CLICK SITE / CTRL REMOVE / RMB CANCEL";
@@ -195,6 +196,6 @@ void NoteLayer::FollowCursor()
 	Rml::Vector2f size = note->GetBox().GetSize(Rml::BoxArea::Border);
 	float x = std::min(_cursor.pos.x + CURSOR_GAP_X_DP * dp, bounds.x - size.x - EDGE_GAP_DP * dp);
 	float y = std::min(_cursor.pos.y + CURSOR_GAP_Y_DP * dp, bounds.y - size.y - EDGE_GAP_DP * dp);
-	note->SetProperty(Rml::PropertyId::Left, Rml::Property(x, Rml::Unit::PX));
-	note->SetProperty(Rml::PropertyId::Top, Rml::Property(y, Rml::Unit::PX));
+	SetPixels(*note, Rml::PropertyId::Left, x);
+	SetPixels(*note, Rml::PropertyId::Top, y);
 }

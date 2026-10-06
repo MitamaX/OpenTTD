@@ -74,13 +74,14 @@
 #include "mini/input/input_mode.h"
 #include "mini/input/map_pointer.h"
 #include "mini/input/pointer_router.h"
-#include "mini/map/ground.h"
+#include "mini/map/ground_painter.h"
 #include "mini/map/map_labels.h"
 #include "mini/map/map_overlay.h"
 #include "mini/map/map_painter.h"
-#include "mini/map/tile_shapes.h"
 #include "mini/map/vehicle_motion.h"
 #include "mini/map/vehicle_painter.h"
+#include "mini/map/volume_painter.h"
+#include "mini/map/world_tiles.h"
 #include "mini/tools/blueprint.h"
 #include "mini/tools/build_tool.h"
 #include "mini/tools/clear_filter.h"
@@ -89,6 +90,7 @@
 #include "mini/tools/tool_choices.h"
 #include "mini/tools/tool_estimate.h"
 #include "mini/tools/tool_sites.h"
+#include "mini/ui/shader_painter.h"
 #include "mini/ui/ui_text.h"
 #include "mini/ui/view_host.h"
 #include "mini/windows/company_panel.h"
@@ -186,8 +188,9 @@ static bool OpenVehicleWndAt(int sx, int sy)
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->type > VEH_AIRCRAFT) continue;
 		if (v->vehstatus.Test(VehState::Hidden)) continue;
-		int dx = _camera.ScreenX(v->y_pos / (double)TILE_SIZE) - sx;
-		int dy = _camera.ScreenY(v->x_pos / (double)TILE_SIZE) - sy;
+		Point at = _camera.ScreenOf(_vehicle_motion.Position(v));
+		int dx = at.x - sx;
+		int dy = at.y - sy;
 		int d2 = dx * dx + dy * dy;
 		if (d2 < best_d2) {
 			best_d2 = d2;
@@ -198,9 +201,16 @@ static bool OpenVehicleWndAt(int sx, int sy)
 	return best != nullptr;
 }
 
+/* A building drawn over the point answers first, so a click on a depot's roof opens the depot. */
+static std::optional<TileIndex> InspectedTile(int sx, int sy)
+{
+	std::optional<TileIndex> picked = _volume_painter.PickAt({sx, sy});
+	return picked.has_value() ? picked : TileUnder(_camera.MapAt(sx, sy));
+}
+
 static bool OpenDepotWndAt(int sx, int sy)
 {
-	std::optional<TileIndex> tile = TileUnder(_camera.MapAt(sx, sy));
+	std::optional<TileIndex> tile = InspectedTile(sx, sy);
 	if (!tile.has_value() || !IsDepotTile(*tile)) return false;
 	ShowDepotWindow(*tile, GetDepotVehicleType(*tile));
 	return true;
@@ -210,7 +220,7 @@ static bool OpenDepotWndAt(int sx, int sy)
  * their window. */
 static bool OpenWaypointWndAt(int sx, int sy)
 {
-	std::optional<TileIndex> tile = TileUnder(_camera.MapAt(sx, sy));
+	std::optional<TileIndex> tile = InspectedTile(sx, sy);
 	if (!tile.has_value() || (!IsRailWaypointTile(*tile) && !IsRoadWaypointTile(*tile) && !IsBuoyTile(*tile))) return false;
 	return ShowMiniWaypointWindow(GetStationIndex(*tile));
 }
@@ -225,7 +235,7 @@ static void DrawOrderRoute()
 	const Vehicle *v = Vehicle::GetIfValid(FrontWndVehicle());
 	if (v == nullptr || v->GetNumOrders() < 1) return;
 
-	std::vector<std::pair<int, int>> stops;
+	std::vector<Point> stops;
 	int cur_stop = -1;
 	int i = 0;
 	for (const Order &o : v->Orders()) {
@@ -233,7 +243,7 @@ static void DrawOrderRoute()
 			const Station *st = Station::GetIfValid(o.GetDestination().ToStationID());
 			if (st != nullptr) {
 				if (i == v->cur_real_order_index) cur_stop = (int)stops.size();
-				stops.emplace_back(_camera.ScreenX(TileY(st->xy) + 0.5), _camera.ScreenY(TileX(st->xy) + 0.5));
+				stops.push_back(_camera.ScreenOfGround(TileX(st->xy) + 0.5, TileY(st->xy) + 0.5));
 			}
 		}
 		i++;
@@ -242,17 +252,15 @@ static void DrawOrderRoute()
 
 	size_t legs = stops.size() > 2 ? stops.size() : stops.size() - 1;
 	for (size_t n = 0; n < legs; n++) {
-		auto [x0, y0] = stops[n];
-		auto [x1, y1] = stops[(n + 1) % stops.size()];
-		_canvas.ThickLine(x0, y0, x1, y1, 2, COL_BP);
+		const Point &from = stops[n];
+		const Point &to = stops[(n + 1) % stops.size()];
+		_canvas.ThickLine(from.x, from.y, to.x, to.y, 2, COL_BP);
 	}
-	for (auto [x, y] : stops) _canvas.FillCircle(x, y, 4, COL_BP);
+	for (const Point &stop : stops) _canvas.FillCircle(stop.x, stop.y, 4, COL_BP);
 
 	if (cur_stop >= 0) {
-		auto [wx, wy] = _vehicle_motion.Position(v);
-		int vx = _camera.ScreenX(wy);
-		int vy = _camera.ScreenY(wx);
-		_canvas.ThickLine(vx, vy, stops[cur_stop].first, stops[cur_stop].second, 2, COL_PAPER);
+		Point at = _camera.ScreenOf(_vehicle_motion.Position(v));
+		_canvas.ThickLine(at.x, at.y, stops[cur_stop].x, stops[cur_stop].y, 2, COL_PAPER);
 	}
 }
 
@@ -260,9 +268,7 @@ static void DrawVehicleRing(int ppt)
 {
 	const Vehicle *v = Vehicle::GetIfValid(FrontWndVehicle());
 	if (v == nullptr) return;
-	auto [wx, wy] = _vehicle_motion.Position(v);
-	int cx = _camera.ScreenX(wy);
-	int cy = _camera.ScreenY(wx);
+	auto [cx, cy] = _camera.ScreenOf(_vehicle_motion.Position(v));
 	int r = std::max(6, ppt / 2 + 3);
 	_canvas.Frame({cx - r, cy - r, cx + r, cy + r}, 2, COL_PAPER);
 }
@@ -579,6 +585,12 @@ void MiniUiResetGameState()
 	ClearFleetDrafts();
 	_deploy.Reset();
 	_toast_feed.Clear();
+	_world_tiles.Reset();
+}
+
+void MiniUiTileChanged(TileIndex tile)
+{
+	if (_mini_active) _world_tiles.Touch(tile);
 }
 
 void MiniUiToggle()
@@ -593,6 +605,9 @@ void MiniUiToggle()
 
 	_tuning.Load();
 	MiniAtlasReload();
+	RegisterShaderPainter(GroundPainter::NAME, _ground_painter);
+	_ground_painter.Reload();
+	_world_tiles.Reset();
 	_views.ReloadDesign();
 	UndrawMouseCursor();
 	/* One palette-driven fill resets the 32bpp-anim mapping buffer, so later
@@ -602,9 +617,11 @@ void MiniUiToggle()
 		GfxFillRect(0, 0, _screen.width - 1, _screen.height - 1, PC_BLACK);
 	}
 
+	_camera.FaceNorth();
 	if (Window *w = GetMainWindow(); w != nullptr && w->viewport != nullptr) {
+		/* The native centre is a level-0 plane point, and facing north the mini map projects as the native view does. */
 		Point centre = InverseRemapCoords(w->viewport->virtual_left + w->viewport->virtual_width / 2, w->viewport->virtual_top + w->viewport->virtual_height / 2);
-		_camera.CentreOn(centre.x / (double)TILE_SIZE, centre.y / (double)TILE_SIZE);
+		_camera.PlaceCentre({centre.x / (double)TILE_SIZE, centre.y / (double)TILE_SIZE});
 	} else {
 		_camera.CentreOn(Map::SizeX() / 2.0, Map::SizeY() / 2.0);
 	}
@@ -738,15 +755,19 @@ bool MiniUiHandleKeypress(uint keycode, char32_t key)
 			UnwindEscape();
 			break;
 
-		/* The pair turns the blueprint and nothing else: every type choice
-		 * belongs to the build panel. It is modal, not a global shortcut, so
-		 * it only lives while a placement tool is in hand. */
-		case 'E':
-			_choices.Turn(DIAGDIRDIFF_90RIGHT);
+		case 'Q':
+			_camera.Turn(-1);
 			break;
 
-		case 'Q':
-			_choices.Turn(DIAGDIRDIFF_90LEFT);
+		case 'E':
+			_camera.Turn(1);
+			break;
+
+		/* R turns the blueprint and nothing else, Shift turning it back: every
+		 * type choice belongs to the build panel. It is modal, not a global
+		 * shortcut, so it only lives while a placement tool is in hand. */
+		case 'R':
+			_choices.Turn((keycode & WKC_SHIFT) != 0 ? DIAGDIRDIFF_90LEFT : DIAGDIRDIFF_90RIGHT);
 			break;
 
 		default:
@@ -830,12 +851,15 @@ void MiniUiFrame(uint delta_ms)
 
 	_canvas.BeginFrame();
 	MiniAtlasEnsure();
+	_world_tiles.Sync();
+	_camera.SetPeak(_world_tiles.Peak());
 	_vehicle_motion.Advance(delta_ms);
 	_toast_feed.Age(delta_ms);
 	if (VehicleID built = _deploy.Step(); built != VehicleID::Invalid()) OpenVehicleWindow(built);
 	_map_draw.Clear();
 
 	_camera.Update(delta_ms, _mode.FollowTarget());
+	_volume_painter.BeginFrame();
 
 	int ppt = _camera.TilePixels();
 
@@ -845,12 +869,14 @@ void MiniUiFrame(uint delta_ms)
 
 	_overlay.FollowTool(ToolLayer(_tool.Kind()));
 
-	_map_painter.Paint(ppt, _overlay.Filter());
+	_map_painter.PaintGround(ppt, _overlay.Filter());
+	_vehicle_painter.Paint(ppt, _overlay.Filter(), VehicleTier::Grounded);
+	_map_painter.PaintRaised();
 
 	PaintBlueprint(ppt);
 
 	DrawOrderRoute();
-	_vehicle_painter.Paint(ppt, _overlay.Filter());
+	_vehicle_painter.Paint(ppt, _overlay.Filter(), VehicleTier::Aloft);
 	DrawVehicleRing(ppt);
 	Present();
 }

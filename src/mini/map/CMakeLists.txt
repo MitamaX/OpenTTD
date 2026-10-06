@@ -1,19 +1,46 @@
 add_files(
-    ground.cpp
-    ground.h
+    building_form.h
+    ground_painter.cpp
+    ground_painter.h
+    house_forms.cpp
+    house_forms.h
+    house_kinds.cpp
+    house_kinds.h
+    industry_forms.cpp
+    industry_forms.h
+    industry_looks.cpp
+    industry_looks.h
     map_labels.cpp
     map_labels.h
     map_overlay.cpp
     map_overlay.h
     map_painter.cpp
     map_painter.h
+    material_palette.h
+    network_style.h
+    object_forms.cpp
+    object_forms.h
     overview.cpp
     overview.h
+    site_shapes.cpp
+    site_shapes.h
+    structure_forms.cpp
+    structure_forms.h
     tile_shapes.cpp
     tile_shapes.h
+    transport_forms.cpp
+    transport_forms.h
     vehicle_motion.cpp
     vehicle_motion.h
     vehicle_painter.cpp
     vehicle_painter.h
+    volume_geometry.cpp
+    volume_geometry.h
+    volume_light.cpp
+    volume_light.h
+    volume_painter.cpp
+    volume_painter.h
+    world_tiles.cpp
+    world_tiles.h
     zoom_detail.h
 )

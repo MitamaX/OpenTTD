@@ -13,6 +13,7 @@
 #include <array>
 #include <bit>
 
+#include "draw_list.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
@@ -20,7 +21,6 @@
 using Texel = std::array<uint8_t, 4>;
 
 static constexpr size_t ALPHA = 3;
-static constexpr uint CHANNEL_MAX = 0xFF;
 
 TextureStore _textures;
 
@@ -31,10 +31,10 @@ static uint32_t Premultiplied(uint32_t pixel)
 	return std::bit_cast<uint32_t>(texel);
 }
 
-TextureId TextureStore::Add(std::span<const uint32_t> rgba, Dimension size, TextureFilter filter, TextureWrap wrap)
+TextureId TextureStore::Add(std::span<const uint32_t> rgba, Dimension size, TextureFilter filter, TextureWrap wrap, int max_mip_level)
 {
 	TextureId id = this->next++;
-	Entry &entry = this->entries.emplace(id, Entry{std::vector<uint32_t>(rgba.size()), size, filter, wrap}).first->second;
+	Entry &entry = this->entries.emplace(id, Entry{std::vector<uint32_t>(rgba.size()), size, filter, wrap, max_mip_level}).first->second;
 	std::ranges::transform(rgba, entry.rgba.begin(), Premultiplied);
 	return id;
 }
@@ -89,5 +89,7 @@ void TextureStore::Upload(Entry &entry)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(entry.size.width), static_cast<GLsizei>(entry.size.height), 0, GL_RGBA, GL_UNSIGNED_BYTE, entry.rgba.empty() ? nullptr : entry.rgba.data());
-	if (mipmapped) glGenerateMipmap(GL_TEXTURE_2D);
+	if (!mipmapped) return;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, entry.max_mip_level);
+	glGenerateMipmap(GL_TEXTURE_2D);
 }

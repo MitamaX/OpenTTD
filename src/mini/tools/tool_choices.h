@@ -70,7 +70,7 @@ private:
 	DiagDirection stop_dir = DIAGDIR_NE;
 	DiagDirection point_dir = DIAGDIR_SE;
 	/* A square drag leaves the platform direction ambiguous and a rectangle
-	 * can still want the short side, so the axis is derived and Q/E flips it. */
+	 * can still want the short side, so the axis is derived and R flips it. */
 	bool station_flip = false;
 };
 

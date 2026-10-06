@@ -5,41 +5,29 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file mini_atlas.h Sprite atlas for the mini UI; white placeholder shapes stand in until real art lands. */
+/** @file mini_atlas.h The map atlas of the mini UI: sprites, the plain white texel and the building materials in one texture. */
 
 #ifndef MINI_ATLAS_H
 #define MINI_ATLAS_H
 
 #include <cstdint>
 
+#include "mini/gpu/draw_list.h"
+
 enum class MiniSprite : uint8_t {
 	Disc,
 	Diamond,
 	Triangle,
-	Tree,
 	RoadVeh,
 	Ship,
 	Aircraft,
-	Grass,
-	Field,
-	Rock,
-	Snow,
-	Desert,
-	Water,
-	House,
-	Industry,
-	Station,
-	Object,
-	Depot,
-	Tunnel,
 	End,
 };
 
 void MiniAtlasEnsure();
 void MiniAtlasReload();
-bool MiniAtlasHasArt(MiniSprite sprite);
+SolidTexel MiniAtlasSolid();
 bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t argb);
-bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, int angle_deg, uint32_t argb);
-bool MiniAtlasTileRun(MiniSprite sprite, int x0, int y0, int x1, int y1, int run_tiles, uint32_t argb);
+bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, float angle_deg, uint32_t argb);
 
 #endif /* MINI_ATLAS_H */

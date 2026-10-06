@@ -292,6 +292,7 @@ body.wide {
 
 .map-view {
 	position: absolute;
+	box-sizing: border-box;
 	border: 2dp var(--accent);
 	pointer-events: none;
 }

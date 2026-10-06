@@ -23,17 +23,25 @@ struct Vehicle;
 class VehicleMotion {
 public:
 	void Advance(uint delta_ms);
-	TilePoint Position(const Vehicle *v);
+	WorldPoint Position(const Vehicle *v);
+	static WorldPoint Grounded(const Vehicle *v, const WorldPoint &point);
 	void Clear();
 
 private:
+	struct TickPosition {
+		int32_t x;
+		int32_t y;
+		int32_t z;
+	};
+
 	struct Snapshot {
-		int32_t px;
-		int32_t py;
-		int32_t cx;
-		int32_t cy;
+		TickPosition previous;
+		TickPosition current;
 		uint64_t tick;
 	};
+
+	static TickPosition PositionOf(const Vehicle *v);
+	double Interpolated(int32_t previous, int32_t current) const;
 
 	std::unordered_map<uint32_t, Snapshot> snapshots;
 	uint64_t tick = 0;

@@ -5,13 +5,14 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file draw_list.cpp Shapes and textured quads recorded for one frame, batched by texture. */
+/** @file draw_list.cpp Shapes and textured quads recorded for one frame as indexed vertices, batched by texture. */
 
 #include "../../stdafx.h"
 #include "draw_list.h"
 
 #include <cmath>
 #include <numbers>
+#include <ranges>
 
 #include "../../safeguards.h"
 
@@ -35,13 +36,28 @@ static float Radians(float degrees)
 
 static VertexColour Unpack(uint32_t argb)
 {
-	return {static_cast<uint8_t>(argb >> 16), static_cast<uint8_t>(argb >> 8), static_cast<uint8_t>(argb), static_cast<uint8_t>(argb >> 24)};
+	return {static_cast<uint8_t>(Red(argb)), static_cast<uint8_t>(Green(argb)), static_cast<uint8_t>(Blue(argb)), static_cast<uint8_t>(Alpha(argb))};
+}
+
+static DrawVertex CornerVertex(const TexturedCorner &corner)
+{
+	return {corner.at.x, corner.at.y, corner.u, corner.v, Unpack(corner.argb)};
 }
 
 void DrawList::Clear()
 {
 	this->vertices.clear();
+	this->indices.clear();
 	this->batches.clear();
+}
+
+/* The corners go in order around a convex outline, in either winding; the triangles fan out from the first. */
+template <typename Outline>
+void DrawList::Fan(const Outline &outline)
+{
+	uint32_t hub = this->batches.back().vertex_count;
+	for (const DrawVertex &vertex : outline) this->Add(vertex);
+	this->FanFrom(hub);
 }
 
 void DrawList::FillRect(int x0, int y0, int x1, int y1, uint32_t argb)
@@ -80,7 +96,7 @@ void DrawList::FillGradient(int x0, int y0, int x1, int y1, uint32_t top_left, u
 	float right = x1 + 1;
 	float bottom = y1 + 1;
 	this->Use(this->solid.texture);
-	this->Quad(this->Plain(x0, y0, Unpack(top_left)), this->Plain(right, y0, Unpack(top_right)), this->Plain(right, bottom, Unpack(bottom_right)), this->Plain(x0, bottom, Unpack(bottom_left)));
+	this->Fan(std::array{this->Plain(x0, y0, Unpack(top_left)), this->Plain(right, y0, Unpack(top_right)), this->Plain(right, bottom, Unpack(bottom_right)), this->Plain(x0, bottom, Unpack(bottom_left))});
 }
 
 /* The stroke is centred on the segment and stops square at both ends. */
@@ -94,9 +110,7 @@ void DrawList::Line(int x0, int y0, int x1, int y1, int width, uint32_t argb)
 	float scale = width / (2.0f * length);
 	float nx = -scale * dy;
 	float ny = scale * dx;
-	VertexColour colour = Unpack(argb);
-	this->Use(this->solid.texture);
-	this->Quad(this->Plain(x0 - nx, y0 - ny, colour), this->Plain(x0 + nx, y0 + ny, colour), this->Plain(x1 + nx, y1 + ny, colour), this->Plain(x1 - nx, y1 - ny, colour));
+	this->FillQuad({ScreenPoint{x0 - nx, y0 - ny}, ScreenPoint{x0 + nx, y0 + ny}, ScreenPoint{x1 + nx, y1 + ny}, ScreenPoint{x1 - nx, y1 - ny}}, argb);
 }
 
 /* Single-pixel dots stay square; small discs need few sides. */
@@ -118,11 +132,19 @@ void DrawList::FillTriangle(int cx, int cy, int r, uint32_t argb)
 {
 	VertexColour colour = Unpack(argb);
 	this->Use(this->solid.texture);
-	this->Triangle(this->Plain(cx, cy - r, colour), this->Plain(cx - r, cy + r, colour), this->Plain(cx + r, cy + r, colour));
+	this->Fan(std::array{this->Plain(cx, cy - r, colour), this->Plain(cx - r, cy + r, colour), this->Plain(cx + r, cy + r, colour)});
+}
+
+/* The corners go in order around the quad, in either winding. */
+void DrawList::FillQuad(const std::array<ScreenPoint, 4> &corners, uint32_t argb)
+{
+	std::array<TexturedCorner, 4> textured;
+	std::ranges::transform(corners, textured.begin(), [&](const ScreenPoint &at) { return TexturedCorner{at, this->solid.u, this->solid.v, argb}; });
+	this->Polygon(this->solid.texture, textured);
 }
 
 /* The quad turns about its centre, so angle 0 lands exactly on the destination. */
-void DrawList::Image(TextureId texture, const Rect &dest, const UvRect &uv, int angle_deg, uint32_t tint)
+void DrawList::Image(TextureId texture, const Rect &dest, const UvRect &uv, float angle_deg, uint32_t tint)
 {
 	if (texture == NO_TEXTURE || dest.Width() <= 0 || dest.Height() <= 0) return;
 
@@ -132,13 +154,18 @@ void DrawList::Image(TextureId texture, const Rect &dest, const UvRect &uv, int 
 	float cy = dest.top + half_h;
 	float turn_cos = std::cos(Radians(angle_deg));
 	float turn_sin = std::sin(Radians(angle_deg));
-	VertexColour colour = Unpack(tint);
 	auto corner = [&](float ox, float oy, float u, float v) {
-		return DrawVertex{cx + ox * turn_cos - oy * turn_sin, cy + ox * turn_sin + oy * turn_cos, u, v, colour};
+		return TexturedCorner{{cx + ox * turn_cos - oy * turn_sin, cy + ox * turn_sin + oy * turn_cos}, u, v, tint};
 	};
 
+	this->Polygon(texture, std::array{corner(-half_w, -half_h, uv.left, uv.top), corner(half_w, -half_h, uv.right, uv.top), corner(half_w, half_h, uv.right, uv.bottom), corner(-half_w, half_h, uv.left, uv.bottom)});
+}
+
+void DrawList::Polygon(TextureId texture, std::span<const TexturedCorner> convex)
+{
+	if (convex.size() < TRIANGLE_CORNERS) return;
 	this->Use(texture);
-	this->Quad(corner(-half_w, -half_h, uv.left, uv.top), corner(half_w, -half_h, uv.right, uv.top), corner(half_w, half_h, uv.right, uv.bottom), corner(-half_w, half_h, uv.left, uv.bottom));
+	this->Fan(convex | std::views::transform(CornerVertex));
 }
 
 DrawVertex DrawList::Plain(float x, float y, const VertexColour &colour) const
@@ -152,43 +179,44 @@ void DrawList::Use(TextureId texture)
 	if (!this->batches.empty()) {
 		DrawBatch &last = this->batches.back();
 		if (last.texture == texture) return;
-		if (last.count == 0) {
+		if (last.vertex_count == 0) {
 			last.texture = texture;
 			return;
 		}
 	}
-	this->batches.push_back({texture, static_cast<uint32_t>(this->vertices.size()), 0});
+	this->batches.push_back({texture, static_cast<uint32_t>(this->vertices.size()), 0, static_cast<uint32_t>(this->indices.size()), 0});
 }
 
-void DrawList::Triangle(const DrawVertex &a, const DrawVertex &b, const DrawVertex &c)
+/* The vertex's index within the current batch. */
+uint32_t DrawList::Add(const DrawVertex &vertex)
 {
-	this->vertices.insert(this->vertices.end(), {a, b, c});
-	this->batches.back().count += 3;
+	this->vertices.push_back(vertex);
+	return this->batches.back().vertex_count++;
 }
 
-void DrawList::Quad(const DrawVertex &top_left, const DrawVertex &top_right, const DrawVertex &bottom_right, const DrawVertex &bottom_left)
+/* Joins every vertex added since the hub into triangles fanning out from it. */
+void DrawList::FanFrom(uint32_t hub)
 {
-	this->Triangle(top_left, top_right, bottom_right);
-	this->Triangle(top_left, bottom_right, bottom_left);
+	DrawBatch &batch = this->batches.back();
+	for (uint32_t rim = hub + 2; rim < batch.vertex_count; rim++) this->indices.insert(this->indices.end(), {hub, rim - 1, rim});
+	batch.index_count = static_cast<uint32_t>(this->indices.size()) - batch.first_index;
 }
 
 void DrawList::Box(float left, float top, float right, float bottom, const VertexColour &colour)
 {
 	if (right <= left || bottom <= top) return;
 	this->Use(this->solid.texture);
-	this->Quad(this->Plain(left, top, colour), this->Plain(right, top, colour), this->Plain(right, bottom, colour), this->Plain(left, bottom, colour));
+	this->Fan(std::array{this->Plain(left, top, colour), this->Plain(right, top, colour), this->Plain(right, bottom, colour), this->Plain(left, bottom, colour)});
 }
 
-/* Angles run clockwise on screen, from the rightward axis. */
+/* Angles run clockwise on screen, from the rightward axis; the rim shares its corners between neighbouring slices. */
 void DrawList::Wedge(float cx, float cy, float radius, float start_deg, float sweep_deg, int segments, const VertexColour &colour)
 {
 	this->Use(this->solid.texture);
-	DrawVertex centre = this->Plain(cx, cy, colour);
-	DrawVertex previous = this->Plain(cx + radius * std::cos(Radians(start_deg)), cy + radius * std::sin(Radians(start_deg)), colour);
-	for (int i = 1; i <= segments; i++) {
+	uint32_t hub = this->Add(this->Plain(cx, cy, colour));
+	for (int i = 0; i <= segments; i++) {
 		float angle = Radians(start_deg + sweep_deg * i / segments);
-		DrawVertex next = this->Plain(cx + radius * std::cos(angle), cy + radius * std::sin(angle), colour);
-		this->Triangle(centre, previous, next);
-		previous = next;
+		this->Add(this->Plain(cx + radius * std::cos(angle), cy + radius * std::sin(angle), colour));
 	}
+	this->FanFrom(hub);
 }

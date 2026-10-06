@@ -18,6 +18,7 @@
 
 using TextureId = uint32_t;
 static constexpr TextureId NO_TEXTURE = 0;
+inline constexpr int UNLIMITED_MIP_LEVEL = 1000;
 
 enum class TextureFilter : uint8_t {
 	Nearest,
@@ -40,7 +41,7 @@ struct GlImage {
 /* Pixels come in as RGBA bytes in memory order and are kept premultiplied, the way RmlUi blends them. */
 class TextureStore {
 public:
-	TextureId Add(std::span<const uint32_t> rgba, Dimension size, TextureFilter filter = TextureFilter::Nearest, TextureWrap wrap = TextureWrap::Clamp);
+	TextureId Add(std::span<const uint32_t> rgba, Dimension size, TextureFilter filter = TextureFilter::Nearest, TextureWrap wrap = TextureWrap::Clamp, int max_mip_level = UNLIMITED_MIP_LEVEL);
 	TextureId AddTarget(Dimension size);
 	void Remove(TextureId id);
 
@@ -55,6 +56,7 @@ private:
 		Dimension size;
 		TextureFilter filter;
 		TextureWrap wrap;
+		int max_mip_level;
 		uint32_t name = 0;
 	};
 

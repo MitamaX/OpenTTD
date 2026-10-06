@@ -12,6 +12,9 @@
 
 #include <RmlUi/Core.h>
 
+#include <algorithm>
+#include <iterator>
+
 #include "../core/canvas.h"
 #include "rml_renderer.h"
 
@@ -30,25 +33,28 @@ MapView::MapView(const Rml::String &tag) : Rml::Element(tag)
 {
 }
 
-/* The list is recorded anew every frame, so each batch becomes a fresh mesh in the slot the last frame's batch held. */
 void MapView::OnRender()
 {
 	Rml::RenderManager *render_manager = this->GetRenderManager();
 	if (render_manager == nullptr) return;
 
-	std::span<const DrawBatch> batches = _map_draw.Batches();
+	this->DrawBatches(*render_manager, _map_draw);
+}
+
+/* The list is recorded anew every frame, so each batch becomes a fresh mesh in the slot the last frame's batch held. */
+void MapView::DrawBatches(Rml::RenderManager &render_manager, const DrawList &list)
+{
+	std::span<const DrawBatch> batches = list.Batches();
 	this->batches.resize(batches.size());
-	for (size_t i = 0; i < batches.size(); i++) this->Draw(*render_manager, this->batches[i], batches[i]);
+	for (size_t i = 0; i < batches.size(); i++) this->Draw(render_manager, this->batches[i], list, batches[i]);
 }
 
 /* The map is laid out in screen pixels wherever the element sits. */
-void MapView::Draw(Rml::RenderManager &render_manager, Rml::Geometry &geometry, const DrawBatch &batch) const
+void MapView::Draw(Rml::RenderManager &render_manager, Rml::Geometry &geometry, const DrawList &list, const DrawBatch &batch) const
 {
 	Rml::Mesh mesh = geometry.Release(Rml::Geometry::ReleaseMode::ClearMesh);
-	for (const DrawVertex &vertex : _map_draw.Vertices().subspan(batch.first, batch.count)) {
-		mesh.indices.push_back(static_cast<int>(mesh.vertices.size()));
-		mesh.vertices.push_back(RmlVertex(vertex));
-	}
+	std::ranges::transform(list.Vertices().subspan(batch.first_vertex, batch.vertex_count), std::back_inserter(mesh.vertices), RmlVertex);
+	std::ranges::copy(list.Indices().subspan(batch.first_index, batch.index_count), std::back_inserter(mesh.indices));
 	geometry = render_manager.MakeGeometry(std::move(mesh));
 
 	Rml::Texture texture = batch.texture == NO_TEXTURE ? Rml::Texture() : render_manager.LoadTexture(RmlRenderer::TextureSource(batch.texture));

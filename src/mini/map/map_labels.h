@@ -36,8 +36,8 @@ private:
 		LabelTarget target;
 	};
 
-	void Place(int cx, int cy, std::string_view str, uint32_t fill, bool transparent, TextColour tc, LabelTarget target);
-	bool Visible(int cx, int cy) const;
+	void Place(Point at, std::string_view str, uint32_t fill, bool transparent, TextColour tc, LabelTarget target);
+	bool Visible(Point at) const;
 
 	std::vector<Plate> plates;
 };

@@ -15,6 +15,7 @@
 
 #include "../../core/geometry_type.hpp"
 #include "../../tile_type.h"
+#include "../core/camera.h"
 
 enum class OverviewMode : uint8_t {
 	Contour,
@@ -34,6 +35,7 @@ public:
 	int Width() const { return this->width; }
 	int Height() const { return this->height; }
 
+	ExactPoint ExactPixelOf(double tile_x, double tile_y) const;
 	Point PixelOf(double tile_x, double tile_y) const;
 	TileIndex TileAt(int x, int y) const;
 

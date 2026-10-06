@@ -14,9 +14,14 @@
  * infrastructure, close zoom adds per-unit detail. */
 inline constexpr int INFRASTRUCTURE_PPT = 8;
 inline constexpr int UNIT_DETAIL_PPT = 16;
+inline constexpr double CATENARY_FAR_PPT = 12.0;
+inline constexpr double CATENARY_NEAR_PPT = 24.0;
+
+/* A detail repeating along a tile fades in while one repeat grows across these many pixels. */
+inline constexpr double UNRESOLVED_REPEAT_PIXELS = 1.5;
+inline constexpr double RESOLVED_REPEAT_PIXELS = 4.0;
 
 struct ZoomDetail {
-	bool tree_dots;
 	bool block_borders;
 	bool signals;
 	bool oneway;
@@ -29,7 +34,6 @@ struct ZoomDetail {
 	{
 		bool infrastructure = ppt >= INFRASTRUCTURE_PPT;
 		return {
-			.tree_dots = infrastructure,
 			.block_borders = infrastructure,
 			.signals = infrastructure,
 			.oneway = infrastructure,

@@ -36,6 +36,8 @@ add_files(
     rml_renderer.h
     sfnt_file.cpp
     sfnt_file.h
+    shader_painter.cpp
+    shader_painter.h
     texture_box.cpp
     texture_box.h
     tone.cpp
