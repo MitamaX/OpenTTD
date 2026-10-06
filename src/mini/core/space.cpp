@@ -35,6 +35,50 @@ Mat4 Mat4::operator*(const Mat4 &other) const
 	return product;
 }
 
+Mat4 Mat4::Identity()
+{
+	return Mat4::Scaling({1.0, 1.0, 1.0});
+}
+
+Mat4 Mat4::Translation(const Vec3 &offset)
+{
+	Mat4 translation = Mat4::Identity();
+	translation.At(0, 3) = offset.x;
+	translation.At(1, 3) = offset.y;
+	translation.At(2, 3) = offset.z;
+	return translation;
+}
+
+Mat4 Mat4::Scaling(const Vec3 &scale)
+{
+	Mat4 scaling;
+	scaling.At(0, 0) = scale.x;
+	scaling.At(1, 1) = scale.y;
+	scaling.At(2, 2) = scale.z;
+	scaling.At(CLIP_W, CLIP_W) = 1.0;
+	return scaling;
+}
+
+/* Counterclockwise about the axis as seen looking down it toward its origin. */
+Mat4 Mat4::Turn(const Vec3 &axis, double radians)
+{
+	Vec3 u = Normalised(axis);
+	double c = std::cos(radians);
+	double s = std::sin(radians);
+	double t = 1.0 - c;
+	Mat4 turn = Mat4::Identity();
+	turn.At(0, 0) = c + u.x * u.x * t;
+	turn.At(0, 1) = u.x * u.y * t - u.z * s;
+	turn.At(0, 2) = u.x * u.z * t + u.y * s;
+	turn.At(1, 0) = u.y * u.x * t + u.z * s;
+	turn.At(1, 1) = c + u.y * u.y * t;
+	turn.At(1, 2) = u.y * u.z * t - u.x * s;
+	turn.At(2, 0) = u.z * u.x * t - u.y * s;
+	turn.At(2, 1) = u.z * u.y * t + u.x * s;
+	turn.At(2, 2) = c + u.z * u.z * t;
+	return turn;
+}
+
 Mat4 Mat4::View(const Vec3 &eye, const Vec3 &right, const Vec3 &up, const Vec3 &back)
 {
 	Mat4 view;
@@ -79,6 +123,19 @@ Vec3 Transformed(const Mat4 &transform, const Vec3 &point)
 {
 	auto row = [&](int r) { return transform.At(r, 0) * point.x + transform.At(r, 1) * point.y + transform.At(r, 2) * point.z + transform.At(r, 3); };
 	return {row(0), row(1), row(2)};
+}
+
+/* Through the cofactors of the transform's linear part, so a normal stays square to its surface under any scaling. */
+Vec3 TransformedNormal(const Mat4 &transform, const Vec3 &normal)
+{
+	auto column = [&](int c) { return Vec3{transform.At(0, c), transform.At(1, c), transform.At(2, c)}; };
+	Vec3 x = column(0);
+	Vec3 y = column(1);
+	Vec3 z = column(2);
+	Vec3 cofactor_x = Cross(y, z);
+	Vec3 cofactor_y = Cross(z, x);
+	Vec3 cofactor_z = Cross(x, y);
+	return Normalised(cofactor_x * normal.x + cofactor_y * normal.y + cofactor_z * normal.z);
 }
 
 static Plane PlaneOf(const Mat4 &clip, int row, double sign)

@@ -44,4 +44,27 @@ constexpr const T &SeedPick(const std::array<T, N> &options, uint32_t bits)
 	return options[bits % N];
 }
 
+struct SeedRange {
+	double low;
+	double high;
+};
+
+/* A run of choices drawn one after another from one seed, the same run every time. */
+class SeedDice {
+public:
+	static constexpr uint SHARE_BITS = 16;
+
+	explicit constexpr SeedDice(uint32_t seed) : seed(seed) {}
+
+	constexpr uint32_t Next() { return SubSeed(this->seed, this->rolls++); }
+	constexpr double Share() { return SeedShare(this->Next(), 0, SHARE_BITS); }
+	constexpr double Between(double low, double high) { return low + (high - low) * this->Share(); }
+	constexpr double Between(SeedRange range) { return this->Between(range.low, range.high); }
+	constexpr uint32_t Below(uint32_t count) { return this->Next() % count; }
+
+private:
+	uint32_t seed;
+	uint32_t rolls = 0;
+};
+
 #endif /* MINI_CORE_SEED_H */

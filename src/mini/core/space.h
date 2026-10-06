@@ -65,12 +65,17 @@ struct Mat4 {
 	std::array<float, 16> Floats() const;
 	Mat4 operator*(const Mat4 &other) const;
 
+	static Mat4 Identity();
+	static Mat4 Translation(const Vec3 &offset);
+	static Mat4 Scaling(const Vec3 &scale);
+	static Mat4 Turn(const Vec3 &axis, double radians);
 	static Mat4 View(const Vec3 &eye, const Vec3 &right, const Vec3 &up, const Vec3 &back);
 	static Mat4 Perspective(double focal_x, double focal_y, double near, double far);
 	static Mat4 Orthographic(const Vec3 &low, const Vec3 &high);
 };
 
 Vec3 Transformed(const Mat4 &transform, const Vec3 &point);
+Vec3 TransformedNormal(const Mat4 &transform, const Vec3 &normal);
 
 /* A plane as its unit normal and offset; points with a positive distance lie on its inner side. */
 struct Plane {
