@@ -1,5 +1,6 @@
 const float TAU = 6.2831853;
 const float TEXELS = float(TEXELS_PER_TILE);
+const float PLINTH_HEIGHT = 0.016;
 
 /* What a point of a building is: its colour before light, how its surface tilts off the face across and up it,
  * how rough and how much glass it is, and how open it lies to the sky. */
@@ -106,7 +107,7 @@ Clad Planked(vec2 p, vec3 tint, float planks)
 Clad Glazed(vec2 p, vec3 frame, vec2 panes, float bar)
 {
 	float bars = max(Lines(p.x * panes.x, bar), Lines(p.y * panes.y, bar));
-	Clad clad = Matte(mix(frame * 0.35, frame, bars), mix(0.08, 0.5, bars));
+	Clad clad = Matte(mix(frame * 0.6, frame, bars), mix(0.08, 0.5, bars));
 	clad.glass = 1.0 - bars;
 	return clad;
 }
@@ -118,12 +119,25 @@ float LatticeCover(vec2 p)
 	return max(max(Lines(cell.x, 0.16), Lines(cell.y, 0.16)), max(Lines(cell.x + cell.y, 0.12), Lines(cell.x - cell.y, 0.12)));
 }
 
+bool IsMasonry(uint material)
+{
+	return material == CLAD_BRICK || material == CLAD_STONE || material == CLAD_RENDER || material == CLAD_CONCRETE || material == CLAD_TIMBER;
+}
+
+/* Masonry walls stand on a darker plinth. */
+float Plinth(uint material, vec2 p, float upright)
+{
+	if (!IsMasonry(material)) return 1.0;
+	float pixel = fwidth(p.y);
+	return mix(1.0, mix(0.72, 1.0, smoothstep(PLINTH_HEIGHT - pixel, PLINTH_HEIGHT + pixel, p.y)), step(0.7, upright));
+}
+
 Clad CladOf(uint material, vec2 p, vec3 tint)
 {
 	vec3 mortar = mix(tint, vec3(0.78, 0.75, 0.70), 0.7);
 	switch (material) {
 		case CLAD_BRICK: return Coursed(p, tint, vec2(40.0, 80.0), 0.18, 0.18, mortar);
-		case CLAD_STONE: return Coursed(p, tint, vec2(16.0, 32.0), 0.1, 0.22, mortar);
+		case CLAD_STONE: return Coursed(p, tint, vec2(16.0, 32.0), 0.1, 0.12, mortar);
 		case CLAD_FOUNDATION: return Coursed(p, tint * 0.9, vec2(12.0, 24.0), 0.1, 0.25, mortar * 0.8);
 		case CLAD_RENDER: return Mottled(p, tint, 14.0, 0.07, 0.9);
 		case CLAD_CONCRETE: return Panelled(p, tint, vec2(6.0, 8.0), 0.03, 0.85);
@@ -275,7 +289,7 @@ Clad Filling(Bay bay, vec3 glass, uint seed, float pixel)
 	bool rimmed = opening.kind != OPEN_WINDOW && OutsideOpening(opening, at) > -max(0.6, pixel);
 	if (rimmed || OnMuntin(opening, at, pixel)) return Matte((rimmed ? vec3(0.22) : FRAME_PAINT) * reveal, 0.5);
 	if (opening.kind == OPEN_WINDOW && pane < 0.18 && at.y > opening.height * 0.5) return Matte(BLIND * reveal, 0.8);
-	Clad clad = Matte(glass * (0.35 + 0.3 * pane) * reveal, 0.06);
+	Clad clad = Matte(glass * (0.5 + 0.3 * pane) * reveal, 0.06);
 	clad.glass = reveal;
 	return clad;
 }
@@ -309,7 +323,7 @@ Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, vec3 glass, uint see
 
 	Opening upper = UPPER_OPENINGS[grid];
 	float open_share = upper.width * upper.height / (FACADE_PITCH[grid] * FACADE_STOREY[grid]);
-	Clad distant = Clad(mix(wall.albedo, glass * 0.4, open_share), vec2(0.0), mix(wall.roughness, 0.1, open_share), open_share * 0.7, wall.occlusion);
+	Clad distant = Clad(mix(wall.albedo, glass * 0.6, open_share), vec2(0.0), mix(wall.roughness, 0.1, open_share), open_share * 0.7, wall.occlusion);
 	float detail = 1.0 - smoothstep(1.2, 2.6, pixel);
 	return Clad(mix(distant.albedo, clad.albedo, detail), clad.tilt * detail, mix(distant.roughness, clad.roughness, detail), mix(distant.glass, clad.glass, detail), clad.occlusion);
 }

@@ -28,6 +28,9 @@ static constexpr double LOWEST = std::numeric_limits<double>::lowest();
 static constexpr double HIGHEST = std::numeric_limits<double>::max();
 static constexpr uint SEED_BITS = 8;
 static constexpr uint32_t BARE_EARTH = 0xFF8A7458U;
+static constexpr uint32_t COPING_STONE = 0xFFD8D2C4U;
+static constexpr uint COPING_SHARE = 140;
+static constexpr double FASCIA_SHADE = 0.72;
 
 void StructureMesh::Polygon(std::span<const StructureVertex> corners)
 {
@@ -104,6 +107,8 @@ private:
 			case Cladding::Facade: return {this->solid.wall_material, WindowGrid::None, {}, this->solid.wall_tint};
 			case Cladding::Roof: return {this->solid.roof_material, WindowGrid::None, SurfaceFlag::Roof, this->solid.roof_tint};
 			case Cladding::Skylight: return {Material::GlassRoof, WindowGrid::None, SurfaceFlag::Roof, this->solid.glass_tint};
+			case Cladding::Fascia: return {Material::Plain, WindowGrid::None, {}, ScaledRgb(this->solid.roof_tint, FASCIA_SHADE)};
+			case Cladding::Coping: return {Material::Concrete, WindowGrid::None, {}, Mix(this->solid.wall_tint, COPING_STONE, COPING_SHARE)};
 			default: return {this->solid.roof_material, WindowGrid::None, SurfaceFlag::Decal, OpaqueDecalTint(this->solid.roof_tint, this->decal_layer)};
 		}
 	}

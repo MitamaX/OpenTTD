@@ -11,7 +11,7 @@ flat in uvec4 v_surface;
 out vec4 frag_colour;
 
 const vec3 SNOW = vec3(0.93, 0.95, 0.97);
-const float GLASS_REFLECTANCE = 0.06;
+const float GLASS_REFLECTANCE = 0.1;
 const float SEED_SCALE = 255.0;
 
 bool Has(uint flag)
@@ -36,6 +36,7 @@ void main()
 	if (material == CLAD_LATTICE && LatticeCover(v_pattern) < noise) discard;
 
 	Clad clad = CladOf(material, v_pattern, v_colour.rgb);
+	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
 	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_glass.rgb, uint(round(v_glass.a * SEED_SCALE)));
 	vec3 normal = Tilted(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0), clad.tilt);
 	if (Has(SURFACE_ROOF) && v_position.z > u_snow_level) clad.albedo = mix(clad.albedo, SNOW, smoothstep(0.4, 0.7, normal.z));

@@ -21,6 +21,7 @@
 
 static constexpr double PARAPET_INSET = 0.04;
 static constexpr double PARAPET_INNER_SHADE = 0.9;
+static constexpr double FASCIA_DEPTH = 0.012;
 static constexpr double HIP_SQUARE_EPS = 0.02;
 static constexpr double SAWTOOTH_PITCH = 0.33;
 static constexpr double SAWTOOTH_GLASS_SHARE = 0.15;
@@ -398,7 +399,7 @@ private:
 		double rim = this->Eave() + PARAPET_HEIGHT;
 		PlanRect inner = Grown(this->top_plan, -PARAPET_INSET, -PARAPET_INSET);
 		if (!HasArea(inner)) {
-			this->BuildLid(this->top_plan, rim, Cladding::Wall);
+			this->BuildLid(this->top_plan, rim, Cladding::Coping);
 			return;
 		}
 
@@ -406,7 +407,7 @@ private:
 		std::array<PlanPoint, RECT_CORNERS> inside = CornersOf(inner);
 		for (size_t side = 0; side < RECT_CORNERS; side++) {
 			size_t next = (side + 1) % RECT_CORNERS;
-			this->Emit({this->At(outside[side], rim), this->At(outside[next], rim), this->At(inside[next], rim), this->At(inside[side], rim)}, {Cladding::Wall, UvMapping::Plan});
+			this->Emit({this->At(outside[side], rim), this->At(outside[next], rim), this->At(inside[next], rim), this->At(inside[side], rim)}, {Cladding::Coping, UvMapping::Plan});
 			this->Emit({this->At(inside[next], this->Eave(), PARAPET_INNER_SHADE), this->At(inside[side], this->Eave(), PARAPET_INNER_SHADE), this->At(inside[side], rim), this->At(inside[next], rim)}, {Cladding::Wall, UvMapping::Wall});
 		}
 		this->BuildLid(inner, this->Eave(), Cladding::Roof, PARAPET_INNER_SHADE);
@@ -452,7 +453,23 @@ private:
 			slope.polygon.Add(this->At(pitch.RidgeNear(from), this->Crest()));
 			ClipToPlan(slope.polygon, this->placement.footprint);
 			this->Emit(slope, {Cladding::Roof, UvMapping::Slope});
+			this->BuildBoard(from, pitch.eave_height, to, pitch.eave_height);
+			if (this->shape.roof != RoofShape::Gable) continue;
+			this->BuildBoard(pitch.RidgeNear(from), this->Crest(), from, pitch.eave_height);
+			this->BuildBoard(to, pitch.eave_height, pitch.RidgeNear(to), this->Crest());
 		}
+	}
+
+	/* A board hangs under a roof's edge where it overhangs the walls: a fascia along the eaves, a verge up a gable. */
+	void BuildBoard(const PlanPoint &from, double from_height, const PlanPoint &to, double to_height)
+	{
+		Face board;
+		board.polygon.Add(this->At(from, from_height - FASCIA_DEPTH));
+		board.polygon.Add(this->At(to, to_height - FASCIA_DEPTH));
+		board.polygon.Add(this->At(to, to_height));
+		board.polygon.Add(this->At(from, from_height));
+		ClipToPlan(board.polygon, this->placement.footprint);
+		this->Emit(board, {Cladding::Fascia, UvMapping::Wall});
 	}
 
 	void BuildShed()
