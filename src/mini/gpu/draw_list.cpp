@@ -144,21 +144,16 @@ void DrawList::FillQuad(const std::array<ScreenPoint, 4> &corners, uint32_t argb
 }
 
 /* The quad turns about its centre, so angle 0 lands exactly on the destination. */
-void DrawList::Image(TextureId texture, const Rect &dest, const UvRect &uv, float angle_deg, uint32_t tint)
+void DrawList::Image(TextureId texture, const Rect &dest, const UvRect &uv, uint32_t tint)
 {
 	if (texture == NO_TEXTURE || dest.Width() <= 0 || dest.Height() <= 0) return;
 
-	float half_w = dest.Width() / 2.0f;
-	float half_h = dest.Height() / 2.0f;
-	float cx = dest.left + half_w;
-	float cy = dest.top + half_h;
-	float turn_cos = std::cos(Radians(angle_deg));
-	float turn_sin = std::sin(Radians(angle_deg));
-	auto corner = [&](float ox, float oy, float u, float v) {
-		return TexturedCorner{{cx + ox * turn_cos - oy * turn_sin, cy + ox * turn_sin + oy * turn_cos}, u, v, tint};
-	};
-
-	this->Polygon(texture, std::array{corner(-half_w, -half_h, uv.left, uv.top), corner(half_w, -half_h, uv.right, uv.top), corner(half_w, half_h, uv.right, uv.bottom), corner(-half_w, half_h, uv.left, uv.bottom)});
+	float left = dest.left;
+	float top = dest.top;
+	float right = dest.right + 1;
+	float bottom = dest.bottom + 1;
+	auto corner = [&](float x, float y, float u, float v) { return TexturedCorner{{x, y}, u, v, tint}; };
+	this->Polygon(texture, std::array{corner(left, top, uv.left, uv.top), corner(right, top, uv.right, uv.top), corner(right, bottom, uv.right, uv.bottom), corner(left, bottom, uv.left, uv.bottom)});
 }
 
 void DrawList::Polygon(TextureId texture, std::span<const TexturedCorner> convex)

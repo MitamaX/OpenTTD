@@ -35,15 +35,6 @@ void Canvas::BeginFrame()
 	this->PruneText();
 }
 
-/* Overlay mode draws the base map as darkened greyscale: luminance is kept
- * so terrain still reads, while repainted layer content gets full colour.
- * filter_alpha sets how far the background sinks. */
-uint32_t Canvas::Greyed(uint32_t c) const
-{
-	uint g = GREY_FLOOR + Luminance(c) * (CHANNEL_MAX - static_cast<uint>(_tuning.filter_alpha)) / CHANNEL_MAX;
-	return PackArgb(Alpha(c), g, g, g);
-}
-
 uint32_t Canvas::Blended(uint32_t c, uint alpha) const
 {
 	return WithAlpha(c, std::min(alpha, OPAQUE_ALPHA));
@@ -174,27 +165,6 @@ void Canvas::FillTriangle(int cx, int cy, int r, uint32_t c)
 	_map_draw.FillTriangle(cx, cy, r, c);
 }
 
-/* Rotated silhouette: ships and aircraft point along their heading. Without
- * an atlas the shape falls back unrotated. */
-void Canvas::FillShapeRot(MiniSprite s, int cx, int cy, int r, float angle, uint32_t c)
-{
-	r = std::max(r, 1);
-	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuadRot(s, cx, cy, r, angle, c)) return;
-	switch (s) {
-		case MiniSprite::Triangle:
-		case MiniSprite::Aircraft:
-			_map_draw.FillTriangle(cx, cy, r, c);
-			break;
-		case MiniSprite::Diamond:
-		case MiniSprite::Ship:
-			_map_draw.FillDiamond(cx, cy, r, c);
-			break;
-		default:
-			_map_draw.FillCircle(cx, cy, r, c);
-			break;
-	}
-}
-
 /* Strings are laid out by the native font code into a small offscreen buffer
  * once, cached as a white-on-transparent texture and drawn as a tinted quad,
  * so any TrueType fallback font covers non-Latin names. */
@@ -215,7 +185,7 @@ const CanvasText *Canvas::Text(std::string_view text)
 void Canvas::DrawText(const CanvasText &text, int x, int y, uint32_t tint)
 {
 	Rect area = {x - text.pad, y - text.pad, x + text.w + text.pad - 1, y + text.h + text.pad - 1};
-	_map_draw.Image(text.tex, area, FULL_UV, 0, tint);
+	_map_draw.Image(text.tex, area, FULL_UV, tint);
 }
 
 void Canvas::DrawText(std::string_view text, int x, int y, uint32_t tint)

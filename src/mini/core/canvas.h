@@ -63,7 +63,6 @@ public:
 	static constexpr uint OPAQUE_ALPHA = CHANNEL_MAX;
 
 	void BeginFrame();
-	uint32_t Greyed(uint32_t c) const;
 
 	void FillRect(int x0, int y0, int x1, int y1, uint32_t c);
 	void BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha);
@@ -75,7 +74,6 @@ public:
 	void FillCircle(int cx, int cy, int r, uint32_t c);
 	void FillDiamond(int cx, int cy, int r, uint32_t c);
 	void FillTriangle(int cx, int cy, int r, uint32_t c);
-	void FillShapeRot(MiniSprite s, int cx, int cy, int r, float angle, uint32_t c);
 
 	const CanvasText *Text(std::string_view text);
 	void DrawText(const CanvasText &text, int x, int y, uint32_t tint);

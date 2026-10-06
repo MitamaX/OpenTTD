@@ -55,7 +55,7 @@ static TextureId _atlas_tex = NO_TEXTURE;
 
 /* Art file base names inside mini_art, one per MiniSprite slot. */
 static const char *_slot_names[] = {
-	"disc", "diamond", "triangle", "road_vehicle", "ship", "aircraft",
+	"disc", "diamond", "triangle",
 };
 static_assert(lengthof(_slot_names) == to_underlying(MiniSprite::End));
 
@@ -84,13 +84,10 @@ static bool SpriteHit(MiniSprite sprite, double x, double y)
 	double dy = y - 0.5;
 	switch (sprite) {
 		case MiniSprite::Disc:
-		case MiniSprite::RoadVeh:
 			return dx * dx + dy * dy <= 0.25;
 		case MiniSprite::Diamond:
-		case MiniSprite::Ship:
 			return std::abs(dx) + std::abs(dy) <= 0.5;
 		case MiniSprite::Triangle:
-		case MiniSprite::Aircraft:
 			return std::abs(dx) <= y * 0.5;
 		default: return true;
 	}
@@ -174,19 +171,9 @@ static bool Drawable(MiniSprite sprite)
 	return _atlas_tex != NO_TEXTURE && sprite < MiniSprite::End;
 }
 
-static bool AtlasSprite(MiniSprite sprite, int x0, int y0, int x1, int y1, float angle_deg, uint32_t argb)
-{
-	if (!Drawable(sprite) || x1 < x0 || y1 < y0) return false;
-	_map_draw.Image(_atlas_tex, {x0, y0, x1, y1}, ContentUv(to_underlying(sprite)), angle_deg, argb);
-	return true;
-}
-
 bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t argb)
 {
-	return AtlasSprite(sprite, x0, y0, x1, y1, 0.0f, argb);
-}
-
-bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, float angle_deg, uint32_t argb)
-{
-	return AtlasSprite(sprite, cx - r, cy - r, cx + r, cy + r, angle_deg, argb);
+	if (!Drawable(sprite) || x1 < x0 || y1 < y0) return false;
+	_map_draw.Image(_atlas_tex, {x0, y0, x1, y1}, ContentUv(to_underlying(sprite)), argb);
+	return true;
 }

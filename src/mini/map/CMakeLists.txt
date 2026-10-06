@@ -28,8 +28,6 @@ add_files(
     transport_forms.h
     vehicle_motion.cpp
     vehicle_motion.h
-    vehicle_painter.cpp
-    vehicle_painter.h
     volume_geometry.cpp
     volume_geometry.h
     world_tiles.cpp

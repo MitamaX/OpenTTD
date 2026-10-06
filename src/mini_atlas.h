@@ -18,9 +18,6 @@ enum class MiniSprite : uint8_t {
 	Disc,
 	Diamond,
 	Triangle,
-	RoadVeh,
-	Ship,
-	Aircraft,
 	End,
 };
 
@@ -28,6 +25,5 @@ void MiniAtlasEnsure();
 void MiniAtlasReload();
 SolidTexel MiniAtlasSolid();
 bool MiniAtlasQuad(MiniSprite sprite, int x0, int y0, int x1, int y1, uint32_t argb);
-bool MiniAtlasQuadRot(MiniSprite sprite, int cx, int cy, int r, float angle_deg, uint32_t argb);
 
 #endif /* MINI_ATLAS_H */

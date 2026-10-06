@@ -125,7 +125,7 @@ public:
 	void FillDiamond(int cx, int cy, int r, uint32_t argb);
 	void FillTriangle(int cx, int cy, int r, uint32_t argb);
 	void FillQuad(const std::array<ScreenPoint, 4> &corners, uint32_t argb);
-	void Image(TextureId texture, const Rect &dest, const UvRect &uv, float angle_deg, uint32_t tint);
+	void Image(TextureId texture, const Rect &dest, const UvRect &uv, uint32_t tint);
 	void Polygon(TextureId texture, std::span<const TexturedCorner> convex);
 
 	std::span<const DrawVertex> Vertices() const { return this->vertices; }

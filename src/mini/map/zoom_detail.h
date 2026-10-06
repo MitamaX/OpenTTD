@@ -10,18 +10,14 @@
 #ifndef MINI_MAP_ZOOM_DETAIL_H
 #define MINI_MAP_ZOOM_DETAIL_H
 
-/* Zoom tiers: below 8 ppt the map is a terrain overview, mid zoom shows
- * infrastructure, close zoom adds per-unit detail. */
+/* Zoom tiers: below 8 ppt the map is a terrain overview, mid zoom shows infrastructure. */
 inline constexpr int INFRASTRUCTURE_PPT = 8;
-inline constexpr int UNIT_DETAIL_PPT = 16;
 
 /* A detail repeating along a tile fades in while one repeat grows across these many pixels. */
 inline constexpr double UNRESOLVED_REPEAT_PIXELS = 1.5;
 inline constexpr double RESOLVED_REPEAT_PIXELS = 4.0;
 
 struct ZoomDetail {
-	bool cargo_dots;
-	bool vehicle_shapes;
 	bool station_names;
 	bool all_town_names;
 
@@ -29,8 +25,6 @@ struct ZoomDetail {
 	{
 		bool infrastructure = ppt >= INFRASTRUCTURE_PPT;
 		return {
-			.cargo_dots = ppt >= UNIT_DETAIL_PPT,
-			.vehicle_shapes = infrastructure,
 			.station_names = infrastructure,
 			.all_town_names = infrastructure,
 		};
