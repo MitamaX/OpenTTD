@@ -61,6 +61,26 @@ Mat4 Mat4::Perspective(double focal_x, double focal_y, double near, double far)
 	return projection;
 }
 
+/* The view space box from low to high maps onto the clip cube, its high z side nearest. */
+Mat4 Mat4::Orthographic(const Vec3 &low, const Vec3 &high)
+{
+	Mat4 projection;
+	projection.At(0, 0) = 2.0 / (high.x - low.x);
+	projection.At(1, 1) = 2.0 / (high.y - low.y);
+	projection.At(2, 2) = -2.0 / (high.z - low.z);
+	projection.At(0, 3) = -(high.x + low.x) / (high.x - low.x);
+	projection.At(1, 3) = -(high.y + low.y) / (high.y - low.y);
+	projection.At(2, 3) = (high.z + low.z) / (high.z - low.z);
+	projection.At(CLIP_W, CLIP_W) = 1.0;
+	return projection;
+}
+
+Vec3 Transformed(const Mat4 &transform, const Vec3 &point)
+{
+	auto row = [&](int r) { return transform.At(r, 0) * point.x + transform.At(r, 1) * point.y + transform.At(r, 2) * point.z + transform.At(r, 3); };
+	return {row(0), row(1), row(2)};
+}
+
 static Plane PlaneOf(const Mat4 &clip, int row, double sign)
 {
 	Vec3 normal = {clip.At(CLIP_W, 0) + sign * clip.At(row, 0), clip.At(CLIP_W, 1) + sign * clip.At(row, 1), clip.At(CLIP_W, 2) + sign * clip.At(row, 2)};
@@ -77,4 +97,14 @@ Frustum FrustumOf(const Mat4 &view_projection)
 		frustum[2 * axis + 1] = PlaneOf(view_projection, axis, -1.0);
 	}
 	return frustum;
+}
+
+/* A box wholly outside one plane of the frustum cannot show. */
+bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high)
+{
+	for (const Plane &plane : frustum) {
+		Vec3 farthest = {plane.normal.x >= 0.0 ? high.x : low.x, plane.normal.y >= 0.0 ? high.y : low.y, plane.normal.z >= 0.0 ? high.z : low.z};
+		if (plane.Distance(farthest) < 0.0) return false;
+	}
+	return true;
 }

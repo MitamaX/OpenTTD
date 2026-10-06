@@ -67,7 +67,10 @@ struct Mat4 {
 
 	static Mat4 View(const Vec3 &eye, const Vec3 &right, const Vec3 &up, const Vec3 &back);
 	static Mat4 Perspective(double focal_x, double focal_y, double near, double far);
+	static Mat4 Orthographic(const Vec3 &low, const Vec3 &high);
 };
+
+Vec3 Transformed(const Mat4 &transform, const Vec3 &point);
 
 /* A plane as its unit normal and offset; points with a positive distance lie on its inner side. */
 struct Plane {
@@ -80,5 +83,6 @@ struct Plane {
 using Frustum = std::array<Plane, 6>;
 
 Frustum FrustumOf(const Mat4 &view_projection);
+bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high);
 
 #endif /* MINI_CORE_SPACE_H */

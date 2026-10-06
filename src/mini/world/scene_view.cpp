@@ -58,14 +58,9 @@ SceneView SceneView::Of(const Camera &camera)
 	return view;
 }
 
-/* A box wholly outside one plane of the frustum cannot show. */
 bool SceneView::Sees(const Vec3 &low, const Vec3 &high) const
 {
-	for (const Plane &plane : this->frustum) {
-		Vec3 farthest = {plane.normal.x >= 0.0 ? high.x : low.x, plane.normal.y >= 0.0 ? high.y : low.y, plane.normal.z >= 0.0 ? high.z : low.z};
-		if (plane.Distance(farthest) < 0.0) return false;
-	}
-	return true;
+	return BoxMeets(this->frustum, low, high);
 }
 
 double SceneView::TilePixelsAt(double distance) const
