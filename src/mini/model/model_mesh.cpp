@@ -62,7 +62,7 @@ void ModelVertex::Occlude(double openness)
 	this->colour[3] = UnsignedByte(openness);
 }
 
-void ModelVertex::Translucent(double share)
+void ModelVertex::Trait(double share)
 {
 	this->normal[3] = SignedByte(share);
 }
@@ -179,9 +179,9 @@ ModelMesh &ModelMesh::Vary(double spread, uint32_t seed)
 	return *this;
 }
 
-ModelMesh &ModelMesh::Translucent(double share)
+ModelMesh &ModelMesh::Trait(double share)
 {
-	for (ModelVertex &vertex : this->vertices) vertex.Translucent(share);
+	for (ModelVertex &vertex : this->vertices) vertex.Trait(share);
 	return *this;
 }
 

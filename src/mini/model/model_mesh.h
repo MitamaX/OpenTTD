@@ -16,7 +16,7 @@
 #include "../core/space.h"
 #include "../gpu/mesh_buffer.h"
 
-/* Positions in tiles; the normal's last byte is how much light the surface lets through, the colour is picked on screen and its last byte is how open the surface lies to the sky. */
+/* Positions in tiles; the normal's last byte is a trait of the surface, the colour is picked on screen and its last byte is how open the surface lies to the sky. */
 struct ModelVertex {
 	float x;
 	float y;
@@ -30,7 +30,7 @@ struct ModelVertex {
 	void Face(const Vec3 &normal);
 	void Paint(uint32_t rgb);
 	void Occlude(double openness);
-	void Translucent(double share);
+	void Trait(double share);
 };
 
 inline constexpr std::array<VertexAttribute, 3> MODEL_LAYOUT = {{
@@ -55,8 +55,12 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Round(const Vec3 &centre, double share);
 	ModelMesh &Paint(uint32_t rgb);
 	ModelMesh &Vary(double spread, uint32_t seed);
-	ModelMesh &Translucent(double share);
 	ModelMesh &Weld();
+
+	/* The trait is how much light foliage lets through, how glossy a solid is, or how brightly a lamp glows, which reads as a negative share. */
+	ModelMesh &Translucent(double share) { return this->Trait(share); }
+	ModelMesh &Gloss(double share) { return this->Trait(share); }
+	ModelMesh &Glow(double share) { return this->Trait(-share); }
 
 	template <class Tone>
 	ModelMesh &PaintBy(Tone tone)
@@ -71,6 +75,9 @@ struct ModelMesh : TriangleList<ModelVertex> {
 		for (ModelVertex &vertex : this->vertices) vertex.Occlude(openness(vertex.Position()));
 		return *this;
 	}
+
+private:
+	ModelMesh &Trait(double share);
 };
 
 #endif /* MINI_MODEL_MODEL_MESH_H */
