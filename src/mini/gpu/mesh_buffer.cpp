@@ -1,0 +1,59 @@
+/*
+ * This file is part of OpenTTD.
+ * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
+ * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ */
+
+/** @file mesh_buffer.cpp An indexed triangle mesh living on the GPU, with the layout of its vertices. */
+
+#include "../../stdafx.h"
+#include "mesh_buffer.h"
+
+#include "gl_api.h"
+
+#include "../../safeguards.h"
+
+static GLenum ComponentType(AttributeType type)
+{
+	return type == AttributeType::Float ? GL_FLOAT : GL_BYTE;
+}
+
+void MeshBuffer::Upload(std::span<const std::byte> vertices, size_t stride, std::span<const VertexAttribute> layout, std::span<const uint32_t> indices)
+{
+	if (this->vertex_array == 0) {
+		glGenVertexArrays(1, &this->vertex_array);
+		glGenBuffers(1, &this->vertex_buffer);
+		glGenBuffers(1, &this->index_buffer);
+	}
+
+	glBindVertexArray(this->vertex_array);
+	glBindBuffer(GL_ARRAY_BUFFER, this->vertex_buffer);
+	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size()), vertices.data(), GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->index_buffer);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(indices.size_bytes()), indices.data(), GL_STATIC_DRAW);
+	for (const VertexAttribute &attribute : layout) {
+		glEnableVertexAttribArray(attribute.location);
+		GLboolean normalised = attribute.type == AttributeType::NormalisedByte ? GL_TRUE : GL_FALSE;
+		glVertexAttribPointer(attribute.location, attribute.components, ComponentType(attribute.type), normalised, static_cast<GLsizei>(stride), reinterpret_cast<const void *>(attribute.offset));
+	}
+	glBindVertexArray(0);
+	this->index_count = static_cast<int>(indices.size());
+}
+
+void MeshBuffer::Draw() const
+{
+	if (this->Empty()) return;
+	glBindVertexArray(this->vertex_array);
+	glDrawElements(GL_TRIANGLES, this->index_count, GL_UNSIGNED_INT, nullptr);
+}
+
+void MeshBuffer::Release()
+{
+	if (this->vertex_array != 0) {
+		glDeleteVertexArrays(1, &this->vertex_array);
+		glDeleteBuffers(1, &this->vertex_buffer);
+		glDeleteBuffers(1, &this->index_buffer);
+	}
+	*this = {};
+}

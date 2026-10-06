@@ -20,6 +20,7 @@ public:
 	explicit operator bool() const { return this->name != 0; }
 	void Use() const;
 	int Uniform(const char *uniform) const;
+	void BindBlock(const char *block, uint32_t binding) const;
 
 private:
 	uint32_t name = 0;

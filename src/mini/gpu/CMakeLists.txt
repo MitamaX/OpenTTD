@@ -11,8 +11,12 @@ add_files(
     gl_api.h
     gl_program.cpp
     gl_program.h
+    gl_state.cpp
+    gl_state.h
     gpu_frame.cpp
     gpu_frame.h
+    mesh_buffer.cpp
+    mesh_buffer.h
     screen_target.cpp
     screen_target.h
     texture_store.cpp

@@ -17,6 +17,7 @@
 
 #include "../../direction_type.h"
 #include "../core/camera.h"
+#include "../core/space.h"
 #include "building_form.h"
 
 inline constexpr double RISE_SCALE = 2.2360679774997896;
@@ -26,18 +27,6 @@ inline constexpr size_t RECT_CORNERS = 4;
 inline constexpr double VERTICAL_NZ = 0.2;
 inline constexpr double PLACE_EPS = 1e-9;
 
-struct Vec3 {
-	double x;
-	double y;
-	double z;
-};
-
-constexpr double Dot(const Vec3 &a, const Vec3 &b)
-{
-	return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-Vec3 Normalised(const Vec3 &v);
 Vec3 RenderNormal(const Vec3 &model_normal);
 
 inline bool IsUpright(const Vec3 &unit_normal)

@@ -89,3 +89,10 @@ int GlProgram::Uniform(const char *uniform) const
 {
 	return glGetUniformLocation(this->name, uniform);
 }
+
+/* A program that declares no such block keeps what it has. */
+void GlProgram::BindBlock(const char *block, uint32_t binding) const
+{
+	GLuint index = glGetUniformBlockIndex(this->name, block);
+	if (index != GL_INVALID_INDEX) glUniformBlockBinding(this->name, index, binding);
+}

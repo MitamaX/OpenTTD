@@ -3,7 +3,11 @@ add_files(
     camera.h
     canvas.cpp
     canvas.h
+    ground_trace.cpp
+    ground_trace.h
     seed.h
+    space.cpp
+    space.h
     sunlight.cpp
     sunlight.h
     system_pointer.cpp

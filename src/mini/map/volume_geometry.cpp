@@ -42,12 +42,6 @@ static constexpr UvMap PLAN_UV = {{0.0, 1.0, 0.0}, 0.0, {1.0, 0.0, 0.0}, 0.0, tr
 
 static_assert(MAX_SOLIDS <= 16, "a solid's predecessors fit one 16 bit mask");
 
-Vec3 Normalised(const Vec3 &v)
-{
-	double length = std::sqrt(Dot(v, v));
-	return length > 0.0 ? Vec3{v.x / length, v.y / length, v.z / length} : v;
-}
-
 Vec3 RenderNormal(const Vec3 &model_normal)
 {
 	return Normalised({model_normal.x, model_normal.y, model_normal.z / RISE_SCALE});
