@@ -17,6 +17,7 @@
 enum class AttributeType : uint8_t {
 	Float,
 	NormalisedByte,
+	NormalisedUnsignedByte,
 };
 
 struct VertexAttribute {
@@ -25,6 +26,9 @@ struct VertexAttribute {
 	AttributeType type;
 	size_t offset;
 };
+
+/* Points the bound vertex array's attributes into the bound array buffer, from a byte offset on. */
+void PointAttributes(std::span<const VertexAttribute> layout, size_t stride, size_t offset = 0);
 
 /* Triangles over a list of vertices, as built on the CPU before upload. */
 template <class Vertex>

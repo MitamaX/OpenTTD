@@ -16,7 +16,20 @@
 
 static GLenum ComponentType(AttributeType type)
 {
-	return type == AttributeType::Float ? GL_FLOAT : GL_BYTE;
+	switch (type) {
+		case AttributeType::Float: return GL_FLOAT;
+		case AttributeType::NormalisedByte: return GL_BYTE;
+		default: return GL_UNSIGNED_BYTE;
+	}
+}
+
+void PointAttributes(std::span<const VertexAttribute> layout, size_t stride, size_t offset)
+{
+	for (const VertexAttribute &attribute : layout) {
+		glEnableVertexAttribArray(attribute.location);
+		GLboolean normalised = attribute.type == AttributeType::Float ? GL_FALSE : GL_TRUE;
+		glVertexAttribPointer(attribute.location, attribute.components, ComponentType(attribute.type), normalised, static_cast<GLsizei>(stride), reinterpret_cast<const void *>(offset + attribute.offset));
+	}
 }
 
 void MeshBuffer::Upload(std::span<const std::byte> vertices, size_t stride, std::span<const VertexAttribute> layout, std::span<const uint32_t> indices)
@@ -32,11 +45,7 @@ void MeshBuffer::Upload(std::span<const std::byte> vertices, size_t stride, std:
 	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size()), vertices.data(), GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->index_buffer);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(indices.size_bytes()), indices.data(), GL_STATIC_DRAW);
-	for (const VertexAttribute &attribute : layout) {
-		glEnableVertexAttribArray(attribute.location);
-		GLboolean normalised = attribute.type == AttributeType::NormalisedByte ? GL_TRUE : GL_FALSE;
-		glVertexAttribPointer(attribute.location, attribute.components, ComponentType(attribute.type), normalised, static_cast<GLsizei>(stride), reinterpret_cast<const void *>(attribute.offset));
-	}
+	PointAttributes(layout, stride);
 	glBindVertexArray(0);
 	this->index_count = static_cast<int>(indices.size());
 }

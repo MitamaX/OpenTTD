@@ -15,6 +15,8 @@ add_files(
     gl_state.h
     gpu_frame.cpp
     gpu_frame.h
+    instanced_meshes.cpp
+    instanced_meshes.h
     mesh_buffer.cpp
     mesh_buffer.h
     screen_target.cpp
