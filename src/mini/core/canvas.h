@@ -63,9 +63,7 @@ public:
 	static constexpr uint OPAQUE_ALPHA = CHANNEL_MAX;
 
 	void BeginFrame();
-	void SetGrey(bool grey) { this->grey = grey; }
 	uint32_t Greyed(uint32_t c) const;
-	uint32_t Tone(uint32_t c) const;
 
 	void FillRect(int x0, int y0, int x1, int y1, uint32_t c);
 	void BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha);
@@ -90,7 +88,6 @@ private:
 
 	std::unordered_map<std::string, CanvasText> texts;
 	uint64_t frame = 0;
-	bool grey = false;
 };
 
 extern Canvas _canvas;

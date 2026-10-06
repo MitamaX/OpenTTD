@@ -44,20 +44,15 @@ uint32_t Canvas::Greyed(uint32_t c) const
 	return PackArgb(Alpha(c), g, g, g);
 }
 
-uint32_t Canvas::Tone(uint32_t c) const
-{
-	return this->grey ? this->Greyed(c) : c;
-}
-
 uint32_t Canvas::Blended(uint32_t c, uint alpha) const
 {
-	return WithAlpha(this->Tone(c), std::min(alpha, OPAQUE_ALPHA));
+	return WithAlpha(c, std::min(alpha, OPAQUE_ALPHA));
 }
 
 void Canvas::FillRect(int x0, int y0, int x1, int y1, uint32_t c)
 {
 	if (x1 < x0 || y1 < y0) return;
-	_map_draw.FillRect(x0, y0, x1, y1, this->Tone(c));
+	_map_draw.FillRect(x0, y0, x1, y1, c);
 }
 
 void Canvas::BlendRect(int x0, int y0, int x1, int y1, uint32_t c, uint alpha)
@@ -152,7 +147,7 @@ void Canvas::FrameWorldRing(std::span<const WorldPoint> ring, int width, uint32_
 
 void Canvas::ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 {
-	_map_draw.Line(x0, y0, x1, y1, std::max(width, 1), this->Tone(c));
+	_map_draw.Line(x0, y0, x1, y1, std::max(width, 1), c);
 }
 
 /* Shape fills prefer an atlas quad so the silhouettes are already on the
@@ -161,25 +156,22 @@ void Canvas::ThickLine(int x0, int y0, int x1, int y1, int width, uint32_t c)
 void Canvas::FillCircle(int cx, int cy, int r, uint32_t c)
 {
 	r = std::max(r, 1);
-	uint32_t col = this->Tone(c);
-	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Disc, cx - r, cy - r, cx + r, cy + r, col)) return;
-	_map_draw.FillCircle(cx, cy, r, col);
+	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Disc, cx - r, cy - r, cx + r, cy + r, c)) return;
+	_map_draw.FillCircle(cx, cy, r, c);
 }
 
 void Canvas::FillDiamond(int cx, int cy, int r, uint32_t c)
 {
 	r = std::max(r, 1);
-	uint32_t col = this->Tone(c);
-	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Diamond, cx - r, cy - r, cx + r, cy + r, col)) return;
-	_map_draw.FillDiamond(cx, cy, r, col);
+	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Diamond, cx - r, cy - r, cx + r, cy + r, c)) return;
+	_map_draw.FillDiamond(cx, cy, r, c);
 }
 
 void Canvas::FillTriangle(int cx, int cy, int r, uint32_t c)
 {
 	r = std::max(r, 1);
-	uint32_t col = this->Tone(c);
-	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Triangle, cx - r, cy - r, cx + r, cy + r, col)) return;
-	_map_draw.FillTriangle(cx, cy, r, col);
+	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuad(MiniSprite::Triangle, cx - r, cy - r, cx + r, cy + r, c)) return;
+	_map_draw.FillTriangle(cx, cy, r, c);
 }
 
 /* Rotated silhouette: ships and aircraft point along their heading. Without
@@ -187,19 +179,18 @@ void Canvas::FillTriangle(int cx, int cy, int r, uint32_t c)
 void Canvas::FillShapeRot(MiniSprite s, int cx, int cy, int r, float angle, uint32_t c)
 {
 	r = std::max(r, 1);
-	uint32_t col = this->Tone(c);
-	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuadRot(s, cx, cy, r, angle, col)) return;
+	if (r >= MIN_ATLAS_RADIUS && MiniAtlasQuadRot(s, cx, cy, r, angle, c)) return;
 	switch (s) {
 		case MiniSprite::Triangle:
 		case MiniSprite::Aircraft:
-			_map_draw.FillTriangle(cx, cy, r, col);
+			_map_draw.FillTriangle(cx, cy, r, c);
 			break;
 		case MiniSprite::Diamond:
 		case MiniSprite::Ship:
-			_map_draw.FillDiamond(cx, cy, r, col);
+			_map_draw.FillDiamond(cx, cy, r, c);
 			break;
 		default:
-			_map_draw.FillCircle(cx, cy, r, col);
+			_map_draw.FillCircle(cx, cy, r, c);
 			break;
 	}
 }
