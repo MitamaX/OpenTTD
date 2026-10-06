@@ -266,6 +266,7 @@ add_files(
     mini_ui.cpp
     mini_ui.h
     mini_ui_skin.cpp
+    mini_ui_skin.h
     misc.cpp
     misc_cmd.cpp
     misc_cmd.h

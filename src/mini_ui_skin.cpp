@@ -9,7 +9,7 @@
 
 #include "stdafx.h"
 #include "gfx_func.h"
-#include "mini_ui.h"
+#include "mini_ui_skin.h"
 #include "palette_func.h"
 #include "table/sprites.h"
 #include "zoom_func.h"

@@ -14,7 +14,7 @@
 #include "window_type.h"
 #include "gfx_func.h"
 #include "gfx_type.h"
-#include "mini_ui.h"
+#include "mini_ui_skin.h"
 #include "palette_func.h"
 #include "window_gui.h"
 
