@@ -10,5 +10,5 @@ void main()
 	v_world = a_position;
 	v_normal = a_normal.xyz;
 	v_wall = a_normal.w;
-	gl_Position = u_view_projection * vec4(RenderPoint(a_position), 1.0);
+	gl_Position = ClipPosition(RenderPoint(a_position));
 }

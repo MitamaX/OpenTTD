@@ -16,10 +16,10 @@ struct SunVector {
 	double z;
 };
 
-/* The way to the sun along map X, map Y and straight up: over the north east edge, where it lights a north facing view from the upper left. */
-inline constexpr double SUN_X = 0.0;
-inline constexpr double SUN_Y = -0.85;
-inline constexpr double SUN_UP = 0.53;
+/* The unit way to the sun along map X, map Y and straight up: an afternoon sun low enough for steep hills to cast long shadows, lighting a north facing view from ahead and to the left. */
+inline constexpr double SUN_X = -0.263;
+inline constexpr double SUN_Y = -0.835;
+inline constexpr double SUN_UP = 0.485;
 
 inline constexpr double AMBIENT_LIGHT = 0.42;
 inline constexpr double SUNLIT_CEILING = 1.35;

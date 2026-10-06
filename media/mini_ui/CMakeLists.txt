@@ -63,11 +63,16 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/map.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/caster.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/caster.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/composite.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lighting.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/network.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/scene.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/screen.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shadow.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/sky.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/theme.rcss

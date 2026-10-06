@@ -21,6 +21,7 @@
 #include "../../safeguards.h"
 
 static constexpr double FOG_START_SHARE = 5.0;
+static constexpr double SHADOW_REACH_SHARE = 6.0;
 static constexpr double CLOCK_PERIOD_SECONDS = 3600.0;
 
 /* The layout of the Scene block in scene.glsl, std140. */
@@ -54,6 +55,7 @@ SceneView SceneView::Of(const Camera &camera)
 	view.near = camera.Near();
 	view.far = camera.Far();
 	view.fog_start = std::min(camera.FocusDistance() * FOG_START_SHARE, view.far);
+	view.shadow_reach = std::min(camera.FocusDistance() * SHADOW_REACH_SHARE, view.far);
 	view.viewport = {static_cast<uint>(camera.Width()), static_cast<uint>(camera.Height())};
 	return view;
 }
@@ -78,7 +80,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		view.projection.Floats(),
 		view.view_projection.Floats(),
 		floats(view.eye.x, view.eye.y, view.eye.z, 1.0),
-		floats(sun.x, sun.y, sun.z, ReliefShare()),
+		floats(sun.x, sun.y, sun.z, 0.0),
 		floats(view.near, view.far, view.fog_start, view.far),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
 		floats(view.viewport.width, view.viewport.height, Clock(), 0.0),

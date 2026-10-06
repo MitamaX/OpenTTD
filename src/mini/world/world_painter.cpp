@@ -22,8 +22,9 @@
 static constexpr std::array<const char *, 1> SCREEN_SOURCES = {
 	"mini_ui/shaders/screen.vert",
 };
-static constexpr std::array<const char *, 2> COMPOSITE_SOURCES = {
+static constexpr std::array<const char *, 3> COMPOSITE_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/sky.glsl",
 	"mini_ui/shaders/composite.frag",
 };
 static constexpr int QUAD_CORNERS = 4;
@@ -56,7 +57,7 @@ static void BindTexture(uint unit, uint32_t texture)
 
 WorldPainter::WorldPainter() : composite(SCREEN_SOURCES, COMPOSITE_SOURCES)
 {
-	this->passes.push_back(std::make_unique<TerrainPass>(this->textures));
+	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 }
 
 void WorldPainter::Reload()
@@ -80,6 +81,8 @@ void WorldPainter::Release()
 {
 	this->target.Release();
 	this->textures.Release();
+	this->field.Release();
+	this->shadows.Release();
 	this->scene.Release();
 	this->composite.Release();
 	for (const auto &pass : this->passes) pass->Release();
@@ -94,12 +97,13 @@ bool WorldPainter::Ready()
 	return true;
 }
 
+/* Shadows are cast before the passes draw. */
 void WorldPainter::Render(const SceneView &view)
 {
 	WorldChanges changes = _world_tiles.TakeChanges();
 	this->textures.Sync(changes);
+	this->field.Sync(changes);
 	for (const auto &pass : this->passes) pass->Sync(changes);
-	if (!this->target.Bind(view.viewport)) return;
 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_STENCIL_TEST);
@@ -108,12 +112,15 @@ void WorldPainter::Render(const SceneView &view)
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
 	glDepthMask(GL_TRUE);
+	glClearDepth(1.0);
+	this->scene.Upload(view);
+	this->shadows.Render(view, this->passes);
+	if (!this->target.Bind(view.viewport)) return;
+
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClearDepth(1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	this->scene.Upload(view);
+	this->shadows.Bind();
 	for (const auto &pass : this->passes) pass->Draw(view);
 }
 

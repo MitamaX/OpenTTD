@@ -1,8 +1,13 @@
 add_files(
+    frame_units.h
     scene_view.cpp
     scene_view.h
     shader_program.cpp
     shader_program.h
+    shadow_map.cpp
+    shadow_map.h
+    terrain_field.cpp
+    terrain_field.h
     terrain_mesh.cpp
     terrain_mesh.h
     terrain_pass.cpp

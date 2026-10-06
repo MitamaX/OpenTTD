@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file scene_view.h How the camera sees the 3D world this frame, and the uniform block every world shader reads it from. */
+/** @file scene_view.h How the camera and the sun see the 3D world this frame, and the uniform block every world shader reads it from. */
 
 #ifndef MINI_WORLD_SCENE_VIEW_H
 #define MINI_WORLD_SCENE_VIEW_H
@@ -27,12 +27,21 @@ struct SceneView {
 	double near;
 	double far;
 	double fog_start;
+	double shadow_reach;
 	Dimension viewport;
 
 	static SceneView Of(const Camera &camera);
 
 	bool Sees(const Vec3 &low, const Vec3 &high) const;
 	double TilePixelsAt(double distance) const;
+	Vec3 Back() const { return {this->view.At(2, 0), this->view.At(2, 1), this->view.At(2, 2)}; }
+};
+
+/* How the sun sees the world for one shadow cascade; meshes keep the detail the camera asks of them, so what casts matches what receives. */
+struct ShadowView {
+	Mat4 view_projection;
+	Frustum frustum;
+	const SceneView &camera;
 };
 
 class SceneUniforms {

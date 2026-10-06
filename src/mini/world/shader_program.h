@@ -15,7 +15,8 @@
 
 #include "../gpu/gl_program.h"
 
-/* The sources are read anew after every reload, and a program that fails to build stays missing until the next one. */
+/* The sources are read anew after every reload, and a program that fails to build stays missing until the next one.
+ * Every program finds the scene and shadow blocks and the frame's shared samplers bound. */
 class ShaderProgram {
 public:
 	ShaderProgram(std::span<const char *const> vertex_sources, std::span<const char *const> fragment_sources);
@@ -29,6 +30,8 @@ public:
 	void BindSampler(const char *sampler, uint unit) const;
 
 private:
+	void BindShared() const;
+
 	std::vector<const char *> vertex_sources;
 	std::vector<const char *> fragment_sources;
 	GlProgram program;

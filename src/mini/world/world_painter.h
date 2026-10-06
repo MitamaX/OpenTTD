@@ -16,6 +16,8 @@
 #include "../ui/shader_painter.h"
 #include "scene_view.h"
 #include "shader_program.h"
+#include "shadow_map.h"
+#include "terrain_field.h"
 #include "world_pass.h"
 #include "world_target.h"
 #include "world_textures.h"
@@ -37,6 +39,8 @@ private:
 
 	WorldTarget target;
 	WorldTextures textures;
+	TerrainField field;
+	ShadowMap shadows;
 	SceneUniforms scene;
 	ShaderProgram composite;
 	std::vector<std::unique_ptr<WorldPass>> passes;

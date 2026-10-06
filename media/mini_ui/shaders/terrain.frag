@@ -28,8 +28,7 @@ const float SPACED_CONTOUR_PIXELS = 9.0;
 const float MIN_RELIEF_SPAN = 6.0;
 const vec3 LOWLAND = vec3(0.80, 0.95, 0.83);
 const vec3 HIGHLAND = vec3(1.26, 1.12, 0.90);
-const vec3 HAZE = vec3(0.80, 0.86, 0.92);
-const float HAZE_DEPTH = 0.1;
+const float TERRAIN_ROUGHNESS = 0.85;
 
 const float BLEND_WIDTH = 0.28;
 const float NATURAL_WARP = 0.32;
@@ -89,8 +88,6 @@ const float CROWN_THINNING = 0.35;
 const float CROWN_ROUNDNESS = 0.8;
 const float CROWN_AMBIENT = 0.55;
 const float GAP_COVER = 0.6;
-const float CANOPY_LIGHTING = 0.5;
-const float SKY_FILL = 0.2;
 const float GRID_DEPTH = 0.6;
 
 const float COURSES_PER_TILE = 6.0;
@@ -141,15 +138,10 @@ Ground GroundAt(ivec2 tile)
 	return Ground(codes.r, float(codes.g & DENSITY_MASK) / float(DENSITY_MASK), (codes.g & LUSH_BIT) != 0u, codes.a);
 }
 
-float SunLight(vec3 normal, float ambient)
+/* The ground's colours are picked on screen; they are lit as the light they reflect. */
+vec3 Lit(vec3 albedo, vec3 normal, float occlusion)
 {
-	return ambient + (1.0 - ambient) * min(max(dot(normal, u_sun.xyz), 0.0) / u_sun.z, SUNLIT_CEILING);
-}
-
-/* Ground turned away from the zenith sees more of the bright horizon, so it never sinks as deep into shade as flat ground would. */
-float Lighting(vec3 normal)
-{
-	return max(mix(1.0, SunLight(normal, AMBIENT + SKY_FILL * (1.0 - normal.z)), ReliefShare()), 0.0);
+	return Radiance(Linear(albedo), normal, RenderPoint(v_world), TERRAIN_ROUGHNESS, occlusion);
 }
 
 /* How steeply the ground leans at the fragment, in levels per tile. */
@@ -162,7 +154,7 @@ vec3 Altitude(vec3 colour, float height)
 {
 	float t = clamp(height / max(Peak(), MIN_RELIEF_SPAN), 0.0, 1.0);
 	vec3 tint = t < 0.5 ? mix(LOWLAND, vec3(1.0), t * 2.0) : mix(vec3(1.0), HIGHLAND, t * 2.0 - 1.0);
-	return mix(colour * tint, HAZE, HAZE_DEPTH * (1.0 - t));
+	return colour * tint;
 }
 
 float Contour(float height, float levels_per_pixel)
@@ -389,7 +381,7 @@ Canopy Forest(vec2 p)
 	vec2 offset = CellOffset(p * CROWNS_PER_TILE) / CROWN_RADIUS;
 	float filled = 1.0 - smoothstep(1.0 - CROWN_SOFTNESS, 1.0, length(offset) + (1.0 - density) * CROWN_THINNING);
 	vec3 dome = normalize(vec3(offset * CROWN_ROUNDNESS, sqrt(max(1.0 - dot(offset, offset), 0.0))));
-	float lit = mix(1.0, SunLight(dome, CROWN_AMBIENT), shown * filled);
+	float lit = mix(1.0, mix(CROWN_AMBIENT, 1.0, max(dot(dome, SunDirection()), 0.0)), shown * filled);
 	vec3 tone = mix(TREE_DARK[kind], TREE_LIGHT[kind], clamp(0.3 + 0.4 * Octave(p, 1.1), 0.0, 1.0)) * lit;
 	float alpha = density * FOREST_COVER * mix(1.0, mix(GAP_COVER, 1.0, filled), shown);
 	return Canopy(vec4(tone, 1.0) * alpha, density * TREE_SHADOW_DEPTH * 0.5);
@@ -438,10 +430,10 @@ vec3 WallFace(vec3 normal)
 	float mortar = smoothstep(0.5 - MORTAR_SHARE, 0.5, max(joint.x, joint.y));
 	float detail = Resolved(COURSES_PER_TILE);
 	vec3 stone = MASONRY * Varied(Hash(ivec2(floor(block), floor(course))), 0.18 * detail) * (1.0 - 0.3 * mortar * detail);
-	return Altitude(stone, v_world.z) * Lighting(normal);
+	return Altitude(stone, v_world.z);
 }
 
-vec3 GroundTone(vec2 p, vec3 normal, mat2 pixel, Water water, float levels_per_pixel)
+vec3 GroundTone(vec2 p, mat2 pixel, Water water, float slope, float levels_per_pixel, out float occlusion)
 {
 	ivec2 tile = ivec2(floor(p));
 	GatherNeighbourhood(tile);
@@ -449,18 +441,18 @@ vec3 GroundTone(vec2 p, vec3 normal, mat2 pixel, Water water, float levels_per_p
 	Grain grain = GrainAt(p);
 	Canopy forest = Forest(p);
 	Network network = NetworkAt(p, pixel);
-	float light = Lighting(normal) * (1.0 - forest.shade * ReliefShare());
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
 
-	vec3 land = Altitude(Surface(p, grain, ErosionAt(SlopeOf(normal), grain)), v_world.z);
+	vec3 land = Altitude(Surface(p, grain, ErosionAt(slope, grain)), v_world.z);
 	land = Banks(land, water);
-	land *= light * (1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel));
+	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel);
 
 	vec3 colour = land;
 	if (water.cover > 0.0) colour = mix(land, WaterTone(water, p), water.cover);
-	colour = Composite(colour, vec4(network.paint.rgb * light, network.paint.a));
+	colour = Composite(colour, network.paint);
 	colour *= 1.0 - grid * u_grid * GRID_DEPTH * GridLine(p, pixel) * (1.0 - water.cover);
-	colour = Composite(colour, vec4(forest.paint.rgb * mix(1.0, light, CANOPY_LIGHTING), forest.paint.a));
+	colour = Composite(colour, forest.paint);
+	occlusion = 1.0 - forest.shade;
 	return Overlay(clamp(colour, 0.0, 1.0), network);
 }
 
@@ -474,13 +466,14 @@ void main()
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);
 
-	vec3 colour;
+	vec3 albedo;
+	float occlusion = 1.0;
 	if (OutsideMap(p)) {
-		colour = Greyed(OuterSea(p));
+		albedo = Greyed(OuterSea(p));
 	} else if (v_wall > 0.5) {
-		colour = Greyed(WallFace(normal));
+		albedo = Greyed(WallFace(normal));
 	} else {
-		colour = GroundTone(p, normal, pixel, water, levels_per_pixel);
+		albedo = GroundTone(p, pixel, water, SlopeOf(normal), levels_per_pixel, occlusion);
 	}
-	frag_colour = vec4(colour, 1.0);
+	frag_colour = vec4(Lit(albedo, normal, occlusion), 1.0);
 }

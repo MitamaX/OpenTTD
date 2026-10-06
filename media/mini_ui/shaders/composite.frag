@@ -3,55 +3,43 @@ uniform sampler2D u_depth;
 
 out vec4 frag_colour;
 
-const vec3 ZENITH = vec3(0.36, 0.54, 0.80);
-const vec3 HORIZON = vec3(0.80, 0.86, 0.91);
-const float SKY_CURVE = 0.55;
-const float SHOULDER = 0.8;
+const float EXPOSURE = 0.33;
+const float SATURATION = 0.88;
+const float DITHER = 1.0 / 255.0;
+const float DISPLAY_GAMMA = 1.0 / 2.2;
+const vec3 LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
 
-/* The unit direction from the eye through a point of the screen, in clip units across and up. */
-vec3 SightThrough(vec2 clip)
-{
-	vec3 right = vec3(u_view[0][0], u_view[1][0], u_view[2][0]);
-	vec3 up = vec3(u_view[0][1], u_view[1][1], u_view[2][1]);
-	vec3 back = vec3(u_view[0][2], u_view[1][2], u_view[2][2]);
-	return normalize(right * (clip.x / u_projection[0][0]) + up * (clip.y / u_projection[1][1]) - back);
-}
-
-vec3 Sky(vec3 sight)
-{
-	return mix(HORIZON, ZENITH, pow(clamp(sight.z, 0.0, 1.0), SKY_CURVE));
-}
-
-/* How far from the eye the depth buffer puts the ground along this sight line. */
-float Distance(float depth, vec3 sight)
-{
-	float near = u_lens.x;
-	float far = u_lens.y;
-	float ahead = 2.0 * near * far / (far + near - (depth * 2.0 - 1.0) * (far - near));
-	vec3 back = vec3(u_view[0][2], u_view[1][2], u_view[2][2]);
-	return ahead / max(dot(sight, -back), 1e-4);
-}
-
-float Fog(float distance)
+/* Past where the camera's fog sets in the ground fades on into the haze, so the far clip never shows. */
+float FarFade(float distance)
 {
 	float t = clamp((distance - u_lens.z) / max(u_lens.w - u_lens.z, 1e-3), 0.0, 1.0);
-	return t * (2.0 - t);
+	return t * t * (3.0 - 2.0 * t);
 }
 
-/* Colours up to the shoulder pass unchanged; brighter ones roll off toward white instead of clipping. */
-vec3 Tonemap(vec3 colour)
+/* A touch less saturated, then a filmic curve: a gentle toe, and a shoulder that rolls highlights off toward white instead of clipping. */
+vec3 Tonemap(vec3 radiance)
 {
-	vec3 over = max(colour - SHOULDER, 0.0) / (1.0 - SHOULDER);
-	vec3 rolled = SHOULDER + (1.0 - SHOULDER) * over / (1.0 + over);
-	return mix(colour, rolled, step(SHOULDER, colour));
+	vec3 exposed = radiance * EXPOSURE;
+	vec3 x = max(mix(vec3(dot(exposed, LUMINANCE)), exposed, SATURATION), 0.0);
+	return clamp(x * (2.51 * x + 0.03) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+/* Half a display step of noise breaks the sky's smooth gradients into steps too fine to see. */
+float Dither(vec2 fragment)
+{
+	return (fract(52.9829189 * fract(dot(fragment, vec2(0.06711056, 0.00583715)))) - 0.5) * DITHER;
 }
 
 void main()
 {
 	ivec2 texel = ivec2(gl_FragCoord.xy);
-	vec3 sight = SightThrough(gl_FragCoord.xy / u_screen.xy * 2.0 - 1.0);
+	vec3 sight = SightAt(gl_FragCoord.xy);
 	float depth = texelFetch(u_depth, texel, 0).r;
-	vec3 colour = Sky(sight);
-	if (depth < 1.0) colour = mix(texelFetch(u_colour, texel, 0).rgb, HORIZON, Fog(Distance(depth, sight)));
-	frag_colour = vec4(Tonemap(colour), 1.0);
+	vec3 radiance = SkyRadiance(sight) + SunDisc(sight);
+	if (depth < 1.0) {
+		float distance = SightDistance(depth, sight);
+		vec3 point = Eye() + sight * distance;
+		radiance = mix(Hazed(texelFetch(u_colour, texel, 0).rgb, Eye(), point), Haze(sight), FarFade(distance));
+	}
+	frag_colour = vec4(pow(Tonemap(radiance), vec3(DISPLAY_GAMMA)) + Dither(gl_FragCoord.xy), 1.0);
 }

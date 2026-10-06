@@ -30,6 +30,7 @@
 #include "../map/network_style.h"
 #include "../map/world_tiles.h"
 #include "../map/zoom_detail.h"
+#include "frame_units.h"
 #include "scene_view.h"
 
 #include "../../safeguards.h"
@@ -106,8 +107,6 @@ static std::string ShaderHeader()
 	DefineFloat(header, "RESOLVED_REPEAT_PIXELS", RESOLVED_REPEAT_PIXELS);
 	DefineFloat(header, "INFRASTRUCTURE_PPT", INFRASTRUCTURE_PPT);
 	DefineFloat(header, "GRID_FADE_PPT", GRID_FADE_PPT);
-	DefineFloat(header, "AMBIENT", AMBIENT_LIGHT);
-	DefineFloat(header, "SUNLIT_CEILING", SUNLIT_CEILING);
 	DefineFloat(header, "TREE_SHADOW_DEPTH", SHADOW_DEPTH);
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "BALLAST", COL_BALLAST);
@@ -154,9 +153,17 @@ bool ShaderProgram::Ready()
 {
 	if (!this->attempted) {
 		this->attempted = true;
-		if (this->program.Build(ShaderSource(this->vertex_sources), ShaderSource(this->fragment_sources))) this->program.BindBlock("Scene", SCENE_BINDING);
+		if (this->program.Build(ShaderSource(this->vertex_sources), ShaderSource(this->fragment_sources))) this->BindShared();
 	}
 	return static_cast<bool>(this->program);
+}
+
+void ShaderProgram::BindShared() const
+{
+	this->program.BindBlock("Scene", SCENE_BINDING);
+	this->program.BindBlock("Shadows", SHADOWS_BINDING);
+	this->program.Use();
+	for (const FrameSampler &sampler : FRAME_SAMPLERS) this->BindSampler(sampler.name, sampler.unit);
 }
 
 void ShaderProgram::Release()
