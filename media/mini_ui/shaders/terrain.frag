@@ -93,12 +93,10 @@ const float CANOPY_LIGHTING = 0.5;
 const float SKY_FILL = 0.2;
 const float GRID_DEPTH = 0.6;
 
-const float WALL_INSET = 0.01;
 const float COURSES_PER_TILE = 6.0;
 const float BLOCKS_PER_TILE = 3.0;
 const float MORTAR_SHARE = 0.08;
 const vec3 MASONRY = vec3(0.56, 0.53, 0.49);
-const float STRATA_PER_TILE = 4.0;
 
 struct Ground {
 	uint material;
@@ -430,25 +428,16 @@ vec3 OuterSea(vec2 p)
 	return Glinting(SEA_DEEP, Ripple(p));
 }
 
-/* Built ground stands on dressed stone courses; natural ground breaks off in bands of rock and soil. */
+/* Only foundations part the ground into walls, and they are laid in dressed stone courses. */
 vec3 WallFace(vec3 normal)
 {
-	ivec2 owner = Clamped(ivec2(floor(v_world.xy - normal.xy * WALL_INSET)));
-	uint material = texelFetch(u_tiles, owner, 0).r;
 	float along = dot(v_world.xy, vec2(-normal.y, normal.x));
-	float height = v_world.z * LevelRise();
-	vec3 stone;
-	if (IsBuilt(material) || material == MAT_SHORE) {
-		float course = height * COURSES_PER_TILE;
-		float block = along * BLOCKS_PER_TILE + 0.5 * floor(course);
-		vec2 joint = abs(fract(vec2(block, course)) - 0.5);
-		float mortar = max(1.0 - smoothstep(0.5 - MORTAR_SHARE, 0.5, joint.x), 1.0 - smoothstep(0.5 - MORTAR_SHARE, 0.5, joint.y));
-		float detail = Resolved(COURSES_PER_TILE);
-		stone = MASONRY * Varied(Hash(ivec2(floor(block), floor(course))), 0.18 * detail) * (1.0 - 0.3 * mortar * detail);
-	} else {
-		float strata = Layered(vec2(along * 0.4, height * STRATA_PER_TILE), 1.0);
-		stone = mix(SOIL, ROCK, smoothstep(0.35, 0.65, strata)) * Varied(Octave(vec2(along, height) * 3.0, 1.0), 0.3);
-	}
+	float course = v_world.z * LevelRise() * COURSES_PER_TILE;
+	float block = along * BLOCKS_PER_TILE + 0.5 * floor(course);
+	vec2 joint = abs(fract(vec2(block, course)) - 0.5);
+	float mortar = smoothstep(0.5 - MORTAR_SHARE, 0.5, max(joint.x, joint.y));
+	float detail = Resolved(COURSES_PER_TILE);
+	vec3 stone = MASONRY * Varied(Hash(ivec2(floor(block), floor(course))), 0.18 * detail) * (1.0 - 0.3 * mortar * detail);
 	return Altitude(stone, v_world.z) * Lighting(normal);
 }
 

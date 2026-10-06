@@ -85,7 +85,6 @@ static std::string ShaderHeader()
 	DefineCodes(header, "TREE_", TREE_KIND_NAMES);
 	DefineCodes(header, "LOOK_", RAIL_LOOK_NAMES);
 	DefineInt(header, "RAIL_LOOKS", to_underlying(RailLook::End));
-	DefineInt(header, "SCENE_BINDING", SCENE_BINDING);
 	DefineUnsigned(header, "DENSITY_MASK", GROUND_DENSITY_MASK);
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
 	DefineUnsigned(header, "FLORA_COUNT_MASK", FLORA_COUNT_MASK);
