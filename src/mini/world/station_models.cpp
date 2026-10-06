@@ -55,6 +55,7 @@ static constexpr double ROOF_THICKNESS = 0.012;
 static constexpr double PILLAR_LATERAL = 0.37;
 static constexpr double PILLAR_HALF = 0.012;
 static constexpr std::array<double, 2> PILLAR_SHARES = {0.25, 0.75};
+static constexpr double RIB_HALF = 0.007;
 
 static constexpr double GANTRY_LATERAL = 0.33;
 static constexpr double GANTRY_HEIGHT = 0.42;
@@ -78,7 +79,7 @@ static constexpr uint32_t WALL = 0xD6C8AA;
 static constexpr uint32_t BUILDING_ROOF = 0x5E5853;
 static constexpr uint32_t GLASS = 0x5A7C8E;
 static constexpr uint32_t AWNING = 0x7B2E2A;
-static constexpr uint32_t ROOF_GLASS = 0x9DC0CE;
+static constexpr uint32_t ROOF_GLASS = 0x7FA2B2;
 static constexpr uint32_t FRAME = 0x4E555C;
 static constexpr uint32_t SIGN = 0xE8C440;
 static constexpr double GLASS_GLOSS = 0.8;
@@ -138,6 +139,12 @@ private:
 		return !IsRailStationTile(next) || GetRailStationAxis(next) != this->axis;
 	}
 
+	Vec3 Point(double share, double lateral, double height) const
+	{
+		MapVector at = this->run.At(share, lateral);
+		return {at.x, at.y, height};
+	}
+
 	void Box(double from, double to, double low, double high, uint32_t top, uint32_t sides, double gloss = 0.0, bool capped = false)
 	{
 		std::array<SectionPoint, 5> section = BoxSection(from, to, low, high, top, sides, gloss);
@@ -179,18 +186,20 @@ private:
 		for (double share : PILLAR_SHARES) {
 			MapVector at = this->run.At(share, pillar_side * PILLAR_LATERAL);
 			this->parts.Append(Block(at, this->run.Along(), {-PILLAR_HALF, -PILLAR_HALF, PLATFORM_TOP}, {PILLAR_HALF, PILLAR_HALF, ROOF_EAVES}).Paint(FRAME).Gloss(FRAME_GLOSS));
+			Vec3 ridge = this->Point(share, 0.0, ROOF_RIDGE);
+			for (double side : {-1.0, 1.0}) this->parts.Append(Strut(this->Point(share, side * ROOF_HALF, ROOF_EAVES), ridge, RIB_HALF).Paint(FRAME).Gloss(FRAME_GLOSS));
 		}
 	}
 
 	/* A waypoint is marked by a gantry over its track bearing a sign. */
 	void Gantry()
 	{
-		std::array<MapVector, 2> posts = {this->run.At(EDGE, -GANTRY_LATERAL), this->run.At(EDGE, GANTRY_LATERAL)};
-		for (const MapVector &post : posts) {
+		for (double side : {-1.0, 1.0}) {
+			MapVector post = this->run.At(EDGE, side * GANTRY_LATERAL);
 			this->parts.Append(Block(post, this->run.Along(), {-GANTRY_HALF, -GANTRY_HALF, 0.0}, {GANTRY_HALF, GANTRY_HALF, GANTRY_HEIGHT}).Paint(FRAME).Gloss(FRAME_GLOSS));
 		}
 		double beam = GANTRY_HEIGHT - GANTRY_HALF;
-		this->parts.Append(Strut({posts[0].x, posts[0].y, beam}, {posts[1].x, posts[1].y, beam}, GANTRY_HALF).Paint(FRAME).Gloss(FRAME_GLOSS));
+		this->parts.Append(Strut(this->Point(EDGE, -GANTRY_LATERAL, beam), this->Point(EDGE, GANTRY_LATERAL, beam), GANTRY_HALF).Paint(FRAME).Gloss(FRAME_GLOSS));
 		this->parts.Append(Block(this->run.At(EDGE, 0.0), this->run.Along(), SIGN_LOW, SIGN_HIGH).Paint(SIGN));
 	}
 

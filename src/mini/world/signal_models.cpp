@@ -17,6 +17,7 @@
 #include "../../safeguards.h"
 
 static constexpr Vec3 ACROSS = {1.0, 0.0, 0.0};
+static constexpr double SIGNAL_SCALE = 1.35;
 static constexpr double LAMP_GLOW = 1.0;
 static constexpr double PAINT_GLOSS = 0.35;
 
@@ -95,10 +96,11 @@ static ModelMesh Semaphore(SignalState state)
 
 std::vector<ModelMesh> BuildSignalModels()
 {
+	Mat4 enlarged = Mat4::Scaling({SIGNAL_SCALE, SIGNAL_SCALE, SIGNAL_SCALE});
 	std::vector<ModelMesh> models(SIGNAL_MODELS);
 	for (SignalState state : {SIGNAL_STATE_RED, SIGNAL_STATE_GREEN}) {
-		models[SignalModelIndex(SIG_ELECTRIC, state)] = LightSignal(state);
-		models[SignalModelIndex(SIG_SEMAPHORE, state)] = Semaphore(state);
+		models[SignalModelIndex(SIG_ELECTRIC, state)] = LightSignal(state).Transform(enlarged);
+		models[SignalModelIndex(SIG_SEMAPHORE, state)] = Semaphore(state).Transform(enlarged);
 	}
 	return models;
 }
