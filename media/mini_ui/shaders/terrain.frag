@@ -35,7 +35,6 @@ const float SUBMERGED_MARK = 0.08;
 const float BLEND_WIDTH = 0.28;
 const float NATURAL_WARP = 0.32;
 const float BUILT_WARP = 0.06;
-const float SHORE_WARP = 0.22;
 const float DEPTH_LOD = 3.0;
 const float SANDED_SEA = 0.26;
 
@@ -427,7 +426,7 @@ bool IsBuilt(uint material)
 
 bool IsNatural(uint material)
 {
-	return material == MAT_GRASS || material == MAT_ROUGH || material == MAT_SNOW || material == MAT_DESERT;
+	return material == MAT_GRASS || material == MAT_ROUGH || material == MAT_SNOW || material == MAT_DESERT || material == MAT_SHORE;
 }
 
 Patch Eroded(Ground ground, Site site)
@@ -533,16 +532,13 @@ vec3 Roughened(vec3 normal, vec2 p, float rugged)
 
 Water WaterAt(vec2 p)
 {
-	vec2 uv = p / MapSize();
-	float canal_here = textureLod(u_water, uv, 0.0).b;
-	vec2 warp = (vec2(Noise(p * 1.7 + 7.1), Noise(p * 1.7 + 93.4)) - 0.5) * 2.0 * SHORE_WARP * (1.0 - canal_here);
-	vec4 near = texture(u_water, (p + warp) / MapSize());
-	float wide = textureLod(u_water, uv, DEPTH_LOD).r;
+	vec4 near = WaterField(p);
+	float wide = textureLod(u_water, p / MapSize(), DEPTH_LOD).r;
 	float edge = max(fwidth(near.r), 1e-3);
 
 	Water water;
 	water.level = near.r;
-	water.cover = smoothstep(0.5 - edge, 0.5 + edge, near.r);
+	water.cover = smoothstep(WATERLINE - edge, WATERLINE + edge, near.r);
 	water.depth = smoothstep(0.55, 1.0, wide) * smoothstep(0.5, 0.9, near.r);
 	water.share = near.gba / max(near.r, 1e-3);
 	water.sea = near.g;
