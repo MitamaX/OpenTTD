@@ -56,6 +56,14 @@ public:
 	void Release();
 
 private:
+	/* A block waiting to be built, whether it is in sight, the tile pixels where it comes nearest the eye, and the detail it is wanted at. */
+	struct BuildOrder {
+		size_t index;
+		bool in_sight;
+		double pixels;
+		StructureDetail detail;
+	};
+
 	void Lay(Dimension map);
 	void Notice(TileIndex tile);
 	void Survey(StructureChunk &chunk, size_t index) const;
@@ -65,6 +73,7 @@ private:
 	ChunkGrid grid{CHUNK_TILES};
 	std::vector<StructureChunk> chunks;
 	std::vector<uint32_t> digests;
+	std::vector<BuildOrder> queue;
 	double rise = 0.0;
 	uint64_t frame = 0;
 };

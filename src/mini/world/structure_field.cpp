@@ -14,6 +14,7 @@
 #include <bit>
 #include <chrono>
 #include <ranges>
+#include <utility>
 
 #include "../../map_func.h"
 #include "../../station_map.h"
@@ -26,7 +27,7 @@
 static constexpr double FULL_DETAIL_PIXELS = 20.0;
 static constexpr double FOOTING_LEVELS = 1.0;
 static constexpr uint64_t EVICT_FRAMES = 600;
-static constexpr std::chrono::microseconds BUILD_BUDGET{6000};
+static constexpr std::chrono::microseconds BUILD_BUDGET{4000};
 static constexpr int NEIGHBOUR_REACH = 1;
 static constexpr int FOOTPRINT_REACH = MAX_FOOTPRINT_TILES - 1;
 
@@ -156,31 +157,32 @@ void StructureField::Build(StructureChunk &chunk, size_t index, StructureDetail 
 	chunk.stale = false;
 }
 
-/* A block is built once the camera comes near enough to show its buildings, at the detail its nearest point asks for; the blocks in sight go first,
- * then those out of sight near enough to cast shadows into it.
+/* A block is built once the camera comes near enough to show its buildings, at the detail its nearest point asks for:
+ * the blocks in sight go first, nearest first, then those out of sight near enough to cast shadows into it.
  * Blocks are built until the frame's budget runs out, at least one a frame; one still waiting shows what it was last built as. */
 void StructureField::Prepare(const SceneView &camera)
 {
 	if (this->chunks.empty()) return;
 	for (TileIndex tile : _world_tiles.Touched()) this->Notice(tile);
 
-	auto deadline = std::chrono::steady_clock::now() + BUILD_BUDGET;
-	bool built_any = false;
-	for (bool in_sight : {true, false}) {
-		for (size_t index = 0; index < this->chunks.size(); index++) {
-			StructureChunk &chunk = this->chunks[index];
-			if (!chunk.surveyed) this->Survey(chunk, index);
-			if (BoxMeets(camera.frustum, chunk.low, chunk.high) != in_sight) continue;
+	double casting_pixels = camera.TilePixelsAt(camera.shadow_reach);
+	this->queue.clear();
+	for (size_t index = 0; index < this->chunks.size(); index++) {
+		StructureChunk &chunk = this->chunks[index];
+		if (!chunk.surveyed) this->Survey(chunk, index);
+		bool in_sight = BoxMeets(camera.frustum, chunk.low, chunk.high);
+		double nearest_pixels = camera.NearestTilePixels(chunk.low, chunk.high);
+		if (nearest_pixels < (in_sight ? STRUCTURE_FADE_START : casting_pixels)) continue;
+		chunk.wanted = this->frame;
+		StructureDetail detail = nearest_pixels >= FULL_DETAIL_PIXELS ? StructureDetail::Full : StructureDetail::Simple;
+		if (chunk.stale || !chunk.built || chunk.detail != detail) this->queue.push_back({index, in_sight, nearest_pixels, detail});
+	}
 
-			double nearest_pixels = camera.NearestTilePixels(chunk.low, chunk.high);
-			if (nearest_pixels < (in_sight ? STRUCTURE_FADE_START : camera.TilePixelsAt(camera.shadow_reach))) continue;
-			chunk.wanted = this->frame;
-			StructureDetail detail = nearest_pixels >= FULL_DETAIL_PIXELS ? StructureDetail::Full : StructureDetail::Simple;
-			if (!chunk.stale && chunk.built && chunk.detail == detail) continue;
-			if (built_any && std::chrono::steady_clock::now() >= deadline) return;
-			this->Build(chunk, index, detail);
-			built_any = true;
-		}
+	std::ranges::sort(this->queue, std::ranges::greater{}, [](const BuildOrder &order) { return std::pair(order.in_sight, order.pixels); });
+	auto deadline = std::chrono::steady_clock::now() + BUILD_BUDGET;
+	for (const BuildOrder &order : this->queue) {
+		this->Build(this->chunks[order.index], order.index, order.detail);
+		if (std::chrono::steady_clock::now() >= deadline) break;
 	}
 }
 
