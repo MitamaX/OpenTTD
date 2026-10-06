@@ -68,6 +68,11 @@ static double Halton(uint index, uint base)
 	return result;
 }
 
+static Dimension Halved(Dimension size)
+{
+	return Dimension(std::max(size.width / 2, 1u), std::max(size.height / 2, 1u));
+}
+
 static void BindDepth(const WorldTarget &target, uint unit)
 {
 	glActiveTexture(GL_TEXTURE0 + unit);
@@ -136,7 +141,7 @@ SceneView PostChain::Jitter(const SceneView &view)
 
 bool PostChain::Fit(Dimension size)
 {
-	Dimension half(std::max(size.width / 2, 1u), std::max(size.height / 2, 1u));
+	Dimension half = Halved(size);
 	bool fitted = this->ambient.Fit(half) && this->lit.Fit(size);
 	for (PostTarget &target : this->history) {
 		if (target.Size() != size) this->history_valid = false;
@@ -144,7 +149,7 @@ bool PostChain::Fit(Dimension size)
 	}
 	for (PostTarget &target : this->bloom) {
 		fitted = fitted && target.Fit(half);
-		half = Dimension(std::max(half.width / 2, 1u), std::max(half.height / 2, 1u));
+		half = Halved(half);
 	}
 	return fitted;
 }
