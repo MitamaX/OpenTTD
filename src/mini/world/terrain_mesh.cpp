@@ -11,6 +11,7 @@
 #include "terrain_mesh.h"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 #include "../../map_func.h"
@@ -22,6 +23,10 @@
 
 static constexpr double NORMAL_SCALE = 127.0;
 static constexpr double SKIRT_LEVELS_PER_STEP = 2.0;
+static constexpr double STEEP_BANK_RUN = 0.35;
+static constexpr double LONGEST_BANK_RUN = 1.0;
+static constexpr double LEAST_BANK_FALL = 0.25;
+static constexpr double BANK_PROBE = 0.25;
 static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
 
 /** A tile's corners as the surface texel names them. */
@@ -179,15 +184,76 @@ static void AddTile(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 	for (const Facet &facet : tile.Facets()) mesh.Triangle(corners[facet[0]], corners[facet[1]], corners[facet[2]]);
 }
 
-static void AddWalls(TerrainMesh &mesh, int tx, int ty)
+static bool StandsInSea(int tx, int ty)
+{
+	return OnMap(tx, ty) && _world_tiles.WaterAt(TileXY(tx, ty)).sea > 0;
+}
+
+/* How many tiles out a bank runs for each level it falls: on along the ground above where that falls toward the water, so the two meet without a fold, and steeply where it does not. */
+static double BankRun(int tx, int ty, const StepFace &step)
+{
+	TileGround ground(tx, ty);
+	WorldPoint middle = Between(step.ring[0], step.ring[3], HALF_TILE);
+	double inner = ground.Level(middle.x - step.outward.x * BANK_PROBE, middle.y - step.outward.y * BANK_PROBE);
+	double fall = (inner - ground.Level(middle.x, middle.y)) / BANK_PROBE;
+	return fall >= LEAST_BANK_FALL ? 1.0 / fall : STEEP_BANK_RUN;
+}
+
+static Vec3 FaceNormal(const std::array<WorldPoint, 4> &ring)
+{
+	Vec3 normal = Normalised(Cross(RenderPoint(ring[2]) - RenderPoint(ring[0]), RenderPoint(ring[3]) - RenderPoint(ring[1])));
+	return normal.z < 0.0 ? normal * -1.0 : normal;
+}
+
+static bool AtCorner(const WorldPoint &at)
+{
+	return at.x == std::floor(at.x) && at.y == std::floor(at.y);
+}
+
+/* A bank's corners sink with the seabed as the ground's own corners do, so the two meet without a gap. */
+static WorldPoint Settled(const Seabed &bed, const WorldPoint &at)
+{
+	if (!AtCorner(at)) return at;
+	return {at.x, at.y, at.level - bed.Sink(static_cast<int>(at.x), static_cast<int>(at.y))};
+}
+
+/* A step whose foot stands in the sea leans out into it as a bank of the ground above, instead of standing upright; along its top it shades on as the ground it hangs from. */
+static void AddBank(TerrainMesh &mesh, const Seabed &bed, int tx, int ty, const StepFace &step)
+{
+	double run = BankRun(tx, ty, step);
+	auto lean = [&](const WorldPoint &top, const WorldPoint &foot) {
+		double reach = std::min((top.level - foot.level) * run, LONGEST_BANK_RUN);
+		return WorldPoint{foot.x + step.outward.x * reach, foot.y + step.outward.y * reach, foot.level};
+	};
+	std::array<WorldPoint, 4> ring = {step.ring[0], lean(step.ring[0], step.ring[1]), lean(step.ring[3], step.ring[2]), step.ring[3]};
+	Vec3 face = FaceNormal(ring);
+	auto normal = [&](const WorldPoint &at, bool top) {
+		return top && AtCorner(at) ? SmoothNormal(static_cast<int>(at.x), static_cast<int>(at.y), static_cast<uint8_t>(at.level)) : face;
+	};
+	std::array<uint32_t, 4> corners;
+	for (size_t i = 0; i < ring.size(); i++) corners[i] = mesh.Add(Settled(bed, ring[i]), normal(ring[i], i == 0 || i == 3), DRY_MARK);
+	mesh.Quad(corners[0], corners[1], corners[2], corners[3]);
+}
+
+static void AddWall(TerrainMesh &mesh, const StepFace &step)
+{
+	Vec3 outward = {step.outward.x, step.outward.y, 0.0};
+	std::array<uint32_t, 4> ring;
+	std::ranges::transform(step.ring, ring.begin(), [&](const WorldPoint &corner) { return mesh.Add(corner, outward, WALL_MARK); });
+	mesh.Quad(ring[0], ring[1], ring[2], ring[3]);
+}
+
+static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 {
 	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
 		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
 		if (!step.has_value()) continue;
-		Vec3 outward = {step->outward.x, step->outward.y, 0.0};
-		std::array<uint32_t, 4> ring;
-		std::ranges::transform(step->ring, ring.begin(), [&](const WorldPoint &corner) { return mesh.Add(corner, outward, WALL_MARK); });
-		mesh.Quad(ring[0], ring[1], ring[2], ring[3]);
+		TileIndexDiffC across = TileIndexDiffCByDiagDir(side);
+		if (StandsInSea(tx + across.x, ty + across.y)) {
+			AddBank(mesh, bed, tx, ty, *step);
+		} else {
+			AddWall(mesh, *step);
+		}
 	}
 }
 
@@ -198,7 +264,7 @@ static TerrainMesh BuildTiles(const TileSpan &tiles)
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			AddTile(mesh, bed, tx, ty);
-			AddWalls(mesh, tx, ty);
+			AddWalls(mesh, bed, tx, ty);
 		}
 	}
 	return mesh;
