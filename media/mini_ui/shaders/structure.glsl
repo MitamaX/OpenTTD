@@ -249,6 +249,7 @@ const float FASCIA_ROWS[10] = float[10](0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 
 const vec3 FRAME_PAINT = vec3(0.86, 0.85, 0.82);
 const vec3 SILL_STONE = vec3(0.80, 0.78, 0.74);
 const vec3 BLIND = vec3(0.86, 0.80, 0.66);
+const vec3 CURTAINS[4] = vec3[4](vec3(0.62, 0.20, 0.16), vec3(0.78, 0.66, 0.42), vec3(0.30, 0.42, 0.30), vec3(0.70, 0.62, 0.58));
 const vec3 SHUTTER_SLAT = vec3(0.62, 0.64, 0.66);
 const vec3 SHUTTER_GROOVE = vec3(0.50, 0.52, 0.54);
 const vec3 DOOR_PAINTS[5] = vec3[5](vec3(0.42, 0.12, 0.10), vec3(0.12, 0.28, 0.18), vec3(0.12, 0.20, 0.36), vec3(0.30, 0.20, 0.12), vec3(0.85, 0.84, 0.80));
@@ -322,6 +323,7 @@ Clad Filling(Bay bay, vec3 glass, uint seed, float pixel)
 	bool rimmed = opening.kind != OPEN_WINDOW && OutsideOpening(opening, at) > -max(0.6, pixel);
 	if (rimmed || OnMuntin(opening, at, pixel)) return Matte((rimmed ? vec3(0.22) : FRAME_PAINT) * reveal, 0.5);
 	if (opening.kind == OPEN_WINDOW && pane < 0.18 && at.y > opening.height * 0.5) return Matte(BLIND * reveal, 0.8);
+	if (opening.kind == OPEN_WINDOW && pane > 0.72 && abs(at.x) > opening.width * (0.92 - pane * 0.5)) return Matte(CURTAINS[uint(pane * 37.0) % 4u] * reveal, 0.9);
 	Clad clad = Matte(glass * (0.5 + 0.3 * pane) * reveal, 0.06);
 	clad.glass = reveal;
 	return clad;

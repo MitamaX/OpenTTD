@@ -65,6 +65,13 @@ static constexpr std::array<uint32_t, 4> BLOOM_TINTS = {0xFFC8423AU, 0xFFE8B23AU
 static constexpr double WINDOW_SILL = 2.0 / TEXELS_PER_TILE;
 static constexpr uint BALCONY_BIT = 9;
 
+static constexpr double MAST_MIN_TOP = 1.0;
+static constexpr double MAST_RADIUS = 0.005;
+static constexpr double MAST_HEIGHT = 0.16;
+static constexpr double MAST_INSET = 0.06;
+static constexpr double MAST_SHARE = 0.5;
+static constexpr uint32_t MAST_TINT = 0xFF8E9298U;
+
 static constexpr double DRUM_MIN_WALL = 0.1;
 static constexpr double RIM_REACH = 1.05;
 static constexpr double RIM_HEIGHT = 0.01;
@@ -123,6 +130,7 @@ public:
 		this->DressRidge();
 		this->DressFacades();
 		this->DressDrum();
+		this->DressSkyline();
 	}
 
 private:
@@ -302,6 +310,16 @@ private:
 		Coat bloom = {Material::Plain, WindowGrid::None, {}, BLOOM_TINTS[this->dice.Below(static_cast<uint32_t>(BLOOM_TINTS.size()))]};
 		double sill = floor + WINDOW_SILL;
 		this->AddBox(this->OffWall(wall, centre, -half, 0.0, sill - BOX_HEIGHT), this->OffWall(wall, centre, half, BOX_DEPTH, sill), bloom);
+	}
+
+	/* Some tall flat roofs carry a radio mast at one corner. */
+	void DressSkyline()
+	{
+		bool flat = this->solid.roof == RoofShape::Parapet || this->solid.roof == RoofShape::Flat;
+		if (this->solid.kind != SolidKind::Box || !flat || this->solid.Top() < MAST_MIN_TOP || this->dice.Share() >= MAST_SHARE) return;
+		double x = this->dice.Share() < 0.5 ? this->plan.x0 + MAST_INSET : this->plan.x1 - MAST_INSET;
+		double y = this->dice.Share() < 0.5 ? this->plan.y0 + MAST_INSET : this->plan.y1 - MAST_INSET;
+		this->AddUpright(Column(PROP_SIDES / 2, MAST_RADIUS * 2.0, MAST_RADIUS, MAST_HEIGHT), x, y, this->solid.Top(), {Material::Metal, WindowGrid::None, {}, MAST_TINT});
 	}
 
 	/* Tall metal drums wear a rim at their eaves and a ladder up their side. */
