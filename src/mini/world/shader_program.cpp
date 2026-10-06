@@ -24,6 +24,7 @@
 #include "../../settings_type.h"
 #include "../core/canvas.h"
 #include "../core/tones.h"
+#include "../core/tuning.h"
 #include "../gpu/gl_api.h"
 #include "../map/map_overlay.h"
 #include "../map/network_style.h"
@@ -208,4 +209,10 @@ void ShaderProgram::Release()
 void ShaderProgram::BindSampler(const char *sampler, uint unit) const
 {
 	glUniform1i(this->program.Uniform(sampler), static_cast<GLint>(unit));
+}
+
+void UploadOverlay(const ShaderProgram &program)
+{
+	glUniform1i(program.Uniform("u_layer"), to_underlying(_overlay.Filter()));
+	glUniform1f(program.Uniform("u_sink"), ChannelShare(_tuning.filter_alpha));
 }

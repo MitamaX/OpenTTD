@@ -16,6 +16,7 @@
 #include "../gpu/gl_api.h"
 #include "../gpu/gl_state.h"
 #include "forest_pass.h"
+#include "network_pass.h"
 #include "terrain_pass.h"
 #include "water_pass.h"
 
@@ -60,6 +61,7 @@ static void BindTexture(uint unit, uint32_t texture)
 WorldPainter::WorldPainter() : composite(SCREEN_SOURCES, COMPOSITE_SOURCES)
 {
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
+	this->passes.push_back(std::make_unique<NetworkPass>());
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field));
 }

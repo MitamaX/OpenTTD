@@ -894,9 +894,8 @@ void MiniUiFrame(uint delta_ms)
 
 	_overlay.FollowTool(ToolLayer(_tool.Kind()));
 
-	_map_painter.PaintGround(ppt, _overlay.Filter());
 	_vehicle_painter.Paint(ppt, _overlay.Filter(), VehicleTier::Grounded);
-	_map_painter.PaintRaised();
+	_map_painter.Paint(_overlay.Filter());
 
 	PaintBlueprint(ppt);
 

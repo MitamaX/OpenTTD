@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file transport_forms.cpp Depots, tunnel portals and the buildings of stations that are not rail stations, as building forms. */
+/** @file transport_forms.cpp Depots and the buildings of stations that are not rail stations, as building forms. */
 
 #include "../../stdafx.h"
 #include "transport_forms.h"
@@ -21,8 +21,6 @@
 #include "../../station_map.h"
 #include "../../table/airporttile_ids.h"
 #include "../../tile_map.h"
-#include "../../tunnel_map.h"
-#include "../../tunnelbridge_map.h"
 #include "../../water_map.h"
 #include "../core/tones.h"
 #include "site_shapes.h"
@@ -54,17 +52,6 @@ static constexpr uint8_t SHIP_DEPOT_LENGTH = 2;
 static constexpr float SHIP_DEPOT_SIDE = 0.15f;
 static constexpr float SHIP_DEPOT_BASE = 0.05f;
 static constexpr float SHIP_DEPOT_HEIGHT = 0.45f;
-
-/* The step a portal is laid on rises exactly one game level from the tunnel floor to the hill. */
-static constexpr float STEP_HEIGHT = static_cast<float>(HeightOf(0.0, 1.0));
-static constexpr float PORTAL_DEPTH = 0.02f;
-static constexpr float PORTAL_MARGIN = 0.06f;
-static constexpr uint32_t PORTAL_TINT = 0xFF8A8478U;
-static constexpr float MOUTH_DEPTH = 0.01f;
-static constexpr float MOUTH_SPRING = 0.45f * STEP_HEIGHT;
-static constexpr float MOUTH_RISE = 0.35f * STEP_HEIGHT;
-static constexpr float RAIL_MOUTH_WIDTH = 0.44f;
-static constexpr float ROAD_MOUTH_WIDTH = 0.62f;
 
 static constexpr SiteLook TERMINAL_LOOK = BlockLook(4.0f, Finish::Glass);
 static constexpr SiteLook LOW_BLOCK_LOOK = BlockLook(2.0f, Finish::Concrete);
@@ -174,21 +161,6 @@ std::optional<BuildingForm> DepotForm(TileIndex tile)
 	if (IsRoadDepotTile(tile)) return LandDepotForm(tile, GetRoadDepotDirection(tile), ROAD_DEPOT);
 	if (IsShipDepotTile(tile)) return ShipDepotForm(tile);
 	return std::nullopt;
-}
-
-/* The portal is a stone face and a dark arch laid on the step the uphill tile shows over the cut, facing the vehicles that enter it. */
-std::optional<BuildingForm> TunnelForm(TileIndex tile)
-{
-	if (!IsTunnelTile(tile)) return std::nullopt;
-	DiagDirection inward = GetTunnelBridgeDirection(tile);
-	Axis across = AlongEdge(inward);
-	float mouth_width = GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL ? RAIL_MOUTH_WIDTH : ROAD_MOUTH_WIDTH;
-	Plot portal = Plot{}.Edge(inward, PORTAL_DEPTH).Narrowed(across, mouth_width + 2.0f * PORTAL_MARGIN);
-	Plot mouth = portal.Outside(ReverseDiagDir(inward), MOUTH_DEPTH).Narrowed(across, mouth_width);
-	BuildingForm form = SiteForm(tile);
-	form.Add(Part::Box(portal).Height(STEP_HEIGHT).Clad(Material::Stone, PORTAL_TINT));
-	form.Add(Part::Box(mouth).Height(MOUTH_SPRING).Roof(RoofShape::Vault, MOUTH_RISE).Ridge(DiagDirToAxis(inward)).Clad(Material::Plain, COL_TUNNEL));
-	return form;
 }
 
 static std::optional<AirportPart> AirportPartOf(TileIndex tile)

@@ -81,6 +81,9 @@ inline constexpr uint8_t FLORA_KIND_SHIFT = 5;
 inline constexpr uint8_t NETWORK_RAIL_LOOK_MASK = 0x03;
 inline constexpr uint8_t NETWORK_CATENARY_BIT = 0x04;
 inline constexpr uint8_t NETWORK_KERB_BIT = 0x08;
+inline constexpr uint8_t NETWORK_SIGNALS_BIT = 0x10;
+inline constexpr uint8_t NETWORK_ONE_WAY_SHIFT = 5;
+inline constexpr uint8_t NETWORK_BRIDGE_BIT = 0x80;
 inline constexpr uint8_t FULL_WATER = 0xFF;
 inline constexpr uint8_t HALF_WATER = 0x80;
 
@@ -145,6 +148,7 @@ public:
 	SurfaceTexel SurfaceAt(TileIndex tile) const;
 	GroundTexel GroundAt(TileIndex tile) const;
 	WaterTexel WaterAt(TileIndex tile) const;
+	NetworkTexel NetworkAt(TileIndex tile) const;
 
 private:
 	struct Texels {

@@ -1,4 +1,6 @@
 add_files(
+    bridge_models.cpp
+    bridge_models.h
     chunk_grid.cpp
     chunk_grid.h
     forest_field.cpp
@@ -6,6 +8,14 @@ add_files(
     forest_pass.cpp
     forest_pass.h
     frame_units.h
+    network_field.cpp
+    network_field.h
+    network_mesh.cpp
+    network_mesh.h
+    network_pass.cpp
+    network_pass.h
+    road_models.cpp
+    road_models.h
     scene_view.cpp
     scene_view.h
     seabed.cpp
@@ -14,14 +24,22 @@ add_files(
     shader_program.h
     shadow_map.cpp
     shadow_map.h
+    signal_models.cpp
+    signal_models.h
+    station_models.cpp
+    station_models.h
     terrain_field.cpp
     terrain_field.h
     terrain_mesh.cpp
     terrain_mesh.h
     terrain_pass.cpp
     terrain_pass.h
+    track_models.cpp
+    track_models.h
     tree_models.cpp
     tree_models.h
+    tunnel_models.cpp
+    tunnel_models.h
     water_mesh.cpp
     water_mesh.h
     water_pass.cpp

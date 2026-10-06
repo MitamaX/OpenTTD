@@ -38,4 +38,7 @@ private:
 	bool attempted = false;
 };
 
+/* Hands the overlay's shown layer and how far the rest sinks to a program reading overlay.glsl. */
+void UploadOverlay(const ShaderProgram &program);
+
 #endif /* MINI_WORLD_SHADER_PROGRAM_H */

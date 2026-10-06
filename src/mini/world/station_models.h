@@ -5,17 +5,15 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file transport_forms.h Depots and the buildings of stations that are not rail stations, as building forms. */
+/** @file station_models.h Stations in 3D: rail platforms with their buildings and roofs as each tile's layout stands them, waypoint gantries, and bus shelters. */
 
-#ifndef MINI_MAP_TRANSPORT_FORMS_H
-#define MINI_MAP_TRANSPORT_FORMS_H
-
-#include <optional>
+#ifndef MINI_WORLD_STATION_MODELS_H
+#define MINI_WORLD_STATION_MODELS_H
 
 #include "../../tile_type.h"
-#include "building_form.h"
+#include "way_shapes.h"
 
-std::optional<BuildingForm> DepotForm(TileIndex tile);
-std::optional<BuildingForm> StationForm(TileIndex tile);
+void LayRailStop(ModelMesh &mesh, TileIndex tile, WayDetail detail);
+void LayBusShelter(ModelMesh &mesh, TileIndex tile, WayDetail detail);
 
-#endif /* MINI_MAP_TRANSPORT_FORMS_H */
+#endif /* MINI_WORLD_STATION_MODELS_H */

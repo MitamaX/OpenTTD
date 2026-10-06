@@ -14,7 +14,6 @@
 #include "../../road_map.h"
 #include "../../station_map.h"
 #include "../../tile_map.h"
-#include "../../tunnel_map.h"
 #include "../../water_map.h"
 #include "house_forms.h"
 #include "industry_forms.h"
@@ -33,7 +32,6 @@ std::optional<BuildingForm> StructureForm(TileIndex tile)
 		case MP_ROAD: return IsRoadDepot(tile) ? DepotForm(tile) : std::nullopt;
 		case MP_WATER: return IsShipDepot(tile) ? DepotForm(tile) : std::nullopt;
 		case MP_STATION: return HasStationRail(tile) ? std::nullopt : StationForm(tile);
-		case MP_TUNNELBRIDGE: return IsTunnel(tile) ? TunnelForm(tile) : std::nullopt;
 		default: return std::nullopt;
 	}
 }

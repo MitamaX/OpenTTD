@@ -14,6 +14,7 @@
 #include <optional>
 #include <utility>
 
+#include "../../bridge_map.h"
 #include "../../clear_map.h"
 #include "../../core/math_func.hpp"
 #include "../../elrail_func.h"
@@ -325,14 +326,21 @@ static NetworkTexel RoadPieces(TileIndex tile, TrackBits track, uint8_t style)
 /* A depot's track runs out of its door, under the depot building. */
 static NetworkTexel RailNetwork(TileIndex tile)
 {
-	TrackBits track = IsRailDepot(tile) ? TrackToTrackBits(GetRailDepotTrack(tile)) : GetTrackBits(tile);
-	return RailPieces(track, RailStyle(GetRailType(tile)));
+	if (IsRailDepot(tile)) return RailPieces(TrackToTrackBits(GetRailDepotTrack(tile)), RailStyle(GetRailType(tile)));
+	uint8_t signals = HasSignals(tile) ? NETWORK_SIGNALS_BIT : NO_STYLE;
+	return RailPieces(GetTrackBits(tile), static_cast<uint8_t>(RailStyle(GetRailType(tile)) | signals));
+}
+
+static uint8_t RoadsideStyle(TileIndex tile)
+{
+	uint8_t kerb = IsPaved(GetRoadside(tile)) ? NETWORK_KERB_BIT : NO_STYLE;
+	return static_cast<uint8_t>(kerb | (GetDisallowedRoadDirections(tile) << NETWORK_ONE_WAY_SHIFT));
 }
 
 static NetworkTexel RoadNetwork(TileIndex tile)
 {
 	switch (GetRoadTileType(tile)) {
-		case RoadTileType::Normal: return RoadPieces(tile, TRACK_BIT_NONE, IsPaved(GetRoadside(tile)) ? NETWORK_KERB_BIT : NO_STYLE);
+		case RoadTileType::Normal: return RoadPieces(tile, TRACK_BIT_NONE, RoadsideStyle(tile));
 		case RoadTileType::Crossing: return RoadPieces(tile, GetCrossingRailBits(tile), RailStyle(GetRailType(tile)));
 		case RoadTileType::Depot: return RoadPieces(tile, TRACK_BIT_NONE, NO_STYLE);
 		default: return {};
@@ -354,7 +362,7 @@ static NetworkTexel TunnelNetwork(TileIndex tile)
 	return RailPieces(AxisToTrackBits(DiagDirToAxis(GetTunnelBridgeDirection(tile))), RailStyle(GetRailType(tile)));
 }
 
-static NetworkTexel PackNetwork(TileIndex tile)
+static NetworkTexel GroundNetwork(TileIndex tile)
 {
 	switch (GetTileType(tile)) {
 		case MP_RAILWAY: return RailNetwork(tile);
@@ -363,6 +371,14 @@ static NetworkTexel PackNetwork(TileIndex tile)
 		case MP_TUNNELBRIDGE: return TunnelNetwork(tile);
 		default: return {};
 	}
+}
+
+/* Signals, one way roads and bridges are drawn from the map itself; their bits only mark that a tile's look changed with them. */
+static NetworkTexel PackNetwork(TileIndex tile)
+{
+	NetworkTexel texel = GroundNetwork(tile);
+	if (IsBridgeAbove(tile) || IsBridgeTile(tile)) texel.style |= NETWORK_BRIDGE_BIT;
+	return texel;
 }
 
 void WorldTiles::Reset()
@@ -414,6 +430,11 @@ GroundTexel WorldTiles::GroundAt(TileIndex tile) const
 WaterTexel WorldTiles::WaterAt(TileIndex tile) const
 {
 	return tile.base() < this->water.size() ? this->water[tile.base()] : WaterTexel{};
+}
+
+NetworkTexel WorldTiles::NetworkAt(TileIndex tile) const
+{
+	return tile.base() < this->network.size() ? this->network[tile.base()] : NetworkTexel{};
 }
 
 WorldTiles::Texels WorldTiles::Pack(TileIndex tile)

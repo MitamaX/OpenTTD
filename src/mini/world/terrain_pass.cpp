@@ -16,7 +16,6 @@
 #include "../core/tones.h"
 #include "../core/tuning.h"
 #include "../gpu/gl_api.h"
-#include "../map/map_overlay.h"
 #include "shadow_map.h"
 
 #include "../../safeguards.h"
@@ -25,12 +24,13 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/terrain.vert",
 };
-static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/common.glsl",
 	"mini_ui/shaders/sky.glsl",
 	"mini_ui/shaders/shadow.glsl",
 	"mini_ui/shaders/lighting.glsl",
+	"mini_ui/shaders/overlay.glsl",
 	"mini_ui/shaders/network.glsl",
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/terrain.frag",
@@ -69,8 +69,7 @@ void TerrainPass::Configure() const
 	glUniform1i(this->program.Uniform("u_landscape"), to_underlying(_settings_game.game_creation.landscape));
 	glUniform1f(this->program.Uniform("u_contour"), ChannelShare(_tuning.contour_alpha));
 	glUniform1f(this->program.Uniform("u_grid"), ChannelShare(_tuning.grid_alpha));
-	glUniform1i(this->program.Uniform("u_layer"), to_underlying(_overlay.Filter()));
-	glUniform1f(this->program.Uniform("u_sink"), ChannelShare(_tuning.filter_alpha));
+	UploadOverlay(this->program);
 }
 
 void TerrainPass::Release()

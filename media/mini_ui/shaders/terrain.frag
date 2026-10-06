@@ -1,8 +1,6 @@
 uniform int u_landscape;
 uniform float u_contour;
 uniform float u_grid;
-uniform int u_layer;
-uniform float u_sink;
 
 in vec3 v_world;
 in vec3 v_normal;
@@ -349,17 +347,10 @@ float GridLine(vec2 p, mat2 pixel)
 	return max(x_edges, y_edges);
 }
 
-vec3 Greyed(vec3 colour)
-{
-	if (u_layer == LAYER_NONE) return colour;
-	return vec3(GREY_FLOOR + dot(colour, LUMA_WEIGHTS) * (1.0 - u_sink));
-}
-
 vec3 Overlay(vec3 colour, Network network)
 {
 	if (u_layer == LAYER_NONE) return colour;
-	bool rail = u_layer == LAYER_RAIL;
-	return mix(Greyed(colour), rail ? RAIL_ACCENT : ROAD_ACCENT, rail ? network.layers.x : network.layers.y);
+	return mix(Greyed(colour), Accent(u_layer), u_layer == LAYER_RAIL ? network.layers.x : network.layers.y);
 }
 
 bool OutsideMap(vec2 p)

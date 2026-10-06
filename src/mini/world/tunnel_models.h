@@ -5,17 +5,14 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file transport_forms.h Depots and the buildings of stations that are not rail stations, as building forms. */
+/** @file tunnel_models.h A tunnel's portal in 3D: a stone face with an arched mouth, set into the hillside over the cut its way runs into. */
 
-#ifndef MINI_MAP_TRANSPORT_FORMS_H
-#define MINI_MAP_TRANSPORT_FORMS_H
-
-#include <optional>
+#ifndef MINI_WORLD_TUNNEL_MODELS_H
+#define MINI_WORLD_TUNNEL_MODELS_H
 
 #include "../../tile_type.h"
-#include "building_form.h"
+#include "../model/model_mesh.h"
 
-std::optional<BuildingForm> DepotForm(TileIndex tile);
-std::optional<BuildingForm> StationForm(TileIndex tile);
+void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance);
 
-#endif /* MINI_MAP_TRANSPORT_FORMS_H */
+#endif /* MINI_WORLD_TUNNEL_MODELS_H */
