@@ -41,7 +41,6 @@ static constexpr double CITY_SHOWN_FROM_PIXELS = 0.0;
 static constexpr double TOWN_SHOWN_FROM_PIXELS = 4.0;
 static constexpr double STATION_SHOWN_FROM_PIXELS = 12.0;
 static constexpr double INDUSTRY_SHOWN_FROM_PIXELS = 16.0;
-static constexpr double FADE_IN_SPAN = 0.4;
 static constexpr double OPACITY_STEP = 0.2;
 static constexpr double CLICKABLE_OPACITY = 0.5;
 static constexpr double HIDDEN_OPACITY = 0.01;
@@ -137,14 +136,12 @@ void MapLabels::Paint()
 		if (!area.has_value()) continue;
 
 		double pixels = _camera.Focal() / std::max(DistanceTo(label.anchor), _camera.Near());
-		double nearness = label.shown_from_pixels <= 0.0 ? 1.0 : SmoothStep(label.shown_from_pixels, label.shown_from_pixels * (1.0 + FADE_IN_SPAN), pixels);
-		bool wanted = nearness > 0.0 && !Overlaps(*area, taken) && !HiddenByGround(label.anchor);
+		bool wanted = pixels >= label.shown_from_pixels && !Overlaps(*area, taken) && !HiddenByGround(label.anchor);
 		if (wanted) taken.push_back(*area);
 
 		auto previous = this->opacities.find(label.target);
 		double from = previous != this->opacities.end() ? previous->second : 0.0;
-		double goal = wanted ? nearness : 0.0;
-		double opacity = from < goal ? std::min(goal, from + OPACITY_STEP) : std::max(goal, from - OPACITY_STEP);
+		double opacity = wanted ? std::min(1.0, from + OPACITY_STEP) : std::max(0.0, from - OPACITY_STEP);
 		if (opacity <= HIDDEN_OPACITY) continue;
 
 		eased[label.target] = opacity;
