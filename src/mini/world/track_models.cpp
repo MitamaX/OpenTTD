@@ -54,6 +54,10 @@ static constexpr double MAST_HEIGHT = 0.46;
 static constexpr double ARM_REACH = 0.05;
 static constexpr double ARM_LOW = 0.41;
 static constexpr double ARM_HIGH = 0.432;
+static constexpr double MESSENGER_SAG = 0.025;
+static constexpr double MESSENGER_HALF = 0.0035;
+static constexpr double DROPPER_HALF = 0.002;
+static constexpr std::array<double, 3> DROPPER_SHARES = {0.25, 0.5, 0.75};
 
 static constexpr std::array<SectionPoint, 4> BALLAST_SECTION = {{
 	{-0.27, -0.012, BALLAST}, {-0.19, 0.034, BALLAST}, {0.19, 0.034, BALLAST}, {0.27, -0.012, BALLAST},
@@ -250,7 +254,24 @@ void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &foo
 	}
 }
 
-/* One mast stands at the start of a tile's first piece, its arm reaching over the track to hold the wire every piece hangs. */
+/* The messenger wire sags from arm to arm over each piece, holding the contact wire level on droppers. */
+static ModelMesh Messenger(const Stretch &run)
+{
+	auto at = [&run](double share) {
+		MapVector point = run.At(share, 0.0);
+		double sag = 4.0 * share * (1.0 - share) * MESSENGER_SAG;
+		return Vec3{point.x, point.y, ARM_LOW - sag};
+	};
+	ModelMesh wires = Strut(at(0.0), at(HALF_TILE), MESSENGER_HALF);
+	wires.Append(Strut(at(HALF_TILE), at(1.0), MESSENGER_HALF));
+	for (double share : DROPPER_SHARES) {
+		Vec3 top = at(share);
+		wires.Append(Strut({top.x, top.y, WIRE_HEIGHT}, top, DROPPER_HALF));
+	}
+	return wires.Paint(WIRE);
+}
+
+/* One mast stands at the start of a tile's first piece, its arm reaching over the track to hold the wires every piece hangs. */
 void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
 {
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
@@ -258,6 +279,7 @@ void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
 	for (Track track : SetTrackBitIterator(site.bits)) {
 		TrackPiece piece(site, track);
 		ModelMesh parts = piece.Body(WIRE_SECTION, false);
+		parts.Append(Messenger(piece.Run()));
 		if (first) {
 			const Stretch &run = piece.Run();
 			MapVector foot = run.At(0.0, MAST_LATERAL);
