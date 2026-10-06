@@ -26,6 +26,8 @@ add_files(
     water_mesh.h
     water_pass.cpp
     water_pass.h
+    way_shapes.cpp
+    way_shapes.h
     world_painter.cpp
     world_painter.h
     world_pass.h

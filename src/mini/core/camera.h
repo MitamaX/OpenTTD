@@ -11,6 +11,7 @@
 #define MINI_CORE_CAMERA_H
 
 #include <array>
+#include <cmath>
 #include <optional>
 #include <utility>
 
@@ -36,6 +37,38 @@ struct MapVector {
 	double x;
 	double y;
 };
+
+constexpr MapVector operator+(const MapVector &a, const MapVector &b)
+{
+	return {a.x + b.x, a.y + b.y};
+}
+
+constexpr MapVector operator-(const MapVector &a, const MapVector &b)
+{
+	return {a.x - b.x, a.y - b.y};
+}
+
+constexpr MapVector operator*(const MapVector &v, double scale)
+{
+	return {v.x * scale, v.y * scale};
+}
+
+constexpr double Dot(const MapVector &a, const MapVector &b)
+{
+	return a.x * b.x + a.y * b.y;
+}
+
+/* The direction a quarter turn clockwise from this one, as the map is seen from above. */
+constexpr MapVector RightOf(const MapVector &v)
+{
+	return {v.y, -v.x};
+}
+
+inline MapVector Unit(const MapVector &v)
+{
+	double length = std::hypot(v.x, v.y);
+	return length > 0.0 ? v * (1.0 / length) : v;
+}
 
 struct ExactPoint {
 	double x;
