@@ -11,7 +11,10 @@
 #include "vehicle_motion.h"
 
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 
+#include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../../timer/timer_game_tick.h"
 #include "../../vehicle_base.h"
@@ -24,6 +27,9 @@ static constexpr double TICK_SMOOTHING = 0.3;
 static constexpr uint64_t PRUNE_INTERVAL_MASK = 0xFF;
 static constexpr uint64_t STALE_TICKS = 64;
 static constexpr int32_t MAX_GLIDE_DISTANCE = 2 * TILE_SIZE;
+static constexpr double TURN_EASE_MS = 110.0;
+static constexpr double SNAP_TURN = 0.75 * std::numbers::pi;
+static constexpr double MS_PER_SECOND = 1000.0;
 
 VehicleMotion _vehicle_motion;
 
@@ -33,8 +39,22 @@ static bool RidesDrawnGround(const Vehicle *v)
 	return v->IsGroundVehicle() && !IsTileType(v->tile, MP_TUNNELBRIDGE);
 }
 
+/* The bearing a direction points along, from map X toward map Y. */
+static double BearingOf(Direction direction)
+{
+	TileIndexDiffC step = TileIndexDiffCByDir(direction);
+	return std::atan2(step.y, step.x);
+}
+
+/* The smaller signed angle turning from one bearing to another. */
+static double TurnBetween(double from, double to)
+{
+	return std::remainder(to - from, 2.0 * std::numbers::pi);
+}
+
 void VehicleMotion::Advance(uint delta_ms)
 {
+	this->frame_ms = delta_ms;
 	this->since += delta_ms;
 	uint64_t now = TimerGameTick::counter;
 	if (now != this->tick) {
@@ -65,6 +85,34 @@ WorldPoint VehicleMotion::Position(const Vehicle *v)
 	double x = this->Interpolated(e.previous.x, e.current.x) / TILE_SIZE;
 	double y = this->Interpolated(e.previous.y, e.current.y) / TILE_SIZE;
 	return Grounded(v, {x, y, this->Interpolated(e.previous.z, e.current.z) / TILE_HEIGHT});
+}
+
+/* A unit eases toward the way it faces once a frame; a turn of more than three quarters of a half turn is a reversal and snaps. */
+VehicleMotion::Snapshot &VehicleMotion::Turned(const Vehicle *v)
+{
+	Snapshot &e = this->snapshots[v->index.base()];
+	double target = BearingOf(v->direction);
+	if (e.turned == 0) {
+		e.bearing = target;
+		e.turn_rate = 0.0;
+	} else if (e.turned != this->frames) {
+		double turn = TurnBetween(e.bearing, target);
+		double eased = std::abs(turn) > SNAP_TURN ? turn : turn * (1.0 - std::exp(-static_cast<double>(this->frame_ms) / TURN_EASE_MS));
+		e.bearing += eased;
+		e.turn_rate = std::abs(turn) > SNAP_TURN || this->frame_ms == 0 ? 0.0 : eased * MS_PER_SECOND / this->frame_ms;
+	}
+	e.turned = this->frames;
+	return e;
+}
+
+double VehicleMotion::Bearing(const Vehicle *v)
+{
+	return this->Turned(v).bearing;
+}
+
+double VehicleMotion::TurnRate(const Vehicle *v)
+{
+	return this->Turned(v).turn_rate;
 }
 
 WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)

@@ -24,6 +24,9 @@ class VehicleMotion {
 public:
 	void Advance(uint delta_ms);
 	WorldPoint Position(const Vehicle *v);
+	/* The way a unit faces in radians from map X toward map Y, eased through its turns, and how fast it is turning. */
+	double Bearing(const Vehicle *v);
+	double TurnRate(const Vehicle *v);
 	static WorldPoint Grounded(const Vehicle *v, const WorldPoint &point);
 	void Clear();
 
@@ -38,14 +41,19 @@ private:
 		TickPosition previous;
 		TickPosition current;
 		uint64_t tick;
+		double bearing;
+		double turn_rate;
+		uint64_t turned;
 	};
 
 	static TickPosition PositionOf(const Vehicle *v);
 	double Interpolated(int32_t previous, int32_t current) const;
+	Snapshot &Turned(const Vehicle *v);
 
 	std::unordered_map<uint32_t, Snapshot> snapshots;
 	uint64_t tick = 0;
 	uint64_t frames = 0;
+	uint frame_ms = 0;
 	double since = 0.0;
 	double interval = 30.0;
 	double alpha = 1.0;
