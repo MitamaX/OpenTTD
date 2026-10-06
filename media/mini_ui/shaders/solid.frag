@@ -1,4 +1,5 @@
 uniform int u_way;
+uniform bool u_own_colours;
 uniform vec2 u_fade;
 
 in vec3 v_position;
@@ -22,13 +23,15 @@ float Grain(vec3 position, float gloss)
 }
 
 /* Solids fade out where they grow too small to show, dithered, handing over to what the ground paints in their place.
+ * Under the overlay, ways take their layer's accent, while solids keeping their own colours only sink when out of it.
  * A positive trait is how glossy the surface is, a negative one how brightly it glows. */
 void main()
 {
 	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
 	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) <= ScreenNoise(gl_FragCoord.xy)) discard;
 	float gloss = max(v_trait, 0.0);
-	vec3 albedo = Linear(Overlaid(v_colour.rgb * Grain(v_position, gloss), u_way));
+	vec3 grained = v_colour.rgb * Grain(v_position, gloss);
+	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	vec3 colour = Radiance(albedo, normalize(v_normal), v_position, mix(MATTE, POLISHED, gloss), v_colour.a);
 	frag_colour = vec4(colour + albedo * max(-v_trait, 0.0) * GLOW_RADIANCE, 1.0);
 }

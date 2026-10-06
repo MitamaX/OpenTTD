@@ -81,6 +81,7 @@ void VehiclePass::Draw(const SceneView &view)
 	this->program.Use();
 	UploadOverlay(this->program);
 	glUniform2f(this->program.Uniform("u_fade"), NEVER_FADES * 2.0f, NEVER_FADES);
+	glUniform1i(this->program.Uniform("u_own_colours"), GL_TRUE);
 	this->DrawBatch(this->program);
 }
 

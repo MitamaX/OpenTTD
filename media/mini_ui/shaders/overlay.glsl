@@ -13,6 +13,12 @@ vec3 Accent(int layer)
 	return layer == LAYER_RAIL ? RAIL_ACCENT : ROAD_ACCENT;
 }
 
+/* What belongs to the shown layer keeps its own colour while the rest sinks. */
+vec3 Kept(vec3 colour, int layer)
+{
+	return layer == u_layer ? colour : Greyed(colour);
+}
+
 /* What belongs to the shown layer takes its accent, keeping a little of its own shading. */
 vec3 Overlaid(vec3 colour, int layer)
 {
