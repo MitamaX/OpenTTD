@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file building_form.h The solids a building is made of, as the form builders lay them out and the volume painter draws them. */
+/** @file building_form.h The solids a building is made of, as the form builders lay them out and the structure meshes stand them up. */
 
 #ifndef MINI_MAP_BUILDING_FORM_H
 #define MINI_MAP_BUILDING_FORM_H
@@ -147,7 +147,6 @@ struct BuildingForm {
 	uint8_t size_x = 1;
 	uint8_t size_y = 1;
 	float floor = 0.0f;
-	bool pickable = false;
 	uint8_t count = 0;
 	std::array<Solid, MAX_SOLIDS> solids{};
 

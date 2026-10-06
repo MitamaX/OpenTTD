@@ -19,24 +19,37 @@
 
 #include "fileio_func.h"
 #include "mini_atlas.h"
-#include "mini/art/material_atlas.h"
 #include "mini/core/canvas.h"
 #include "mini/gpu/art_image.h"
 #include "mini/gpu/texture_store.h"
 
 #include "safeguards.h"
 
+/* Sprites stand in cells of one row, each cell's content ringed by a gutter that keeps mipmaps from bleeding across. */
+struct AtlasGrid {
+	int pitch;
+	int content;
+	int columns;
+};
+
+static constexpr int ATLAS_WIDTH = 2048;
+static constexpr int ATLAS_HEIGHT = 64;
+static constexpr int ATLAS_GUTTER = 8;
+static constexpr int MAX_MIP_LEVEL = 4;
+static constexpr AtlasGrid SPRITE_GRID = {64, 48, 32};
+
+static_assert(SPRITE_GRID.pitch - SPRITE_GRID.content == 2 * ATLAS_GUTTER && SPRITE_GRID.pitch * SPRITE_GRID.columns == ATLAS_WIDTH && SPRITE_GRID.pitch == ATLAS_HEIGHT);
+
 /* One cell past the sprites is solid white, the texel untextured map shapes sample. */
 static constexpr int SOLID_CELL = to_underlying(MiniSprite::End);
-static constexpr int SPRITE_TEXELS = SPRITE_GRID.content_w;
+static constexpr int SPRITE_TEXELS = SPRITE_GRID.content;
 static constexpr int SAMPLES_PER_AXIS = 4;
 static constexpr int SAMPLES_PER_TEXEL = SAMPLES_PER_AXIS * SAMPLES_PER_AXIS;
 static constexpr double SAMPLE_CENTRE = 0.5;
 static constexpr uint32_t CLEAR_WHITE = 0x00FFFFFFU;
 static constexpr uint32_t OPAQUE_WHITE = 0xFFFFFFFFU;
 
-static_assert(SOLID_CELL < SPRITE_GRID.columns * SPRITE_GRID.rows);
-static_assert(SPRITE_GRID.content_w == SPRITE_GRID.content_h);
+static_assert(SOLID_CELL < SPRITE_GRID.columns);
 
 static TextureId _atlas_tex = NO_TEXTURE;
 
@@ -45,6 +58,19 @@ static const char *_slot_names[] = {
 	"disc", "diamond", "triangle", "road_vehicle", "ship", "aircraft",
 };
 static_assert(lengthof(_slot_names) == to_underlying(MiniSprite::End));
+
+static Point ContentOrigin(int cell)
+{
+	return {cell * SPRITE_GRID.pitch + ATLAS_GUTTER, ATLAS_GUTTER};
+}
+
+static UvRect ContentUv(int cell)
+{
+	Point origin = ContentOrigin(cell);
+	float left = static_cast<float>(origin.x) / ATLAS_WIDTH;
+	float top = static_cast<float>(origin.y) / ATLAS_HEIGHT;
+	return {left, top, left + static_cast<float>(SPRITE_GRID.content) / ATLAS_WIDTH, top + static_cast<float>(SPRITE_GRID.content) / ATLAS_HEIGHT};
+}
 
 static size_t TexelIndex(int x, int y)
 {
@@ -100,7 +126,7 @@ static void CopyArt(std::span<uint32_t> px, Point origin, std::span<const uint32
 static void PlaceSprite(std::span<uint32_t> px, MiniSprite sprite, std::span<uint32_t> art)
 {
 	std::string path = _personal_dir + "mini_art/" + _slot_names[to_underlying(sprite)] + ".png";
-	Point origin = ContentOrigin(SPRITE_GRID, to_underlying(sprite));
+	Point origin = ContentOrigin(to_underlying(sprite));
 	if (LoadArtImage(path, art, SPRITE_TEXELS, SPRITE_TEXELS)) {
 		CopyArt(px, origin, art);
 	} else {
@@ -111,9 +137,9 @@ static void PlaceSprite(std::span<uint32_t> px, MiniSprite sprite, std::span<uin
 /* The gutter is white too, so every mipmap level still samples white at the cell's centre. */
 static void PaintSolidCell(std::span<uint32_t> px)
 {
-	Point content = ContentOrigin(SPRITE_GRID, SOLID_CELL);
-	for (int y = 0; y < SPRITE_GRID.pitch_y; y++) {
-		std::fill_n(px.begin() + TexelIndex(content.x - ATLAS_GUTTER, content.y - ATLAS_GUTTER + y), SPRITE_GRID.pitch_x, OPAQUE_WHITE);
+	Point content = ContentOrigin(SOLID_CELL);
+	for (int y = 0; y < SPRITE_GRID.pitch; y++) {
+		std::fill_n(px.begin() + TexelIndex(content.x - ATLAS_GUTTER, content.y - ATLAS_GUTTER + y), SPRITE_GRID.pitch, OPAQUE_WHITE);
 	}
 }
 
@@ -125,13 +151,12 @@ void MiniAtlasEnsure()
 	std::vector<uint32_t> art(static_cast<size_t>(SPRITE_TEXELS) * SPRITE_TEXELS);
 	for (int sprite = 0; sprite < to_underlying(MiniSprite::End); sprite++) PlaceSprite(px, static_cast<MiniSprite>(sprite), art);
 	PaintSolidCell(px);
-	PaintMaterialCells(px);
 
 	_atlas_tex = _textures.Add(px, Dimension(ATLAS_WIDTH, ATLAS_HEIGHT), TextureFilter::Mipmapped, TextureWrap::Clamp, MAX_MIP_LEVEL);
 	_map_draw.SetSolid(MiniAtlasSolid());
 }
 
-/* Frees the texture so the next frame rebuilds it and re-reads the art files; the materials come back from their cache. */
+/* Frees the texture so the next frame rebuilds it and re-reads the art files. */
 void MiniAtlasReload()
 {
 	_map_draw.SetSolid({});
@@ -140,7 +165,7 @@ void MiniAtlasReload()
 
 SolidTexel MiniAtlasSolid()
 {
-	UvRect cell = ContentUv(SPRITE_GRID, SOLID_CELL);
+	UvRect cell = ContentUv(SOLID_CELL);
 	return {_atlas_tex, std::midpoint(cell.left, cell.right), std::midpoint(cell.top, cell.bottom)};
 }
 
@@ -152,7 +177,7 @@ static bool Drawable(MiniSprite sprite)
 static bool AtlasSprite(MiniSprite sprite, int x0, int y0, int x1, int y1, float angle_deg, uint32_t argb)
 {
 	if (!Drawable(sprite) || x1 < x0 || y1 < y0) return false;
-	_map_draw.Image(_atlas_tex, {x0, y0, x1, y1}, ContentUv(SPRITE_GRID, to_underlying(sprite)), angle_deg, argb);
+	_map_draw.Image(_atlas_tex, {x0, y0, x1, y1}, ContentUv(to_underlying(sprite)), angle_deg, argb);
 	return true;
 }
 

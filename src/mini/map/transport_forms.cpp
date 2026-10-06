@@ -24,7 +24,6 @@
 #include "../../water_map.h"
 #include "../core/tones.h"
 #include "site_shapes.h"
-#include "volume_geometry.h"
 
 #include "../../safeguards.h"
 
@@ -130,7 +129,6 @@ static BuildingForm LandDepotForm(TileIndex tile, DiagDirection exit, const Depo
 {
 	uint32_t seed = TileSeed(tile);
 	BuildingForm form = SiteForm(tile);
-	form.pickable = true;
 	form.Add(Part::Box(Plot{}.SetBack(exit, shed.setback))
 		.Facade(Material::Brick, WindowGrid::Doors, shed.height, FinishTint(Finish::Brick, seed), exit)
 		.Gable(DiagDirToAxis(exit), INDUSTRIAL_PITCH)
@@ -145,7 +143,6 @@ static BuildingForm ShipDepotForm(TileIndex tile)
 	Axis axis = GetShipDepotAxis(north);
 	uint32_t seed = TileSeed(north);
 	BuildingForm form = SiteForm(north, SiteFloor(north), axis == AXIS_X ? SHIP_DEPOT_LENGTH : ONE_TILE, axis == AXIS_Y ? SHIP_DEPOT_LENGTH : ONE_TILE);
-	form.pickable = true;
 	Plot hall = FootprintOf(form).Inset(AxisToDiagDirs(OtherAxis(axis)), SHIP_DEPOT_SIDE);
 	form.Add(Part::Box(hall)
 		.On(SHIP_DEPOT_BASE)

@@ -175,7 +175,7 @@ void BuildStructure(const BuildingForm &form, StructureDetail detail, MiniLayer 
 	FormStyle style(form, layer);
 	PlanRect footprint = {static_cast<double>(form.tx), static_cast<double>(form.ty), static_cast<double>(form.tx + form.size_x), static_cast<double>(form.ty + form.size_y)};
 	bool full = detail == StructureDetail::Full;
-	SolidPlacement placement = {footprint, form.floor, {}, {false, full ? FULL_SEGMENTS : SIMPLE_SEGMENTS}};
+	SolidPlacement placement = {footprint, form.floor, full ? FULL_SEGMENTS : SIMPLE_SEGMENTS};
 	double footing = FootingOf(form);
 	uint decals = 0;
 	for (const Solid &solid : form.Solids()) {

@@ -1,4 +1,3 @@
-add_subdirectory(art)
 add_subdirectory(core)
 add_subdirectory(dock)
 add_subdirectory(fleet)

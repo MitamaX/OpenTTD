@@ -77,10 +77,8 @@
 #include "mini/input/pointer_router.h"
 #include "mini/map/map_labels.h"
 #include "mini/map/map_overlay.h"
-#include "mini/map/map_painter.h"
 #include "mini/map/vehicle_motion.h"
 #include "mini/map/vehicle_painter.h"
-#include "mini/map/volume_painter.h"
 #include "mini/map/world_tiles.h"
 #include "mini/tools/blueprint.h"
 #include "mini/tools/build_tool.h"
@@ -885,7 +883,6 @@ void MiniUiFrame(uint delta_ms)
 	_camera.Update(delta_ms, _mode.FollowTarget());
 	if (std::optional<ViewAim> aim = _frame_capture.Aim(); aim.has_value()) _camera.Aim(*aim);
 	_world_painter.Prepare();
-	_volume_painter.BeginFrame();
 
 	int ppt = _camera.TilePixels();
 

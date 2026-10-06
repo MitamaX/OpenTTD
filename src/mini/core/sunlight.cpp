@@ -10,16 +10,9 @@
 #include "../../stdafx.h"
 #include "sunlight.h"
 
-#include "tuning.h"
-
 #include "../../safeguards.h"
 
 SunVector Sun()
 {
 	return {SUN_X, SUN_Y, SUN_UP};
-}
-
-double ReliefShare()
-{
-	return _tuning.relief_strength / RELIEF_FULL;
 }

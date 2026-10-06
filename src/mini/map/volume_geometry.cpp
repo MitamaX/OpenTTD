@@ -5,20 +5,16 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file volume_geometry.cpp The faces of a building's solids, the order the solids stand in, and the cuts that fit faces to tiles and texture cells. */
+/** @file volume_geometry.cpp The faces of a building's solids, and the cuts that fit faces to a plan and to bands of height. */
 
 #include "../../stdafx.h"
 #include "volume_geometry.h"
 
 #include <algorithm>
-#include <functional>
 #include <initializer_list>
 #include <numbers>
 #include <ranges>
 
-#include "../../core/bitmath_func.hpp"
-#include "../art/material_atlas.h"
-#include "../core/tuning.h"
 #include "tile_shapes.h"
 
 #include "../../safeguards.h"
@@ -30,23 +26,13 @@ static constexpr double SAWTOOTH_PITCH = 0.33;
 static constexpr double SAWTOOTH_GLASS_SHARE = 0.15;
 static constexpr int DOME_RINGS = 2;
 static constexpr double WALL_FOOT_SHADE = 0.82;
-static constexpr double UV_EPS = 1e-6;
-static constexpr double STRIP_RISE = static_cast<double>(TEXELS_PER_TILE) / STRIP_TEXELS;
 static constexpr double FULL_TURN = 2.0 * std::numbers::pi;
 static constexpr double HALF_TURN = std::numbers::pi;
 static constexpr double QUARTER_TURN = std::numbers::pi / 2.0;
 static constexpr double MIDWAY = 0.5;
 static constexpr Vec3 NO_NORMAL = {0.0, 0.0, 0.0};
 static constexpr Vec3 DOWN = {0.0, 0.0, -1.0};
-static constexpr UvMap PLAN_UV = {{0.0, 1.0, 0.0}, 0.0, {1.0, 0.0, 0.0}, 0.0, true};
-
-static_assert(MAX_SOLIDS <= 16, "a solid's predecessors fit one 16 bit mask");
-
-/* Model heights stand raised by the height scale like the ground, which flattens how steep a face turns. */
-Vec3 RenderNormal(const Vec3 &model_normal)
-{
-	return Normalised({model_normal.x, model_normal.y, model_normal.z / _tuning.elevation_scale});
-}
+static constexpr UvMap PLAN_UV = {{0.0, 1.0, 0.0}, 0.0, {1.0, 0.0, 0.0}, 0.0};
 
 DiagDirection FacingSide(const Vec3 &normal)
 {
@@ -147,7 +133,7 @@ static Vec3 Scaled(const Vec3 &v, double factor)
 
 UvMap WallUv(const Vec3 &normal)
 {
-	return {Across(normal), 0.0, DOWN, 0.0, true};
+	return {Across(normal), 0.0, DOWN, 0.0};
 }
 
 /* Whole bays fit the wall exactly from its left end, so no window is cut in half. */
@@ -158,13 +144,13 @@ static UvMap StripUv(const Face &face, const FacadeMetrics &metrics)
 	double bay = static_cast<double>(metrics.bay_texels) / TEXELS_PER_TILE;
 	double length = right - left;
 	double scale = std::max(1.0, std::round(length / bay)) * bay / length;
-	return {Scaled(across, scale), -left * scale, {0.0, 0.0, -STRIP_RISE}, 1.0, false};
+	return {Scaled(across, scale), -left * scale, DOWN, 0.0};
 }
 
 static UvMap SlopeUv(const Face &face, double start)
 {
 	double fall = 1.0 / HorizontalLength(face.normal);
-	return {Across(face.normal), 0.0, {0.0, 0.0, -fall}, start + Highest(face.polygon) * fall, true};
+	return {Across(face.normal), 0.0, {0.0, 0.0, -fall}, start + Highest(face.polygon) * fall};
 }
 
 /* Around a drum the texture runs along each side's bottom edge, carrying on from where the last side ended. */
@@ -173,7 +159,7 @@ static UvMap ArcUv(const Face &face, double start)
 	const FacePoint &from = face.polygon.Points()[0];
 	const FacePoint &to = face.polygon.Points()[1];
 	Vec3 chord = Normalised({to.x - from.x, to.y - from.y, 0.0});
-	return {chord, start - Dot(chord, PositionOf(from)), DOWN, 0.0, true};
+	return {chord, start - Dot(chord, PositionOf(from)), DOWN, 0.0};
 }
 
 static bool IsPitched(RoofShape roof)
@@ -204,22 +190,11 @@ static bool CarriesFacade(const Solid &solid)
 	return solid.kind == SolidKind::Box && solid.windows != WindowGrid::None && HasFacade(solid.wall_material, solid.windows) && solid.taper == 0.0f;
 }
 
-/* At massing distance every pitched roof becomes flat halfway up its rise and every drum becomes a block. */
-static void Flatten(Solid &shape)
-{
-	if (shape.kind == SolidKind::Cylinder) shape.kind = SolidKind::Box;
-	if (IsPitched(shape.roof)) shape.wall += shape.rise / 2.0f;
-	if (shape.roof == RoofShape::Parapet) shape.wall += PARAPET_HEIGHT;
-	shape.roof = RoofShape::Flat;
-	shape.rise = 0.0f;
-}
-
-static Solid Settled(const Solid &solid, const ShapeDetail &detail)
+static Solid Settled(const Solid &solid)
 {
 	Solid shape = solid;
 	if (!Suits(shape.roof, shape.kind) || (IsPitched(shape.roof) && shape.rise <= 0.0f)) shape.roof = RoofShape::Flat;
 	if (shape.roof == RoofShape::Hip && !HasHipRidge(shape)) shape.roof = RoofShape::Pyramid;
-	if (detail.massing) Flatten(shape);
 	return shape;
 }
 
@@ -283,7 +258,7 @@ struct Pitch {
 class SolidShaper {
 public:
 	SolidShaper(const Solid &solid, const SolidPlacement &placement, FaceSink &sink) :
-		shape(Settled(solid, placement.detail)),
+		shape(Settled(solid)),
 		placement(placement),
 		sink(sink),
 		base_plan(PlanOf(solid, placement.footprint)),
@@ -305,7 +280,7 @@ private:
 	double Eave() const { return this->shape.base + this->shape.wall; }
 	double Crest() const { return this->Eave() + this->shape.rise; }
 	double TopShare() const { return 1.0 - 2.0 * this->shape.taper; }
-	int Segments() const { return this->placement.detail.segments; }
+	int Segments() const { return this->placement.segments; }
 	double TurnOf(int step) const { return FULL_TURN * step / this->Segments(); }
 	int ArcSteps() const { return this->Segments() / 2; }
 	double ArcTurn(int line) const { return HALF_TURN * line / this->ArcSteps(); }
@@ -487,17 +462,12 @@ private:
 		this->Emit(roof, {Cladding::Roof, UvMapping::Slope});
 	}
 
-	/* The teeth overlap on screen, so the ones farther from the viewer go first. */
 	void BuildSawtooth()
 	{
 		double width = this->top_plan.x1 - this->top_plan.x0;
 		int teeth = std::max(1, static_cast<int>(std::lround(width / SAWTOOTH_PITCH)));
 		double pitch = width / teeth;
-		bool ascending = this->placement.toward.x >= 0.0;
-		for (int i = 0; i < teeth; i++) {
-			int tooth = ascending ? i : teeth - 1 - i;
-			this->BuildTooth(this->top_plan.x0 + tooth * pitch, pitch);
-		}
+		for (int tooth = 0; tooth < teeth; tooth++) this->BuildTooth(this->top_plan.x0 + tooth * pitch, pitch);
 	}
 
 	void BuildTooth(double from, double pitch)
@@ -684,75 +654,6 @@ void BuildFaces(const Solid &solid, const SolidPlacement &placement, FaceSink &s
 	SolidShaper(solid, placement, sink).Build();
 }
 
-static bool Overlap(float low_a, float high_a, float low_b, float high_b)
-{
-	return low_a < high_b && low_b < high_a;
-}
-
-/* Stacked solids go up from the lowest; solids side by side go from the far one to the near one along the axis that parts them. */
-static bool DrawsBefore(const Solid &a, const Solid &b, bool added_first, MapVector toward)
-{
-	bool overlap_x = Overlap(a.x0, a.x1, b.x0, b.x1);
-	bool overlap_y = Overlap(a.y0, a.y1, b.y0, b.y1);
-	if (overlap_x && overlap_y) {
-		if (a.base != b.base) return a.base < b.base;
-		bool a_decal = a.kind == SolidKind::Decal;
-		bool b_decal = b.kind == SolidKind::Decal;
-		return a_decal == b_decal ? added_first : a_decal;
-	}
-
-	bool x_says = (a.x0 < b.x0) == (toward.x >= 0.0);
-	bool y_says = (a.y0 < b.y0) == (toward.y >= 0.0);
-	if (!overlap_x && !overlap_y) return x_says && y_says;
-	return overlap_x ? y_says : x_says;
-}
-
-/* The earliest added solid with nothing left to wait for goes next; a cycle gives way to the earliest added. */
-static uint8_t NextReady(std::span<const uint16_t> waits_for, uint16_t placed)
-{
-	uint8_t earliest = static_cast<uint8_t>(waits_for.size());
-	for (uint8_t i = 0; i < waits_for.size(); i++) {
-		if (HasBit(placed, i)) continue;
-		if ((waits_for[i] & ~placed) == 0) return i;
-		earliest = std::min(earliest, i);
-	}
-	return earliest;
-}
-
-std::array<uint8_t, MAX_SOLIDS> PaintOrder(std::span<const Solid> solids, MapVector toward)
-{
-	uint8_t count = static_cast<uint8_t>(solids.size());
-	std::array<uint16_t, MAX_SOLIDS> waits_for{};
-	for (uint8_t a = 0; a < count; a++) {
-		for (uint8_t b = 0; b < count; b++) {
-			if (a != b && DrawsBefore(solids[a], solids[b], a < b, toward)) SetBit(waits_for[b], a);
-		}
-	}
-
-	std::array<uint8_t, MAX_SOLIDS> order{};
-	uint16_t placed = 0;
-	for (uint8_t slot = 0; slot < count; slot++) {
-		order[slot] = NextReady(std::span(waits_for).first(count), placed);
-		SetBit(placed, order[slot]);
-	}
-	return order;
-}
-
-static bool LiesOn(std::span<const FacePoint> points, double FacePoint::*coordinate, double edge)
-{
-	return std::ranges::all_of(points, [&](const FacePoint &point) { return std::abs(point.*coordinate - edge) < PLACE_EPS; });
-}
-
-/* A wall lying on a cell's edge belongs to the cell its own solid stands in, which is the one its normal points away from. */
-bool OwnedByNeighbour(const Face &face, const PlanRect &cell)
-{
-	std::span<const FacePoint> points = face.polygon.Points();
-	return (face.normal.x > 0.0 && LiesOn(points, &FacePoint::x, cell.x0))
-		|| (face.normal.x < 0.0 && LiesOn(points, &FacePoint::x, cell.x1))
-		|| (face.normal.y > 0.0 && LiesOn(points, &FacePoint::y, cell.y0))
-		|| (face.normal.y < 0.0 && LiesOn(points, &FacePoint::y, cell.y1));
-}
-
 static FacePoint Between(const FacePoint &from, const FacePoint &to, double share)
 {
 	return {
@@ -765,9 +666,9 @@ static FacePoint Between(const FacePoint &from, const FacePoint &to, double shar
 	};
 }
 
-/* Keeps the part of the polygon where the measure is not negative; every point made on the cut passes through the landing. */
-template <typename Measure, typename Landing = std::identity>
-static void Keep(FacePolygon &polygon, Measure measure, Landing landing = {})
+/* Keeps the part of the polygon where the measure is not negative. */
+template <typename Measure>
+static void Keep(FacePolygon &polygon, Measure measure)
 {
 	std::span<const FacePoint> points = polygon.Points();
 	if (std::ranges::all_of(points, [&](const FacePoint &point) { return measure(point) >= 0.0; })) return;
@@ -779,7 +680,7 @@ static void Keep(FacePolygon &polygon, Measure measure, Landing landing = {})
 		double from_side = measure(from);
 		double to_side = measure(to);
 		if (from_side >= 0.0) kept.Add(from);
-		if ((from_side >= 0.0) != (to_side >= 0.0)) kept.Add(landing(Between(from, to, from_side / (from_side - to_side))));
+		if ((from_side >= 0.0) != (to_side >= 0.0)) kept.Add(Between(from, to, from_side / (from_side - to_side)));
 	}
 	polygon = kept;
 }
@@ -796,40 +697,4 @@ void ClipToHeights(FacePolygon &polygon, double low, double high)
 {
 	Keep(polygon, [&](const FacePoint &point) { return point.z - low; });
 	Keep(polygon, [&](const FacePoint &point) { return high - point.z; });
-}
-
-static FacePoint AtFoot(FacePoint point)
-{
-	point.shade = WALL_FOOT_SHADE;
-	return point;
-}
-
-void ClipToGround(FacePolygon &polygon, const SolidPlacement &placement)
-{
-	Keep(polygon, [&](const FacePoint &point) { return point.z - GroundHeight({point.x, point.y}, placement); }, AtFoot);
-}
-
-template <typename Coordinate>
-static std::pair<int, int> CellRange(const FacePolygon &polygon, Coordinate coordinate)
-{
-	auto [low, high] = std::ranges::minmax(polygon.Points() | std::views::transform(coordinate));
-	int first = static_cast<int>(std::floor(low + UV_EPS));
-	return {first, std::max(first + 1, static_cast<int>(std::ceil(high - UV_EPS)))};
-}
-
-UvCells CellsOf(const FacePolygon &polygon, const UvMap &map)
-{
-	auto [u0, u1] = CellRange(polygon, [&](const FacePoint &point) { return map.U(point); });
-	if (!map.repeats_v) return {u0, u1, 0, 1};
-	auto [v0, v1] = CellRange(polygon, [&](const FacePoint &point) { return map.V(point); });
-	return {u0, u1, v0, v1};
-}
-
-void ClipToUvCell(FacePolygon &polygon, const UvMap &map, UvCell cell)
-{
-	Keep(polygon, [&](const FacePoint &point) { return map.U(point) - cell.u; });
-	Keep(polygon, [&](const FacePoint &point) { return cell.u + 1 - map.U(point); });
-	if (!map.repeats_v) return;
-	Keep(polygon, [&](const FacePoint &point) { return map.V(point) - cell.v; });
-	Keep(polygon, [&](const FacePoint &point) { return cell.v + 1 - map.V(point); });
 }

@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file mini_atlas.h The map atlas of the mini UI: sprites, the plain white texel and the building materials in one texture. */
+/** @file mini_atlas.h The map atlas of the mini UI: sprites and the plain white texel in one texture. */
 
 #ifndef MINI_ATLAS_H
 #define MINI_ATLAS_H

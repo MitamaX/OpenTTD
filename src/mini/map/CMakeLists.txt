@@ -12,8 +12,6 @@ add_files(
     map_labels.h
     map_overlay.cpp
     map_overlay.h
-    map_painter.cpp
-    map_painter.h
     material_palette.h
     network_style.h
     object_forms.cpp
@@ -34,10 +32,6 @@ add_files(
     vehicle_painter.h
     volume_geometry.cpp
     volume_geometry.h
-    volume_light.cpp
-    volume_light.h
-    volume_painter.cpp
-    volume_painter.h
     world_tiles.cpp
     world_tiles.h
     zoom_detail.h

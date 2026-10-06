@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file volume_geometry.h The faces of a building's solids, the order the solids stand in, and the cuts that fit faces to tiles and texture cells. */
+/** @file volume_geometry.h The faces of a building's solids, and the cuts that fit faces to a plan and to bands of height. */
 
 #ifndef MINI_MAP_VOLUME_GEOMETRY_H
 #define MINI_MAP_VOLUME_GEOMETRY_H
@@ -27,19 +27,12 @@ inline constexpr double VERTICAL_NZ = 0.2;
 inline constexpr double PLACE_EPS = 1e-9;
 inline constexpr double EAVE_OVERHANG = 0.03;
 
-Vec3 RenderNormal(const Vec3 &model_normal);
-
 inline bool IsUpright(const Vec3 &unit_normal)
 {
 	return std::abs(unit_normal.z) < VERTICAL_NZ;
 }
 
 DiagDirection FacingSide(const Vec3 &normal);
-
-constexpr double LevelOf(double floor, double height)
-{
-	return floor + height * MODEL_TILE_LEVELS;
-}
 
 constexpr double HeightOf(double floor, double level)
 {
@@ -116,13 +109,12 @@ private:
 
 using FacePolygon = Outline<FacePoint>;
 
-/* U and V run in texture cells, one cell to each whole number; a V that does not repeat stays inside a single cell. */
+/* U runs across a face, in tiles or along a facade in strips of a tile; V runs down it. */
 struct UvMap {
 	Vec3 u_axis;
 	double u_origin;
 	Vec3 v_axis;
 	double v_origin;
-	bool repeats_v;
 
 	double U(const FacePoint &point) const { return Dot(this->u_axis, PositionOf(point)) + this->u_origin; }
 	double V(const FacePoint &point) const { return Dot(this->v_axis, PositionOf(point)) + this->v_origin; }
@@ -148,43 +140,18 @@ public:
 	virtual void Take(const Face &face) = 0;
 };
 
-struct ShapeDetail {
-	bool massing;
-	int segments;
-};
-
+/* Where a form stands, and how many sides its round solids are cut into. */
 struct SolidPlacement {
 	PlanRect footprint;
 	double floor;
-	MapVector toward;
-	ShapeDetail detail;
+	int segments;
 };
 
 /* The ground under a point of a form's plan, in model tiles above its floor, read from the form's own tile even on its outer edge. */
 double GroundHeight(const PlanPoint &plan, const SolidPlacement &placement);
 
 void BuildFaces(const Solid &solid, const SolidPlacement &placement, FaceSink &sink);
-std::array<uint8_t, MAX_SOLIDS> PaintOrder(std::span<const Solid> solids, MapVector toward);
-
-bool OwnedByNeighbour(const Face &face, const PlanRect &cell);
 void ClipToPlan(FacePolygon &polygon, const PlanRect &rect);
 void ClipToHeights(FacePolygon &polygon, double low, double high);
-/* The hillside hides whatever lies below the ground, and the cut along it darkens like the foot of a wall. */
-void ClipToGround(FacePolygon &polygon, const SolidPlacement &placement);
-
-struct UvCell {
-	int u;
-	int v;
-};
-
-struct UvCells {
-	int u0;
-	int u1;
-	int v0;
-	int v1;
-};
-
-UvCells CellsOf(const FacePolygon &polygon, const UvMap &map);
-void ClipToUvCell(FacePolygon &polygon, const UvMap &map, UvCell cell);
 
 #endif /* MINI_MAP_VOLUME_GEOMETRY_H */

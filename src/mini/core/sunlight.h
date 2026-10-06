@@ -21,12 +21,6 @@ inline constexpr double SUN_X = -0.263;
 inline constexpr double SUN_Y = -0.835;
 inline constexpr double SUN_UP = 0.485;
 
-inline constexpr double AMBIENT_LIGHT = 0.42;
-inline constexpr double SUNLIT_CEILING = 1.35;
-inline constexpr double RELIEF_FULL = 22.0;
-inline constexpr double SHADOW_DEPTH = 0.25;
-
 SunVector Sun();
-double ReliefShare();
 
 #endif /* MINI_CORE_SUNLIGHT_H */

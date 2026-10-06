@@ -26,7 +26,6 @@ struct MiniTuning {
 	int hud_scale = 2;
 	int grid_alpha = 80;
 	int contour_alpha = 120;
-	int relief_strength = 22;
 	int filter_alpha = 150;
 	int edge_scroll = 0;
 	int edge_margin = 24;

@@ -23,7 +23,7 @@
 
 static constexpr std::string_view TUNING_FILE = "mini_ui.cfg";
 static constexpr std::string_view TUNING_GROUP = "mini";
-static constexpr std::array<std::string_view, 1> RETIRED_KEYS = {"height_scale"};
+static constexpr std::array<std::string_view, 2> RETIRED_KEYS = {"height_scale", "relief_strength"};
 
 MiniTuning _tuning;
 
@@ -65,7 +65,6 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "hud_scale", this->hud_scale);
 	ReadIniNumber(group, "grid_alpha", this->grid_alpha);
 	ReadIniNumber(group, "contour_alpha", this->contour_alpha);
-	ReadIniNumber(group, "relief_strength", this->relief_strength);
 	ReadIniNumber(group, "filter_alpha", this->filter_alpha);
 	ReadIniNumber(group, "edge_scroll", this->edge_scroll);
 	ReadIniNumber(group, "edge_margin", this->edge_margin);
@@ -87,7 +86,6 @@ void MiniTuning::Load()
 	this->hud_scale = Clamp(this->hud_scale, 1, 4);
 	this->grid_alpha = Clamp(this->grid_alpha, 0, 255);
 	this->contour_alpha = Clamp(this->contour_alpha, 0, 255);
-	this->relief_strength = Clamp(this->relief_strength, 0, 60);
 	this->filter_alpha = Clamp(this->filter_alpha, 0, 230);
 	this->edge_margin = Clamp(this->edge_margin, 2, 200);
 	this->edge_scroll_speed = Clamp(this->edge_scroll_speed, 100.0, 10000.0);
