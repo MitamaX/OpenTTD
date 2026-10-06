@@ -1588,10 +1588,11 @@ std::optional<std::string_view> VideoDriver_Win32OpenGL::AllocateContext()
 		};
 		rc = _wglCreateContextAttribsARB(this->dc, nullptr, attribs);
 
-		if (rc == nullptr) {
-			/* Try again for a 3.2 context. */
+		/* The mini UI's 3D map needs 3.3; the game itself is content with 3.2. */
+		for (int minor : {3, 2}) {
+			if (rc != nullptr) break;
 			attribs[1] = 3;
-			attribs[3] = 2;
+			attribs[3] = minor;
 			rc = _wglCreateContextAttribsARB(this->dc, nullptr, attribs);
 		}
 	}

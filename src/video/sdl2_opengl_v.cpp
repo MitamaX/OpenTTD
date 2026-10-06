@@ -115,7 +115,19 @@ std::optional<std::string_view> VideoDriver_SDL_OpenGL::AllocateContext()
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 	}
 
+	/* The mini UI's 3D map needs 3.3; without it the game takes whatever core context it got before. */
+	int major = 0;
+	int minor = 0;
+	SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
+	SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 	this->gl_context = SDL_GL_CreateContext(this->sdl_window);
+	if (this->gl_context == nullptr) {
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
+		this->gl_context = SDL_GL_CreateContext(this->sdl_window);
+	}
 	if (this->gl_context == nullptr) return "SDL2: Can't activate GL context";
 
 	ToggleVsync(_video_vsync);
