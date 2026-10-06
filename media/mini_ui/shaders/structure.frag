@@ -11,7 +11,7 @@ flat in uvec4 v_surface;
 out vec4 frag_colour;
 
 const vec3 SNOW = vec3(0.93, 0.95, 0.97);
-const float GLASS_REFLECTANCE = 0.1;
+const float GLASS_REFLECTANCE = 0.2;
 const float SEED_SCALE = 255.0;
 
 bool Has(uint flag)
