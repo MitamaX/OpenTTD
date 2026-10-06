@@ -19,6 +19,7 @@
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/network_style.h"
+#include "street_furniture.h"
 
 #include "../../safeguards.h"
 
@@ -44,6 +45,16 @@ static constexpr double ARROW_SHAFT_HALF = 0.024;
 static constexpr double ARROW_HEAD_HALF = 0.075;
 static constexpr double BAR_HALF_LENGTH = 0.03;
 static constexpr double BAR_HALF_WIDTH = 0.2;
+
+static constexpr double ZEBRA_NEAR = 0.34;
+static constexpr double ZEBRA_FAR = 0.44;
+static constexpr double ZEBRA_STRIPE = 0.04;
+static constexpr double ZEBRA_PITCH = 0.075;
+static constexpr double ZEBRA_MARGIN = 0.03;
+static constexpr double LAMP_ALONG = -0.35;
+static constexpr double LAMP_LATERAL = 0.43;
+static constexpr double BARRIER_ALONG = 0.4;
+static constexpr double BARRIER_LATERAL = ROAD_HALF + 0.06;
 
 static constexpr double TRAM_GAUGE_HALF = 0.105;
 static constexpr double TRAM_RAIL_HALF = 0.011;
@@ -186,10 +197,26 @@ public:
 	}
 
 private:
-	void Lay(ModelMesh part, uint32_t tone, double gloss = 0.0)
+	void Lay(ModelMesh part)
 	{
 		part.Transform(Mat4::Translation({this->origin.x, this->origin.y, 0.0}));
-		this->mesh.Append(Drape(part.Paint(tone).Gloss(gloss), this->footing));
+		this->mesh.Append(Drape(part, this->footing));
+	}
+
+	void Lay(ModelMesh part, uint32_t tone, double gloss = 0.0)
+	{
+		this->Lay(std::move(part.Paint(tone).Gloss(gloss)));
+	}
+
+	/* The direction a plain road runs in, toward higher map coordinates. */
+	static MapVector Along(RoadBits bits)
+	{
+		return bits == ROAD_X ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0};
+	}
+
+	static bool Plain(RoadBits bits)
+	{
+		return bits == ROAD_X || bits == ROAD_Y;
 	}
 
 	bool Full() const { return this->site.detail == WayDetail::Full; }
@@ -214,6 +241,47 @@ private:
 		}
 		this->CentreLine();
 		this->OneWay();
+		this->Crosswalks();
+		this->StreetLight();
+		this->Barriers();
+	}
+
+	/* Where town streets meet, each arm is crossed by a zebra just short of the junction. */
+	void Crosswalks()
+	{
+		RoadBits bits = this->site.road;
+		if (!this->site.kerbed || std::popcount(static_cast<uint>(bits)) < 3) return;
+		for (int arm = 0; arm < ARMS; arm++) {
+			if (!Has(bits, arm)) continue;
+			MapVector out = ARM_WAYS[arm];
+			MapVector across = RightOf(out);
+			for (double lateral = -ROAD_HALF + ZEBRA_MARGIN; lateral + ZEBRA_STRIPE <= ROAD_HALF - ZEBRA_MARGIN; lateral += ZEBRA_PITCH) {
+				std::array<MapVector, 4> stripe = {out * ZEBRA_NEAR + across * lateral, out * ZEBRA_FAR + across * lateral, out * ZEBRA_FAR + across * (lateral + ZEBRA_STRIPE), out * ZEBRA_NEAR + across * (lateral + ZEBRA_STRIPE)};
+				this->Lay(Plate(stripe, out * ((ZEBRA_NEAR + ZEBRA_FAR) * 0.5) + across * (lateral + ZEBRA_STRIPE * 0.5), MARK_TOP), MARKING);
+			}
+		}
+	}
+
+	/* A plain town street is lit from its pavement, the lamps standing on alternate sides from tile to tile. */
+	void StreetLight()
+	{
+		RoadBits bits = this->site.road;
+		if (!this->site.kerbed || !Plain(bits)) return;
+		double side = ((this->site.tx + this->site.ty) & 1) == 0 ? 1.0 : -1.0;
+		MapVector along = Along(bits);
+		MapVector across = RightOf(along) * side;
+		this->Lay(LampPost(along * LAMP_ALONG + across * LAMP_LATERAL, across * -1.0, PAVEMENT_TOP));
+	}
+
+	/* A barrier stands at each approach to a level crossing, on the right of the traffic it stops. */
+	void Barriers()
+	{
+		if (!this->site.crossing || !Plain(this->site.road)) return;
+		MapVector along = Along(this->site.road);
+		for (double end : {-1.0, 1.0}) {
+			MapVector facing = along * end;
+			this->Lay(CrossingBarrier(facing * BARRIER_ALONG + RightOf(facing) * -BARRIER_LATERAL, facing, 0.0));
+		}
 	}
 
 	/* Each stretch between two rays from the middle runs from the asphalt's edge out to the tile's, taking in the tile corner it passes. */
@@ -249,8 +317,8 @@ private:
 	{
 		RoadBits bits = this->site.road;
 		if (this->site.crossing || this->site.tram != ROAD_NONE || this->site.one_way != DRD_NONE) return;
-		if (bits == ROAD_X || bits == ROAD_Y) {
-			MapVector along = bits == ROAD_X ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0};
+		if (Plain(bits)) {
+			MapVector along = Along(bits);
 			for (int dash = 0; dash < DASHES; dash++) {
 				double middle = (dash + 0.5) / DASHES - EDGE;
 				std::array<MapVector, 2> line = {along * (middle - DASH_SHARE * EDGE / DASHES), along * (middle + DASH_SHARE * EDGE / DASHES)};
@@ -274,8 +342,8 @@ private:
 	void OneWay()
 	{
 		RoadBits bits = this->site.road;
-		if (this->site.one_way == DRD_NONE || (bits != ROAD_X && bits != ROAD_Y)) return;
-		MapVector south = bits == ROAD_X ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0};
+		if (this->site.one_way == DRD_NONE || !Plain(bits)) return;
+		MapVector south = Along(bits);
 		if (this->site.one_way == DRD_BOTH) {
 			MapVector across = RightOf(south);
 			std::array<MapVector, 4> bar = {south * -BAR_HALF_LENGTH - across * BAR_HALF_WIDTH, south * BAR_HALF_LENGTH - across * BAR_HALF_WIDTH, south * BAR_HALF_LENGTH + across * BAR_HALF_WIDTH, south * -BAR_HALF_LENGTH + across * BAR_HALF_WIDTH};

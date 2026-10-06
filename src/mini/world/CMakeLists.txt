@@ -28,6 +28,8 @@ add_files(
     signal_models.h
     station_models.cpp
     station_models.h
+    street_furniture.cpp
+    street_furniture.h
     terrain_field.cpp
     terrain_field.h
     terrain_mesh.cpp

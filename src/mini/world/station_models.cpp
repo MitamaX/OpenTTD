@@ -18,6 +18,7 @@
 #include "../../station_map.h"
 #include "../map/tile_shapes.h"
 #include "road_models.h"
+#include "street_furniture.h"
 
 #include "../../safeguards.h"
 
@@ -39,6 +40,11 @@ static constexpr double COPING_RISE = 0.004;
 static constexpr double SAFETY_FROM = 0.24;
 static constexpr double SAFETY_TO = 0.255;
 static constexpr double SAFETY_RISE = 0.002;
+
+static constexpr double LAMP_SHARE = 0.5;
+static constexpr double LAMP_LATERAL = 0.42;
+static constexpr double BENCH_SHARE = 0.2;
+static constexpr double BENCH_LATERAL = 0.43;
 
 static constexpr double BUILDING_HEIGHT = 0.34;
 static constexpr double WINDOWS_LOW = 0.15;
@@ -120,6 +126,10 @@ public:
 		StopLayout layout = LayoutOf(this->tile);
 		this->Platform(-1.0);
 		this->Platform(1.0);
+		if (layout == StopLayout::Platforms) {
+			this->Furnish(-1.0);
+			this->Furnish(1.0);
+		}
 		if (layout == StopLayout::Building) this->Building();
 		if (layout == StopLayout::RearRoof) this->Roof(this->rear);
 		if (layout == StopLayout::FrontRoof) this->Roof(-this->rear);
@@ -160,6 +170,15 @@ private:
 		if (this->detail == WayDetail::Simple) return;
 		this->Box(side * PLATFORM_INNER, side * (PLATFORM_INNER + COPING_WIDTH), PLATFORM_TOP, PLATFORM_TOP + COPING_RISE, COPING, COPING);
 		this->Box(side * SAFETY_FROM, side * SAFETY_TO, PLATFORM_TOP, PLATFORM_TOP + SAFETY_RISE, SAFETY_LINE, SAFETY_LINE);
+	}
+
+	/* An open platform has a lamp and a bench facing the track. */
+	void Furnish(double side)
+	{
+		if (this->detail == WayDetail::Simple) return;
+		MapVector toward_track = this->run.Right() * -side;
+		this->parts.Append(LampPost(this->run.At(LAMP_SHARE, side * LAMP_LATERAL), toward_track, PLATFORM_TOP));
+		this->parts.Append(Bench(this->run.At(BENCH_SHARE, side * BENCH_LATERAL), toward_track * -1.0, PLATFORM_TOP));
 	}
 
 	/* The station building stands on the rear platform, glazed and sheltered by an awning toward the track. */
