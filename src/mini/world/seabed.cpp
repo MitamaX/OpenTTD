@@ -138,6 +138,17 @@ static double BedLevelAt(int hx, int hy)
 	return (CornerBedLevel(x, y) + CornerBedLevel(ex, ey)) * 0.5;
 }
 
+double BedLevel(int tx, int ty, double x, double y)
+{
+	double level = TileGround(tx, ty).Level(x, y);
+	if (WaterFormOf(tx, ty) == WaterForm::Dry) return level;
+	double fx = x - tx;
+	double fy = y - ty;
+	double north = std::lerp(CornerSink(tx, ty), CornerSink(tx + 1, ty), fx);
+	double south = std::lerp(CornerSink(tx, ty + 1), CornerSink(tx + 1, ty + 1), fx);
+	return level - std::lerp(north, south, fy);
+}
+
 Seabed::Seabed(const TileSpan &tiles) :
 	hx0(2 * (tiles.tx0 - CORNER_MARGIN)),
 	hy0(2 * (tiles.ty0 - CORNER_MARGIN)),

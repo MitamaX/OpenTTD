@@ -32,6 +32,9 @@ double CornerSink(int cx, int cy);
 double CentreSink(int tx, int ty);
 bool SharesBasin(int tx, int ty, int nx, int ny);
 
+/* The ground under a point of a tile, down to where the bed sinks under water at the tile's corners. */
+double BedLevel(int tx, int ty, double x, double y);
+
 /* The bed under a block of tiles and a ring around it, on the half tile lattice: corners at even coordinates, tile middles at odd ones
  * and edge middles at one of each. Each point is worked out once, when the block's meshes first ask for it. */
 class Seabed {

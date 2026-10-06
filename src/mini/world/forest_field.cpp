@@ -63,18 +63,6 @@ static uint8_t ShareByte(double share)
 	return static_cast<uint8_t>(std::lround(std::clamp(share, 0.0, 1.0) * CHANNEL_MAX));
 }
 
-/* The ground a tree stands on, down to where the bed sinks under water at the tile's corners. */
-static double PlantingLevel(int tx, int ty, double x, double y)
-{
-	double level = TileGround(tx, ty).Level(x, y);
-	if (WaterFormOf(tx, ty) == WaterForm::Dry) return level;
-	double fx = x - tx;
-	double fy = y - ty;
-	double north = std::lerp(CornerSink(tx, ty), CornerSink(tx + 1, ty), fx);
-	double south = std::lerp(CornerSink(tx, ty + 1), CornerSink(tx + 1, ty + 1), fx);
-	return level - std::lerp(north, south, fy);
-}
-
 /* A tile's trees, the same every time it is planted: each on a slot of its own, the slots turned, mirrored and shuffled tile by tile. */
 static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance>> &planted)
 {
@@ -99,7 +87,7 @@ static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance
 		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(0.82, 1.15) * (tree < count ? 1.0 : SPARE_TREE_SCALE);
 		double wither = age == TreeAge::Dying ? dice.Between(0.35, 0.7) : 0.0;
 		TreeShape shape = {kind, static_cast<uint8_t>(dice.Next() % TREE_SHAPES)};
-		TreeInstance instance = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(PlantingLevel(tx, ty, x, y)), {ShareByte(dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(dice.Share()), ShareByte(wither)}};
+		TreeInstance instance = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(tx, ty, x, y)), {ShareByte(dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(dice.Share()), ShareByte(wither)}};
 		planted.emplace_back(shape.Index(), instance);
 	}
 }
