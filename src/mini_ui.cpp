@@ -535,7 +535,7 @@ static std::vector<Rect> FloatingNativeRects()
 
 static void Present()
 {
-	_map_labels.Paint(_camera.TilePixels());
+	_map_labels.Paint();
 	_dock.Unmark();
 	NativePanel::AdoptAll(_views);
 	_views.Frame(_fbw, _fbh, (float)_tuning.hud_scale, WindowBarBottom(), FloatingNativeRects());

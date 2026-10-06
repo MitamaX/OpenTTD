@@ -10,25 +10,11 @@
 #ifndef MINI_MAP_ZOOM_DETAIL_H
 #define MINI_MAP_ZOOM_DETAIL_H
 
-/* Zoom tiers: below 8 ppt the map is a terrain overview, mid zoom shows infrastructure. */
+/* Below this many pixels a tile the map is a terrain overview; nearer it shows infrastructure. */
 inline constexpr int INFRASTRUCTURE_PPT = 8;
 
 /* A detail repeating along a tile fades in while one repeat grows across these many pixels. */
 inline constexpr double UNRESOLVED_REPEAT_PIXELS = 1.5;
 inline constexpr double RESOLVED_REPEAT_PIXELS = 4.0;
-
-struct ZoomDetail {
-	bool station_names;
-	bool all_town_names;
-
-	static constexpr ZoomDetail For(int ppt)
-	{
-		bool infrastructure = ppt >= INFRASTRUCTURE_PPT;
-		return {
-			.station_names = infrastructure,
-			.all_town_names = infrastructure,
-		};
-	}
-};
 
 #endif /* MINI_MAP_ZOOM_DETAIL_H */
