@@ -164,9 +164,10 @@ static uint32_t MappedKey(unsigned short keycode)
 	return vk != std::end(_vk_mapping) ? vk->map_to : 0;
 }
 
-/** WASD pans the mini map while the mini UI is up; letting go of a key always stops its pan. */
+/** WASD pans and Q E spin the mini map while the mini UI is up; letting go of a key always stops it. */
 static void TrackPanKey(unsigned short keycode, bool down)
 {
+	MiniUiTrackTurnKey(MappedKey(keycode), down);
 	uint8_t bit = MiniUiPanBit(MappedKey(keycode));
 	if (!down) {
 		_dirkeys &= ~bit;

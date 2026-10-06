@@ -1082,6 +1082,7 @@ void VideoDriver_Win32Base::InputLoop()
 	} else {
 		_dirkeys = 0;
 	}
+	MiniUiHoldTurnKeys([this](char32_t key) { return this->has_focus && GetAsyncKeyState(static_cast<int>(key)) < 0; });
 
 	if (old_ctrl_pressed != _ctrl_pressed) HandleCtrlChanged();
 }

@@ -641,6 +641,7 @@ void VideoDriver_SDL_Base::InputLoop()
 		(keys[SDL_SCANCODE_RIGHT] ? 4 : 0) |
 		(keys[SDL_SCANCODE_DOWN]  ? 8 : 0);
 	_dirkeys |= MiniUiHeldPanBits([keys](char32_t key) { return LetterHeld(keys, key); });
+	MiniUiHoldTurnKeys([keys](char32_t key) { return LetterHeld(keys, key); });
 
 	if (old_ctrl_pressed != _ctrl_pressed) HandleCtrlChanged();
 }

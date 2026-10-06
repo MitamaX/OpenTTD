@@ -57,16 +57,22 @@ void MapPointer::Press(Rml::DataModelHandle, Rml::Event &event, const Rml::Varia
 	Point at = EventPoint(event);
 	switch (event.GetParameter<int>("button", LEFT_BUTTON)) {
 		case LEFT_BUTTON: this->Click(at, event.GetParameter<int>("ctrl_key", 0) != 0); break;
-		case RIGHT_BUTTON: _mode.Unwind(); break;
+		case RIGHT_BUTTON: _camera.HoldOrbit(at.x, at.y); break;
 		case MIDDLE_BUTTON: _camera.Grab(at.x, at.y); break;
 		default: break;
 	}
 }
 
-/* A build drag ends wherever the button comes up; off the map RmlUi reports it as the end of the map's drag, which names no button. */
+/* A build drag ends wherever the button comes up; off the map RmlUi reports it as the end of the map's drag, which names no button.
+ * A right click that never turned the view backs out of the current mode. */
 void MapPointer::Release(Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &)
 {
-	if (event.GetParameter<int>("button", LEFT_BUTTON) == LEFT_BUTTON && MapHoldsPointer()) _tool.Release();
+	if (!MapHoldsPointer()) return;
+	switch (event.GetParameter<int>("button", LEFT_BUTTON)) {
+		case LEFT_BUTTON: _tool.Release(); break;
+		case RIGHT_BUTTON: if (!_camera.ReleaseOrbit()) _mode.Unwind(); break;
+		default: break;
+	}
 }
 
 /* The wheel only zooms the map: RmlUi must neither scroll with it nor start its autoscroll on a middle press. */
