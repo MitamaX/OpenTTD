@@ -91,7 +91,7 @@ double GroundLevel(double tx, double ty)
 /* How high one height level stands in the 3D world, in tile widths. */
 double LevelRise()
 {
-	return LEVEL_TILES * _tuning.height_scale;
+	return LEVEL_TILES * _tuning.elevation_scale;
 }
 
 Vec3 RenderPoint(const WorldPoint &point)

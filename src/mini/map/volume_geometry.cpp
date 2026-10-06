@@ -46,7 +46,7 @@ static_assert(MAX_SOLIDS <= 16, "a solid's predecessors fit one 16 bit mask");
 /* Model heights stand raised by the height scale like the ground, which flattens how steep a face turns. */
 Vec3 RenderNormal(const Vec3 &model_normal)
 {
-	return Normalised({model_normal.x, model_normal.y, model_normal.z / _tuning.height_scale});
+	return Normalised({model_normal.x, model_normal.y, model_normal.z / _tuning.elevation_scale});
 }
 
 DiagDirection FacingSide(const Vec3 &normal)

@@ -10,6 +10,7 @@
 #include "../../stdafx.h"
 #include "tuning.h"
 
+#include <array>
 #include <charconv>
 
 #include "../../core/format.hpp"
@@ -22,6 +23,7 @@
 
 static constexpr std::string_view TUNING_FILE = "mini_ui.cfg";
 static constexpr std::string_view TUNING_GROUP = "mini";
+static constexpr std::array<std::string_view, 1> RETIRED_KEYS = {"height_scale"};
 
 MiniTuning _tuning;
 
@@ -46,6 +48,7 @@ void MiniTuning::Load()
 	IniFile ini;
 	ini.LoadFromDisk(path, NO_DIRECTORY);
 	IniGroup &group = ini.GetOrCreateGroup(TUNING_GROUP);
+	for (std::string_view key : RETIRED_KEYS) group.RemoveItem(key);
 
 	ReadIniNumber(group, "start_active", this->start_active);
 	ReadIniNumber(group, "pan_speed", this->pan_speed);
@@ -58,7 +61,7 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "orbit_speed", this->orbit_speed);
 	ReadIniNumber(group, "view_fov", this->view_fov);
 	ReadIniNumber(group, "view_pitch", this->view_pitch);
-	ReadIniNumber(group, "height_scale", this->height_scale);
+	ReadIniNumber(group, "elevation_scale", this->elevation_scale);
 	ReadIniNumber(group, "hud_scale", this->hud_scale);
 	ReadIniNumber(group, "grid_alpha", this->grid_alpha);
 	ReadIniNumber(group, "contour_alpha", this->contour_alpha);
@@ -80,7 +83,7 @@ void MiniTuning::Load()
 	this->orbit_speed = Clamp(this->orbit_speed, 0.02, 2.0);
 	this->view_fov = Clamp(this->view_fov, 20.0, 70.0);
 	this->view_pitch = Clamp(this->view_pitch, MIN_PITCH, MAX_PITCH);
-	this->height_scale = Clamp(this->height_scale, 0.25, 2.0);
+	this->elevation_scale = Clamp(this->elevation_scale, 0.25, 2.0);
 	this->hud_scale = Clamp(this->hud_scale, 1, 4);
 	this->grid_alpha = Clamp(this->grid_alpha, 0, 255);
 	this->contour_alpha = Clamp(this->contour_alpha, 0, 255);

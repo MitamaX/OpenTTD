@@ -22,7 +22,7 @@ struct MiniTuning {
 	double orbit_speed = 0.25;
 	double view_fov = 40.0;
 	double view_pitch = 50.0;
-	double height_scale = 1.0;
+	double elevation_scale = 1.0;
 	int hud_scale = 2;
 	int grid_alpha = 80;
 	int contour_alpha = 120;
