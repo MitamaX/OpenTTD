@@ -1,4 +1,5 @@
 add_files(
+    aircraft_models.cpp
     bridge_models.cpp
     bridge_models.h
     chunk_grid.cpp
@@ -14,8 +15,10 @@ add_files(
     network_mesh.h
     network_pass.cpp
     network_pass.h
+    rail_vehicle_models.cpp
     road_models.cpp
     road_models.h
+    road_vehicle_models.cpp
     scene_view.cpp
     scene_view.h
     seabed.cpp
@@ -24,6 +27,7 @@ add_files(
     shader_program.h
     shadow_map.cpp
     shadow_map.h
+    ship_models.cpp
     signal_models.cpp
     signal_models.h
     smoke_plumes.cpp
@@ -52,6 +56,10 @@ add_files(
     tree_models.h
     tunnel_models.cpp
     tunnel_models.h
+    vehicle_models.cpp
+    vehicle_models.h
+    vehicle_parts.cpp
+    vehicle_parts.h
     water_mesh.cpp
     water_mesh.h
     water_pass.cpp
