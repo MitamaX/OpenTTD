@@ -14,17 +14,13 @@
 #include <cmath>
 #include <vector>
 
-#include "../../bridge_map.h"
 #include "../../direction_func.h"
 #include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../../track_func.h"
-#include "../../tunnelbridge_map.h"
 
 #include "../../safeguards.h"
 
-static constexpr double NORTH_EDGE = 0.0;
-static constexpr double SOUTH_EDGE = 1.0;
 static constexpr double HALF_PIXEL = 0.5;
 
 /* A stroke's half width once it keeps a pixel across, and the alpha it fades to for the width it lacks. */
@@ -273,52 +269,6 @@ void DrawAxisBand(Axis axis, int tx, int ty, double half_width, uint32_t c, uint
 void DrawFacing(int tx, int ty, DiagDirection direction, double half_width, uint32_t c)
 {
 	FillGroundStroke(TileGround(tx, ty), TileCentre(tx, ty), EdgeMidpoint(tx, ty, direction), half_width, c);
-}
-
-static WorldPoint RunCorner(const AxisRun &run, const TileGround &ground, const RunEnd &end, double along, double lateral)
-{
-	bool along_x = run.axis == AXIS_X;
-	double x = run.tx + (along_x ? along : HALF_TILE + lateral);
-	double y = run.ty + (along_x ? HALF_TILE + lateral : along);
-	double level = end.has_value() ? *end : ground.Level(x, y);
-	return {x, y, level + run.lift};
-}
-
-static std::array<WorldPoint, 4> AxisStripQuad(const AxisRun &run, double lateral_from, double lateral_to)
-{
-	TileGround ground(run.tx, run.ty);
-	return {
-		RunCorner(run, ground, run.north, NORTH_EDGE, lateral_from),
-		RunCorner(run, ground, run.north, NORTH_EDGE, lateral_to),
-		RunCorner(run, ground, run.south, SOUTH_EDGE, lateral_to),
-		RunCorner(run, ground, run.south, SOUTH_EDGE, lateral_from),
-	};
-}
-
-void FillAxisStrip(const AxisRun &run, double lateral_from, double lateral_to, uint32_t c, uint alpha)
-{
-	_canvas.FillWorldQuad(AxisStripQuad(run, lateral_from, lateral_to), c, alpha);
-}
-
-void FillAxisBand(const AxisRun &run, double half_width, uint32_t c, uint alpha)
-{
-	FillAxisStrip(run, -half_width, half_width, c, alpha);
-}
-
-void FillAxisLine(const AxisRun &run, double lateral, double half_width, uint32_t c, uint alpha)
-{
-	MapVector along = run.axis == AXIS_X ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0};
-	VisibleStroke stroke = Widened(along, half_width, alpha);
-	FillAxisStrip(run, lateral - stroke.half, lateral + stroke.half, c, stroke.alpha);
-}
-
-AxisRun RampRun(TileIndex head)
-{
-	DiagDirection onto = GetTunnelBridgeDirection(head);
-	Axis axis = DiagDirToAxis(onto);
-	RunEnd deck = GetBridgeHeight(head);
-	bool rises_south = onto == AxisToDiagDir(axis);
-	return {static_cast<int>(TileX(head)), static_cast<int>(TileY(head)), axis, rises_south ? ON_GROUND : deck, rises_south ? deck : ON_GROUND};
 }
 
 WorldPoint TrackdirGroundPoint(int tx, int ty, Trackdir td, double along, double lateral)

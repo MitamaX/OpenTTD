@@ -60,11 +60,6 @@ static void DefineFloat(std::string &header, std::string_view name, double value
 	header += fmt::format("#define {} {:.6f}\n", name, value);
 }
 
-static void DefineLookWidths(std::string &header, std::string_view name, double RailLookWidths::*width)
-{
-	header += fmt::format("#define {} float[RAIL_LOOKS]({:.4f})\n", name, fmt::join(RAIL_LOOK_WIDTHS | std::views::transform(width), ", "));
-}
-
 static std::string Vector(double x, double y, double z)
 {
 	return fmt::format("vec3({:.4f}, {:.4f}, {:.4f})", x, y, z);
@@ -108,8 +103,6 @@ static std::string ShaderHeader()
 	std::string header = "#version 330 core\n";
 	DefineCodes(header, "MAT_", GROUND_MATERIAL_NAMES);
 	DefineCodes(header, "TREE_", TREE_KIND_NAMES);
-	DefineCodes(header, "LOOK_", RAIL_LOOK_NAMES);
-	DefineInt(header, "RAIL_LOOKS", to_underlying(RailLook::End));
 	DefineUnsigned(header, "DENSITY_MASK", GROUND_DENSITY_MASK);
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
 	DefineUnsigned(header, "FLORA_COUNT_MASK", FLORA_COUNT_MASK);
@@ -117,19 +110,9 @@ static std::string ShaderHeader()
 	DefineUnsigned(header, "FLORA_AGE_SHIFT", FLORA_AGE_SHIFT);
 	DefineUnsigned(header, "FLORA_AGE_MASK", FLORA_AGE_MASK);
 	DefineUnsigned(header, "FLORA_MOST_TREES", FLORA_MOST_TREES);
-	DefineUnsigned(header, "RAIL_LOOK_MASK", NETWORK_RAIL_LOOK_MASK);
-	DefineUnsigned(header, "KERB_BIT", NETWORK_KERB_BIT);
-	DefineFloat(header, "RAIL_BED_HALF", RAIL_BED_HALF);
-	DefineFloat(header, "RAIL_GAUGE_HALF", RAIL_GAUGE_HALF);
-	DefineFloat(header, "RAIL_HALF", RAIL_HALF);
 	DefineFloat(header, "DISTANT_RAIL_HALF", DISTANT_RAIL_HALF);
-	DefineLookWidths(header, "RAIL_BODY_HALVES", &RailLookWidths::body);
-	DefineLookWidths(header, "RAIL_STRIP_HALVES", &RailLookWidths::strip);
 	DefineFloat(header, "ROAD_HALF", ROAD_HALF);
 	DefineFloat(header, "TRAM_BED_HALF", TRAM_BED_HALF);
-	DefineFloat(header, "SLEEPERS_PER_TILE", SLEEPERS_PER_TILE);
-	DefineFloat(header, "RAIL_FREQUENCY", RAIL_FREQUENCY);
-	DefineFloat(header, "MARKING_FREQUENCY", MARKING_FREQUENCY);
 	DefineFloat(header, "UNRESOLVED_REPEAT_PIXELS", UNRESOLVED_REPEAT_PIXELS);
 	DefineFloat(header, "RESOLVED_REPEAT_PIXELS", RESOLVED_REPEAT_PIXELS);
 	DefineFloat(header, "INFRASTRUCTURE_PPT", INFRASTRUCTURE_PPT);
@@ -143,12 +126,8 @@ static std::string ShaderHeader()
 	DefineFloat(header, "TREE_LARGEST_SCALE", TREE_LARGEST_SCALE);
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
 	DefineTone(header, "VOID_TONE", COL_VOID);
-	DefineTone(header, "BALLAST", COL_BALLAST);
-	DefineTone(header, "CONCRETE", COL_CONCRETE);
-	DefineTone(header, "STEEL", COL_STEEL);
-	DefineTone(header, "ASPHALT", COL_ASPHALT);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
-	DefineTone(header, "DISTANT_ROAD", COL_ROAD);
+	DefineTone(header, "DISTANT_ROAD", COL_ASPHALT);
 	DefineTone(header, "RAIL_ACCENT", COL_RAIL_ACCENT);
 	DefineTone(header, "ROAD_ACCENT", COL_ROAD_ACCENT);
 	DefineVector(header, "LUMA_WEIGHTS", Vector(LumaShare(LUMA_RED), LumaShare(LUMA_GREEN), LumaShare(LUMA_BLUE)));

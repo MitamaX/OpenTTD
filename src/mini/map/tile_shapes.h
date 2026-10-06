@@ -23,27 +23,6 @@
 
 inline constexpr double HALF_TILE = 0.5;
 
-/* The level one end of a run stands at; without one it lies on the tile's own ground under each corner. */
-using RunEnd = std::optional<double>;
-inline constexpr RunEnd ON_GROUND = std::nullopt;
-
-/* One tile's length along an axis; lateral offsets run from its centre line toward the higher coordinate of the other axis. */
-struct AxisRun {
-	int tx;
-	int ty;
-	Axis axis;
-	RunEnd north = ON_GROUND;
-	RunEnd south = ON_GROUND;
-	double lift = 0.0;
-
-	AxisRun Lifted(double levels) const
-	{
-		AxisRun lifted = *this;
-		lifted.lift += levels;
-		return lifted;
-	}
-};
-
 /* A tile's own surface, read for every point that belongs to the tile, so a point on its edge stays on it and not on the neighbour across. */
 class TileGround {
 public:
@@ -87,14 +66,6 @@ void FillGroundStroke(const TileGround &ground, TilePoint from, TilePoint to, do
 void DrawTrackPiece(Track track, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawAxisBand(Axis axis, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawFacing(int tx, int ty, DiagDirection direction, double half_width, uint32_t c);
-
-void FillAxisStrip(const AxisRun &run, double lateral_from, double lateral_to, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
-void FillAxisBand(const AxisRun &run, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
-/* A line thinner than a pixel keeps one pixel across and fades by the share it lacks, like the ground shader's strokes. */
-void FillAxisLine(const AxisRun &run, double lateral, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
-
-/* A ramp climbs from the head's own ground at its outer edge to the deck at the edge it leads onto, where the game's vehicles drive. */
-AxisRun RampRun(TileIndex head);
 
 /* Along runs from where the trackdir enters its piece to where it leaves; lateral offsets point to the right of travel. */
 WorldPoint TrackdirGroundPoint(int tx, int ty, Trackdir td, double along, double lateral);

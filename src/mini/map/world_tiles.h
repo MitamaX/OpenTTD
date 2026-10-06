@@ -65,10 +65,6 @@ enum class RailLook : uint8_t {
 	End,
 };
 
-inline constexpr std::array<std::string_view, static_cast<size_t>(RailLook::End)> RAIL_LOOK_NAMES = {
-	"RAIL", "MONORAIL", "MAGLEV",
-};
-
 RailLook RailLookOf(RailType railtype);
 
 inline constexpr uint8_t GROUND_DENSITY_MASK = 0x03;

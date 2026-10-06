@@ -49,13 +49,11 @@ inline constexpr uint32_t COL_TREE = 0xFF2F4A2AU;
 inline constexpr uint32_t COL_RAIL = 0xFF33383DU;
 inline constexpr uint32_t COL_ROAD = 0xFF61686EU;
 inline constexpr uint32_t COL_BRIDGE = 0xFF9AA0A6U;
-inline constexpr uint32_t COL_TUNNEL = 0xFF1E2124U;
 inline constexpr uint32_t COL_CATENARY = 0xFFE8C94AU;
 inline constexpr uint32_t COL_BALLAST = 0xFF6E6A63U;
 inline constexpr uint32_t COL_CONCRETE = 0xFFA3A199U;
 inline constexpr uint32_t COL_STEEL = 0xFFB4B8BCU;
 inline constexpr uint32_t COL_ASPHALT = 0xFF45484CU;
-inline constexpr uint32_t COL_WIRE = 0xFF2A2D30U;
 inline constexpr uint32_t COL_RAIL_ACCENT = COL_PAPER;
 inline constexpr uint32_t COL_ROAD_ACCENT = COL_CATENARY;
 
@@ -64,14 +62,11 @@ inline constexpr uint32_t COL_IND = 0xFFD07A4AU;
 inline constexpr uint32_t COL_OBJ = 0xFFB0B4B8U;
 
 inline constexpr uint32_t COL_ST_RAIL = 0xFF4A6FA5U;
-inline constexpr uint32_t COL_ST_RAIL_B = Darken(COL_ST_RAIL);
 inline constexpr uint32_t COL_ST_AIR = 0xFF8E6FB8U;
 inline constexpr uint32_t COL_ST_ROAD = 0xFF7FA8C9U;
-inline constexpr uint32_t COL_ST_ROAD_B = Darken(COL_ST_ROAD);
 inline constexpr uint32_t COL_ST_DOCK = 0xFF9A7FA8U;
 inline constexpr uint32_t COL_ST_BUOY = 0xFFD8C86AU;
 
-inline constexpr uint32_t COL_GO = 0xFF3FCB6AU;
 inline constexpr uint32_t COL_STOP = 0xFFE04B4BU;
 inline constexpr uint32_t COL_BP = 0xFF7FD1FFU;
 inline constexpr uint32_t COL_BP_RM = 0xFFFF6B6BU;
