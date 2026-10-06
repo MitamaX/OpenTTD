@@ -16,6 +16,7 @@
 #include "../fontcache.h"
 #include "../gfx_func.h"
 #include "../gfxinit.h"
+#include "../mini_ui.h"
 #include "../progress.h"
 #include "../rev.h"
 #include "../thread.h"
@@ -157,6 +158,12 @@ void VideoDriver::Tick()
 		}
 
 		this->CheckPaletteAnim();
+
+		/* The mini UI samples the screen while it paints, so this tick's drawing goes to the GPU first. */
+		if (MiniUiActive()) {
+			this->UnlockVideoBuffer();
+			this->LockVideoBuffer();
+		}
 		this->Paint();
 
 		this->UnlockVideoBuffer();
