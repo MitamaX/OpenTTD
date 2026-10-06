@@ -12,7 +12,6 @@
 
 #include <algorithm>
 
-#include "../../core/math_func.hpp"
 #include "../../map_func.h"
 #include "seabed.h"
 #include "terrain_mesh.h"
@@ -40,44 +39,27 @@ void TerrainField::Sync(const WorldChanges &changes)
 	this->Evict();
 
 	Dimension size = _world_tiles.Size();
-	if (changes.whole || size != this->map) {
+	if (changes.whole || size != this->grid.Map()) {
 		this->Lay(size);
 		return;
 	}
 
-	uint rows = static_cast<uint>(this->chunks.size()) / std::max(this->columns, 1u);
-	for (const Rect &area : changes.areas) {
-		uint x0 = static_cast<uint>(std::max(area.left - SHELF_TILES, 0)) / CHUNK_TILES;
-		uint y0 = static_cast<uint>(std::max(area.top - SHELF_TILES, 0)) / CHUNK_TILES;
-		uint x1 = std::min(static_cast<uint>(area.right + SHELF_TILES) / CHUNK_TILES, this->columns - 1);
-		uint y1 = std::min(static_cast<uint>(area.bottom + SHELF_TILES) / CHUNK_TILES, rows - 1);
-		for (uint y = y0; y <= y1; y++) {
-			for (uint x = x0; x <= x1; x++) {
-				Chunk &chunk = this->chunks[y * this->columns + x];
-				chunk.stale = true;
-				chunk.surveyed = false;
-			}
-		}
-	}
+	this->grid.ForEachTouched(changes, SHELF_TILES, [&](size_t index) {
+		Chunk &chunk = this->chunks[index];
+		chunk.stale = true;
+		chunk.surveyed = false;
+	});
 }
 
 void TerrainField::Lay(Dimension map)
 {
 	this->Release();
-	this->map = map;
-	this->columns = CeilDiv(map.width, CHUNK_TILES);
-	this->chunks = std::vector<Chunk>(static_cast<size_t>(this->columns) * CeilDiv(map.height, CHUNK_TILES));
+	this->grid.Lay(map);
+	this->chunks = std::vector<Chunk>(this->grid.Count());
 	if (this->chunks.empty()) return;
 
 	this->outer_bed.Upload(BuildOuterBed(map, OUTER_SEA_REACH), TERRAIN_LAYOUT);
 	this->outer_water.Upload(BuildOuterWater(map, OUTER_SEA_REACH), WATER_LAYOUT);
-}
-
-TileSpan TerrainField::TilesOf(size_t index) const
-{
-	int tx = static_cast<int>(index % this->columns) * CHUNK_TILES;
-	int ty = static_cast<int>(index / this->columns) * CHUNK_TILES;
-	return {tx, ty, std::min(tx + CHUNK_TILES, static_cast<int>(this->map.width)) - 1, std::min(ty + CHUNK_TILES, static_cast<int>(this->map.height)) - 1};
 }
 
 void TerrainField::Survey(Chunk &chunk, const TileSpan &tiles) const
@@ -98,7 +80,7 @@ void TerrainField::Survey(Chunk &chunk, const TileSpan &tiles) const
 TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera, const Frustum &frustum)
 {
 	Chunk &chunk = this->chunks[index];
-	TileSpan tiles = this->TilesOf(index);
+	TileSpan tiles = this->grid.TilesOf(index);
 	if (!chunk.surveyed) this->Survey(chunk, tiles);
 
 	double rise = LevelRise();
@@ -106,8 +88,7 @@ TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera
 	Vec3 high = {tiles.tx1 + 1.0, tiles.ty1 + 1.0, chunk.high * rise};
 	if (!BoxMeets(frustum, low, high)) return nullptr;
 
-	Vec3 nearest = {Clamp(camera.eye.x, low.x, high.x), Clamp(camera.eye.y, low.y, high.y), Clamp(camera.eye.z, low.z, high.z)};
-	int step = StepFor(camera.TilePixelsAt(Length(camera.eye - nearest)));
+	int step = StepFor(camera.NearestTilePixels(low, high));
 	if (chunk.stale || chunk.step != step) {
 		chunk.ground.Upload(BuildTerrain(tiles, step), TERRAIN_LAYOUT);
 		if (chunk.stale) chunk.water.Upload(BuildWaterSurface(tiles), WATER_LAYOUT);
@@ -156,6 +137,5 @@ void TerrainField::Release()
 	this->chunks.clear();
 	this->outer_bed.Release();
 	this->outer_water.Release();
-	this->map = {};
-	this->columns = 0;
+	this->grid.Clear();
 }

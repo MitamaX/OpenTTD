@@ -1,4 +1,6 @@
 add_files(
+    chunk_grid.cpp
+    chunk_grid.h
     frame_units.h
     scene_view.cpp
     scene_view.h

@@ -14,6 +14,7 @@
 
 #include "../gpu/mesh_buffer.h"
 #include "../map/world_tiles.h"
+#include "chunk_grid.h"
 #include "scene_view.h"
 
 class TerrainField {
@@ -40,15 +41,13 @@ private:
 
 	void Lay(Dimension map);
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
-	TileSpan TilesOf(size_t index) const;
 	Chunk *Prepare(size_t index, const SceneView &camera, const Frustum &frustum);
 	void Evict();
 
+	ChunkGrid grid{CHUNK_TILES};
 	std::vector<Chunk> chunks;
 	MeshBuffer outer_bed;
 	MeshBuffer outer_water;
-	Dimension map{};
-	uint columns = 0;
 	uint64_t frame = 0;
 };
 
