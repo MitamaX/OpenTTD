@@ -21,7 +21,7 @@ const float UNRESOLVED_WAVE_PIXELS = 4.0;
 const float WATER_REFLECTANCE = 0.02;
 const float SMOOTH_WATER = 0.08;
 const float ROUGH_WATER = 0.30;
-const float GLINT_CEILING = 1.0;
+const float GLINT_CEILING = 0.45;
 const float REFRACTION = 0.012;
 const float REFRACTION_DEPTH = 0.5;
 
