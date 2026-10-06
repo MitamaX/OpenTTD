@@ -1,7 +1,5 @@
 const float FAR_AWAY = 1e4;
 const int WINDOW_REACH = 1;
-const int WINDOW_SPAN = 2 * WINDOW_REACH + 1;
-const ivec2 HOME_TILE = ivec2(0);
 
 const int TRACK_PIECES = 6;
 const vec2 TRACK_FROM[TRACK_PIECES] = vec2[TRACK_PIECES](vec2(0.0, 0.5), vec2(0.5, 0.0), vec2(0.0, 0.5), vec2(1.0, 0.5), vec2(0.5, 0.0), vec2(0.0, 0.5));
@@ -22,34 +20,14 @@ struct Network {
 
 const Field NOWHERE = Field(FAR_AWAY, 1.0);
 
-uvec4 network_window[WINDOW_SPAN * WINDOW_SPAN];
-
 uint Bit(int index)
 {
 	return 1u << uint(index);
 }
 
-void GatherNetwork(ivec2 home)
+uvec4 NetworkTexel(ivec2 tile)
 {
-	for (int j = 0; j < WINDOW_SPAN; j++) {
-		for (int i = 0; i < WINDOW_SPAN; i++) {
-			ivec2 tile = home + ivec2(i, j) - WINDOW_REACH;
-			network_window[j * WINDOW_SPAN + i] = OnMap(tile) ? texelFetch(u_network, tile, 0) : uvec4(0u);
-		}
-	}
-}
-
-bool NetworkNear()
-{
-	uvec3 seen = uvec3(0u);
-	for (int slot = 0; slot < WINDOW_SPAN * WINDOW_SPAN; slot++) seen |= network_window[slot].xyz;
-	return seen != uvec3(0u);
-}
-
-uvec4 NetworkTexel(ivec2 offset)
-{
-	ivec2 slot = offset + WINDOW_REACH;
-	return network_window[slot.y * WINDOW_SPAN + slot.x];
+	return OnMap(tile) ? texelFetch(u_network, tile, 0) : uvec4(0u);
 }
 
 float Inside(Field field)
@@ -78,16 +56,17 @@ float OutsideTile(vec2 local)
 	return length(max(abs(local - TILE_CENTRE) - HALF_TILE, 0.0));
 }
 
-/* Pieces of the neighbouring tiles reach over the seam, so the band is a union over the whole window. */
-Field TracksNear(vec2 at, mat2 pixel)
+/* Pieces of the neighbouring tiles reach over the seam, so the band is a union over the tiles around that come near enough to reach. */
+Field TracksNear(vec2 at, ivec2 home, mat2 pixel)
 {
 	Field band = NOWHERE;
 	float reach = DISTANT_RAIL_HALF + max(Spread(pixel, vec2(1.0, 0.0)), Spread(pixel, vec2(0.0, 1.0)));
 	for (int j = -WINDOW_REACH; j <= WINDOW_REACH; j++) {
 		for (int i = -WINDOW_REACH; i <= WINDOW_REACH; i++) {
 			ivec2 tile = ivec2(i, j);
-			uint pieces = NetworkTexel(tile).x;
-			if (pieces == 0u || OutsideTile(at - vec2(tile)) > reach) continue;
+			if (OutsideTile(at - vec2(tile)) > reach) continue;
+			uint pieces = NetworkTexel(home + tile).x;
+			if (pieces == 0u) continue;
 			for (int index = 0; index < TRACK_PIECES; index++) {
 				if ((pieces & Bit(index)) == 0u) continue;
 				vec2 offset = vec2(tile);
@@ -133,12 +112,10 @@ Field RoutesThrough(vec2 at, uint ends, float width, mat2 pixel)
 Network NetworkAt(vec2 p, mat2 pixel)
 {
 	ivec2 home = ivec2(floor(p));
-	GatherNetwork(home);
-	if (!NetworkNear()) return Network(vec4(0.0), vec2(0.0));
-
 	vec2 at = p - vec2(home);
-	uvec4 here = NetworkTexel(HOME_TILE);
-	float rail = Inside(TracksNear(at, pixel));
+	uvec4 here = NetworkTexel(home);
+	float rail = Inside(TracksNear(at, home, pixel));
+	if (rail <= 0.0 && here.y == 0u && here.z == 0u) return Network(vec4(0.0), vec2(0.0));
 	float road = Inside(Nearer(RoutesThrough(at, here.y, ROAD_HALF, pixel), RoutesThrough(at, here.z, TRAM_BED_HALF, pixel)));
 	vec4 paint = Over(vec4(0.0), DISTANT_RAIL, rail);
 	paint = Over(paint, DISTANT_ROAD, road);

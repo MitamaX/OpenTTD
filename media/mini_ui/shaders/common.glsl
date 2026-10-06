@@ -10,18 +10,12 @@ const float MIN_SPREAD = 1e-4;
 
 const vec2 WEST_CORNER = vec2(1.0, 0.0);
 
-const int NEIGHBOURHOOD_REACH = 1;
-const int NEIGHBOURHOOD_SPAN = 2 * NEIGHBOURHOOD_REACH + 1;
-
 struct Corners {
 	float north;
 	float west;
 	float east;
 	float south;
 };
-
-ivec2 near_origin;
-uvec4 near_codes[NEIGHBOURHOOD_SPAN * NEIGHBOURHOOD_SPAN];
 
 /* How many screen pixels one tile spans at the fragment, which every detail fades in by. */
 float tile_pixels;
@@ -136,18 +130,9 @@ float FacetLevel(Corners c, vec2 f)
 	return c.north + dot(slope, f);
 }
 
-void GatherNeighbourhood(ivec2 tile)
-{
-	near_origin = tile - NEIGHBOURHOOD_REACH;
-	for (int j = 0; j < NEIGHBOURHOOD_SPAN; j++) {
-		for (int i = 0; i < NEIGHBOURHOOD_SPAN; i++) near_codes[j * NEIGHBOURHOOD_SPAN + i] = texelFetch(u_tiles, Clamped(near_origin + ivec2(i, j)), 0);
-	}
-}
-
 uvec4 CodesAt(ivec2 tile)
 {
-	ivec2 slot = clamp(tile - near_origin, ivec2(0), ivec2(NEIGHBOURHOOD_SPAN - 1));
-	return near_codes[slot.y * NEIGHBOURHOOD_SPAN + slot.x];
+	return texelFetch(u_tiles, Clamped(tile), 0);
 }
 
 vec2 SegmentOffset(vec2 p, vec2 from, vec2 to)

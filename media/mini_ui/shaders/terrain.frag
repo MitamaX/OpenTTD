@@ -263,6 +263,7 @@ float Builtness(vec2 p)
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+/* The grounds of the four tiles around blend across their seams; each distinct ground is shaded once, by the share all its corners hold. */
 vec3 Surface(vec2 p, Grain grain, Erosion erosion)
 {
 	float reach = mix(NATURAL_WARP, BUILT_WARP, Builtness(p));
@@ -271,15 +272,20 @@ vec3 Surface(vec2 p, Grain grain, Erosion erosion)
 	ivec2 cell = ivec2(floor(q));
 	vec2 f = smoothstep(HALF_TILE - BLEND_WIDTH, HALF_TILE + BLEND_WIDTH, fract(q));
 
-	Ground nw = GroundAt(cell);
-	Ground ne = GroundAt(cell + ivec2(1, 0));
-	Ground sw = GroundAt(cell + ivec2(0, 1));
-	Ground se = GroundAt(cell + ivec2(1, 1));
-	if (nw == ne && nw == sw && nw == se) return Eroded(nw, grain, p, erosion);
-
-	vec3 north = mix(Eroded(nw, grain, p, erosion), Eroded(ne, grain, p, erosion), f.x);
-	vec3 south = mix(Eroded(sw, grain, p, erosion), Eroded(se, grain, p, erosion), f.x);
-	return mix(north, south, f.y);
+	Ground corners[4] = Ground[4](GroundAt(cell), GroundAt(cell + ivec2(1, 0)), GroundAt(cell + ivec2(0, 1)), GroundAt(cell + ivec2(1, 1)));
+	float shares[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+	vec3 tone = vec3(0.0);
+	for (int i = 0; i < 4; i++) {
+		float share = 0.0;
+		bool shaded = false;
+		for (int j = 0; j < 4; j++) {
+			if (corners[j] != corners[i]) continue;
+			shaded = shaded || j < i;
+			share += shares[j];
+		}
+		if (!shaded && share > 0.0) tone += Eroded(corners[i], grain, p, erosion) * share;
+	}
+	return tone;
 }
 
 Water WaterAt(vec2 p)
@@ -375,8 +381,6 @@ vec3 WallFace(vec3 normal)
 vec3 GroundTone(vec2 p, mat2 pixel, Water water, float slope, float levels_per_pixel, out float occlusion)
 {
 	ivec2 tile = ivec2(floor(p));
-	GatherNeighbourhood(tile);
-
 	Grain grain = GrainAt(p);
 	Canopy forest = Forest(p);
 	Network network = NetworkAt(p, pixel);
