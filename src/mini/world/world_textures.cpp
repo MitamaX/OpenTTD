@@ -11,34 +11,49 @@
 #include "world_textures.h"
 
 #include "../map/way_bends.h"
+#include "frame_units.h"
 
 #include "../../safeguards.h"
 
-WorldTextures::Source WorldTextures::SourceOf(uint unit)
+static_assert(WorldTextures::UNIT_COUNT <= SHADOW_UNIT);
+
+static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_shore"};
+
+WorldTextures::Source WorldTextures::SourceOf(uint unit) const
 {
 	switch (unit) {
-		case TILES_UNIT: return {"u_tiles", TexelFormat::ExactRgba, _world_tiles.Ground()};
-		case WATER_UNIT: return {"u_water", TexelFormat::FilteredRgba, _world_tiles.Water()};
-		case SURFACES_UNIT: return {"u_surfaces", TexelFormat::ExactRgba, _world_tiles.Surfaces()};
-		case NETWORK_UNIT: return {"u_network", TexelFormat::ExactRgba, _world_tiles.Network()};
-		case BENDS_UNIT: return {"u_bends", TexelFormat::ExactRgba, _way_bends.Texels()};
+		case TILES_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Ground()};
+		case WATER_UNIT: return {TexelFormat::FilteredRgba, _world_tiles.Water()};
+		case SURFACES_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Surfaces()};
+		case NETWORK_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Network()};
+		case BENDS_UNIT: return {TexelFormat::ExactRgba, _way_bends.Texels()};
+		case SHORE_UNIT: return {TexelFormat::FilteredRed, this->shore.Texels()};
 		default: NOT_REACHED();
 	}
 }
 
+void WorldTextures::Allocate(uint unit)
+{
+	Source source = this->SourceOf(unit);
+	this->textures[unit].Allocate(source.format, _world_tiles.Size(), source.texels);
+}
+
+/* The shore's distances reach across the whole map, so any change of water measures them all again. */
 void WorldTextures::Sync(const WorldChanges &changes)
 {
 	bool whole = changes.whole || !this->textures[TILES_UNIT].Allocated();
-	for (uint unit = 0; unit < this->textures.size(); unit++) {
-		Source source = SourceOf(unit);
-		DataTexture &texture = this->textures[unit];
-		if (whole) {
-			texture.Allocate(source.format, _world_tiles.Size(), source.texels);
-		} else {
-			for (const Rect &area : changes.areas) texture.Update(area, source.texels);
+	if (whole || changes.water) this->shore.Survey(_world_tiles.Size());
+	if (whole) {
+		for (uint unit = 0; unit < UNIT_COUNT; unit++) this->Allocate(unit);
+	} else {
+		for (uint unit = 0; unit < SHORE_UNIT; unit++) {
+			for (const Rect &area : changes.areas) this->textures[unit].Update(area, this->SourceOf(unit).texels);
+		}
+		if (changes.water) {
+			this->textures[WATER_UNIT].Refilter();
+			this->Allocate(SHORE_UNIT);
 		}
 	}
-	if (!whole && changes.water) this->textures[WATER_UNIT].Refilter();
 	if (std::optional<Rect> bent = _way_bends.TakeUpdate(); bent.has_value()) this->textures[BENDS_UNIT].Update(*bent, _way_bends.Texels());
 }
 
@@ -55,5 +70,5 @@ void WorldTextures::Release()
 void WorldTextures::BindSamplers(const ShaderProgram &program)
 {
 	program.Use();
-	for (uint unit = 0; unit < UNIT_COUNT; unit++) program.BindSampler(SourceOf(unit).sampler, unit);
+	for (uint unit = 0; unit < UNIT_COUNT; unit++) program.BindSampler(SAMPLERS[unit], unit);
 }

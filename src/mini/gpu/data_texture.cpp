@@ -28,6 +28,7 @@ static TexelLayout LayoutOf(TexelFormat format)
 {
 	switch (format) {
 		case TexelFormat::FilteredRgba: return {GL_RGBA8, GL_RGBA, 4, true, GL_CLAMP_TO_EDGE};
+		case TexelFormat::FilteredRed: return {GL_R8, GL_RED, 1, true, GL_CLAMP_TO_EDGE};
 		case TexelFormat::TiledRgba: return {GL_RGBA8, GL_RGBA, 4, true, GL_REPEAT};
 		default: return {GL_RGBA8UI, GL_RGBA_INTEGER, 4, false, GL_CLAMP_TO_EDGE};
 	}

@@ -36,6 +36,7 @@
 #include "frame_units.h"
 #include "network_field.h"
 #include "scene_view.h"
+#include "seabed.h"
 #include "structure_mesh.h"
 #include "tree_models.h"
 #include "water_pass.h"
@@ -141,6 +142,7 @@ static std::string ShaderHeader()
 	DefineFloat(header, "INFRASTRUCTURE_PPT", INFRASTRUCTURE_PPT);
 	DefineFloat(header, "GRID_FADE_PPT", GRID_FADE_PPT);
 	DefineFloat(header, "NETWORK_OPAQUE_PPT", NETWORK_FADE_END);
+	DefineFloat(header, "SHELF_TILES", SHELF_TILES);
 	DefineInt(header, "TREE_DETAILS", static_cast<int>(TREE_DETAILS));
 	DefineFloats(header, "TREE_DETAIL_FLOORS", TREE_DETAIL_FLOORS);
 	DefineFloats(header, "TREE_AGE_SCALES", TREE_AGE_SCALES);

@@ -15,6 +15,7 @@
 #include "../gpu/data_texture.h"
 #include "../map/world_tiles.h"
 #include "shader_program.h"
+#include "shore_field.h"
 
 class WorldTextures {
 public:
@@ -25,6 +26,7 @@ public:
 		SURFACES_UNIT,
 		NETWORK_UNIT,
 		BENDS_UNIT,
+		SHORE_UNIT,
 		UNIT_COUNT,
 	};
 
@@ -36,14 +38,15 @@ public:
 
 private:
 	struct Source {
-		const char *sampler;
 		TexelFormat format;
 		const void *texels;
 	};
 
-	static Source SourceOf(uint unit);
+	Source SourceOf(uint unit) const;
+	void Allocate(uint unit);
 
 	std::array<DataTexture, UNIT_COUNT> textures;
+	ShoreField shore;
 };
 
 #endif /* MINI_WORLD_WORLD_TEXTURES_H */

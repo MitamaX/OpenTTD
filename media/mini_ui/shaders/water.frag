@@ -90,7 +90,7 @@ const float SHELF_DEPTH = 0.4;
 const float DECK_SHELTER = 0.75;
 const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
-const float SHELF_LEVEL = 0.8;
+const float SHELF_REACH = 2.5;
 const float GRAZING_SIGHT = 0.2;
 
 const float KELVIN_SLOPE = 0.354;
@@ -418,10 +418,12 @@ float DeckCover(vec2 p)
 	return 1.0 - smoothstep(DECK_SHADE_INNER, DECK_SHADE_OUTER, across);
 }
 
-/* Off a sea shore the water deepens smoothly with the curved line of its field, however the ground under it steps, so the bed of coast tiles shows no saw teeth through it. */
-float ShelfPath(float level, vec3 sight)
+/* Off a sea shore the water deepens smoothly with the distance out from the land, measured straight across the water,
+ * however the ground under it steps, so the bed of coast tiles shows no saw teeth through it and the shallows keep one breadth round every corner. */
+float ShelfPath(vec2 p, vec3 sight)
 {
-	float depth = SHELF_DEPTH * smoothstep(WATERLINE, SHELF_LEVEL, level);
+	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES;
+	float depth = SHELF_DEPTH * smoothstep(0.0, SHELF_REACH, offshore);
 	return depth / max(-sight.z, GRAZING_SIGHT);
 }
 
@@ -461,7 +463,7 @@ void main()
 	float sheltered = 1.0 - DECK_SHELTER * DeckCover(p);
 	vec3 light = sun * max(SunDirection().z, 0.0) + AmbientLight(up) * sheltered;
 
-	vec3 transmittance = exp(-body.absorption * max(bent.x, ShelfPath(field.r, sight) * body.sea)) * (1.0 - body.murk);
+	vec3 transmittance = exp(-body.absorption * max(bent.x, ShelfPath(p, sight) * body.sea)) * (1.0 - body.murk);
 	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(normal.xy));
 	vec3 below = texture(u_scene_colour, bent_uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
 
