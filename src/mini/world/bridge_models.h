@@ -41,7 +41,7 @@ Footing RampFooting(TileIndex head, DiagDirection onto, int deck);
 /* A head's ramp from the middle of its outer edge to the middle of the edge it meets the span at. */
 Stretch RampRun(TileIndex head, DiagDirection onto);
 
-void LayBridgeSpan(SpanMesh &mesh, const BridgeSite &bridge, int tx, int ty);
+void LayBridgeSpan(SpanMesh &mesh, const BridgeSite &bridge, int tx, int ty, WayDetail detail);
 void LayBridgeRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex head);
 
 #endif /* MINI_WORLD_BRIDGE_MODELS_H */

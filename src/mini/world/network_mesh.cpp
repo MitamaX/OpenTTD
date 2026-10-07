@@ -181,7 +181,7 @@ private:
 	void BridgeSpan(const BridgeSite &bridge, int tx, int ty)
 	{
 		SpanMesh &span = this->meshes.Span(LayerOf(bridge.transport));
-		LayBridgeSpan(span, bridge, tx, ty);
+		LayBridgeSpan(span, bridge, tx, ty, this->detail);
 		span.Append(this->BridgeWay(bridge, tx, ty, DeckFooting(bridge)));
 	}
 

@@ -214,8 +214,8 @@ static ModelMesh Deck(const Stretch &run, const BridgeLook &look, bool aqueduct,
 /* One tile of a bridge over the middle, its parts placed along the whole span so cables and arches run on from tile to tile. */
 class SpanBuilder {
 public:
-	SpanBuilder(const BridgeSite &bridge, int tx, int ty) :
-		bridge(bridge), look(LookOf(bridge)), frame(bridge), tx(tx), ty(ty), first(this->frame.Entry(tx, ty))
+	SpanBuilder(const BridgeSite &bridge, int tx, int ty, WayDetail detail) :
+		bridge(bridge), look(LookOf(bridge)), frame(bridge), tx(tx), ty(ty), first(this->frame.Entry(tx, ty)), detail(detail)
 	{
 	}
 
@@ -363,7 +363,7 @@ private:
 		if (this->PierHere(3)) this->Pier(mesh, -DECK_DEPTH);
 	}
 
-	/* A line over the span sampled across this tile, hung from the deck's edges every sample where it stands clear of the deck. */
+	/* A line over the span sampled across this tile, hung from the deck's edges every sample where it stands clear of the deck; from afar the hangers are too fine to show. */
 	template <class Height>
 	void Hung(SpanMesh &mesh, double lateral, Height height) const
 	{
@@ -372,7 +372,7 @@ private:
 				double from = this->first + static_cast<double>(sample) / SAMPLES_PER_TILE;
 				double to = this->first + static_cast<double>(sample + 1) / SAMPLES_PER_TILE;
 				this->Member(mesh, this->frame.Point(from, side * lateral, height(from)), this->frame.Point(to, side * lateral, height(to)));
-				if (height(from) > HANGER_LEAST) this->Member(mesh, this->frame.Point(from, side * lateral, 0.0), this->frame.Point(from, side * lateral, height(from)), THIN_HALF);
+				if (this->detail == WayDetail::Full && height(from) > HANGER_LEAST) this->Member(mesh, this->frame.Point(from, side * lateral, 0.0), this->frame.Point(from, side * lateral, height(from)), THIN_HALF);
 			}
 		}
 	}
@@ -426,11 +426,12 @@ private:
 	int tx;
 	int ty;
 	double first;
+	WayDetail detail;
 };
 
-void LayBridgeSpan(SpanMesh &mesh, const BridgeSite &bridge, int tx, int ty)
+void LayBridgeSpan(SpanMesh &mesh, const BridgeSite &bridge, int tx, int ty, WayDetail detail)
 {
-	mesh.Append(SpanBuilder(bridge, tx, ty).Build().Raise(bridge.deck * LevelRise()));
+	mesh.Append(SpanBuilder(bridge, tx, ty, detail).Build().Raise(bridge.deck * LevelRise()));
 }
 
 /* A ramp climbs over its head on the ground's own earth, which the terrain banks up under it; only the crown its way is laid on is the bridge's.
