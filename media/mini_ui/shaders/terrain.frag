@@ -71,9 +71,10 @@ const float OUTCROPS_PER_TILE = 0.9;
 const float TUFTS_PER_TILE = 6.5;
 const float BOULDERS_PER_TILE = 5.5;
 const float MICRO_PER_TILE = 17.0;
+const float CLUMPS_PER_TILE = 3.3;
 const float BUMP_PER_TILE = 9.0;
 const float FINE_BUMP_SCALE = 2.6;
-const float BUMP_DEPTH = 0.011;
+const float BUMP_DEPTH = 0.02;
 
 const float GRASS_RUGGED = 0.6;
 const float ROUGH_RUGGED = 0.7;
@@ -116,6 +117,7 @@ struct Ground {
 struct Grain {
 	float broad;
 	float local;
+	float clump;
 	float fine;
 	float micro;
 };
@@ -170,7 +172,7 @@ struct Canopy {
 Grain GrainAt(vec2 p)
 {
 	float micro = 0.6 * Octave(p, MICRO_PER_TILE) + 0.4 * Octave(p + 3.7, MICRO_PER_TILE * 2.3);
-	return Grain(Layered(p, 0.15), Layered(p, 1.3), Octave(p, 7.0), micro);
+	return Grain(Layered(p, 0.15), Layered(p, 1.3), Octave(p + 2.2, CLUMPS_PER_TILE), Octave(p, 7.0), micro);
 }
 
 Ground GroundAt(ivec2 tile)
@@ -250,7 +252,8 @@ vec3 Grass(Ground ground, Grain grain)
 {
 	vec3 green = GrassTone(grain.broad, ground.lush);
 	vec3 straw = green * STRAW_TINT;
-	vec3 blades = mix(green, straw, smoothstep(0.5, 0.85, grain.local)) * Varied(grain.local, 0.16) * Varied(grain.fine, 0.18) * Varied(grain.micro, 0.34);
+	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7);
+	vec3 blades = mix(green, straw, smoothstep(0.5, 0.85, grain.local)) * shade;
 	vec3 soil = SOIL * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25);
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
@@ -645,12 +648,13 @@ vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, float levels_per
 	return Overlay(clamp(colour, 0.0, 1.0), network);
 }
 
-/* Everything read through screen derivatives is read before the fragment branches, where neighbouring pixels may part ways. */
+/* Everything read through screen derivatives is read before the fragment branches, where neighbouring pixels may part ways.
+ * Detail fades by the pixel's mean span, so ground seen at a glancing angle keeps its grain for the antialiasing to settle. */
 void main()
 {
 	vec2 p = v_world.xy;
 	mat2 pixel = mat2(dFdx(p), dFdy(p));
-	tile_pixels = 1.0 / max(max(length(pixel[0]), length(pixel[1])), MIN_SPREAD);
+	tile_pixels = 1.0 / max(sqrt(length(pixel[0]) * length(pixel[1])), MIN_SPREAD);
 	float levels_per_pixel = max(fwidth(v_world.z), MIN_SPREAD);
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);
