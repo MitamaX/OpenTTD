@@ -53,10 +53,9 @@ public:
 		for (ChangeKind kind : kinds) this->ForEachTouched(changes.Of(kind), margin, visit);
 	}
 
-	/* Every block within reach of the eye whose box, grown by a margin of tiles and standing up to the top, the frustum meets and in which a tile still spans the fewest pixels;
-	 * the visit says whether to go on. */
+	/* Every block within the distance of the eye at which a tile still spans the fewest pixels, or within a margin of tiles beyond it, row by row; the visit says whether to go on. */
 	template <class Visit>
-	void ForEachSeen(const SceneView &view, const Frustum &frustum, double fewest_pixels, int margin, double top, Visit visit) const
+	void ForEachWithin(const SceneView &view, double fewest_pixels, int margin, Visit visit) const
 	{
 		if (this->Count() == 0) return;
 		double reach = view.focal / fewest_pixels + margin;
@@ -67,14 +66,23 @@ public:
 		int y1 = chunk_at(view.eye.y + reach, this->rows);
 		for (int y = y0; y <= y1; y++) {
 			for (int x = x0; x <= x1; x++) {
-				size_t index = static_cast<size_t>(y) * this->columns + x;
-				TileSpan tiles = this->TilesOf(index);
-				Vec3 low = {static_cast<double>(tiles.tx0 - margin), static_cast<double>(tiles.ty0 - margin), 0.0};
-				Vec3 high = {static_cast<double>(tiles.tx1 + 1 + margin), static_cast<double>(tiles.ty1 + 1 + margin), top};
-				if (!BoxMeets(frustum, low, high) || view.NearestTilePixels(low, high) < fewest_pixels) continue;
-				if (!visit(index)) return;
+				if (!visit(static_cast<size_t>(y) * this->columns + x)) return;
 			}
 		}
+	}
+
+	/* Every block within reach of the eye whose box, grown by a margin of tiles and standing up to the top, the frustum meets and in which a tile still spans the fewest pixels;
+	 * the visit says whether to go on. */
+	template <class Visit>
+	void ForEachSeen(const SceneView &view, const Frustum &frustum, double fewest_pixels, int margin, double top, Visit visit) const
+	{
+		this->ForEachWithin(view, fewest_pixels, margin, [&](size_t index) {
+			TileSpan tiles = this->TilesOf(index);
+			Vec3 low = {static_cast<double>(tiles.tx0 - margin), static_cast<double>(tiles.ty0 - margin), 0.0};
+			Vec3 high = {static_cast<double>(tiles.tx1 + 1 + margin), static_cast<double>(tiles.ty1 + 1 + margin), top};
+			if (!BoxMeets(frustum, low, high) || view.NearestTilePixels(low, high) < fewest_pixels) return true;
+			return visit(index);
+		});
 	}
 
 private:

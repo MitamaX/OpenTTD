@@ -25,6 +25,8 @@
 
 static constexpr uint64_t EVICT_FRAMES = 600;
 static constexpr double CROWN_REACH = 0.3;
+static constexpr int CROWN_MARGIN = 1;
+static_assert(CROWN_REACH <= CROWN_MARGIN);
 static constexpr double SLOT_JITTER = 0.09;
 static constexpr double EDGE_MARGIN = 0.08;
 static constexpr double SPARE_TREE_SCALE = 0.85;
@@ -170,26 +172,28 @@ void ForestField::GatherCell(const Cell &cell, const SceneView &camera, double n
 	}
 }
 
-/* A block is planted only once a view is near enough to show its trees; until then it is bounded by the whole height of the map. */
+/* A block is planted only once a view is near enough to show its trees; until then it is bounded by the whole height of the map.
+ * Only the blocks near enough for a tile to span the coarsest detail's fewest pixels are looked at. */
 void ForestField::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, TreeBatch &batch)
 {
 	double rise = LevelRise();
-	for (size_t index = 0; index < this->cells.size(); index++) {
+	double fewest_pixels = TREE_DETAIL_FLOORS[static_cast<size_t>(coarsest)] * std::exp2(-TREE_CROSSFADE_OCTAVES);
+	this->grid.ForEachWithin(camera, fewest_pixels, CROWN_MARGIN, [&](size_t index) {
 		Cell &cell = this->cells[index];
 		TileSpan tiles = this->grid.TilesOf(index);
 		double low = cell.planted ? cell.low : 0.0;
 		double high = cell.planted ? cell.high : _world_tiles.Peak();
 		Vec3 low_corner = {tiles.tx0 - CROWN_REACH, tiles.ty0 - CROWN_REACH, low * rise - DEEPEST_SINK * rise};
 		Vec3 high_corner = {tiles.tx1 + 1.0 + CROWN_REACH, tiles.ty1 + 1.0 + CROWN_REACH, high * rise + TREE_TALLEST};
-		if (!BoxMeets(frustum, low_corner, high_corner)) continue;
+		if (!BoxMeets(frustum, low_corner, high_corner)) return true;
 
 		double near_pixels = camera.NearestTilePixels(low_corner, high_corner);
-		if (!DetailsAt(near_pixels, coarsest).Shows()) continue;
+		if (!DetailsAt(near_pixels, coarsest).Shows()) return true;
 		if (!cell.planted) this->Plant(cell, tiles);
 		cell.drawn = this->frame;
-		if (cell.trees.empty()) continue;
-		this->GatherCell(cell, camera, near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low_corner, high_corner)), coarsest, batch);
-	}
+		if (!cell.trees.empty()) this->GatherCell(cell, camera, near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low_corner, high_corner)), coarsest, batch);
+		return true;
+	});
 }
 
 /* A block long out of every view lets its trees go, so a big map only holds the forests near the view. */
