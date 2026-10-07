@@ -37,6 +37,8 @@ const float DROWNED_LEVELS = 0.6;
 const float BLEND_WIDTH = 0.28;
 const float BUILT_BLEND_WIDTH = 0.03;
 const float BLEND_PIXELS = 0.8;
+const float BLOCKS_BLUR_PIXELS = 4.0;
+const float BLOCKS_SHOWN_PIXELS = 12.0;
 const float NATURAL_WARP = 0.32;
 const float BUILT_WARP = 0.06;
 const float DEPTH_LOD = 3.0;
@@ -519,7 +521,7 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 
 Patch Surface(vec2 p, Grain grain, Relief relief, bool armoured, out Site site)
 {
-	float built = min(Builtness(p) * 2.0, 1.0);
+	float built = min(Builtness(p) * 2.0, 1.0) * smoothstep(BLOCKS_BLUR_PIXELS, BLOCKS_SHOWN_PIXELS, tile_pixels);
 	float reach = mix(NATURAL_WARP, BUILT_WARP, built);
 	float width = mix(BLEND_WIDTH, max(BUILT_BLEND_WIDTH, BLEND_PIXELS / tile_pixels), built);
 	vec2 warp = (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0 * reach;
