@@ -146,7 +146,7 @@ struct RampTexel {
 	bool operator==(const RampTexel &) const = default;
 };
 
-/* The blocks where any texel changed, and the fewer where the ground's shape, its water or the ways banked up on it did. */
+/* Within each block of the map, the span of tiles where any texel changed, and of the fewer where the ground's shape, its water or the ways banked up on it did. */
 struct WorldChanges {
 	std::vector<Rect> areas;
 	std::vector<Rect> reliefs;
@@ -198,7 +198,7 @@ private:
 	void Repack(TileIndex tile);
 	void Sweep();
 	void MarkChanged(TileIndex tile, const Texels &packed, const Texels &stored);
-	std::optional<Rect> ClaimBlock(TileIndex tile, std::vector<bool> &claimed) const;
+	void Claim(TileIndex tile, std::vector<uint32_t> &claims, std::vector<Rect> &areas) const;
 
 	Dimension size{};
 	uint peak = 0;
@@ -211,8 +211,9 @@ private:
 	std::vector<TileIndex> pending;
 	std::vector<TileIndex> touched;
 	std::vector<bool> queued;
-	std::vector<bool> changed_blocks;
-	std::vector<bool> relief_blocks;
+	/* Each block's place among the areas, counted from one; nought for a block none of them lies in yet. */
+	std::vector<uint32_t> changed_claims;
+	std::vector<uint32_t> relief_claims;
 	WorldChanges changes;
 	uint sweep_next = 0;
 	uint64_t ways_revision = 0;

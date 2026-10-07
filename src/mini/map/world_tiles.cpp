@@ -471,8 +471,8 @@ void WorldTiles::Sync()
 
 WorldChanges WorldTiles::TakeChanges()
 {
-	std::fill(this->changed_blocks.begin(), this->changed_blocks.end(), false);
-	std::fill(this->relief_blocks.begin(), this->relief_blocks.end(), false);
+	std::ranges::fill(this->changed_claims, 0);
+	std::ranges::fill(this->relief_claims, 0);
 	return std::exchange(this->changes, {});
 }
 
@@ -554,8 +554,8 @@ void WorldTiles::Rebuild()
 	this->queued.assign(count, false);
 	this->pending.clear();
 	this->touched.clear();
-	this->changed_blocks.assign(CeilDiv(this->size.width, BLOCK_TILES) * CeilDiv(this->size.height, BLOCK_TILES), false);
-	this->relief_blocks = this->changed_blocks;
+	this->changed_claims.assign(CeilDiv(this->size.width, BLOCK_TILES) * CeilDiv(this->size.height, BLOCK_TILES), 0);
+	this->relief_claims = this->changed_claims;
 	this->changes = {{}, {}, true, true};
 	this->sweep_next = 0;
 	this->stale = false;
@@ -587,7 +587,7 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 	bool water_changed = packed.water != stored.water;
 	this->changes.water |= water_changed;
 
-	if (std::optional<Rect> block = this->ClaimBlock(tile, this->changed_blocks); block.has_value()) this->changes.areas.push_back(*block);
+	this->Claim(tile, this->changed_claims, this->changes.areas);
 	bool groundwork_changed = GroundworkOf(packed.ground, packed.network) != GroundworkOf(stored.ground, stored.network);
 	bool ways_changed = packed.network != stored.network || packed.ramp != stored.ramp || packed.eases != stored.eases;
 	if (packed.ground != stored.ground) _frame_profile.Count("tile_ground");
@@ -602,19 +602,23 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 		this->ways_revision++;
 	}
 	if (!water_changed && !groundwork_changed && !ways_changed && packed.surface == stored.surface) return;
-	if (std::optional<Rect> block = this->ClaimBlock(tile, this->relief_blocks); block.has_value()) this->changes.reliefs.push_back(*block);
+	this->Claim(tile, this->relief_claims, this->changes.reliefs);
 }
 
-/* The block holding the tile, the first time it is claimed since the changes were last taken. */
-std::optional<Rect> WorldTiles::ClaimBlock(TileIndex tile, std::vector<bool> &claimed) const
+/* The tile joins the area of its block, which starts at the first tile of the block to change since the changes were last taken. */
+void WorldTiles::Claim(TileIndex tile, std::vector<uint32_t> &claims, std::vector<Rect> &areas) const
 {
-	uint bx = TileX(tile) / BLOCK_TILES;
-	uint by = TileY(tile) / BLOCK_TILES;
-	size_t block = static_cast<size_t>(by) * CeilDiv(this->size.width, BLOCK_TILES) + bx;
-	if (claimed[block]) return std::nullopt;
-	claimed[block] = true;
-
-	uint right = std::min((bx + 1) * BLOCK_TILES, this->size.width);
-	uint bottom = std::min((by + 1) * BLOCK_TILES, this->size.height);
-	return Rect{static_cast<int>(bx * BLOCK_TILES), static_cast<int>(by * BLOCK_TILES), static_cast<int>(right) - 1, static_cast<int>(bottom) - 1};
+	int tx = static_cast<int>(TileX(tile));
+	int ty = static_cast<int>(TileY(tile));
+	size_t block = static_cast<size_t>(ty / BLOCK_TILES) * CeilDiv(this->size.width, BLOCK_TILES) + tx / BLOCK_TILES;
+	if (claims[block] == 0) {
+		areas.push_back({tx, ty, tx, ty});
+		claims[block] = static_cast<uint32_t>(areas.size());
+		return;
+	}
+	Rect &area = areas[claims[block] - 1];
+	area.left = std::min(area.left, tx);
+	area.top = std::min(area.top, ty);
+	area.right = std::max(area.right, tx);
+	area.bottom = std::max(area.bottom, ty);
 }
