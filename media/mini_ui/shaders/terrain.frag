@@ -67,6 +67,8 @@ const vec3 LUSH_DARK = vec3(0.2, 0.35, 0.17);
 const vec3 LUSH_LIGHT = vec3(0.31, 0.47, 0.23);
 const vec3 ROUGH_TINT = vec3(0.55, 0.50, 0.30);
 const vec3 STRAW_TINT = vec3(1.14, 1.04, 0.78);
+const float STRAW_PATCHES_PER_TILE = 3.0;
+const float STRAW_MEAN = 0.12;
 const vec3 ROCK = vec3(0.50, 0.49, 0.47);
 const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
 const vec3 SCREE = vec3(0.55, 0.52, 0.47);
@@ -421,13 +423,14 @@ float Cover(float density, float clump)
 	return density >= 1.0 ? 1.0 : smoothstep(-0.06, 0.06, density + clump - 1.0);
 }
 
-/* Grass turns to straw here and there, and its blades fleck it light and dark up close. */
+/* Grass turns to straw here and there, and its blades fleck it light and dark up close; from afar the straw's patches, too small to make out, settle into one tone. */
 vec3 Grass(Ground ground, Grain grain, float lush)
 {
 	vec3 green = GrassTone(grain.broad, lush);
 	vec3 straw = green * STRAW_TINT;
 	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7);
-	vec3 blades = mix(green, straw, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro)) * shade;
+	float strawed = mix(STRAW_MEAN, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro), Resolved(STRAW_PATCHES_PER_TILE));
+	vec3 blades = mix(green, straw, strawed) * shade;
 	vec3 soil = Soil() * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
