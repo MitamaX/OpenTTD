@@ -208,6 +208,12 @@ void VideoDriver_SDL_OpenGL::ReleaseVideoPointer()
 	this->anim_buffer = nullptr;
 }
 
+/* Painting hands a changed palette to OpenGL, which applies it to the whole screen; the video buffer itself is unchanged. */
+void VideoDriver_SDL_OpenGL::CheckPaletteAnim()
+{
+	CopyPalette(this->local_palette);
+}
+
 void VideoDriver_SDL_OpenGL::Paint()
 {
 	PerformanceMeasurer framerate(PFE_VIDEO);

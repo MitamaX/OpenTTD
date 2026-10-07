@@ -53,6 +53,7 @@ protected:
 	bool AllocateBackingStore(int w, int h, bool force = false) override;
 	void *GetVideoPointer() override;
 	void ReleaseVideoPointer() override;
+	void CheckPaletteAnim() override;
 	void Paint() override;
 	bool CreateMainWindow(uint w, uint h, uint flags) override;
 

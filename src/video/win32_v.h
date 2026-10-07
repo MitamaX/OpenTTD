@@ -169,6 +169,7 @@ protected:
 
 	uint8_t GetFullscreenBpp() override { return 32; } // OpenGL is always 32 bpp.
 
+	void CheckPaletteAnim() override;
 	void Paint() override;
 
 	bool AllocateBackingStore(int w, int h, bool force = false) override;
