@@ -92,6 +92,10 @@ const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
 const float SHELF_REACH = 2.5;
 const float GRAZING_SIGHT = 0.2;
+const vec3 SHORE_ICE = vec3(0.8, 0.86, 0.9);
+const float ICE_REACH = 0.24;
+const float FLOES_PER_TILE = 3.7;
+const float ICE_ROUGHNESS = 0.08;
 
 const float KELVIN_SLOPE = 0.354;
 const float WAKE_ARM_WIDTH = 0.03;
@@ -418,6 +422,18 @@ float DeckCover(vec2 p)
 	return 1.0 - smoothstep(DECK_SHADE_INNER, DECK_SHADE_OUTER, across);
 }
 
+/* Along snowbound shores, in snowfields or above the snow line, the water freezes in a rim of ice that reaches out further here and there and breaks into floes at its outer edge. */
+float ShoreIce(vec2 p, float level, out float floes)
+{
+	floes = 0.6 * Noise(p * FLOES_PER_TILE) + 0.4 * Noise(p * FLOES_PER_TILE * 2.3 + 4.7);
+	if (Landscape() != LANDSCAPE_ARCTIC) return 0.0;
+	float snowbound = max(smoothstep(0.05, 0.35, ClimateAt(p).blanket), smoothstep(0.0, SNOW_LINE_PULL, SnowLift(v_world.z)));
+	if (snowbound <= 0.0) return 0.0;
+	float reach = ICE_REACH * snowbound * (0.5 + Noise(p * 0.6 + 2.9));
+	float edge = level - WATERLINE + (floes - 0.5) * ICE_ROUGHNESS;
+	return 1.0 - smoothstep(reach * 0.7, reach, edge);
+}
+
 /* Off a sea shore the water deepens smoothly with the distance out from the land, measured straight across the water,
  * however the ground under it steps, so the bed of coast tiles shows no saw teeth through it and the shallows keep one breadth round every corner. */
 float ShelfPath(vec2 p, vec3 sight)
@@ -473,8 +489,11 @@ void main()
 
 	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, straight.x);
 	float shore = Foam(p, max(ShoreBand(field.r), contact), body);
-	float foam = max(max(shore, Breakers(p, field.r, body)), max(Whitewater(p, descent) * river, Wake(p)));
+	float floes;
+	float ice = ShoreIce(p, field.r, floes);
+	float foam = max(max(shore, Breakers(p, field.r, body)), max(Whitewater(p, descent) * river, Wake(p))) * (1.0 - ice);
 	colour = mix(colour, Linear(FOAM) * light, foam);
+	colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + SunOnWater(waves, view, p, sun) * 0.3, ice);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
 	float shown = max(smoothstep(0.0, CONTACT_DEPTH, straight.y), body.calm) * outline;
