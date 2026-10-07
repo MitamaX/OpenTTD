@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "../gpu/mesh_buffer.h"
+#include "build_slice.h"
 #include "chunk_grid.h"
 #include "network_mesh.h"
 #include "scene_view.h"
@@ -27,11 +28,13 @@ inline constexpr double NETWORK_FADE_END = 12.0;
 using NetworkBuffers = std::array<MeshBuffer, NETWORK_LAYERS>;
 
 /* A block of tiles: its ways' and its bridges' spans' meshes per layer, built on the game's side and waiting to be handed to the GPU or already there,
- * the detail they were built at, its signals, the levels its ways span, and a digest of the texels its ways were built from. */
+ * the detail they were built at and whether the world changed under them since, the build that will replace them and the frame since which they have waited for it,
+ * its signals, the levels its ways span, and a digest of the texels its ways were built from. */
 struct NetworkChunk {
 	NetworkBuffers layers;
 	NetworkBuffers spans;
 	std::optional<NetworkMeshes> waiting;
+	std::optional<Rebuild<NetworkBuild>> rebuild;
 	std::vector<SignalSpot> signals;
 	WayDetail detail = WayDetail::Simple;
 	double nearest_pixels = 0.0;
@@ -42,7 +45,11 @@ struct NetworkChunk {
 	uint high = 0;
 	uint32_t digest = 0;
 	uint64_t wanted = 0;
+	uint64_t due_since = 0;
 
+	bool Outdated(WayDetail wanted_detail) const { return this->stale || !this->built || this->detail != wanted_detail; }
+	/* Ways wanted in full where none show yet are first drafted simply, which costs little. */
+	WayDetail NextDetail(WayDetail wanted_detail) const { return this->built ? wanted_detail : WayDetail::Simple; }
 	void Release();
 };
 
@@ -57,15 +64,25 @@ public:
 	void Release();
 
 private:
+	/* A block near enough to show its ways whose meshes are out of date, the detail it is wanted at and whether it is in sight. */
+	struct Due {
+		size_t index;
+		WayDetail detail;
+		bool in_sight;
+	};
+
 	void Lay(Dimension map);
 	uint32_t Digest(size_t index) const;
 	void Survey(NetworkChunk &chunk, const TileSpan &tiles) const;
-	void Build(NetworkChunk &chunk, const TileSpan &tiles, WayDetail detail) const;
+	void Build(size_t index, WayDetail detail);
+	void Refine();
+	void Finish(NetworkChunk &chunk);
 	std::pair<Vec3, Vec3> Bounds(const NetworkChunk &chunk, size_t index) const;
 	void Evict();
 
 	ChunkGrid grid{CHUNK_TILES};
 	std::vector<NetworkChunk> chunks;
+	std::vector<Due> due;
 	double rise = 0.0;
 	uint64_t frame = 0;
 };

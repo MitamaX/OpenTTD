@@ -40,6 +40,22 @@ struct NetworkMeshes {
 	SpanMesh &Span(MiniLayer layer) { return this->spans[to_underlying(layer)]; }
 };
 
-NetworkMeshes BuildNetwork(const TileSpan &tiles, WayDetail detail);
+/* A block's ways, built a tile at a time so the work may be spread over frames. */
+class NetworkBuild {
+public:
+	NetworkBuild(const TileSpan &tiles, WayDetail detail);
+
+	WayDetail Detail() const { return this->detail; }
+	bool Done() const { return this->next_ty > this->tiles.ty1; }
+	void Advance();
+	NetworkMeshes Finish();
+
+private:
+	TileSpan tiles;
+	WayDetail detail;
+	int next_tx;
+	int next_ty;
+	NetworkMeshes meshes;
+};
 
 #endif /* MINI_WORLD_NETWORK_MESH_H */

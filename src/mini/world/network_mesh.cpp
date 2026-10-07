@@ -86,10 +86,10 @@ static MiniLayer LayerOf(TransportType transport)
 	}
 }
 
-/* One block's builder: it walks the block's tiles and lays each one's ways into the layer it belongs to. */
+/* Lays a tile's ways into the layer of the block's meshes they belong to. */
 class NetworkBuilder {
 public:
-	explicit NetworkBuilder(WayDetail detail) : detail(detail) {}
+	NetworkBuilder(WayDetail detail, NetworkMeshes &meshes) : detail(detail), meshes(meshes) {}
 
 	void Build(int tx, int ty)
 	{
@@ -103,8 +103,6 @@ public:
 			default: break;
 		}
 	}
-
-	NetworkMeshes Finish() { return std::move(this->meshes); }
 
 private:
 	/* The world's texel names the track pieces a tile lays, a crossing's and a station's among them. */
@@ -218,14 +216,22 @@ private:
 	}
 
 	WayDetail detail;
-	NetworkMeshes meshes;
+	NetworkMeshes &meshes;
 };
 
-NetworkMeshes BuildNetwork(const TileSpan &tiles, WayDetail detail)
+NetworkBuild::NetworkBuild(const TileSpan &tiles, WayDetail detail) : tiles(tiles), detail(detail), next_tx(tiles.tx0), next_ty(tiles.ty0)
 {
-	NetworkBuilder builder(detail);
-	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
-		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) builder.Build(tx, ty);
-	}
-	return builder.Finish();
+}
+
+void NetworkBuild::Advance()
+{
+	NetworkBuilder(this->detail, this->meshes).Build(this->next_tx, this->next_ty);
+	if (++this->next_tx <= this->tiles.tx1) return;
+	this->next_tx = this->tiles.tx0;
+	this->next_ty++;
+}
+
+NetworkMeshes NetworkBuild::Finish()
+{
+	return std::move(this->meshes);
 }
