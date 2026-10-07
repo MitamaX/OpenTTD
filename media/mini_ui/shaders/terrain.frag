@@ -34,6 +34,8 @@ const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
 
 const float BLEND_WIDTH = 0.28;
+const float BUILT_BLEND_WIDTH = 0.03;
+const float BLEND_PIXELS = 0.8;
 const float NATURAL_WARP = 0.32;
 const float BUILT_WARP = 0.06;
 const float DEPTH_LOD = 3.0;
@@ -97,7 +99,13 @@ const float FURROWS_PER_TILE = 7.0;
 const float FURROW_DEPTH = 0.55;
 const float LEVEL_FIELD_SLOPE = 0.25;
 const float HILLSIDE_FIELD_SLOPE = 0.6;
-const float HEDGE_WIDTH = 0.035;
+const float TRAMLINES_PER_TILE = 1.0;
+const float TRAMLINE_GAUGE = 0.045;
+const float TRAMLINE_HALF_WIDTH = 0.012;
+const float TRAMLINE_DEPTH = 0.6;
+const float HEDGE_WIDTH = 0.05;
+const float HEDGE_FRINGE = 2.5;
+const float HEDGE_FRINGE_SHADE = 0.25;
 const float HEDGE_GAPS_PER_TILE = 1.9;
 const float HEDGE_OPACITY = 0.85;
 
@@ -200,9 +208,8 @@ struct Canopy {
 	float shade;
 };
 
-/* How many screen pixels a tile spans at the fragment the way the ground is seen most foreshortened; the finest grain and bumps fade by it,
- * so at a glancing view they settle instead of streaking. */
-float foreshortened_pixels;
+/* The ground one screen pixel steps over across and down the screen; lines on the ground fade by how far apart it puts them. */
+mat2 footprint;
 
 Grain GrainAt(vec2 p, Detail detail)
 {
@@ -378,18 +385,23 @@ Patch Rocks(Grain grain, vec2 p, Bare bare)
 	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, patches), ROCK_RUGGED, outcrop));
 }
 
-/* A field's crop grows in rows across it, ripening unevenly, with bare soil between the rows; on a hillside it grows rough without rows, so no lattice is drawn over the slope. */
+/* A field's crop grows in rows across it, ripening and thinning unevenly, with bare soil between the rows and a pair of wheel tracks every so often;
+ * rows stay sharp seen end on and fade only as they crowd closer than the pixels. On a hillside it grows rough without rows, so no lattice is drawn over the slope. */
 Patch Fields(Ground ground, Grain grain, vec2 p)
 {
-	vec3 crop = CROPS[int(ground.variant % uint(CROP_COUNT))] * Varied(Octave(p + 1.9, 0.6), 0.16) * Varied(grain.local, 0.08);
-	float across = (ground.variant & 1u) == 0u ? p.x : p.y;
-	float along = (ground.variant & 1u) == 0u ? p.y : p.x;
+	vec3 crop = CROPS[int(ground.variant % uint(CROP_COUNT))] * Varied(Octave(p + 1.9, 0.6), 0.22) * Varied(Octave(p + 7.4, 2.1), 0.1) * Varied(grain.local, 0.1);
+	bool rows_along_y = (ground.variant & 1u) == 0u;
+	float across = rows_along_y ? p.x : p.y;
+	float along = rows_along_y ? p.y : p.x;
+	float row_pitch = Pitch(footprint, rows_along_y ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
 	float level = 1.0 - smoothstep(LEVEL_FIELD_SLOPE, HILLSIDE_FIELD_SLOPE, SlopeOf(normalize(v_normal)));
 	float gap = abs(fract(across * FURROWS_PER_TILE) - 0.5) * 2.0;
-	float furrow = smoothstep(0.55, 0.95, gap) * level * ResolvedAt(2.0 * FURROWS_PER_TILE, foreshortened_pixels);
-	float plants = Varied(Noise(vec2(across * FURROWS_PER_TILE, along * MICRO_PER_TILE)), 0.3 * ResolvedAt(MICRO_PER_TILE, foreshortened_pixels));
-	vec3 soil = mix(SOIL, crop, 0.25) * 0.85;
-	return Patch(mix(crop * plants, soil, furrow * FURROW_DEPTH), FIELD_RUGGED);
+	float furrow = smoothstep(0.45, 0.95, gap) * level * ResolvedAt(FURROWS_PER_TILE, 1.0 / row_pitch);
+	float track_gap = abs(abs(fract(across * TRAMLINES_PER_TILE) - 0.5) / TRAMLINES_PER_TILE - TRAMLINE_GAUGE);
+	float track = Stroke(track_gap, TRAMLINE_HALF_WIDTH, row_pitch) * level;
+	float plants = Varied(Noise(vec2(across * FURROWS_PER_TILE, along * MICRO_PER_TILE)), 0.3 * ResolvedAt(MICRO_PER_TILE, 1.0 / row_pitch)) * Varied(grain.micro, 0.25);
+	vec3 soil = mix(SOIL, crop, 0.25) * 0.85 * Varied(grain.fine, 0.2);
+	return Patch(mix(mix(crop * plants, soil, furrow * FURROW_DEPTH), soil, track * TRAMLINE_DEPTH), FIELD_RUGGED);
 }
 
 bool CarriesWay(ivec2 tile)
@@ -506,11 +518,13 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 
 Patch Surface(vec2 p, Grain grain, Relief relief, bool armoured, out Site site)
 {
-	float reach = mix(NATURAL_WARP, BUILT_WARP, Builtness(p));
+	float built = min(Builtness(p) * 2.0, 1.0);
+	float reach = mix(NATURAL_WARP, BUILT_WARP, built);
+	float width = mix(BLEND_WIDTH, max(BUILT_BLEND_WIDTH, BLEND_PIXELS / tile_pixels), built);
 	vec2 warp = (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0 * reach;
 	vec2 q = p + warp - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
-	vec2 f = smoothstep(HALF_TILE - BLEND_WIDTH, HALF_TILE + BLEND_WIDTH, fract(q));
+	vec2 f = smoothstep(HALF_TILE - width, HALF_TILE + width, fract(q));
 
 	Ground corners[4] = Ground[4](GroundAt(cell), GroundAt(cell + ivec2(1, 0)), GroundAt(cell + ivec2(0, 1)), GroundAt(cell + ivec2(1, 1)));
 	float shares[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
@@ -557,10 +571,13 @@ vec4 Hedgerow(vec2 p, Grain grain)
 	if (!SameField(tile + ivec2(1, 0), home)) near = min(near, 1.0 - f.x);
 	if (!SameField(tile - ivec2(0, 1), home)) near = min(near, f.y);
 	if (!SameField(tile + ivec2(0, 1), home)) near = min(near, 1.0 - f.y);
-	float width = HEDGE_WIDTH * (0.5 + 0.9 * grain.fine);
+	float width = HEDGE_WIDTH * (0.6 + 0.8 * grain.fine);
 	float gaps = smoothstep(0.25, 0.4, Noise(p * HEDGE_GAPS_PER_TILE + 4.4));
-	float hedge = (1.0 - smoothstep(width, width + 1.5 / tile_pixels, near)) * gaps * Resolved(1.0 / HEDGE_WIDTH);
-	return vec4(HEDGE * Varied(grain.micro, 0.6) * Varied(grain.clump, 0.4), 1.0) * hedge * HEDGE_OPACITY;
+	float pixel = 1.0 / tile_pixels;
+	float hedge = Stroke(near, width, pixel) * gaps;
+	float fringe = Stroke(near, width * HEDGE_FRINGE, pixel) * gaps * (1.0 - hedge);
+	vec4 leaves = vec4(HEDGE * Varied(grain.micro, 0.6) * Varied(grain.clump, 0.4), 1.0) * hedge * HEDGE_OPACITY;
+	return leaves + vec4(0.0, 0.0, 0.0, fringe * HEDGE_FRINGE_SHADE);
 }
 
 /* Fine bumps and stones catch the light up close: soft on grass and fields, sharp on scree and rock. */
@@ -770,7 +787,7 @@ void main()
 	vec2 p = v_world.xy;
 	mat2 pixel = mat2(dFdx(p), dFdy(p));
 	tile_pixels = 1.0 / max(sqrt(length(pixel[0]) * length(pixel[1])), MIN_SPREAD);
-	foreshortened_pixels = 1.0 / max(max(length(pixel[0]), length(pixel[1])), MIN_SPREAD);
+	footprint = pixel;
 	float levels_per_pixel = max(fwidth(v_world.z), MIN_SPREAD);
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);
