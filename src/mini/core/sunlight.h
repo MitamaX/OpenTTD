@@ -16,11 +16,7 @@ struct SunVector {
 	double z;
 };
 
-/* The unit way to the sun along map X, map Y and straight up: an afternoon sun low enough for steep hills to cast long shadows, lighting a north facing view from ahead and to the left. */
-inline constexpr double SUN_X = -0.263;
-inline constexpr double SUN_Y = -0.835;
-inline constexpr double SUN_UP = 0.485;
-
+/* The unit way to the sun along map X, map Y and straight up, from the bearing and elevation the tuning names. */
 SunVector Sun();
 
 #endif /* MINI_CORE_SUNLIGHT_H */

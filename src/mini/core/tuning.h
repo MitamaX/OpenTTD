@@ -37,6 +37,8 @@ struct MiniTuning {
 	int anti_aliasing = 2;
 	int depth_of_field = 0;
 	double exposure = 0.0;
+	double sun_elevation = 22.0;
+	double sun_azimuth = 332.0;
 
 	void Load();
 };

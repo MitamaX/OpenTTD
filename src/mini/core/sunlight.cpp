@@ -10,9 +10,17 @@
 #include "../../stdafx.h"
 #include "sunlight.h"
 
+#include <cmath>
+#include <numbers>
+
+#include "camera.h"
+#include "tuning.h"
+
 #include "../../safeguards.h"
 
 SunVector Sun()
 {
-	return {SUN_X, SUN_Y, SUN_UP};
+	double elevation = _tuning.sun_elevation * std::numbers::pi / 180.0;
+	Vec3 level = Bearing(_tuning.sun_azimuth) * std::cos(elevation);
+	return {level.x, level.y, std::sin(elevation)};
 }

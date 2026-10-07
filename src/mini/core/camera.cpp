@@ -74,7 +74,7 @@ static TilePoint Confined(TilePoint point)
 }
 
 /* The bearing clockwise from map north as a horizontal direction in the map's plane. */
-static Vec3 Bearing(double degrees)
+Vec3 Bearing(double degrees)
 {
 	double radians = degrees / DEGREES_PER_RADIAN;
 	return NORTH * std::cos(radians) + EAST * std::sin(radians);

@@ -95,6 +95,8 @@ double GroundLevel(double tx, double ty);
 double LevelRise();
 Vec3 RenderPoint(const WorldPoint &point);
 double SmoothStep(double edge0, double edge1, double x);
+/* The level way a compass bearing faces, in degrees clockwise from map north. */
+Vec3 Bearing(double degrees);
 
 class Camera {
 public:

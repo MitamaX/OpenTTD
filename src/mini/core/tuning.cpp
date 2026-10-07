@@ -76,6 +76,8 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "anti_aliasing", this->anti_aliasing);
 	ReadIniNumber(group, "depth_of_field", this->depth_of_field);
 	ReadIniNumber(group, "exposure", this->exposure);
+	ReadIniNumber(group, "sun_elevation", this->sun_elevation);
+	ReadIniNumber(group, "sun_azimuth", this->sun_azimuth);
 
 	this->pan_speed = Clamp(this->pan_speed, 100.0, 10000.0);
 	this->pan_speed_fast = Clamp(this->pan_speed_fast, 100.0, 20000.0);
@@ -98,6 +100,8 @@ void MiniTuning::Load()
 	this->glide_ms = Clamp(this->glide_ms, 1.0, 2000.0);
 	this->anti_aliasing = Clamp(this->anti_aliasing, 0, 2);
 	this->exposure = Clamp(this->exposure, -4.0, 4.0);
+	this->sun_elevation = Clamp(this->sun_elevation, 5.0, 85.0);
+	this->sun_azimuth = Clamp(this->sun_azimuth, 0.0, 360.0);
 
 	ini.SaveToDisk(path);
 }
