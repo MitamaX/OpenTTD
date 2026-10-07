@@ -29,7 +29,8 @@ bool IsBareCoast(int tx, int ty)
 	TileIndex tile = TileXY(tx, ty);
 	GroundTexel ground = _world_tiles.GroundAt(tile);
 	NetworkTexel network = _world_tiles.NetworkAt(tile);
-	return ground.material == GroundMaterial::Shore && ground.flora == 0 && network.track == 0 && network.road == 0 && network.tram == 0;
+	bool spanned = (network.style & NETWORK_BRIDGE_BIT) != 0;
+	return ground.material == GroundMaterial::Shore && ground.flora == 0 && network.track == 0 && network.road == 0 && network.tram == 0 && !spanned;
 }
 
 /* The cubic through p1 and p2 whose slopes there point from the points either side. */

@@ -15,7 +15,7 @@
 #include "../core/camera.h"
 #include "seabed.h"
 
-/* A coast tile with nothing standing on it, whose ground may curve without lifting anything off it. */
+/* A coast tile with nothing standing on it or spanning it, whose ground may curve without lifting anything off it. */
 bool IsBareCoast(int tx, int ty);
 
 /* The curved ground of one bare coast tile: a spline through the bed's corners, straightened toward every tile whose ground keeps its facets,
