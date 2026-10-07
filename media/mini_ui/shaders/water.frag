@@ -100,6 +100,9 @@ const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
 const float SHELF_REACH = 2.5;
 const float OPEN_SEA_LEVEL = 0.0;
+const float FETCH_LOD = 4.0;
+const float FETCH_TILES = 16.0;
+const vec2 OPEN_FETCH = vec2(0.12, 0.4);
 const float GRAZING_SIGHT = 0.2;
 const vec3 SHORE_ICE = vec3(0.8, 0.86, 0.9);
 const float ICE_REACH = 0.24;
@@ -448,6 +451,14 @@ float ShoreIce(vec2 p, float level, out float floes)
 	return 1.0 - smoothstep(reach * 0.7, reach, edge);
 }
 
+/* How little open water lies about a point for the wind to raise waves over: a pond or a small lake shut in by land lies still, as the open sea past the edge never does. */
+float Enclosed(vec2 p)
+{
+	vec2 to_edge = min(p, MapSize() - p);
+	float inland = smoothstep(0.0, FETCH_TILES, min(to_edge.x, to_edge.y));
+	return inland * (1.0 - smoothstep(OPEN_FETCH.x, OPEN_FETCH.y, textureLod(u_water, p / MapSize(), FETCH_LOD).r));
+}
+
 /* Off a sea shore the water deepens smoothly with the distance out from the land, measured straight across the water,
  * however the ground under it steps, so the bed of coast tiles shows no saw teeth through it and the shallows keep one breadth round every corner.
  * Past the map's edge it deepens on with the distance out from the edge. */
@@ -469,7 +480,8 @@ void main()
 	vec2 flow = ChannelFlow(p, field.r) * river;
 	vec3 descent = Descent(p);
 
-	Surface waves = Waves(p, body.calm);
+	float enclosed = Enclosed(p);
+	Surface waves = Waves(p, max(body.calm, enclosed));
 	waves = Stirred(waves, Streaks(p, flow, FLOW_SPEED) * FLOW_STEEPNESS * length(flow));
 	waves = Stirred(waves, Streaks(p, descent.xy, RAPIDS_SPEED) * RAPIDS_STEEPNESS * descent.z);
 	waves.ruffled = max(waves.ruffled, descent.z * RAPIDS_RUFFLE);
@@ -508,7 +520,7 @@ void main()
 	float shore = Foam(p, max(ShoreBand(field.r), contact), body);
 	float floes;
 	float ice = ShoreIce(p, field.r, floes);
-	float foam = max(max(shore, Breakers(p, field.r, body)), max(Whitewater(p, descent) * river, Wake(p))) * (1.0 - ice);
+	float foam = max(max(shore, Breakers(p, field.r, body) * (1.0 - enclosed)), max(Whitewater(p, descent) * river, Wake(p))) * (1.0 - ice);
 	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
 	colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + SunOnWater(waves, view, p, sun) * 0.3, ice);
 
