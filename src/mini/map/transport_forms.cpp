@@ -50,7 +50,8 @@ static constexpr uint8_t ONE_TILE = 1;
 static constexpr uint8_t SHIP_DEPOT_LENGTH = 2;
 static constexpr float SHIP_DEPOT_SIDE = 0.15f;
 static constexpr float SHIP_DEPOT_BASE = 0.05f;
-static constexpr float SHIP_DEPOT_HEIGHT = 0.45f;
+static constexpr float SHIP_DEPOT_HEIGHT = 0.3f;
+static constexpr uint SHIP_DEPOT_OWNER_SHARE = 96;
 
 static constexpr SiteLook TERMINAL_LOOK = BlockLook(4.0f, Finish::Glass);
 static constexpr SiteLook LOW_BLOCK_LOOK = BlockLook(2.0f, Finish::Concrete);
@@ -136,7 +137,7 @@ static BuildingForm LandDepotForm(TileIndex tile, DiagDirection exit, const Depo
 	return form;
 }
 
-/* Both ends of the shed open onto water, so both carry doors. */
+/* A low boathouse with doors onto the water at both ends, its walls in a touch of the owner's colour under a plain metal roof. */
 static BuildingForm ShipDepotForm(TileIndex tile)
 {
 	TileIndex north = GetShipDepotNorthTile(tile);
@@ -144,11 +145,12 @@ static BuildingForm ShipDepotForm(TileIndex tile)
 	uint32_t seed = TileSeed(north);
 	BuildingForm form = SiteForm(north, SiteFloor(north), axis == AXIS_X ? SHIP_DEPOT_LENGTH : ONE_TILE, axis == AXIS_Y ? SHIP_DEPOT_LENGTH : ONE_TILE);
 	Plot hall = FootprintOf(form).Inset(AxisToDiagDirs(OtherAxis(axis)), SHIP_DEPOT_SIDE);
+	uint32_t walls = Mix(FinishTint(Finish::Metal, seed), OwnerTint(north), SHIP_DEPOT_OWNER_SHARE);
 	form.Add(Part::Box(hall)
 		.On(SHIP_DEPOT_BASE)
-		.Facade(Finish::Metal, SHIP_DEPOT_HEIGHT, FinishTint(Finish::Metal, seed), AxisToDiagDirs(axis))
+		.Facade(Material::Corrugated, WindowGrid::Doors, SHIP_DEPOT_HEIGHT, walls, AxisToDiagDirs(axis))
 		.Gable(axis, INDUSTRIAL_PITCH)
-		.Covered(Material::MetalSeam, DepotRoof(seed, OwnerTint(north))));
+		.Covered(Material::MetalSeam, RoofTint(Material::MetalSeam, seed)));
 	return form;
 }
 
