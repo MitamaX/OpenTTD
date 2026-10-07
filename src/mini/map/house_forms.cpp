@@ -241,6 +241,17 @@ static constexpr float MAST_SIDE = 0.03f;
 static constexpr float MAST_TOP = 0.6f;
 
 static constexpr uint8_t PARK_TREES = 3;
+static constexpr float BED_EDGE = 0.1f;
+static constexpr float BED_SIDE = 0.24f;
+static constexpr float BED_HEIGHT = 0.014f;
+static constexpr float BED_KERB = 0.012f;
+static constexpr uint32_t BED_SOIL = 0xFF5C4632U;
+static constexpr std::array<uint32_t, 5> BLOOMS = {0xFFD8433AU, 0xFFE8B83AU, 0xFFD86FA0U, 0xFFF0EEE8U, 0xFF8A5BC8U};
+static constexpr float PARK_BENCH_LENGTH = 0.09f;
+static constexpr float PARK_BENCH_DEPTH = 0.025f;
+static constexpr float PARK_BENCH_HEIGHT = 0.028f;
+static constexpr float PARK_BENCH_GAP = 0.012f;
+static constexpr uint32_t PARK_BENCH_TINT = 0xFF86603EU;
 
 static constexpr float PLINTH_SIDE = 0.36f;
 static constexpr float PLINTH_HEIGHT = 0.06f;
@@ -943,11 +954,26 @@ static void BuildStadium(BuildingForm &form, const HouseSite &site)
 	}
 }
 
-static void BuildPark(BuildingForm &form, const HouseSite &)
+/* Paths cross a park between four flower beds, each blooming in its own colour behind a low edging, with benches beside the paths. */
+static void BuildPark(BuildingForm &form, const HouseSite &site)
 {
 	Plot ground = FootprintOf(form);
 	for (Axis axis : {AXIS_X, AXIS_Y}) {
 		Place(form, Part::Decal(ground.Narrowed(axis, PATH_WIDTH)).Covered(Material::Gravel, PATH_TINT));
+	}
+	SeedDice dice(site.seed);
+	for (DiagDirection x_side : {DIAGDIR_NE, DIAGDIR_SW}) {
+		for (DiagDirection y_side : {DIAGDIR_NW, DIAGDIR_SE}) {
+			Plot bed = ground.Band(x_side, BED_EDGE, BED_EDGE + BED_SIDE).Band(y_side, BED_EDGE, BED_EDGE + BED_SIDE);
+			Part edging = Part::Box(bed).Height(BED_HEIGHT).Detailed().Clad(Material::Stone, PLINTH_TINT).Covered(Material::Plain, BED_SOIL);
+			Place(form, edging);
+			Place(form, Part::Box(bed.Inset(BED_KERB)).On(BED_HEIGHT).Height(BED_HEIGHT).Detailed().Clad(Material::Plain, BLOOMS[dice.Below(static_cast<uint32_t>(BLOOMS.size()))]));
+		}
+	}
+	for (DiagDirection side : {DIAGDIR_NE, DIAGDIR_SW}) {
+		Plot verge = ground.Narrowed(AXIS_Y, PATH_WIDTH).Outside(DIAGDIR_SE, PARK_BENCH_GAP + PARK_BENCH_DEPTH).Inset(DIAGDIR_NW, PARK_BENCH_GAP);
+		Plot bench = verge.Band(side, BED_EDGE + (BED_SIDE - PARK_BENCH_LENGTH) / 2.0f, BED_EDGE + (BED_SIDE + PARK_BENCH_LENGTH) / 2.0f);
+		Place(form, Part::Box(bench).Height(PARK_BENCH_HEIGHT).Detailed().Clad(Material::Planks, PARK_BENCH_TINT));
 	}
 }
 

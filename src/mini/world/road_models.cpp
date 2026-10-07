@@ -53,6 +53,11 @@ static constexpr double ZEBRA_PITCH = 0.075;
 static constexpr double ZEBRA_MARGIN = 0.03;
 static constexpr double LAMP_ALONG = -0.35;
 static constexpr double LAMP_LATERAL = 0.43;
+static constexpr double AMENITY_LATERAL = 0.465;
+static constexpr double TREE_SHARE = 0.3;
+static constexpr double BENCH_SHARE = 0.18;
+static constexpr double BIN_SHARE = 0.16;
+static constexpr uint32_t AMENITY_SALT = 0x3A11E7U;
 static constexpr double BARRIER_ALONG = 0.4;
 static constexpr double BARRIER_LATERAL = ROAD_HALF + 0.06;
 
@@ -262,7 +267,7 @@ private:
 		}
 	}
 
-	/* A plain town street is lit from its pavement, the lamps standing on alternate sides from tile to tile. */
+	/* A plain town street is lit from its pavement, the lamps standing on alternate sides from tile to tile, with room across from each for an amenity. */
 	void StreetLight()
 	{
 		RoadBits bits = this->site.road;
@@ -271,6 +276,21 @@ private:
 		MapVector along = Along(bits);
 		MapVector across = RightOf(along) * side;
 		this->Lay(LampPost(along * LAMP_ALONG + across * LAMP_LATERAL, across * -1.0, PAVEMENT_TOP));
+		this->Amenity(along * -LAMP_ALONG + across * -AMENITY_LATERAL, across);
+	}
+
+	/* Across from the lamp the pavement may hold a street tree, a bench facing the road or a litter bin, out by the edge where walkers pass in front. */
+	void Amenity(const MapVector &at, const MapVector &toward_road)
+	{
+		uint32_t seed = Hash32(AMENITY_SALT + static_cast<uint32_t>(this->site.tx * 4099 + this->site.ty));
+		double pick = SeedShare(seed, 0, SeedDice::SHARE_BITS);
+		if (pick < TREE_SHARE) {
+			this->Lay(StreetTree(at, PAVEMENT_TOP, seed));
+		} else if (pick < TREE_SHARE + BENCH_SHARE) {
+			this->Lay(Bench(at, toward_road * -1.0, PAVEMENT_TOP));
+		} else if (pick < TREE_SHARE + BENCH_SHARE + BIN_SHARE) {
+			this->Lay(LitterBin(at, PAVEMENT_TOP));
+		}
 	}
 
 	/* A barrier stands at each approach to a level crossing, on the right of the traffic it stops. */

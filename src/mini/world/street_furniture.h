@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file street_furniture.h The small things standing beside ways: lamp posts, benches and level crossing barriers. */
+/** @file street_furniture.h The small things standing beside ways: lamp posts, benches, litter bins, street trees and level crossing barriers. */
 
 #ifndef MINI_WORLD_STREET_FURNITURE_H
 #define MINI_WORLD_STREET_FURNITURE_H
@@ -15,6 +15,9 @@
 /* Each stands on a point of the map at a height above its footing, its front turned toward a direction. */
 ModelMesh LampPost(const MapVector &at, const MapVector &facing, double base);
 ModelMesh Bench(const MapVector &at, const MapVector &facing, double base);
+ModelMesh LitterBin(const MapVector &at, double base);
+/* A young tree standing in the pavement, its canopy high enough to walk under; the seed shapes and shades it. */
+ModelMesh StreetTree(const MapVector &at, double base, uint32_t seed);
 ModelMesh CrossingBarrier(const MapVector &at, const MapVector &facing, double base);
 
 #endif /* MINI_WORLD_STREET_FURNITURE_H */

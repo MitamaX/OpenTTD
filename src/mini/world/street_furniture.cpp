@@ -5,11 +5,12 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file street_furniture.cpp The small things standing beside ways: lamp posts, benches and level crossing barriers. */
+/** @file street_furniture.cpp The small things standing beside ways: lamp posts, benches, litter bins, street trees and level crossing barriers. */
 
 #include "../../stdafx.h"
 #include "street_furniture.h"
 
+#include <array>
 #include <cmath>
 
 #include "../model/model_shapes.h"
@@ -32,6 +33,18 @@ static constexpr Vec3 BACK_HIGH = {0.014, 0.045, 0.06};
 static constexpr Vec3 LEGS_LOW = {-0.01, -0.035, 0.0};
 static constexpr Vec3 LEGS_HIGH = {0.01, 0.035, 0.024};
 
+static constexpr int BIN_SIDES = 8;
+static constexpr double BIN_RADIUS = 0.011;
+static constexpr double BIN_HEIGHT = 0.03;
+static constexpr double BIN_LID = 0.004;
+
+static constexpr int TRUNK_SIDES = 5;
+static constexpr double TRUNK_RADIUS = 0.006;
+static constexpr double TRUNK_HEIGHT = 0.15;
+static constexpr Vec3 CANOPY_SPAN = {0.065, 0.065, 0.075};
+static constexpr double CANOPY_LUMPINESS = 0.18;
+static constexpr double CANOPY_VARIETY = 0.12;
+
 static constexpr Vec3 POST_LOW = {-0.012, -0.012, 0.0};
 static constexpr Vec3 POST_HIGH = {0.012, 0.012, 0.17};
 static constexpr Vec3 HOUSING_LOW = {0.012, -0.03, 0.13};
@@ -51,6 +64,9 @@ static constexpr uint32_t IRON = 0x2E3236;
 static constexpr uint32_t POST_WHITE = 0xE6E3DC;
 static constexpr uint32_t WARNING_RED = 0xB8322A;
 static constexpr uint32_t LAMP_RED = 0x5A1A16;
+static constexpr uint32_t BIN_GREEN = 0x2F4A36;
+static constexpr uint32_t BARK = 0x5E4632;
+static constexpr std::array<uint32_t, 3> LEAVES = {0x4E7F36, 0x5D8C3A, 0x3F6E34};
 static constexpr double METAL_GLOSS = 0.4;
 
 /* A part built about its own foot, facing along x, stood on the map. */
@@ -74,6 +90,21 @@ ModelMesh Bench(const MapVector &at, const MapVector &facing, double base)
 	bench.Append(Box(BACK_LOW, BACK_HIGH).Paint(TIMBER));
 	bench.Append(Box(LEGS_LOW, LEGS_HIGH).Paint(IRON).Gloss(METAL_GLOSS));
 	return Placed(std::move(bench), at, facing, base);
+}
+
+ModelMesh LitterBin(const MapVector &at, double base)
+{
+	ModelMesh bin = Prism(BIN_SIDES, BIN_RADIUS, BIN_HEIGHT).Paint(BIN_GREEN);
+	bin.Append(Prism(BIN_SIDES, BIN_RADIUS * 1.15, BIN_LID).Transform(Mat4::Translation({0.0, 0.0, BIN_HEIGHT})).Paint(IRON));
+	return Placed(std::move(bin), at, {1.0, 0.0}, base);
+}
+
+ModelMesh StreetTree(const MapVector &at, double base, uint32_t seed)
+{
+	ModelMesh tree = Prism(TRUNK_SIDES, TRUNK_RADIUS, TRUNK_HEIGHT).Paint(BARK);
+	ModelMesh canopy = Icosphere(1).Displace(CANOPY_LUMPINESS, seed).Transform(Mat4::Translation({0.0, 0.0, TRUNK_HEIGHT + CANOPY_SPAN.z * 0.6}) * Mat4::Scaling(CANOPY_SPAN));
+	tree.Append(canopy.Facet().Paint(LEAVES[seed % LEAVES.size()]).Vary(CANOPY_VARIETY, seed));
+	return Placed(std::move(tree), at, {1.0, 0.0}, base);
 }
 
 /* A post with a pair of warning lamps facing the road, its striped boom raised beside it. */
