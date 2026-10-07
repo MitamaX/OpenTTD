@@ -22,6 +22,7 @@ enum class WorldStage : uint8_t {
 };
 
 /* A pass draws into the bound world target with depth testing on; the scene and shadow blocks are bound and every pass gets each frame's world changes.
+ * A pass whose shading is dear may lay its depth in Lay, before any pass draws, so it shades only what stays in sight; it then draws its colour with depth tested equal or nearer.
  * A pass that casts shadows draws its meshes depth only in Cast, through a program made by CasterProgram from its own vertex sources.
  * Prepare runs while the game's state holds still, before the frame is drawn; a pass that reads the game's map does so there and nowhere else. */
 class WorldPass {
@@ -33,6 +34,7 @@ public:
 	virtual void Prepare([[maybe_unused]] const SceneView &view) {}
 	virtual void Sync([[maybe_unused]] const WorldChanges &changes) {}
 	virtual void Cast([[maybe_unused]] const ShadowView &view) {}
+	virtual void Lay([[maybe_unused]] const SceneView &view) {}
 	virtual void Draw(const SceneView &view) = 0;
 	virtual void Release() = 0;
 	virtual WorldStage Stage() const { return WorldStage::Solid; }

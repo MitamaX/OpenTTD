@@ -5,6 +5,8 @@ out vec3 v_world;
 out vec3 v_normal;
 out float v_mark;
 
+invariant gl_Position;
+
 void main()
 {
 	v_world = a_position;

@@ -23,6 +23,7 @@ public:
 	std::string_view Name() const override { return "terrain"; }
 	void Reload() override;
 	void Cast(const ShadowView &view) override;
+	void Lay(const SceneView &view) override;
 	void Draw(const SceneView &view) override;
 	void Release() override;
 
@@ -34,6 +35,7 @@ private:
 	GroundDetail detail;
 	ShaderProgram program;
 	ShaderProgram caster;
+	ShaderProgram depth;
 };
 
 #endif /* MINI_WORLD_TERRAIN_PASS_H */

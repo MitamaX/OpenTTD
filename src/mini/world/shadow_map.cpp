@@ -59,6 +59,11 @@ ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::sp
 	return ShaderProgram(sources, fragment_sources);
 }
 
+ShaderProgram DepthProgram(std::span<const char *const> vertex_sources)
+{
+	return ShaderProgram(vertex_sources, CASTER_FRAGMENT_SOURCES);
+}
+
 static Vec3 SunWay()
 {
 	SunVector sun = Sun();

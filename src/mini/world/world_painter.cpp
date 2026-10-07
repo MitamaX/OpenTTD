@@ -55,7 +55,6 @@ static bool GlSupportsWorld()
 
 WorldPainter::WorldPainter()
 {
-	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<NetworkPass>());
 	auto structures = std::make_unique<StructurePass>();
 	this->structures = structures.get();
@@ -66,6 +65,7 @@ WorldPainter::WorldPainter()
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<StreetWalkers>(), WALKER_LOOK));
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<GroundCover>(), TUFT_LOOK));
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
+	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
 	this->passes.push_back(std::make_unique<SmokePass>(*this->structures, *this->vehicles));
 }
@@ -159,6 +159,7 @@ void WorldPainter::Render(const SceneView &view)
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	this->shadows.Bind();
+	this->LayDepth(view);
 	this->DrawStage(WorldStage::Solid, view);
 	this->target.Snapshot();
 	this->DrawStage(WorldStage::Surface, view);
@@ -172,6 +173,16 @@ void WorldPainter::SyncChanges()
 	this->textures.Sync(changes);
 	this->field.Sync(changes);
 	for (const auto &pass : this->passes) pass->Sync(changes);
+}
+
+void WorldPainter::LayDepth(const SceneView &view)
+{
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	for (const auto &pass : this->passes) {
+		ProfileScope profile("lay", pass->Name());
+		pass->Lay(view);
+	}
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
 void WorldPainter::DrawStage(WorldStage stage, const SceneView &view)
