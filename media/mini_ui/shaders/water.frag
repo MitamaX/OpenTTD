@@ -94,6 +94,7 @@ const float DECK_SHELTER = 0.75;
 const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
 const float SHELF_REACH = 2.5;
+const float OPEN_SEA_LEVEL = 0.0;
 const float GRAZING_SIGHT = 0.2;
 const vec3 SHORE_ICE = vec3(0.8, 0.86, 0.9);
 const float ICE_REACH = 0.24;
@@ -380,10 +381,11 @@ float WaterLevelOn(ivec2 tile, vec2 f)
 	return mix(mix(c.north, c.west, f.x), mix(c.east, c.south, f.x), f.y);
 }
 
-/* The water's level near a point, on the tile there where it holds water and on this tile's water carried on where it does not. */
+/* The water's level near a point, on the tile there where it holds water and on this tile's water carried on where it does not; past the map's edge, the open sea's. */
 float WaterLevelNear(vec2 at, ivec2 home)
 {
 	ivec2 tile = ivec2(floor(at));
+	if (!OnMap(tile)) return OPEN_SEA_LEVEL;
 	ivec2 source = texelFetch(u_water, Clamped(tile), 0).r > HALF_TILE ? tile : home;
 	return WaterLevelOn(source, at - vec2(source));
 }
@@ -439,10 +441,11 @@ float ShoreIce(vec2 p, float level, out float floes)
 }
 
 /* Off a sea shore the water deepens smoothly with the distance out from the land, measured straight across the water,
- * however the ground under it steps, so the bed of coast tiles shows no saw teeth through it and the shallows keep one breadth round every corner. */
+ * however the ground under it steps, so the bed of coast tiles shows no saw teeth through it and the shallows keep one breadth round every corner.
+ * Past the map's edge it deepens on with the distance out from the edge. */
 float ShelfPath(vec2 p, vec3 sight)
 {
-	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES;
+	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES + distance(p, clamp(p, vec2(0.0), MapSize()));
 	float depth = SHELF_DEPTH * smoothstep(0.0, SHELF_REACH, offshore);
 	return depth / max(-sight.z, GRAZING_SIGHT);
 }
