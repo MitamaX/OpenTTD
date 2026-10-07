@@ -21,6 +21,7 @@
 /* Vehicles are whole where a tile spans this many pixels, bare masses below it, and cast shadows only where they would read. */
 static constexpr double FULL_DETAIL_PIXELS = 26.0;
 static constexpr double CAST_PIXELS = 7.0;
+static constexpr double VEHICLE_CASTER_WIDTH = 0.15;
 /* A click this many pixels off a vehicle still picks it. */
 static constexpr double PICK_SLACK_PIXELS = 5.0;
 /* Solids never fade out, as vehicles have nothing on the ground standing in for them. */
@@ -75,7 +76,7 @@ void VehiclePass::Prepare(const SceneView &view)
 
 void VehiclePass::Cast(const ShadowView &view)
 {
-	if (!this->caster.Ready()) return;
+	if (!this->caster.Ready() || !view.Resolves(VEHICLE_CASTER_WIDTH)) return;
 	this->Gather(view.camera, view.frustum, CAST_PIXELS);
 	this->caster.Use();
 	this->DrawBatch(this->caster, view.camera);

@@ -42,6 +42,7 @@ static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
 
 /* Signals show only where a tile spans enough pixels for a post to read. */
 static constexpr double SIGNAL_PIXELS = 10.0;
+static constexpr double WAY_CASTER_WIDTH = 0.15;
 /* Ways in the middle distance thin toward the ground under them, from whole at these tile pixels to this share gone where they fade, so the network reads as soft lines. */
 static constexpr double NETWORK_RECEDE_PIXELS = 40.0;
 static constexpr double NETWORK_RECEDE_DEPTH = 0.5;
@@ -85,7 +86,7 @@ void NetworkPass::Sync(const WorldChanges &changes)
 
 void NetworkPass::Cast(const ShadowView &view)
 {
-	if (!this->caster.Ready() || !this->signal_caster.Ready()) return;
+	if (!this->caster.Ready() || !this->signal_caster.Ready() || !view.Resolves(WAY_CASTER_WIDTH)) return;
 	this->field.Gather(view.camera, view.frustum, this->shown);
 	this->caster.Use();
 	this->DrawWays(this->caster);

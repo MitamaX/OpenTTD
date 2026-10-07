@@ -42,11 +42,15 @@ struct SceneView {
 	Vec3 Back() const { return {this->view.At(2, 0), this->view.At(2, 1), this->view.At(2, 2)}; }
 };
 
-/* How the sun sees the world for one shadow cascade; meshes keep the detail the camera asks of them, so what casts matches what receives. */
+/* How the sun sees the world for one shadow cascade; meshes keep the detail the camera asks of them, so what casts matches what receives.
+ * A cascade whose texels are coarser than a pass's casters would only speckle the ground with them, so the pass leaves it be. */
 struct ShadowView {
 	Mat4 view_projection;
 	Frustum frustum;
 	const SceneView &camera;
+	double texel;
+
+	bool Resolves(double caster_width) const { return this->texel <= caster_width; }
 };
 
 class SceneUniforms {

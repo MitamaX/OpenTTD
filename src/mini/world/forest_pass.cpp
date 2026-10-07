@@ -35,6 +35,7 @@ static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/tree.frag",
 };
+static constexpr double TREE_CASTER_WIDTH = 0.3;
 
 ForestPass::ForestPass(const WorldTextures &textures) : textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
 {
@@ -54,7 +55,7 @@ void ForestPass::Sync(const WorldChanges &changes)
 /* Near trees cast with simpler meshes and distant ones cast none: their shadows would only speckle the ground, which the forest tint already shades. */
 void ForestPass::Cast(const ShadowView &view)
 {
-	if (!this->caster.Ready()) return;
+	if (!this->caster.Ready() || !view.Resolves(TREE_CASTER_WIDTH)) return;
 	this->DrawTrees(this->caster, view.camera, view.frustum, TreeDetail::Simple, TreeCasterMesh);
 }
 

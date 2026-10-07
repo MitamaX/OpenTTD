@@ -203,7 +203,7 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, this->texture, 0, index);
 		glClear(GL_DEPTH_BUFFER_BIT);
 		this->Aim(cascades[index].view_projection);
-		ShadowView view = {cascades[index].view_projection, FrustumOf(cascades[index].view_projection), camera};
+		ShadowView view = {cascades[index].view_projection, FrustumOf(cascades[index].view_projection), camera, cascades[index].texel};
 		for (const auto &pass : passes) {
 			ProfileScope pass_profile("cast", pass->Name());
 			pass->Cast(view);
