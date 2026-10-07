@@ -41,13 +41,19 @@ vec2 Sway(float height, float scale)
 	return WIND_WAY * swing * WIND_REACH * lift * lift * scale;
 }
 
-/* Trees deep in a forest are shaded underneath by their neighbours; snow settles on those standing in it. */
+float SnowOn(vec3 place)
+{
+	if (Landscape() != LANDSCAPE_ARCTIC) return 0.0;
+	return smoothstep(0.3, 0.8, ClimateAt(place.xy).blanket + SnowLift(place.z));
+}
+
+/* Trees deep in a forest are shaded underneath by their neighbours. */
 void ReadGround()
 {
 	uvec4 codes = texelFetch(u_tiles, Clamped(ivec2(floor(i_place.xy))), 0);
 	float crowd = FloraCover(codes);
 	v_openness = a_colour.a * (1.0 - CROWDED_SHADE * crowd * (1.0 - a_colour.a));
-	v_snow = codes.r == MAT_SNOW ? float(codes.g & DENSITY_MASK) / float(DENSITY_MASK) : 0.0;
+	v_snow = SnowOn(i_place);
 }
 
 /* A copy outside its detail's window collapses to a point off screen before any of it is drawn. */

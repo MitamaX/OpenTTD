@@ -17,10 +17,11 @@
 
 #include "../../safeguards.h"
 
-static constexpr std::array<const char *, 5> VERTEX_SOURCES = {
+static constexpr std::array<const char *, 6> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
+	"mini_ui/shaders/climate.glsl",
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/tree.vert",
 };

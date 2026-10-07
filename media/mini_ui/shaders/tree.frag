@@ -13,8 +13,8 @@ out vec4 frag_colour;
 const vec3 TINT_SPREAD = vec3(0.16, 0.12, 0.05);
 const vec3 WITHERED = vec3(0.56, 0.45, 0.24);
 const vec3 SNOW_COVER = vec3(0.90, 0.93, 0.97);
-const float SNOW_SETTLES = 0.2;
-const float SNOW_COVERS = 0.65;
+const float SNOW_SETTLES = 0.0;
+const float SNOW_COVERS = 0.5;
 const float LEAFY = 0.01;
 
 /* Leaves vary a little from tree to tree and brown as a tree dies; snow lies on what faces up. Wood keeps its colour. */
