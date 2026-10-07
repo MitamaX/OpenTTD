@@ -8,6 +8,9 @@ layout(location = 6) in vec4 i_primary;
 layout(location = 7) in vec4 i_secondary;
 layout(location = 8) in vec4 i_cargo;
 
+uniform vec2 u_most_growth;
+uniform float u_readable_pixels;
+
 out vec3 v_position;
 out vec3 v_normal;
 out vec4 v_colour;
@@ -57,13 +60,21 @@ vec3 Painted(vec3 tone)
 	return tone;
 }
 
+/* Far off a vehicle grows, up to its most, so it still reads where a tile spans only a few pixels. */
+vec3 Growth()
+{
+	float growth = max(u_readable_pixels / TilePixelsAt(distance(Eye(), i_place)), 1.0);
+	return vec3(min(growth, u_most_growth.x), vec2(min(growth, u_most_growth.y)));
+}
+
 /* Cargo shows only while the unit carries some; empty, it folds away to nothing. */
 void main()
 {
-	vec3 local = a_position * vec3(i_length, 1.0, 1.0);
+	vec3 scale = vec3(i_length, 1.0, 1.0) * Growth();
+	vec3 local = a_position * scale;
 	if (IsCargo(a_colour.rgb) && i_cargo.a <= 0.0) local = vec3(0.0);
 	v_position = i_place + Turned(local);
-	v_normal = Turned(normalize(a_normal.xyz * vec3(1.0 / i_length, 1.0, 1.0)));
+	v_normal = Turned(normalize(a_normal.xyz / scale));
 	v_colour = vec4(Painted(a_colour.rgb), a_colour.a);
 	v_trait = a_normal.w;
 	gl_Position = ClipPosition(v_position);

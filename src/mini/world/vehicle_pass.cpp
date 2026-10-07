@@ -10,6 +10,8 @@
 #include "../../stdafx.h"
 #include "vehicle_pass.h"
 
+#include <algorithm>
+
 #include "../gpu/gl_api.h"
 #include "../map/map_overlay.h"
 #include "shadow_map.h"
@@ -37,6 +39,25 @@ static constexpr double CAST_PIXELS = 7.0;
 static constexpr double PICK_SLACK_PIXELS = 5.0;
 /* Solids never fade out, as vehicles have nothing on the ground standing in for them. */
 static constexpr float NEVER_FADES = -1.0f;
+
+/* Far off, vehicles grow until a tile spans this many pixels at their scale: trains and road vehicles only across and up, as they run nose to tail. */
+static constexpr float READABLE_TILE_PIXELS = 30.0f;
+
+struct Growth {
+	float along;
+	float across;
+};
+
+static constexpr Growth GROUND_GROWTH = {1.0f, 1.8f};
+static constexpr Growth SHIP_GROWTH = {2.0f, 2.0f};
+static constexpr Growth AIRCRAFT_GROWTH = {3.0f, 3.0f};
+
+static Growth MostGrowthOf(VehicleLook look)
+{
+	if (look < VehicleLook::Ferry) return GROUND_GROWTH;
+	if (look < VehicleLook::PropPlane) return SHIP_GROWTH;
+	return AIRCRAFT_GROWTH;
+}
 
 static MiniLayer LayerOf(VehicleLook look)
 {
@@ -89,7 +110,9 @@ void VehiclePass::Gather(const SceneView &camera, const Frustum &frustum, double
 {
 	this->batch.Clear(VEHICLE_MODELS);
 	for (const PlacedUnit &unit : this->fleet.Units()) {
-		Vec3 reach = {unit.radius, unit.radius, unit.radius};
+		Growth growth = MostGrowthOf(unit.look);
+		double radius = unit.radius * std::max(growth.along, growth.across);
+		Vec3 reach = {radius, radius, radius};
 		if (!BoxMeets(frustum, unit.centre - reach, unit.centre + reach)) continue;
 		double pixels = camera.TilePixelsAt(Length(camera.eye - unit.centre));
 		if (pixels < fewest_pixels) continue;
@@ -104,8 +127,13 @@ void VehiclePass::DrawBatch(const ShaderProgram &program)
 	if (this->meshes.empty()) return;
 	if (!this->models.Ready()) this->models.Upload<ModelMesh>(this->meshes, MODEL_LAYOUT, VEHICLE_INSTANCE_LAYOUT, sizeof(VehicleInstance));
 	int way = program.Uniform("u_way");
-	this->batch.Draw(this->models, [way](size_t model) {
-		glUniform1i(way, to_underlying(LayerOf(LookOfModel(model))));
+	int most_growth = program.Uniform("u_most_growth");
+	glUniform1f(program.Uniform("u_readable_pixels"), READABLE_TILE_PIXELS);
+	this->batch.Draw(this->models, [way, most_growth](size_t model) {
+		VehicleLook look = LookOfModel(model);
+		Growth growth = MostGrowthOf(look);
+		glUniform1i(way, to_underlying(LayerOf(look)));
+		glUniform2f(most_growth, growth.along, growth.across);
 		return model;
 	});
 }
