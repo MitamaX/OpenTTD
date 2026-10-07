@@ -15,6 +15,8 @@ const float POLISHED = 0.2;
 const float GLOW_RADIANCE = 5.0;
 const float GRAIN_FREQUENCY = 9.0;
 const float GRAIN_VARIETY = 0.22;
+const vec2 MIRROR_GLOSS = vec2(0.6, 0.8);
+const float GLASS_REFLECTANCE = 0.2;
 
 /* Matte surfaces show a fine grain where they come near enough for it to resolve; glossy ones stay clean. */
 float Grain(vec3 position, float gloss)
@@ -32,7 +34,7 @@ float Receded()
 /* Solids fade out where they grow too small to show, dithered, handing over to what the ground paints in their place;
  * some first sink into the ground over a longer reach, thinning and lying flatter so their sides draw no dark lines.
  * Under the overlay, ways take their layer's accent, while solids keeping their own colours only sink when out of it.
- * A positive trait is how glossy the surface is, a negative one how brightly it glows. */
+ * A positive trait is how glossy the surface is, a negative one how brightly it glows; glass, the glossiest, mirrors the sky. */
 void main()
 {
 	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
@@ -43,5 +45,7 @@ void main()
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, MIN_SPREAD)));
 	vec3 colour = Radiance(albedo, normal, v_position, mix(MATTE, POLISHED, gloss), v_colour.a);
+	vec3 view = normalize(Eye() - v_position);
+	colour += smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss) * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * SkyRadiance(reflect(-view, normal));
 	frag_colour = vec4(colour + albedo * max(-v_trait, 0.0) * GLOW_RADIANCE, 1.0);
 }
