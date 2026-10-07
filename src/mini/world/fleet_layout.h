@@ -44,6 +44,15 @@ struct PlacedUnit {
 	std::optional<double> Meets(const Vec3 &origin, const Vec3 &direction, double margin) const;
 };
 
+/* A ship under way as its wake sees it: where its hull's middle lies, which way it heads, its half length and half beam, and how near its top speed it runs. */
+struct ShipWake {
+	Vec3 centre;
+	MapVector heading;
+	double half_length;
+	double half_beam;
+	double pace;
+};
+
 class FleetLayout {
 public:
 	explicit FleetLayout(std::span<const VehicleBounds, VEHICLE_LOOKS> bounds) : bounds(bounds) {}
@@ -51,6 +60,7 @@ public:
 	/* Reads the game's vehicles, so it runs only while the game's state holds still. */
 	void Lay(double clock);
 	std::span<const PlacedUnit> Units() const { return this->units; }
+	std::span<const ShipWake> Wakes() const { return this->wakes; }
 
 private:
 	struct Link {
@@ -66,6 +76,7 @@ private:
 
 	std::span<const VehicleBounds, VEHICLE_LOOKS> bounds;
 	std::vector<PlacedUnit> units;
+	std::vector<ShipWake> wakes;
 	std::vector<Link> links;
 	std::vector<WorldPoint> path;
 	double clock = 0.0;

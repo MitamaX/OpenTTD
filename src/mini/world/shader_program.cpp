@@ -37,6 +37,7 @@
 #include "scene_view.h"
 #include "structure_mesh.h"
 #include "tree_models.h"
+#include "water_pass.h"
 
 #include "../../safeguards.h"
 
@@ -167,6 +168,7 @@ static std::string ShaderHeader()
 	DefineSurfaceFlag(header, "SURFACE_FRONT", SurfaceFlag::Front);
 	DefineSurfaceFlag(header, "SURFACE_ROOF", SurfaceFlag::Roof);
 	DefineSurfaceFlag(header, "SURFACE_DECAL", SurfaceFlag::Decal);
+	DefineInt(header, "MOST_WAKES", MOST_WAKES);
 	return header;
 }
 

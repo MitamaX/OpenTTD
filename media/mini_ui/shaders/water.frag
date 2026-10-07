@@ -1,5 +1,8 @@
 uniform sampler2D u_scene_colour;
 uniform sampler2D u_scene_depth;
+uniform vec4 u_wake_hulls[MOST_WAKES];
+uniform vec4 u_wake_shapes[MOST_WAKES];
+uniform int u_wakes;
 
 in vec3 v_world;
 in vec3 v_position;
@@ -81,6 +84,21 @@ const float BREAKER_REACH = 0.38;
 const float BREAKERS_PER_REACH = 40.0;
 const float BREAKER_SPEED = 1.3;
 const float BREAKER_OPACITY = 0.7;
+const float CONTACT_FOAM_REACH = 0.05;
+
+const float KELVIN_SLOPE = 0.354;
+const float WAKE_ARM_WIDTH = 0.03;
+const float WAKE_ARM_SPREAD = 0.05;
+const float WAKE_ARM_FOAM = 0.7;
+const float WAKE_LINE_PIXELS = 1.2;
+const float BOW_FOAM_LENGTHS = 0.25;
+const float WASH_SPREAD = 0.25;
+const float WASH_FOAM = 0.75;
+const float WASH_SHARE = 0.6;
+const float BOW_FLARE_LENGTHS = 0.5;
+const float WAKE_STREAK_ALONG = 2.5;
+const float WAKE_STREAK_ACROSS = 14.0;
+const float WAKE_DRIFT = 0.3;
 
 struct Body {
 	vec3 absorption;
@@ -254,6 +272,52 @@ float Breakers(vec2 p, float level, Body body)
 	return crest * broken * reach * BREAKER_OPACITY * body.sea * Resolved(4.0);
 }
 
+/* Wake foam breaks into streaks drawn out the way the ship ran, lying still on the water once it has passed; thick, it fills in whole. */
+float WakeLace(vec2 along, float amount)
+{
+	vec2 q = along * vec2(WAKE_STREAK_ALONG, WAKE_STREAK_ACROSS);
+	float lace = Noise(q + vec2(0.0, Clock() * WAKE_DRIFT)) * 0.6 + Noise(q * 2.3 + 5.1) * 0.4;
+	float threshold = mix(0.75, 0.15, amount);
+	return smoothstep(threshold, threshold + 0.25, lace) * min(amount * 1.4, 1.0);
+}
+
+/* A ship under way throws foam off its bow that hugs its sides, then spreads back in two arms at the Kelvin angle around a churned wash
+ * trailing from its stern; the faster it runs the longer and whiter its wake, which fades as it spreads. */
+float Wake(vec2 p)
+{
+	float strongest = 0.0;
+	vec2 streak = vec2(0.0);
+	for (int index = 0; index < u_wakes; index++) {
+		vec4 hull = u_wake_hulls[index];
+		vec4 shape = u_wake_shapes[index];
+		vec2 across_way = vec2(-hull.w, hull.z);
+		vec2 offset = p - hull.xy;
+		float behind_bow = shape.x - dot(offset, hull.zw);
+		float side = abs(dot(offset, across_way));
+		float reach = shape.x + shape.w;
+		if (behind_bow < -shape.y || behind_bow > reach || side > KELVIN_SLOPE * max(behind_bow, 0.0) + shape.y * 2.0) continue;
+
+		float fade = 1.0 - smoothstep(0.2, 1.0, behind_bow / reach);
+		float flank = shape.y * smoothstep(-shape.y, shape.x * BOW_FLARE_LENGTHS, behind_bow) + WAKE_ARM_WIDTH;
+		float arm_line = max(KELVIN_SLOPE * behind_bow, flank);
+		float width = max(WAKE_ARM_WIDTH + WAKE_ARM_SPREAD * max(behind_bow, 0.0), WAKE_LINE_PIXELS / tile_pixels);
+		float off_arm = (side - arm_line) / width;
+		float bow = exp(-max(behind_bow, 0.0) / (shape.x * 2.0 * BOW_FOAM_LENGTHS));
+		float arm = exp(-off_arm * off_arm) * mix(WAKE_ARM_FOAM, 1.0, bow);
+
+		float behind_stern = behind_bow - 2.0 * shape.x;
+		float wash_width = shape.y * (1.0 + WASH_SPREAD * max(behind_stern, 0.0) / shape.x);
+		float wash_fade = 1.0 - smoothstep(0.0, shape.w * WASH_SHARE, behind_stern);
+		float wash = smoothstep(-shape.y, 0.0, behind_stern) * (1.0 - smoothstep(wash_width * 0.3, wash_width, side)) * wash_fade * WASH_FOAM;
+
+		float churn = max(arm * fade, wash) * shape.z;
+		if (churn <= strongest) continue;
+		strongest = churn;
+		streak = vec2(dot(p, hull.zw), dot(p, across_way));
+	}
+	return strongest > 0.0 ? WakeLace(streak, strongest) : 0.0;
+}
+
 /* Sun on water: a soft path where the waves are too fine to make out, and close up glints off single wavelets turned to catch it, each twinkling as it turns. */
 vec3 SunOnWater(Surface surface, vec3 view, vec2 p, vec3 sun)
 {
@@ -355,7 +419,9 @@ void main()
 	vec3 sky = SkyOnWater(sight, waves, view, reflected);
 	vec3 colour = mix(below, sky, reflected) + SunOnWater(waves, view, p, sun);
 
-	float foam = max(max(Foam(p, ShoreBand(field.r), body), Breakers(p, field.r, body)), Whitewater(p, descent) * river);
+	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, straight.x);
+	float shore = Foam(p, max(ShoreBand(field.r), contact), body);
+	float foam = max(max(shore, Breakers(p, field.r, body)), max(Whitewater(p, descent) * river, Wake(p)));
 	colour = mix(colour, Linear(FOAM) * light, foam);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;

@@ -102,6 +102,7 @@ void FleetLayout::Lay(double clock)
 {
 	this->clock = clock;
 	this->units.clear();
+	this->wakes.clear();
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle()) continue;
 		switch (v->type) {
@@ -148,7 +149,12 @@ void FleetLayout::LayShip(const Vehicle *ship)
 	double phase = this->clock + (ship->index.base() % 97) * 0.37;
 	WorldPoint at = _vehicle_motion.Position(ship);
 	at.level += SWELL_LEVELS * std::sin(phase * 1.3);
-	this->Add(ship, LookOf(ship), at, {_vehicle_motion.Bearing(ship), SWELL_PITCH * std::sin(phase * 0.9), SWELL_ROLL * std::sin(phase * 0.7 + 1.0)}, 1.0);
+	double bearing = _vehicle_motion.Bearing(ship);
+	this->Add(ship, LookOf(ship), at, {bearing, SWELL_PITCH * std::sin(phase * 0.9), SWELL_ROLL * std::sin(phase * 0.7 + 1.0)}, 1.0);
+	double pace = ship->cur_speed / static_cast<double>(std::max<uint16_t>(ship->vcache.cached_max_speed, 1));
+	if (pace <= 0.0) return;
+	const PlacedUnit &hull = this->units.back();
+	this->wakes.push_back({hull.centre, {std::cos(bearing), std::sin(bearing)}, hull.half.x, hull.half.y, std::min(pace, 1.0)});
 }
 
 /* Planes bank into their turns while airborne; a helicopter's rotor turns while the game has it running. */

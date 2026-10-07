@@ -10,14 +10,22 @@
 #ifndef MINI_WORLD_WATER_PASS_H
 #define MINI_WORLD_WATER_PASS_H
 
+#include <vector>
+
+#include "fleet_layout.h"
 #include "shader_program.h"
 #include "terrain_field.h"
 #include "world_pass.h"
 #include "world_textures.h"
 
+class VehiclePass;
+
+/* The most ship wakes the water churns at once, the nearest the eye. */
+inline constexpr int MOST_WAKES = 16;
+
 class WaterPass final : public WorldPass {
 public:
-	WaterPass(const WorldTextures &textures, TerrainField &field);
+	WaterPass(const WorldTextures &textures, TerrainField &field, const VehiclePass &vehicles);
 
 	void Reload() override;
 	void Draw(const SceneView &view) override;
@@ -25,8 +33,12 @@ public:
 	WorldStage Stage() const override { return WorldStage::Surface; }
 
 private:
+	void UploadWakes(const SceneView &view);
+
 	const WorldTextures &textures;
 	TerrainField &field;
+	const VehiclePass &vehicles;
+	std::vector<const ShipWake *> wakes;
 	ShaderProgram program;
 };
 

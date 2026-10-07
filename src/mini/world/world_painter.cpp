@@ -50,7 +50,7 @@ WorldPainter::WorldPainter()
 	this->vehicles = vehicles.get();
 	this->passes.push_back(std::move(vehicles));
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
-	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field));
+	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
 }
 
 void WorldPainter::Reload()
