@@ -14,6 +14,7 @@
 
 #include "../../map_func.h"
 #include "../map/way_profile.h"
+#include "network_field.h"
 #include "seabed.h"
 #include "terrain_mesh.h"
 #include "water_mesh.h"
@@ -21,7 +22,8 @@
 #include "../../safeguards.h"
 
 static constexpr double OUTER_SEA_REACH = 8192.0;
-static constexpr double FINEST_CELL_PIXELS = 3.0;
+/* The ground keeps every tile's own facets and banks wherever the network's meshes may stand on it. */
+static constexpr double FINEST_CELL_PIXELS = NETWORK_FADE_START;
 static constexpr int COARSEST_STEP = 8;
 static constexpr uint64_t EVICT_FRAMES = 600;
 

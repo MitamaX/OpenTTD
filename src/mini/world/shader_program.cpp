@@ -123,6 +123,7 @@ static std::string ShaderHeader()
 	DefineCodes(header, "AIRFIELD_", AIRFIELD_MARK_NAMES);
 	DefineUnsigned(header, "DENSITY_MASK", GROUND_DENSITY_MASK);
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
+	DefineUnsigned(header, "NETWORK_KERB_BIT", NETWORK_KERB_BIT);
 	DefineUnsigned(header, "FLORA_COUNT_MASK", FLORA_COUNT_MASK);
 	DefineUnsigned(header, "FLORA_KIND_SHIFT", FLORA_KIND_SHIFT);
 	DefineUnsigned(header, "FLORA_AGE_SHIFT", FLORA_AGE_SHIFT);

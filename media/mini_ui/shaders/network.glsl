@@ -7,7 +7,8 @@ const vec2 TRACK_TO[TRACK_PIECES] = vec2[TRACK_PIECES](vec2(1.0, 0.5), vec2(0.5,
 
 const float THIN_WAY_HALF_PIXELS = 0.55;
 const float THIN_WAY_PPT = 2.5;
-const float FAR_WAY_OPACITY = 0.5;
+const float FAR_WAY_OPACITY = 0.35;
+const float FAR_STREET_SHARE = 0.3;
 
 const int ROAD_ENDS = 4;
 const vec2 ROAD_END[ROAD_ENDS] = vec2[ROAD_ENDS](vec2(0.5, 0.0), vec2(1.0, 0.5), vec2(0.5, 1.0), vec2(0.0, 0.5));
@@ -124,7 +125,7 @@ Field RoutesThrough(vec2 at, uint ends, float width, mat2 pixel)
 	return band;
 }
 
-/* Far off, where the network's meshes have faded out, each way shows as a flat band of its colour. */
+/* Far off, where the network's meshes have faded out, each way shows as a flat band of its colour, and town streets all but vanish into the blocks they serve. */
 Network NetworkAt(vec2 p, mat2 pixel)
 {
 	ivec2 home = ivec2(floor(p));
@@ -134,7 +135,8 @@ Network NetworkAt(vec2 p, mat2 pixel)
 	if (rail <= 0.0 && here.y == 0u && here.z == 0u) return Network(vec4(0.0), vec2(0.0));
 	float road = Inside(Nearer(RoutesThrough(at, here.y, WayHalf(ROAD_HALF), pixel), RoutesThrough(at, here.z, WayHalf(TRAM_BED_HALF), pixel)));
 	float opacity = mix(1.0, FAR_WAY_OPACITY, Thinned());
+	float street = mix(1.0, FAR_STREET_SHARE, (here.w & NETWORK_KERB_BIT) != 0u ? Thinned() : 0.0);
 	vec4 paint = Over(vec4(0.0), DISTANT_RAIL, rail * opacity);
-	paint = Over(paint, DISTANT_ROAD, road * opacity);
+	paint = Over(paint, DISTANT_ROAD, road * opacity * street);
 	return Network(paint, vec2(rail, road));
 }
