@@ -37,6 +37,7 @@ const float INDEX_CONTOUR_WEIGHT = 1.6;
 const float CROWDED_CONTOUR_PIXELS = 3.0;
 const float SPACED_CONTOUR_PIXELS = 9.0;
 const float MIN_RELIEF_SPAN = 6.0;
+const vec3 UPRIGHT = vec3(0.0, 0.0, 1.0);
 const vec3 LOWLAND = vec3(0.90, 0.95, 0.86);
 const vec3 HIGHLAND = vec3(1.12, 1.06, 0.94);
 const float TERRAIN_ROUGHNESS = 0.85;
@@ -228,6 +229,13 @@ const float EDGE_GRAIN_PER_TILE = 4.0;
 const float EDGE_SEAM_SHADE = 0.82;
 const float EDGE_WET_SHADE = 0.6;
 const float EDGE_WET_REACH = 0.35;
+const float EDGE_TURF = 0.12;
+const float EDGE_TOPSOIL = 0.35;
+const float EDGE_TOPSOIL_SHADE = 0.9;
+const float EDGE_TOPSOIL_SWAY = 0.7;
+const float EDGE_TOPSOIL_SWING = 0.6;
+const float EDGE_ROOTS_PER_TILE = 9.0;
+const float EDGE_ROOTS_RAGGED = 0.6;
 
 const vec3 RUNWAY_ASPHALT = vec3(0.25, 0.26, 0.27);
 const vec3 APRON_CONCRETE = vec3(0.66, 0.65, 0.62);
@@ -986,19 +994,35 @@ vec3 EarthMean()
 	return (EARTH_STRATA[0] + EARTH_STRATA[1] + EARTH_STRATA[2] + EARTH_STRATA[3] + EARTH_STRATA[4]) / float(EARTH_STRATA_COUNT);
 }
 
-/* The map's edge is cut through the land as a face of earth, bedded in layers of soil and rock wavering a little along it, and dark with wet where the sea washes it. */
-vec3 EdgeFace(vec3 normal, float pixels)
+/* The level of the ground along the top of the map's edge, on the tile just inside it. */
+float EdgeTop(vec3 normal)
+{
+	ivec2 tile = Clamped(ivec2(floor(v_world.xy - normal.xy * HALF_TILE)));
+	return FacetLevel(SurfaceOf(tile), clamp(v_world.xy - vec2(tile), 0.0, 1.0));
+}
+
+/* How far below the ground's edge a band reaching this far down still shows, its foot ragged with roots and wavering along the cut. */
+float Fringe(float along, float below, float reach, float pixels)
+{
+	float ragged = reach * Varied(Noise(vec2(along * EDGE_TOPSOIL_SWAY, 8.1)), EDGE_TOPSOIL_SWING) * Varied(OctaveAt(vec2(along, 2.9), EDGE_ROOTS_PER_TILE, pixels), EDGE_ROOTS_RAGGED);
+	return 1.0 - smoothstep(ragged * 0.4, ragged, below);
+}
+
+/* The map's edge is cut through the land as a face of earth: the turf of the ground above hanging over its lip, dark topsoil, then layers of soil and rock wavering a little along it, dark with wet where the sea washes it. */
+vec3 EdgeFace(vec3 normal, float pixels, vec3 turf)
 {
 	float along = dot(v_world.xy, vec2(-normal.y, normal.x));
 	float depth = v_world.z * LevelRise();
 	float bedding = (depth + (Noise(vec2(along * EDGE_STRATA_SWAY, 4.3)) - 0.5) * EDGE_STRATA_WARP) * EDGE_STRATA_PER_TILE;
 	int layer = int(floor(bedding));
 	float bands = ResolvedAt(EDGE_STRATA_PER_TILE, pixels);
-	vec3 earth = mix(EarthMean(), EarthStratum(layer), bands);
+	float below = (EdgeTop(normal) - v_world.z) * LevelRise();
+	float dry = smoothstep(0.0, EDGE_WET_REACH, depth);
+	vec3 earth = mix(mix(EarthMean(), EarthStratum(layer), bands), Soil() * EDGE_TOPSOIL_SHADE, Fringe(along, below, EDGE_TOPSOIL, pixels) * dry);
 	float seam = mix(1.0, mix(EDGE_SEAM_SHADE, 1.0, smoothstep(0.0, 0.25, fract(bedding))), bands);
 	float grain = Varied(OctaveAt(vec2(along, depth), EDGE_GRAIN_PER_TILE, pixels), 0.25);
 	float wet = mix(EDGE_WET_SHADE, 1.0, smoothstep(0.0, EDGE_WET_REACH, depth));
-	return earth * seam * grain * wet;
+	return mix(earth * seam * grain * wet, turf, Fringe(along + 5.3, below, EDGE_TURF, pixels) * dry);
 }
 
 vec3 Windblown(vec2 p, float along, float across)
@@ -1115,6 +1139,22 @@ Blanket BlanketOver(Site site)
 	return Landscape() == LANDSCAPE_ARCTIC ? Snowfield(site, cover) : Sandfield(site, cover);
 }
 
+vec2 Bend(vec2 p)
+{
+	return (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0;
+}
+
+/* The ground's own colour where it meets the map's edge, as it would lie level there. */
+vec3 EdgeTurf(Detail detail, float levels_per_pixel)
+{
+	vec2 p = v_world.xy;
+	Grain grain = GrainAt(p, detail);
+	Site site;
+	Patch ground = Surface(p, Bend(p), grain, ReliefAt(UPRIGHT, levels_per_pixel), false, site);
+	Blanket blanket = BlanketOver(site);
+	return mix(Altitude(ground.tone, v_world.z), blanket.tone, blanket.cover);
+}
+
 /* Where the network's meshes stand opaque they hide its bands, which are then not worked out at all. */
 Network BandsAt(vec2 p, mat2 pixel)
 {
@@ -1125,7 +1165,7 @@ Network BandsAt(vec2 p, mat2 pixel)
 Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, float levels_per_pixel, vec3 normal)
 {
 	Grain grain = GrainAt(p, detail);
-	vec2 bend = (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0;
+	vec2 bend = Bend(p);
 	Canopy forest = Forest(p);
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
@@ -1169,7 +1209,7 @@ void main()
 
 	Shade shade;
 	if (v_mark > EDGE_MARK && v_mark <= WALL_MARK) {
-		shade = Shade(Greyed(EdgeFace(normal, face_pixels)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
+		shade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(detail, levels_per_pixel))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (OutsideMap(p)) {
 		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (v_mark > WALL_MARK) {
