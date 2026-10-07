@@ -324,6 +324,7 @@ void VideoDriver_CocoaOpenGL::Paint()
 		CGLSetCurrentContext(this->gl_context);
 		OpenGLBackend::Get()->UpdatePalette(_local_palette.palette, _local_palette.first_dirty, _local_palette.count_dirty);
 		if (blitter->UsePaletteAnimation() == Blitter::PaletteAnimation::Blitter) {
+			VideoBufferLocker lock;
 			blitter->PaletteAnimate(_local_palette);
 		}
 	}

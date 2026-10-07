@@ -168,18 +168,15 @@ void VideoDriver::Tick()
 
 		this->CheckPaletteAnim();
 
-		/* The mini UI samples the screen while it paints, so this tick's drawing goes to the GPU first. */
-		if (MiniUiActive()) {
-			ProfileScope profile("tick", "vidbuffer", ProfileClock::Cpu);
-			this->UnlockVideoBuffer();
-			this->LockVideoBuffer();
-		}
-		this->Paint();
-
-		{
+		auto unlock_video_buffer = [this]() {
 			ProfileScope profile("tick", "vidunlock", ProfileClock::Cpu);
 			this->UnlockVideoBuffer();
-		}
+		};
+		/* The mini UI samples the screen while it paints, so this tick's drawing goes to the GPU first. */
+		bool unlock_before_paint = MiniUiActive();
+		if (unlock_before_paint) unlock_video_buffer();
+		this->Paint();
+		if (!unlock_before_paint) unlock_video_buffer();
 
 		/* Wait till the first successful drawing tick before marking the driver as operational. */
 		static bool first_draw_tick = true;

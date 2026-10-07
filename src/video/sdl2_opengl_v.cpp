@@ -218,6 +218,7 @@ void VideoDriver_SDL_OpenGL::Paint()
 		/* Always push a changed palette to OpenGL. */
 		OpenGLBackend::Get()->UpdatePalette(this->local_palette.palette, this->local_palette.first_dirty, this->local_palette.count_dirty);
 		if (blitter->UsePaletteAnimation() == Blitter::PaletteAnimation::Blitter) {
+			VideoBufferLocker lock;
 			blitter->PaletteAnimate(this->local_palette);
 		}
 
