@@ -144,32 +144,49 @@ vec4 WaterTexels(vec2 p)
 	return textureLod(u_water, p / MapSize(), 0.0);
 }
 
+/* The weights a cubic B-spline gives the four texels around a point, f of the way from the second to the third. */
+vec4 SplineWeights(float f)
+{
+	float g = 1.0 - f;
+	float w0 = g * g * g / 6.0;
+	float w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+	float w3 = f * f * f / 6.0;
+	return vec4(w0, w1, 1.0 - w0 - w1 - w3, w3);
+}
+
 /* The water texels smoothed by a cubic B-spline, so outlines curve through the tiles instead of running along their edges; four filtered taps stand in for the sixteen texels the spline weighs. */
 vec4 SplineWater(vec2 p)
 {
 	vec2 t = p - TILE_CENTRE;
 	vec2 cell = floor(t);
-	vec2 f = t - cell;
-	vec2 g = 1.0 - f;
-	vec2 w0 = g * g * g / 6.0;
-	vec2 w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
-	vec2 w3 = f * f * f / 6.0;
-	vec2 w2 = 1.0 - w0 - w1 - w3;
-	vec2 low = w0 + w1;
-	vec2 high = w2 + w3;
-	vec2 a = cell - 1.0 + w1 / low + TILE_CENTRE;
-	vec2 b = cell + 1.0 + w3 / high + TILE_CENTRE;
+	vec4 wx = SplineWeights(t.x - cell.x);
+	vec4 wy = SplineWeights(t.y - cell.y);
+	vec2 low = vec2(wx.x + wx.y, wy.x + wy.y);
+	vec2 high = vec2(wx.z + wx.w, wy.z + wy.w);
+	vec2 a = cell - 1.0 + vec2(wx.y, wy.y) / low + TILE_CENTRE;
+	vec2 b = cell + 1.0 + vec2(wx.w, wy.w) / high + TILE_CENTRE;
 	vec4 top = low.x * WaterTexels(vec2(a.x, a.y)) + high.x * WaterTexels(vec2(b.x, a.y));
 	vec4 bottom = low.x * WaterTexels(vec2(a.x, b.y)) + high.x * WaterTexels(vec2(b.x, b.y));
 	return low.y * top + high.y * bottom;
 }
 
-/* The water about a point as level and sea, canal and river shares: natural shores curve and fray a little, while canals keep the straight lines of their walls. */
-vec4 WaterField(vec2 p)
+/* Natural shores curve and fray a little. */
+vec2 ShoreWarp(vec2 p)
+{
+	return (vec2(Noise(p * 1.7 + 7.1), Noise(p * 1.7 + 93.4)) - 0.5) * 2.0 * SHORE_WARP;
+}
+
+/* Canals keep the straight lines of their walls. */
+vec4 Walled(vec4 field, vec2 p)
 {
 	vec4 here = WaterTexels(p);
-	vec2 warp = (vec2(Noise(p * 1.7 + 7.1), Noise(p * 1.7 + 93.4)) - 0.5) * 2.0 * SHORE_WARP;
-	return mix(SplineWater(p + warp), here, clamp(here.b * 2.0, 0.0, 1.0));
+	return mix(field, here, clamp(here.b * 2.0, 0.0, 1.0));
+}
+
+/* The water about a point as level and sea, canal and river shares. */
+vec4 WaterField(vec2 p)
+{
+	return Walled(SplineWater(p + ShoreWarp(p)), p);
 }
 
 uvec4 CodesAt(ivec2 tile)

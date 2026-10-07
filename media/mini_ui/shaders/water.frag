@@ -74,6 +74,9 @@ const float INLAND_FOAM = 0.15;
 const float FOAM_EDGE_THRESHOLD = 0.3;
 const float FOAM_OPACITY = 0.85;
 const float OUTLINE_FOAM_WIDTH = 0.12;
+const float SHEET_TOLERANCE = 0.05;
+const float STREAM_REACH = 1.0;
+const float STREAM_TILT = 0.25;
 const float BREAKER_REACH = 0.38;
 const float BREAKERS_PER_REACH = 40.0;
 const float BREAKER_SPEED = 1.3;
@@ -158,11 +161,37 @@ Surface Waves(vec2 p, float calm)
 	return Surface(normalize(vec3(-slope, 1.0)), normalize(vec3(-broad * steepness * 0.5, 1.0)), mix(lost / total, 1.0, ruffled * 0.4), ruffled * lost / total);
 }
 
+/* A tile's water where its surface comes within reach of a sheet at this level: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
+vec4 SheetWater(ivec2 tile, float level, float reach)
+{
+	vec4 water = texelFetch(u_water, Clamped(tile), 0);
+	Corners c = SurfaceOf(tile);
+	float low = min(min(c.north, c.west), min(c.east, c.south));
+	float high = water.r >= 1.0 ? max(max(c.north, c.west), max(c.east, c.south)) : low;
+	return level >= low - reach && level <= high + reach ? water : vec4(0.0);
+}
+
+/* The water field over only the tiles whose water joins this sheet, so a pool's outline is not drawn out over the water of the pool below it;
+ * a stream running down between two pools joins both. */
+vec4 SheetField(vec2 p, float level)
+{
+	float reach = fwidth(level) > STREAM_TILT * length(fwidth(p)) ? STREAM_REACH : SHEET_TOLERANCE;
+	vec2 t = p + ShoreWarp(p) - TILE_CENTRE;
+	ivec2 cell = ivec2(floor(t));
+	vec4 wx = SplineWeights(fract(t.x));
+	vec4 wy = SplineWeights(fract(t.y));
+	vec4 field = vec4(0.0);
+	for (int j = 0; j < 4; j++) {
+		for (int i = 0; i < 4; i++) field += wx[i] * wy[j] * SheetWater(cell + ivec2(i - 1, j - 1), level, reach);
+	}
+	return Walled(field, p);
+}
+
 /* Past the map's edge lies open sea. */
-vec4 FieldAt(vec2 p)
+vec4 FieldAt(vec2 p, float level)
 {
 	bool inside = all(greaterThanEqual(p, vec2(0.0))) && all(lessThanEqual(p, MapSize()));
-	return inside ? WaterField(p) : vec4(1.0, 1.0, 0.0, 0.0);
+	return inside ? SheetField(p, level) : vec4(1.0, 1.0, 0.0, 0.0);
 }
 
 Body BodyOf(vec4 field)
@@ -287,7 +316,7 @@ void main()
 {
 	vec2 p = v_world.xy;
 	tile_pixels = 1.0 / max(max(length(dFdx(p)), length(dFdy(p))), MIN_SPREAD);
-	vec4 field = FieldAt(p);
+	vec4 field = FieldAt(p, v_world.z);
 	Body body = BodyOf(field);
 	float outline = Outline(field, body);
 	float river = body.calm * (1.0 - body.canal);
