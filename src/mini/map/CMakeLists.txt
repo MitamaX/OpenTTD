@@ -1,4 +1,6 @@
 add_files(
+    airfield_marks.cpp
+    airfield_marks.h
     building_form.h
     house_forms.cpp
     house_forms.h

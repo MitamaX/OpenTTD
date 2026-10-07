@@ -109,6 +109,29 @@ const float BLOCKS_PER_TILE = 3.0;
 const float MORTAR_SHARE = 0.08;
 const vec3 MASONRY = vec3(0.56, 0.53, 0.49);
 
+const vec3 RUNWAY_ASPHALT = vec3(0.25, 0.26, 0.27);
+const vec3 APRON_CONCRETE = vec3(0.66, 0.65, 0.62);
+const vec3 AIRFIELD_WHITE = vec3(0.92, 0.92, 0.9);
+const vec3 TAXI_YELLOW = vec3(0.9, 0.72, 0.18);
+const vec3 EDGE_LIGHT = vec3(1.0, 0.93, 0.7);
+const float RUNWAY_EDGE = 0.41;
+const float RUNWAY_EDGE_HALF = 0.015;
+const float CENTRELINE_HALF = 0.012;
+const float CENTRELINE_DASHES = 3.0;
+const float THRESHOLD_FROM = 0.72;
+const float THRESHOLD_TO = 0.9;
+const float THRESHOLD_REACH = 0.36;
+const float THRESHOLD_BARS = 10.0;
+const float EDGE_LIGHT_LATERAL = 0.46;
+const float EDGE_LIGHTS = 4.0;
+const float EDGE_LIGHT_RADIUS = 0.018;
+const float TAXI_LINE_HALF = 0.014;
+const float PANEL_JOINTS = 4.0;
+const float PANEL_JOINT_HALF = 0.006;
+const float STAND_BOX = 0.3;
+const float HELIPAD_RING = 0.32;
+const float HELIPAD_LINE_HALF = 0.02;
+
 struct Ground {
 	uint material;
 	float density;
@@ -610,6 +633,85 @@ bool OutsideMap(vec2 p)
 	return !OnMap(tile) || texelFetch(u_tiles, tile, 0).r == MAT_VOID;
 }
 
+uint MarkAt(ivec2 tile)
+{
+	uvec4 codes = CodesAt(tile);
+	return codes.r == MAT_PAVED ? codes.a : AIRFIELD_NONE;
+}
+
+bool Taxiable(uint mark)
+{
+	return mark == AIRFIELD_TAXIWAY || mark == AIRFIELD_RUNWAY || mark == AIRFIELD_STAND;
+}
+
+float AirfieldStroke(float gap, float half_width)
+{
+	return Stroke(gap, half_width, 1.0 / tile_pixels);
+}
+
+/* A runway lies along the axis its neighbouring runway tiles run; it carries edge lines, a dashed centre line, edge lights and, where it ends, threshold bars. */
+vec4 Runway(ivec2 tile, vec2 f, vec2 p)
+{
+	bool along_x = MarkAt(tile + ivec2(1, 0)) == AIRFIELD_RUNWAY || MarkAt(tile - ivec2(1, 0)) == AIRFIELD_RUNWAY;
+	ivec2 onward = along_x ? ivec2(1, 0) : ivec2(0, 1);
+	float along = along_x ? f.x : f.y;
+	float across = abs((along_x ? f.y : f.x) - HALF_TILE);
+	float run = along_x ? p.x : p.y;
+
+	float white = AirfieldStroke(abs(across - RUNWAY_EDGE), RUNWAY_EDGE_HALF);
+	float dash = step(fract(run * CENTRELINE_DASHES), 0.55);
+	white = max(white, AirfieldStroke(across, CENTRELINE_HALF) * dash);
+	bool ends_ahead = MarkAt(tile + onward) != AIRFIELD_RUNWAY;
+	bool ends_behind = MarkAt(tile - onward) != AIRFIELD_RUNWAY;
+	float inward = ends_ahead ? along : (ends_behind ? 1.0 - along : 0.0);
+	if ((ends_ahead || ends_behind) && across < THRESHOLD_REACH && inward > THRESHOLD_FROM && inward < THRESHOLD_TO) {
+		white = max(white, AirfieldStroke(abs(fract(across * THRESHOLD_BARS) - HALF_TILE), 0.25));
+	}
+	vec3 colour = mix(RUNWAY_ASPHALT, AIRFIELD_WHITE, white);
+	float light = 1.0 - smoothstep(EDGE_LIGHT_RADIUS * 0.5, EDGE_LIGHT_RADIUS, length(vec2(fract(run * EDGE_LIGHTS) - HALF_TILE, (across - EDGE_LIGHT_LATERAL) * EDGE_LIGHTS) / EDGE_LIGHTS));
+	return vec4(mix(colour, EDGE_LIGHT, light * Resolved(EDGE_LIGHTS * 2.0)), 1.0);
+}
+
+/* A taxiway's yellow centre line runs from the tile's middle toward each neighbour aircraft taxi on to. */
+float TaxiLines(ivec2 tile, vec2 f)
+{
+	vec2 off = f - HALF_TILE;
+	float line = 0.0;
+	if (Taxiable(MarkAt(tile + ivec2(1, 0))) && off.x > -TAXI_LINE_HALF) line = max(line, AirfieldStroke(abs(off.y), TAXI_LINE_HALF));
+	if (Taxiable(MarkAt(tile - ivec2(1, 0))) && off.x < TAXI_LINE_HALF) line = max(line, AirfieldStroke(abs(off.y), TAXI_LINE_HALF));
+	if (Taxiable(MarkAt(tile + ivec2(0, 1))) && off.y > -TAXI_LINE_HALF) line = max(line, AirfieldStroke(abs(off.x), TAXI_LINE_HALF));
+	if (Taxiable(MarkAt(tile - ivec2(0, 1))) && off.y < TAXI_LINE_HALF) line = max(line, AirfieldStroke(abs(off.x), TAXI_LINE_HALF));
+	return line;
+}
+
+vec3 Concrete(vec2 f)
+{
+	vec2 joints = abs(fract(f * PANEL_JOINTS + HALF_TILE) - HALF_TILE) / PANEL_JOINTS;
+	float joint = max(AirfieldStroke(joints.x, PANEL_JOINT_HALF), AirfieldStroke(joints.y, PANEL_JOINT_HALF));
+	return APRON_CONCRETE * (1.0 - 0.18 * joint * Resolved(PANEL_JOINTS * 2.0));
+}
+
+/* An airport's paved tiles are painted as what they are: runways, taxiways, stands and helipads on concrete aprons. */
+vec4 Airfield(vec2 p)
+{
+	ivec2 tile = ivec2(floor(p));
+	uint mark = MarkAt(tile);
+	if (mark == AIRFIELD_NONE) return vec4(0.0);
+	vec2 f = fract(p);
+	if (mark == AIRFIELD_RUNWAY) return Runway(tile, f, p);
+
+	vec3 colour = Concrete(f);
+	vec2 off = abs(f - HALF_TILE);
+	if (mark == AIRFIELD_TAXIWAY || mark == AIRFIELD_STAND) colour = mix(colour, TAXI_YELLOW, TaxiLines(tile, f));
+	if (mark == AIRFIELD_STAND) colour = mix(colour, TAXI_YELLOW, AirfieldStroke(abs(max(off.x, off.y) - STAND_BOX), TAXI_LINE_HALF));
+	if (mark == AIRFIELD_HELIPAD) {
+		float ring = AirfieldStroke(abs(length(f - HALF_TILE) - HELIPAD_RING), HELIPAD_LINE_HALF);
+		float letter = max(AirfieldStroke(abs(off.x - 0.1), HELIPAD_LINE_HALF) * step(off.y, 0.15), AirfieldStroke(off.y, HELIPAD_LINE_HALF) * step(off.x, 0.1));
+		colour = mix(colour, AIRFIELD_WHITE, max(ring, letter));
+	}
+	return vec4(colour, 1.0);
+}
+
 /* Only foundations part the ground into walls, and they are laid in dressed stone courses. */
 vec3 WallFace(vec3 normal)
 {
@@ -640,7 +742,7 @@ vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, float levels_per
 	Patch surface = Surface(p, grain, relief, water.sea > 0.0 && Armoured(p), site);
 	normal = Roughened(normal, p, surface.rugged * (1.0 - water.cover));
 	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
-	vec3 land = Altitude(Composite(surface.tone, Hedgerow(p, grain)), v_world.z);
+	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p, grain)), Airfield(p)), v_world.z);
 	land = mix(Banks(land, water, beach), Seabed(water, grain), clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0));
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 

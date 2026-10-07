@@ -23,6 +23,7 @@
 #include "../../tile_map.h"
 #include "../../water_map.h"
 #include "../core/tones.h"
+#include "airfield_marks.h"
 #include "site_shapes.h"
 
 #include "../../safeguards.h"
@@ -59,12 +60,20 @@ static constexpr SiteLook HELIPORT_LOOK = BlockLook(5.0f, Finish::Glass);
 static constexpr SiteLook RADIO_MAST_LOOK = MastLook(8.75f);
 static constexpr float ROTUNDA_RADIUS = 0.42f;
 static constexpr float ROTUNDA_HEIGHT = 0.75f;
-static constexpr float TOWER_SHAFT_RADIUS = 0.12f;
-static constexpr float TOWER_SHAFT_HEIGHT = 1.3f;
-static constexpr float TOWER_CAB_RADIUS = 0.22f;
-static constexpr float TOWER_CAB_HEIGHT = 0.16f;
+static constexpr float TOWER_BASE_SIDE = 0.62f;
+static constexpr float TOWER_BASE_HEIGHT = 0.22f;
+static constexpr float TOWER_SHAFT_RADIUS = 0.1f;
+static constexpr float TOWER_SHAFT_HEIGHT = 0.9f;
+static constexpr float TOWER_SHAFT_TAPER = 0.12f;
+static constexpr float TOWER_GALLERY_RADIUS = 0.2f;
+static constexpr float TOWER_GALLERY_HEIGHT = 0.05f;
+static constexpr float TOWER_CAB_RADIUS = 0.2f;
+static constexpr float TOWER_CAB_HEIGHT = 0.15f;
+static constexpr float TOWER_CAB_SPLAY = -0.1f;
 static constexpr float TOWER_LID_RADIUS = 0.24f;
-static constexpr float TOWER_LID_HEIGHT = 0.02f;
+static constexpr float TOWER_LID_HEIGHT = 0.03f;
+static constexpr float TOWER_MAST_RADIUS = 0.012f;
+static constexpr float TOWER_MAST_HEIGHT = 0.22f;
 static constexpr float HANGAR_INSET = 0.05f;
 static constexpr float HANGAR_HEIGHT = 0.45f;
 static constexpr float HANGAR_PITCH = 0.35f;
@@ -164,10 +173,9 @@ std::optional<BuildingForm> DepotForm(TileIndex tile)
 
 static std::optional<AirportPart> AirportPartOf(TileIndex tile)
 {
-	StationGfx gfx = GetAirportGfx(tile);
-	uint stand_in = gfx < NEW_AIRPORTTILE_OFFSET ? gfx : AirportTileSpec::Get(gfx)->grf_prop.subst_id;
-	if (stand_in >= NEW_AIRPORTTILE_OFFSET || AIRPORT_PARTS[stand_in] == AirportPart::End) return std::nullopt;
-	return AIRPORT_PARTS[stand_in];
+	std::optional<StationGfx> stand_in = AirportStandIn(tile);
+	if (!stand_in.has_value() || AIRPORT_PARTS[*stand_in] == AirportPart::End) return std::nullopt;
+	return AIRPORT_PARTS[*stand_in];
 }
 
 static bool IsConcourse(std::optional<AirportPart> part)
@@ -198,13 +206,17 @@ static void AddRotunda(BuildingForm &form, const SiteLot &lot, uint32_t)
 	form.Add(GlassMass(Part::Disc(LOT_CENTRE, LOT_CENTRE, ROTUNDA_RADIUS), ROTUNDA_HEIGHT, lot.seed));
 }
 
+/* A control tower rises from a low office on a tapering shaft to a gallery, a cab glazed all round leaning out over it, and a mast on its lid. */
 static void AddControlTower(BuildingForm &form, const SiteLot &lot, uint32_t)
 {
-	Part shaft = Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_SHAFT_RADIUS).Height(TOWER_SHAFT_HEIGHT).Clad(Material::Concrete, FinishTint(Finish::Concrete, lot.seed));
-	Part cab = Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_CAB_RADIUS).On(LevelAbove(shaft)).Height(TOWER_CAB_HEIGHT).Clad(Material::Glass, FinishTint(Finish::Glass, lot.seed));
-	form.Add(shaft);
-	form.Add(cab);
-	form.Add(Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_LID_RADIUS).On(LevelAbove(cab)).Height(TOWER_LID_HEIGHT).Clad(Material::Metal, SOOT_TINT));
+	uint32_t concrete = FinishTint(Finish::Concrete, lot.seed);
+	Part base = Part::Square(LOT_CENTRE, LOT_CENTRE, TOWER_BASE_SIDE).Facade(Finish::Concrete, TOWER_BASE_HEIGHT, concrete, LotFronts(lot)).Covered(Material::Gravel, RoofTint(Material::Gravel, lot.seed));
+	Part shaft = Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_SHAFT_RADIUS).On(LevelAbove(base)).Height(TOWER_SHAFT_HEIGHT).Taper(TOWER_SHAFT_TAPER).Clad(Material::Concrete, concrete);
+	Part gallery = Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_GALLERY_RADIUS).On(LevelAbove(shaft)).Height(TOWER_GALLERY_HEIGHT).Clad(Material::Concrete, concrete);
+	Part cab = Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_CAB_RADIUS).On(LevelAbove(gallery)).Height(TOWER_CAB_HEIGHT).Taper(TOWER_CAB_SPLAY).Clad(Material::Glass, FinishTint(Finish::Glass, lot.seed));
+	Part lid = Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_LID_RADIUS).On(LevelAbove(cab)).Height(TOWER_LID_HEIGHT).Clad(Material::Metal, SOOT_TINT);
+	for (const Part &part : {base, shaft, gallery, cab, lid}) form.Add(part);
+	form.Add(Part::Disc(LOT_CENTRE, LOT_CENTRE, TOWER_MAST_RADIUS).On(LevelAbove(lid)).Height(TOWER_MAST_HEIGHT).Detailed().Clad(Material::Metal, COL_PAPER));
 }
 
 static DiagDirection HangarExit(TileIndex tile)

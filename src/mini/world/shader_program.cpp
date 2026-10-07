@@ -26,6 +26,7 @@
 #include "../core/tones.h"
 #include "../core/tuning.h"
 #include "../gpu/gl_api.h"
+#include "../map/airfield_marks.h"
 #include "../map/map_overlay.h"
 #include "../map/network_style.h"
 #include "../map/world_tiles.h"
@@ -118,6 +119,7 @@ static std::string ShaderHeader()
 	std::string header = "#version 330 core\n";
 	DefineCodes(header, "MAT_", GROUND_MATERIAL_NAMES);
 	DefineCodes(header, "TREE_", TREE_KIND_NAMES);
+	DefineCodes(header, "AIRFIELD_", AIRFIELD_MARK_NAMES);
 	DefineUnsigned(header, "DENSITY_MASK", GROUND_DENSITY_MASK);
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
 	DefineUnsigned(header, "FLORA_COUNT_MASK", FLORA_COUNT_MASK);

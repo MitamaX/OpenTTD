@@ -30,6 +30,7 @@
 #include "../../tunnel_map.h"
 #include "../../tunnelbridge_map.h"
 #include "../../water_map.h"
+#include "airfield_marks.h"
 #include "building_form.h"
 #include "house_forms.h"
 #include "industry_forms.h"
@@ -177,6 +178,14 @@ static Cover BuiltCover(TileIndex tile, GroundMaterial on_land)
 	return {HasTileWaterClass(tile) && IsTileOnWater(tile) ? GroundMaterial::Shore : on_land};
 }
 
+/* An airport's grass stays grass; the rest is paved and carries the markings its tile is painted with. */
+static Cover AirportCover(TileIndex tile)
+{
+	AirfieldMark mark = AirfieldMarkOf(tile);
+	if (mark == AirfieldMark::Grass) return {GroundMaterial::Grass};
+	return {GroundMaterial::Paved, GROUND_DENSITY_MASK, to_underlying(mark)};
+}
+
 /* Trees planted in a park or a plantation grow from grass. */
 static Cover CoverOf(TileIndex tile, bool planted)
 {
@@ -188,7 +197,7 @@ static Cover CoverOf(TileIndex tile, bool planted)
 		case MP_ROAD: return RoadCover(tile);
 		case MP_WATER: return {GroundMaterial::Shore};
 		case MP_HOUSE: return {planted ? GroundMaterial::Grass : GroundMaterial::Paved};
-		case MP_STATION: return BuiltCover(tile, GroundMaterial::Paved);
+		case MP_STATION: return IsAirport(tile) ? AirportCover(tile) : BuiltCover(tile, GroundMaterial::Paved);
 		case MP_INDUSTRY: return planted ? Cover{GroundMaterial::Grass} : BuiltCover(tile, GroundMaterial::Dirt);
 		case MP_OBJECT: return BuiltCover(tile, GroundMaterial::Grass);
 		case MP_TUNNELBRIDGE: return {HasTunnelBridgeSnowOrDesert(tile) ? SnowOrDesert() : GroundMaterial::Grass};
