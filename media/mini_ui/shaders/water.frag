@@ -79,7 +79,7 @@ const float TOY_REFLECTANCE_CEILING = 0.3;
 
 const vec3 FOAM = vec3(0.80, 0.84, 0.86);
 const vec3 TOY_FOAM = vec3(0.95, 0.97, 1.0);
-const vec2 TOY_WHITEWATER_EDGES = vec2(0.36, 0.42);
+const vec2 TOY_WHITEWATER_EDGES = vec2(0.55, 0.61);
 const float FOAM_SCALE = 3.1;
 const float FOAM_DRIFT = 0.12;
 const float CONTACT_DEPTH = 0.025;
