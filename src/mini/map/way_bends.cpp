@@ -48,7 +48,7 @@ void WayBends::Sync(const WorldChanges &changes)
 		this->due.assign(1, this->Whole());
 		return;
 	}
-	for (const Rect &relief : changes.reliefs) this->due.push_back(TilesNear(relief, BEND_REACH));
+	for (const Rect &relief : changes.Of(ChangeKind::Relief)) this->due.push_back(TilesNear(relief, BEND_REACH));
 }
 
 void WayBends::Refresh()

@@ -125,6 +125,7 @@ void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 	cell.planted = true;
 }
 
+/* A block's trees grow from the flora of its own tiles, on a bed laid by the shape and the water of the tiles out to the shelf's edge. */
 void ForestField::Sync(const WorldChanges &changes)
 {
 	this->frame++;
@@ -136,7 +137,9 @@ void ForestField::Sync(const WorldChanges &changes)
 		this->cells = std::vector<Cell>(this->grid.Count());
 		return;
 	}
-	this->grid.ForEachTouched(changes.areas, SHELF_TILES, [&](size_t index) { this->cells[index].planted = false; });
+	auto unplant = [&](size_t index) { this->cells[index].planted = false; };
+	this->grid.ForEachTouched(changes, ChangeKind::Flora, 0, unplant);
+	this->grid.ForEachTouched(changes, {ChangeKind::Shape, ChangeKind::Water}, SHELF_TILES, unplant);
 }
 
 static double FarthestDistance(const Vec3 &eye, const Vec3 &low, const Vec3 &high)

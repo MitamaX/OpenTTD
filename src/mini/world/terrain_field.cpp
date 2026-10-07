@@ -48,7 +48,7 @@ void TerrainField::Sync(const WorldChanges &changes)
 		return;
 	}
 
-	this->grid.ForEachTouched(changes.reliefs, std::max(SHELF_TILES, WAY_EASE_REACH), [&](size_t index) {
+	this->grid.ForEachTouched(changes.Of(ChangeKind::Relief), std::max(SHELF_TILES, WAY_EASE_REACH), [&](size_t index) {
 		Chunk &chunk = this->chunks[index];
 		if (chunk.rebuild.has_value()) chunk.rebuild->outdated = true;
 		chunk.stale = true;

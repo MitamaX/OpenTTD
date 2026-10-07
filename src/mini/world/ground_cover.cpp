@@ -78,7 +78,7 @@ static void StrewScrub(int tx, int ty, const GrassGreens &greens, ScatterCopies 
 	}
 }
 
-GroundCover::GroundCover() : BlockScatter(TUFT_SHAPES, CLEAR_REACH)
+GroundCover::GroundCover() : BlockScatter(TUFT_SHAPES, CLEAR_REACH, OPEN_LAND_READS | ChangeKind::Shape)
 {
 }
 

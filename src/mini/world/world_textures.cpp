@@ -23,12 +23,12 @@ static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = 
 WorldTextures::Source WorldTextures::SourceOf(uint unit) const
 {
 	switch (unit) {
-		case TILES_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Ground()};
-		case WATER_UNIT: return {TexelFormat::FilteredRgba, _world_tiles.Water()};
-		case SURFACES_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Surfaces()};
-		case NETWORK_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Network()};
-		case BENDS_UNIT: return {TexelFormat::ExactRgba, _way_bends.Texels()};
-		case SHORE_UNIT: return {TexelFormat::FilteredRed, this->shore.Texels()};
+		case TILES_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Ground(), {ChangeKind::Cover, ChangeKind::Flora}};
+		case WATER_UNIT: return {TexelFormat::FilteredRgba, _world_tiles.Water(), ChangeKind::Water};
+		case SURFACES_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Surfaces(), ChangeKind::Shape};
+		case NETWORK_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Network(), ChangeKind::Ways};
+		case BENDS_UNIT: return {TexelFormat::ExactRgba, _way_bends.Texels(), {}};
+		case SHORE_UNIT: return {TexelFormat::FilteredRed, this->shore.Texels(), {}};
 		default: NOT_REACHED();
 	}
 }
@@ -43,7 +43,8 @@ void WorldTextures::Allocate(uint unit)
 void WorldTextures::Sync(const WorldChanges &changes)
 {
 	bool whole = changes.whole || !this->textures[TILES_UNIT].Allocated();
-	if (whole || changes.water) {
+	bool water = changes.Has(ChangeKind::Water);
+	if (whole || water) {
 		_frame_profile.Count("shore_surveys");
 		ProfileScope profile("build", "shore", ProfileClock::Cpu);
 		this->shore.Survey(_world_tiles.Size());
@@ -51,10 +52,13 @@ void WorldTextures::Sync(const WorldChanges &changes)
 	if (whole) {
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) this->Allocate(unit);
 	} else {
-		for (uint unit = 0; unit < SHORE_UNIT; unit++) {
-			for (const Rect &area : changes.areas) this->textures[unit].Update(area, this->SourceOf(unit).texels);
+		for (uint unit = 0; unit < UNIT_COUNT; unit++) {
+			Source source = this->SourceOf(unit);
+			for (ChangeKind kind : source.kinds) {
+				for (const Rect &span : changes.Of(kind)) this->textures[unit].Update(span, source.texels);
+			}
 		}
-		if (changes.water) {
+		if (water) {
 			this->textures[WATER_UNIT].Refilter();
 			this->Allocate(SHORE_UNIT);
 		}

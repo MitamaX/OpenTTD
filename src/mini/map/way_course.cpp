@@ -391,7 +391,7 @@ public:
 			this->eases.clear();
 			return;
 		}
-		for (const Rect &relief : changes.reliefs) {
+		for (const Rect &relief : changes.Of(ChangeKind::Relief)) {
 			Rect tiles = TilesNear(relief, WAY_EASE_REACH);
 			for (int hy = 2 * tiles.top; hy <= 2 * tiles.bottom + 2; hy++) {
 				for (int hx = 2 * tiles.left + 1 - hy % 2; hx <= 2 * tiles.right + 2; hx += 2) this->eases.erase(Joint{hx, hy}.Key());
@@ -611,7 +611,7 @@ public:
 			this->tiles.clear();
 			return;
 		}
-		for (const Rect &relief : changes.reliefs) {
+		for (const Rect &relief : changes.Of(ChangeKind::Relief)) {
 			Rect tiles = TilesNear(relief, WAY_EASE_REACH + DRAWN_READ_REACH);
 			for (int ty = tiles.top; ty <= tiles.bottom; ty++) {
 				for (int tx = tiles.left; tx <= tiles.right; tx++) this->tiles.erase(TileXY(tx, ty).base());

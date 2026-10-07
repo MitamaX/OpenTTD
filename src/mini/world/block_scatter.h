@@ -17,17 +17,18 @@
 
 /* A tile with nothing on it: no way, no building and no water. */
 bool IsOpenLand(int tx, int ty);
+inline constexpr ChangeKinds OPEN_LAND_READS = {ChangeKind::Cover, ChangeKind::Ways, ChangeKind::Water};
 /* Whether every tile within reach of one is open land. */
 bool ClearAround(int tx, int ty, int reach);
 
 /* The copies of each model a block holds. */
 using ScatterCopies = std::vector<std::vector<VehicleInstance>>;
 
-/* A block goes stale when a tile within reach of it changes, since what stands on a tile may hang on the tiles about it; only a few stale blocks in sight are strewn again each frame,
+/* A block goes stale when a tile within reach of it changes in a way the scatter reads, since what stands on a tile may hang on the tiles about it; only a few stale blocks in sight are strewn again each frame,
  * those strewn longest ago first, the others showing what they held until their turn comes. */
 class BlockScatter : public Scatter {
 public:
-	BlockScatter(size_t models, int reach) : models(models), reach(reach) {}
+	BlockScatter(size_t models, int reach, ChangeKinds reads) : models(models), reach(reach), reads(reads) {}
 
 	void Sync(const WorldChanges &changes) final;
 	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) final;
@@ -55,6 +56,7 @@ private:
 	uint64_t strews = 0;
 	size_t models;
 	int reach;
+	ChangeKinds reads;
 };
 
 #endif /* MINI_WORLD_BLOCK_SCATTER_H */

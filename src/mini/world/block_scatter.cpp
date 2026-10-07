@@ -48,7 +48,7 @@ void BlockScatter::Sync(const WorldChanges &changes)
 		this->Lay();
 		return;
 	}
-	this->grid.ForEachTouched(changes.areas, this->reach, [&](size_t index) { this->blocks[index].stale = true; });
+	this->grid.ForEachTouched(changes, this->reads, this->reach, [&](size_t index) { this->blocks[index].stale = true; });
 }
 
 void BlockScatter::Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch)

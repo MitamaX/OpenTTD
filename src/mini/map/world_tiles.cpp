@@ -471,8 +471,7 @@ void WorldTiles::Sync()
 
 WorldChanges WorldTiles::TakeChanges()
 {
-	std::ranges::fill(this->changed_claims, 0);
-	std::ranges::fill(this->relief_claims, 0);
+	for (std::vector<uint32_t> &claims : this->claims) std::ranges::fill(claims, 0);
 	return std::exchange(this->changes, {});
 }
 
@@ -553,9 +552,8 @@ void WorldTiles::Rebuild()
 	this->queued.assign(count, false);
 	this->pending.clear();
 	this->touched.clear();
-	this->changed_claims.assign(CeilDiv(this->size.width, BLOCK_TILES) * CeilDiv(this->size.height, BLOCK_TILES), 0);
-	this->relief_claims = this->changed_claims;
-	this->changes = {{}, {}, true, true};
+	for (std::vector<uint32_t> &claims : this->claims) claims.assign(CeilDiv(this->size.width, BLOCK_TILES) * CeilDiv(this->size.height, BLOCK_TILES), 0);
+	this->changes = {.whole = true};
 	this->sweep_next = 0;
 	this->stale = false;
 }
@@ -581,12 +579,17 @@ void WorldTiles::Sweep()
 	}
 }
 
+static ChangeKinds KindsChanged(const GroundTexel &packed, const GroundTexel &stored)
+{
+	ChangeKinds kinds;
+	if (packed.flora != stored.flora) kinds.Set(ChangeKind::Flora);
+	if (packed.material != stored.material || packed.detail != stored.detail || packed.variant != stored.variant) kinds.Set(ChangeKind::Cover);
+	return kinds;
+}
+
 void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels &stored)
 {
 	bool water_changed = packed.water != stored.water;
-	this->changes.water |= water_changed;
-
-	this->Claim(tile, this->changed_claims, this->changes.areas);
 	bool groundwork_changed = GroundworkOf(packed.ground, packed.network) != GroundworkOf(stored.ground, stored.network);
 	bool ways_changed = packed.network != stored.network || packed.ramp != stored.ramp || packed.eases != stored.eases;
 	if (packed.ground != stored.ground) _frame_profile.Count("tile_ground");
@@ -596,24 +599,31 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 	if (packed.network.style != stored.network.style) _frame_profile.Count("tile_style");
 	if (packed.network.track != stored.network.track || packed.network.road != stored.network.road || packed.network.tram != stored.network.tram) _frame_profile.Count("tile_ways");
 	if (packed.eases != stored.eases || packed.ramp != stored.ramp) _frame_profile.Count("tile_eases");
-	if (!water_changed && !groundwork_changed && !ways_changed && packed.surface == stored.surface) return;
-	this->Claim(tile, this->relief_claims, this->changes.reliefs);
+
+	ChangeKinds kinds = KindsChanged(packed.ground, stored.ground);
+	if (packed.surface != stored.surface) kinds.Set(ChangeKind::Shape);
+	if (water_changed) kinds.Set(ChangeKind::Water);
+	if (packed.network != stored.network) kinds.Set(ChangeKind::Ways);
+	if (water_changed || groundwork_changed || ways_changed || packed.surface != stored.surface) kinds.Set(ChangeKind::Relief);
+	for (ChangeKind kind : kinds) this->Claim(tile, kind);
 }
 
-/* The tile joins the area of its block, which starts at the first tile of the block to change since the changes were last taken. */
-void WorldTiles::Claim(TileIndex tile, std::vector<uint32_t> &claims, std::vector<Rect> &areas) const
+/* The tile joins the span of its block for the kind of change, which starts at the first tile of the block to change so since the changes were last taken. */
+void WorldTiles::Claim(TileIndex tile, ChangeKind kind)
 {
+	std::vector<uint32_t> &claims = this->claims[to_underlying(kind)];
+	std::vector<Rect> &spans = this->changes.spans[to_underlying(kind)];
 	int tx = static_cast<int>(TileX(tile));
 	int ty = static_cast<int>(TileY(tile));
 	size_t block = static_cast<size_t>(ty / BLOCK_TILES) * CeilDiv(this->size.width, BLOCK_TILES) + tx / BLOCK_TILES;
 	if (claims[block] == 0) {
-		areas.push_back({tx, ty, tx, ty});
-		claims[block] = static_cast<uint32_t>(areas.size());
+		spans.push_back({tx, ty, tx, ty});
+		claims[block] = static_cast<uint32_t>(spans.size());
 		return;
 	}
-	Rect &area = areas[claims[block] - 1];
-	area.left = std::min(area.left, tx);
-	area.top = std::min(area.top, ty);
-	area.right = std::max(area.right, tx);
-	area.bottom = std::max(area.bottom, ty);
+	Rect &span = spans[claims[block] - 1];
+	span.left = std::min(span.left, tx);
+	span.top = std::min(span.top, ty);
+	span.right = std::max(span.right, tx);
+	span.bottom = std::max(span.bottom, ty);
 }

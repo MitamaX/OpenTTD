@@ -92,7 +92,7 @@ void StreetWalkers::Sync(const WorldChanges &changes)
 		this->blocks = std::vector<Block>(this->grid.Count());
 		return;
 	}
-	this->grid.ForEachTouched(changes.areas, RUN_REACH + DENSITY_REACH, [&](size_t index) { this->blocks[index].stale = true; });
+	this->grid.ForEachTouched(changes, {ChangeKind::Cover, ChangeKind::Ways}, RUN_REACH + DENSITY_REACH, [&](size_t index) { this->blocks[index].stale = true; });
 }
 
 /* Each pavement beside a house gets its walkers, pacing the stretch of street that runs straight on through their tile, or standing about on it. */

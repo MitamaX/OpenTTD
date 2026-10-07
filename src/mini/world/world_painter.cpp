@@ -37,6 +37,7 @@
 
 #include "../../safeguards.h"
 
+static constexpr std::array<const char *, to_underlying(ChangeKind::End)> CHANGE_COUNTERS = {"shape_areas", "cover_areas", "flora_areas", "water_areas", "ways_areas", "relief_areas"};
 static constexpr GLint REQUIRED_MAJOR = 3;
 static constexpr GLint REQUIRED_MINOR = 3;
 
@@ -182,8 +183,7 @@ void WorldPainter::SyncChanges()
 {
 	ProfileScope profile("sync");
 	WorldChanges changes = _world_tiles.TakeChanges();
-	_frame_profile.Count("changed_areas", changes.areas.size());
-	_frame_profile.Count("relief_areas", changes.reliefs.size());
+	for (size_t kind = 0; kind < CHANGE_COUNTERS.size(); kind++) _frame_profile.Count(CHANGE_COUNTERS[kind], changes.spans[kind].size());
 	{
 		ProfileScope ways_profile("sync", "ways", ProfileClock::Cpu);
 		ForgetCourses(changes);

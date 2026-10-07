@@ -16,6 +16,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../../core/enum_type.hpp"
 #include "../../core/geometry_type.hpp"
 #include "../../rail_type.h"
 #include "../../tile_type.h"
@@ -146,12 +147,26 @@ struct RampTexel {
 	bool operator==(const RampTexel &) const = default;
 };
 
-/* Within each block of the map, the span of tiles where any texel changed, and of the fewer where the ground's shape, its water or the ways banked up on it did. */
+/* What changed on a tile: the ground's shape, what covers it, the trees on it, its water or the ways on it; and its relief, wherever the shape, the water or the ways banked up on it changed. */
+enum class ChangeKind : uint8_t {
+	Shape,
+	Cover,
+	Flora,
+	Water,
+	Ways,
+	Relief,
+	End,
+};
+
+using ChangeKinds = EnumBitSet<ChangeKind, uint8_t>;
+
+/* Within each block of the map, the span of tiles where each kind of change happened, so each part of the world hears only of the kinds it is built from. */
 struct WorldChanges {
-	std::vector<Rect> areas;
-	std::vector<Rect> reliefs;
+	std::array<std::vector<Rect>, to_underlying(ChangeKind::End)> spans{};
 	bool whole = false;
-	bool water = false;
+
+	std::span<const Rect> Of(ChangeKind kind) const { return this->spans[to_underlying(kind)]; }
+	bool Has(ChangeKind kind) const { return !this->Of(kind).empty(); }
 };
 
 class WorldTiles {
@@ -196,7 +211,7 @@ private:
 	void Repack(TileIndex tile);
 	void Sweep();
 	void MarkChanged(TileIndex tile, const Texels &packed, const Texels &stored);
-	void Claim(TileIndex tile, std::vector<uint32_t> &claims, std::vector<Rect> &areas) const;
+	void Claim(TileIndex tile, ChangeKind kind);
 
 	Dimension size{};
 	uint peak = 0;
@@ -209,9 +224,8 @@ private:
 	std::vector<TileIndex> pending;
 	std::vector<TileIndex> touched;
 	std::vector<bool> queued;
-	/* Each block's place among the areas, counted from one; nought for a block none of them lies in yet. */
-	std::vector<uint32_t> changed_claims;
-	std::vector<uint32_t> relief_claims;
+	/* For each kind of change, each block's place among its spans, counted from one; nought for a block none of them lies in yet. */
+	std::array<std::vector<uint32_t>, to_underlying(ChangeKind::End)> claims;
 	WorldChanges changes;
 	uint sweep_next = 0;
 	bool stale = true;

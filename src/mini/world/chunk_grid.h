@@ -46,6 +46,13 @@ public:
 		}
 	}
 
+	/* Every block holding or within the margin of a tile where a change of any of the kinds happened, visited once for each kind that reaches it. */
+	template <class Visit>
+	void ForEachTouched(const WorldChanges &changes, ChangeKinds kinds, int margin, Visit visit) const
+	{
+		for (ChangeKind kind : kinds) this->ForEachTouched(changes.Of(kind), margin, visit);
+	}
+
 	/* Every block within reach of the eye whose box, grown by a margin of tiles and standing up to the top, the frustum meets and in which a tile still spans the fewest pixels;
 	 * the visit says whether to go on. */
 	template <class Visit>

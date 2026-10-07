@@ -37,9 +37,11 @@ public:
 	static void BindSamplers(const ShaderProgram &program);
 
 private:
+	/* A texture's texels, and the kinds of change they follow; the bends and the shore keep track of their own changes. */
 	struct Source {
 		TexelFormat format;
 		const void *texels;
+		ChangeKinds kinds;
 	};
 
 	Source SourceOf(uint unit) const;
