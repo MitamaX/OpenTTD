@@ -139,7 +139,7 @@ struct Solid {
 	float Top() const { return this->base + this->wall + this->rise; }
 };
 
-inline constexpr size_t MAX_SOLIDS = 12;
+inline constexpr size_t MAX_SOLIDS = 20;
 
 struct BuildingForm {
 	int tx = 0;

@@ -86,8 +86,45 @@ static constexpr Plot RADAR_DISH = Plot::Around(LOT_CENTRE, LOT_CENTRE, 0.125f, 
 static constexpr float RADAR_DISH_HEIGHT = 0.1f;
 static constexpr int AIRPORT_COTTAGE_STOREYS = 1;
 
-static constexpr float WAREHOUSE_INSET = 0.12f;
-static constexpr float WAREHOUSE_HEIGHT = 0.35f;
+static constexpr float WAREHOUSE_HEIGHT = 0.3f;
+static constexpr float WAREHOUSE_BACK = 0.04f;
+static constexpr float WAREHOUSE_DEPTH = 0.4f;
+static constexpr float WAREHOUSE_WIDTH = 0.8f;
+static constexpr float QUAY_DEPTH = 0.52f;
+static constexpr float QUAY_HEIGHT = 0.05f;
+static constexpr uint32_t QUAY_TINT = 0xFFB3AEA4U;
+static constexpr float CRANE_EDGE_GAP = 0.03f;
+static constexpr float CRANE_END_GAP = 0.08f;
+static constexpr float CRANE_DEPTH = 0.2f;
+static constexpr float CRANE_SPAN = 0.3f;
+static constexpr float CRANE_LEG_SIDE = 0.035f;
+static constexpr float CRANE_LEG_HEIGHT = 0.42f;
+static constexpr float CRANE_HOUSE_HEIGHT = 0.09f;
+static constexpr float JIB_WIDTH = 0.05f;
+static constexpr float JIB_DEPTH = 0.035f;
+static constexpr float JIB_OVERHANG = 0.45f;
+static constexpr float JIB_TAIL = 0.12f;
+static constexpr std::array<uint32_t, 3> CRANE_TINTS = {0xFFE0B02AU, 0xFFD2522EU, 0xFF3F74B6U};
+static constexpr float CONTAINER_LENGTH = 0.17f;
+static constexpr float CONTAINER_WIDTH = 0.065f;
+static constexpr float CONTAINER_HEIGHT = 0.06f;
+static constexpr float CONTAINER_GAP = 0.012f;
+static constexpr float CONTAINER_EDGE_GAP = 0.1f;
+static constexpr float CONTAINER_END_GAP = 0.07f;
+static constexpr uint CONTAINER_ROWS = 2;
+static constexpr uint MOST_STACKED = 3;
+static constexpr std::array<uint32_t, 6> CONTAINER_TINTS = {0xFFB8432FU, 0xFF2F6FA8U, 0xFF3E8A4FU, 0xFFD9A632U, 0xFFC9CCCFU, 0xFF8E3A6EU};
+static constexpr float BOLLARD_RADIUS = 0.014f;
+static constexpr float BOLLARD_HEIGHT = 0.025f;
+static constexpr float BOLLARD_INSET = 0.025f;
+static constexpr std::array<float, 3> BOLLARD_SPOTS = {0.22f, 0.5f, 0.78f};
+static constexpr uint32_t BOLLARD_TINT = 0xFF2C2F33U;
+static constexpr uint CRANE_END_BIT = 0;
+static constexpr uint CRANE_TINT_FIRST = 1;
+static constexpr uint STACK_FIRST = 4;
+static constexpr uint STACK_BITS = 2;
+static constexpr uint CONTAINER_TINT_FIRST = 8;
+static constexpr uint CONTAINER_TINT_BITS = 3;
 
 static constexpr float BUOY_RADIUS = 0.07f;
 static constexpr float BUOY_HULL_HEIGHT = 0.07f;
@@ -283,15 +320,67 @@ static std::optional<BuildingForm> AirportForm(TileIndex tile)
 	return form;
 }
 
+/* The share of a plot running in from one of its sides, from one depth to another. */
+static Plot Band(const Plot &plot, DiagDirection side, float from, float to)
+{
+	return plot.Edge(side, to).Inset(side, from);
+}
+
+/* A portal crane straddles the quay at its edge, its jib reaching out over the water and its counterweighted tail back over the quay. */
+static void AddQuayCrane(BuildingForm &form, DiagDirection water, DiagDirection end, uint32_t seed)
+{
+	uint32_t tint = CRANE_TINTS[SeedBits(seed, CRANE_TINT_FIRST, 3) % CRANE_TINTS.size()];
+	Plot gantry = Band(Band(Plot{}, water, CRANE_EDGE_GAP, CRANE_EDGE_GAP + CRANE_DEPTH), end, CRANE_END_GAP, CRANE_END_GAP + CRANE_SPAN);
+	for (DiagDirection across : {end, ReverseDiagDir(end)}) {
+		for (DiagDirection depth : {water, ReverseDiagDir(water)}) {
+			form.Add(Part::Box(Band(Band(gantry, across, 0.0f, CRANE_LEG_SIDE), depth, 0.0f, CRANE_LEG_SIDE)).On(QUAY_HEIGHT).Height(CRANE_LEG_HEIGHT).Clad(Material::Metal, tint));
+		}
+	}
+	Part house = Part::Box(gantry).On(QUAY_HEIGHT + CRANE_LEG_HEIGHT).Height(CRANE_HOUSE_HEIGHT).Clad(Material::Metal, tint);
+	form.Add(house);
+	Plot jib = gantry.Narrowed(AlongEdge(water), JIB_WIDTH).Inset(water, -JIB_OVERHANG).Inset(ReverseDiagDir(water), -JIB_TAIL);
+	form.Add(Part::Box(jib).On(LevelAbove(house)).Height(JIB_DEPTH).Clad(Material::Metal, tint));
+}
+
+/* Rows of shipping containers stand stacked at the other end of the quay, each its own colour. */
+static void AddContainers(BuildingForm &form, DiagDirection water, DiagDirection end, uint32_t seed)
+{
+	SeedDice dice(SubSeed(seed, CONTAINER_TINT_FIRST));
+	for (uint row = 0; row < CONTAINER_ROWS; row++) {
+		float from = CONTAINER_EDGE_GAP + row * (CONTAINER_WIDTH + CONTAINER_GAP);
+		Plot spot = Band(Band(Plot{}, water, from, from + CONTAINER_WIDTH), end, CONTAINER_END_GAP, CONTAINER_END_GAP + CONTAINER_LENGTH);
+		uint stacked = 1 + SeedBits(seed, STACK_FIRST + row * STACK_BITS, STACK_BITS) % MOST_STACKED;
+		for (uint level = 0; level < stacked; level++) {
+			uint32_t tint = CONTAINER_TINTS[dice.Below(static_cast<uint32_t>(CONTAINER_TINTS.size()))];
+			form.Add(Part::Box(spot).On(QUAY_HEIGHT + level * CONTAINER_HEIGHT).Height(CONTAINER_HEIGHT).Clad(Material::Corrugated, tint));
+		}
+	}
+}
+
+static void AddBollards(BuildingForm &form, DiagDirection water, DiagDirection end)
+{
+	for (float spot : BOLLARD_SPOTS) {
+		Plot base = Band(Band(Plot{}, water, BOLLARD_INSET, BOLLARD_INSET + 2.0f * BOLLARD_RADIUS), end, spot - BOLLARD_RADIUS, spot + BOLLARD_RADIUS);
+		form.Add(Part::Cylinder(base).On(QUAY_HEIGHT).Height(BOLLARD_HEIGHT).Detailed().Clad(Material::Metal, BOLLARD_TINT));
+	}
+}
+
+/* A dock is a concrete quay along the water, a crane at its edge, containers stacked on it and bollards to tie up to, with a warehouse behind. */
 static std::optional<BuildingForm> DockForm(TileIndex tile)
 {
 	if (IsDockWaterPart(tile)) return std::nullopt;
 	DiagDirection water = GetDockDirection(tile);
+	uint32_t seed = TileSeed(tile);
+	DiagDirection end = SeedBits(seed, CRANE_END_BIT, 1) != 0 ? AxisToDiagDir(AlongEdge(water)) : ReverseDiagDir(AxisToDiagDir(AlongEdge(water)));
 	BuildingForm form = SiteForm(tile);
-	form.Add(Part::Box(Plot{}.Inset(WAREHOUSE_INSET))
-		.Facade(Finish::Metal, WAREHOUSE_HEIGHT, FinishTint(Finish::Metal, TileSeed(tile)), water)
+	form.Add(Part::Box(Band(Plot{}, water, 0.0f, QUAY_DEPTH)).Height(QUAY_HEIGHT).Clad(Material::Concrete, QUAY_TINT));
+	form.Add(Part::Box(Band(Plot{}, ReverseDiagDir(water), WAREHOUSE_BACK, WAREHOUSE_BACK + WAREHOUSE_DEPTH).Narrowed(AlongEdge(water), WAREHOUSE_WIDTH))
+		.Facade(Finish::Metal, WAREHOUSE_HEIGHT, FinishTint(Finish::Metal, seed), water)
 		.Gable(AlongEdge(water), INDUSTRIAL_PITCH)
 		.Covered(Material::MetalSeam, OwnerTint(tile)));
+	AddQuayCrane(form, water, end, seed);
+	AddContainers(form, water, ReverseDiagDir(end), seed);
+	AddBollards(form, water, end);
 	return form;
 }
 

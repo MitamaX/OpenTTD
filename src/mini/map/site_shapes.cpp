@@ -16,6 +16,7 @@
 #include <span>
 
 #include "../../direction_func.h"
+#include "../../tile_map.h"
 #include "../core/tones.h"
 #include "tile_shapes.h"
 
@@ -164,6 +165,17 @@ static constexpr float DERRICK_HEIGHT = 0.9f;
 static constexpr Plot QUARTERS = {0.15f, 0.2f, 0.85f, 0.8f};
 static constexpr SiteLook QUARTERS_LOOK = BlockLook(1.25f);
 static constexpr float DECK_TANK_HEIGHT = 0.15f;
+static constexpr float BRACE_SIDE = 0.02f;
+static constexpr float BRACE_LEVEL = 0.11f;
+static constexpr float DECK_RAIL_HEIGHT = 0.03f;
+static constexpr float DECK_RAIL_THICKNESS = 0.008f;
+static constexpr uint32_t SAFETY_YELLOW = 0xFFE3BE2EU;
+static constexpr float FLARE_WIDTH = 0.04f;
+static constexpr float FLARE_INBOARD = 0.15f;
+static constexpr float FLARE_REACH = 0.5f;
+static constexpr float FLARE_RISE = 0.25f;
+static constexpr float FLARE_TIP = 0.05f;
+static constexpr uint32_t FLARE_TINT = 0xFFFF8A2AU;
 
 static constexpr Drum Mound(float cx, float cy, float radius, float rise)
 {
@@ -683,6 +695,17 @@ static void AddCrane(BuildingForm &form, float level, uint32_t tint)
 	form.Add(Part::Box(CRANE_BOOM).On(LevelAbove(post)).Height(CRANE_BOOM_DEPTH).Clad(Material::Metal, tint));
 }
 
+/* A lattice boom reaches out over the open sea from the deck, its flare tip burning orange at the end. */
+static void AddFlareBoom(BuildingForm &form, const Plot &deck, float level, const SiteLot &lot, uint32_t tint)
+{
+	DiagDirections sea = JoinedSides(lot.tile, [](TileIndex next) { return IsTileType(next, MP_WATER); });
+	if (sea.None()) return;
+	DiagDirection side = *sea.begin();
+	Plot boom = deck.Narrowed(AlongEdge(side), FLARE_WIDTH).Edge(side, FLARE_INBOARD).Inset(side, -FLARE_REACH);
+	form.Add(Part::Box(boom).On(level + FLARE_RISE).Height(FLARE_WIDTH).Detailed().Clad(Material::Lattice, tint));
+	form.Add(Part::Box(boom.Edge(side, FLARE_TIP)).On(level + FLARE_RISE + FLARE_WIDTH).Height(FLARE_TIP).Detailed().Clad(Material::Plain, FLARE_TINT));
+}
+
 static void AddDeckModule(BuildingForm &form, const Solid &platform, const SiteLot &lot, const SiteLook &look, const SiteLivery &livery)
 {
 	float level = LevelAbove(platform);
@@ -693,6 +716,7 @@ static void AddDeckModule(BuildingForm &form, const Solid &platform, const SiteL
 
 		case DeckModule::Derrick:
 			form.Add(Part::Square(LOT_CENTRE, LOT_CENTRE, DERRICK_SIDE).On(level).Height(DERRICK_HEIGHT).Taper(DERRICK_TAPER).Clad(Material::Lattice, livery.wall));
+			AddFlareBoom(form, FootprintOf(platform), level, lot, livery.wall);
 			break;
 
 		case DeckModule::Quarters:
@@ -825,6 +849,7 @@ static void BuildPumpjack(BuildingForm &form, const SiteLot &, const SiteLook &,
 	form.Add(Part::Box(PUMPJACK_BEAM).On(LevelAbove(post)).Height(PUMPJACK_BEAM_HEIGHT).Clad(Material::Metal, livery.trim));
 }
 
+/* A rig's deck stands on braced legs and is railed along its open sides. */
 static void BuildDeck(BuildingForm &form, const SiteLot &lot, const SiteLook &look, const SiteLivery &livery)
 {
 	Plot deck = LotPlot(lot);
@@ -832,8 +857,12 @@ static void BuildDeck(BuildingForm &form, const SiteLot &lot, const SiteLook &lo
 	for (float x : {legs.x0, legs.x1}) {
 		for (float y : {legs.y0, legs.y1}) form.Add(Part::Square(x, y, DECK_LEG_SIDE).Height(DECK_LEVEL).Clad(Material::Metal, livery.wall));
 	}
+	for (DiagDirection side : LOT_SIDES) form.Add(Part::Box(legs.Edge(side, BRACE_SIDE)).On(BRACE_LEVEL).Height(BRACE_SIDE).Detailed().Clad(Material::Metal, livery.wall));
 	Part platform = Part::Box(deck).On(DECK_LEVEL).Height(DECK_THICKNESS).Clad(Material::Metal, livery.wall).Covered(Material::RoofDeck, livery.roof);
 	form.Add(platform);
+	for (DiagDirection side : OpenSides(lot.joined)) {
+		form.Add(Part::Box(deck.Edge(side, DECK_RAIL_THICKNESS)).On(LevelAbove(platform)).Height(DECK_RAIL_HEIGHT).Detailed().Clad(Material::Metal, SAFETY_YELLOW));
+	}
 	AddDeckModule(form, platform, lot, look, livery);
 }
 
