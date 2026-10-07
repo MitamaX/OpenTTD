@@ -104,6 +104,7 @@ const float LAYER_VARIETY = 0.3;
 const float LEDGE_SHADE = 0.8;
 const float SLABS_PER_TILE = 1.7;
 const float SLAB_VARIETY = 0.3;
+const float LEVEL_BEDDING = 0.35;
 const float CRACKS_PER_TILE = 3.1;
 const float CRACK_WIDTH = 0.05;
 const float CRACK_DEPTH = 0.18;
@@ -474,13 +475,19 @@ vec3 Meadow(Grain grain, float lush)
 	return Grass(Ground(MAT_GRASS, 1.0, 0u), grain, lush);
 }
 
-/* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
+/* Toyland's strata blended as they read from too far to make out one from another. */
+vec3 ToyStrataMean()
+{
+	return (TOY_STRATA[0] + TOY_STRATA[1] + TOY_STRATA[2] + TOY_STRATA[3]) / float(TOY_STRATA_COUNT);
+}
+
 vec3 Stratum(int layer)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return TOY_STRATA[abs(layer) % TOY_STRATA_COUNT];
 	return mix(ROCK, ROCK_WARM, Hash(ivec2(layer, 7))) * Varied(Hash(ivec2(layer, 19)), LAYER_VARIETY);
 }
 
+/* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
 vec3 Scree(Grain grain, vec2 p)
 {
 	vec3 loose = Landscape() == LANDSCAPE_TOYLAND ? Stratum(int(Noise(p * BOULDERS_PER_TILE) * 8.0)) : SCREE;
@@ -497,15 +504,16 @@ float Cracks(vec2 p)
 	return (1.0 - smoothstep(0.0, CRACK_WIDTH, vein)) * smoothstep(0.4, 0.62, Noise(p * 1.9 + 8.1)) * shown;
 }
 
-/* Bare rock in layers stepping out in ledges where it stands steep, weathered and veined with cracks where it lies flat. */
+/* Bare rock in layers stepping out in ledges where it stands steep, weathered and veined with cracks where it lies flat; toyland's candy layers show only where it stands steep. */
 vec3 Rock(vec2 p, float bedding, Relief relief, Grain grain)
 {
 	int layer = int(floor(bedding));
 	float strata = relief.steep * relief.strata;
 	vec3 bed = Stratum(layer);
 	float ledge = mix(LEDGE_SHADE, 1.08, smoothstep(0.0, 0.3, fract(bedding)));
-	vec3 slabs = (Landscape() == LANDSCAPE_TOYLAND ? bed : mix(ROCK, ROCK_WARM, 0.3)) * Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
-	vec3 rock = mix(mix(slabs, bed, 0.35), bed * ledge, strata);
+	bool toy = Landscape() == LANDSCAPE_TOYLAND;
+	vec3 slabs = (toy ? ToyStrataMean() : mix(ROCK, ROCK_WARM, 0.3)) * Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
+	vec3 rock = mix(mix(slabs, bed, toy ? 0.0 : LEVEL_BEDDING), bed * ledge, strata);
 	vec3 weathered = mix(rock, rock * vec3(0.72, 0.74, 0.66), smoothstep(0.55, 0.8, Octave(p + 4.4, 2.7)));
 	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
 }
@@ -973,7 +981,7 @@ vec3 EarthStratum(int layer)
 /* The strata blended as they read from too far to make out one from another. */
 vec3 EarthMean()
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return (TOY_STRATA[0] + TOY_STRATA[1] + TOY_STRATA[2] + TOY_STRATA[3]) / float(TOY_STRATA_COUNT);
+	if (Landscape() == LANDSCAPE_TOYLAND) return ToyStrataMean();
 	return (EARTH_STRATA[0] + EARTH_STRATA[1] + EARTH_STRATA[2] + EARTH_STRATA[3] + EARTH_STRATA[4]) / float(EARTH_STRATA_COUNT);
 }
 
