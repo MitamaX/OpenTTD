@@ -115,6 +115,34 @@ bool SharesBasin(int tx, int ty, int nx, int ny)
 	return WaterFormOf(tx, ty) == WaterForm::Open && WaterFormOf(nx, ny) == WaterForm::Open && SurfaceLevelOf(tx, ty) == SurfaceLevelOf(nx, ny);
 }
 
+bool IsChannel(int tx, int ty)
+{
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Open) return false;
+	WaterTexel water = _world_tiles.WaterAt(TileXY(tx, ty));
+	return water.river > 0 && water.canal == 0;
+}
+
+bool IsRiverBank(int tx, int ty)
+{
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Dry) return false;
+	TileIndex tile = TileXY(tx, ty);
+	GroundTexel ground = _world_tiles.GroundAt(tile);
+	NetworkTexel network = _world_tiles.NetworkAt(tile);
+	if (ground.flora != 0 || (network.style & NETWORK_BRIDGE_BIT) != 0 || GroundworkOf(ground, network) != Groundwork::Open) return false;
+	double level = SurfaceLevelOf(tx, ty);
+	for (int ny = ty - 1; ny <= ty + 1; ny++) {
+		for (int nx = tx - 1; nx <= tx + 1; nx++) {
+			if (IsChannel(nx, ny) && SurfaceLevelOf(nx, ny) == level) return true;
+		}
+	}
+	return false;
+}
+
+bool IsRiverside(int tx, int ty)
+{
+	return IsChannel(tx, ty) || IsRiverBank(tx, ty);
+}
+
 static double CornerBedLevel(int cx, int cy)
 {
 	return GroundLevel(cx, cy) - CornerSink(cx, cy);

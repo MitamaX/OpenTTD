@@ -78,7 +78,6 @@ const float INLAND_FOAM = 0.15;
 const float FOAM_EDGE_THRESHOLD = 0.3;
 const float FOAM_OPACITY = 0.85;
 const float OUTLINE_FOAM_WIDTH = 0.12;
-const float SHEET_TOLERANCE = 0.05;
 const float STREAM_REACH = 1.0;
 const float STREAM_TILT = 0.25;
 const float BREAKER_REACH = 0.38;

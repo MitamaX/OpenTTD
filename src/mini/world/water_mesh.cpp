@@ -42,6 +42,17 @@ static void AddIncline(WaterMesh &mesh, int tx, int ty)
 	mesh.Quad(Add(mesh, tx, ty, surface.north), Add(mesh, tx + 1, ty, surface.west), Add(mesh, tx + 1, ty + 1, surface.south), Add(mesh, tx, ty + 1, surface.east));
 }
 
+/* A river's bare banks carry its sheet on over their low ground, so the water's curved outline may reach onto them instead of stopping short along the river's tile edge. */
+static bool CarriesSheet(int tx, int ty)
+{
+	switch (WaterFormOf(tx, ty)) {
+		case WaterForm::Open:
+		case WaterForm::Shore: return true;
+		case WaterForm::Dry: return IsRiverBank(tx, ty);
+		default: return false;
+	}
+}
+
 WaterMesh BuildWaterSurface(const TileSpan &tiles)
 {
 	WaterMesh mesh;
@@ -52,10 +63,9 @@ WaterMesh BuildWaterSurface(const TileSpan &tiles)
 			run.reset();
 		};
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
-			WaterForm form = WaterFormOf(tx, ty);
-			if (form != WaterForm::Open && form != WaterForm::Shore) {
+			if (!CarriesSheet(tx, ty)) {
 				finish();
-				if (form == WaterForm::Incline) AddIncline(mesh, tx, ty);
+				if (WaterFormOf(tx, ty) == WaterForm::Incline) AddIncline(mesh, tx, ty);
 				continue;
 			}
 			double level = SurfaceLevelOf(tx, ty);

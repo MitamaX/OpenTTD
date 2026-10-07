@@ -98,6 +98,8 @@ add_files(
     vehicle_pass.h
     water_mesh.cpp
     water_mesh.h
+    water_outline.cpp
+    water_outline.h
     water_pass.cpp
     water_pass.h
     way_shapes.cpp

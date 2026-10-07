@@ -39,6 +39,7 @@
 #include "seabed.h"
 #include "structure_mesh.h"
 #include "tree_models.h"
+#include "water_outline.h"
 #include "water_pass.h"
 
 #include "../../safeguards.h"
@@ -143,6 +144,11 @@ static std::string ShaderHeader()
 	DefineFloat(header, "GRID_FADE_PPT", GRID_FADE_PPT);
 	DefineFloat(header, "NETWORK_OPAQUE_PPT", NETWORK_FADE_END);
 	DefineFloat(header, "SHELF_TILES", SHELF_TILES);
+	DefineFloat(header, "WATERLINE", WATERLINE);
+	DefineFloat(header, "SHORE_WARP", SHORE_WARP);
+	DefineFloat(header, "SHORE_WARP_FREQUENCY", SHORE_WARP_FREQUENCY);
+	DefineFloats(header, "SHORE_WARP_SEEDS", SHORE_WARP_SEEDS);
+	DefineFloat(header, "SHEET_TOLERANCE", SHEET_TOLERANCE);
 	DefineInt(header, "TREE_DETAILS", static_cast<int>(TREE_DETAILS));
 	DefineFloats(header, "TREE_DETAIL_FLOORS", TREE_DETAIL_FLOORS);
 	DefineFloats(header, "TREE_AGE_SCALES", TREE_AGE_SCALES);

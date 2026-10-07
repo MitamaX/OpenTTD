@@ -13,9 +13,6 @@ const float OCTAVE_TURN = 2.39996323;
 
 const vec2 WEST_CORNER = vec2(1.0, 0.0);
 
-const float WATERLINE = 0.58;
-const float SHORE_WARP = 0.22;
-
 struct Corners {
 	float north;
 	float west;
@@ -172,7 +169,8 @@ vec4 SplineWater(vec2 p)
 /* Natural shores curve and fray a little. */
 vec2 ShoreWarp(vec2 p)
 {
-	return (vec2(Noise(p * 1.7 + 7.1), Noise(p * 1.7 + 93.4)) - 0.5) * 2.0 * SHORE_WARP;
+	vec2 q = p * SHORE_WARP_FREQUENCY;
+	return (vec2(Noise(q + SHORE_WARP_SEEDS[0]), Noise(q + SHORE_WARP_SEEDS[1])) - 0.5) * 2.0 * SHORE_WARP;
 }
 
 /* Canals keep the straight lines of their walls. */

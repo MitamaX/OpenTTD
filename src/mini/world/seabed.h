@@ -31,6 +31,12 @@ double SurfaceLevelOf(int tx, int ty);
 double CornerSink(int cx, int cy);
 double CentreSink(int tx, int ty);
 bool SharesBasin(int tx, int ty, int nx, int ny);
+/* A tile of level river water, whose bed may follow the water's curved outline. */
+bool IsChannel(int tx, int ty);
+/* A dry tile with nothing on it beside a river at its own lowest level, onto whose low ground the river's curved outline may reach. */
+bool IsRiverBank(int tx, int ty);
+/* A river or one of its bare banks, whose ground follows the river's outline. */
+bool IsRiverside(int tx, int ty);
 
 /* The ground under a point of a tile, down to where the bed sinks under water at the tile's corners. */
 double BedLevel(int tx, int ty, double x, double y);
