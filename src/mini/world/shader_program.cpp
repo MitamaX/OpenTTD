@@ -29,6 +29,7 @@
 #include "../map/airfield_marks.h"
 #include "../map/map_overlay.h"
 #include "../map/network_style.h"
+#include "../map/way_bends.h"
 #include "../map/world_tiles.h"
 #include "../map/zoom_detail.h"
 #include "forest_field.h"
@@ -130,6 +131,7 @@ static std::string ShaderHeader()
 	DefineUnsigned(header, "FLORA_AGE_MASK", FLORA_AGE_MASK);
 	DefineUnsigned(header, "FLORA_MOST_TREES", FLORA_MOST_TREES);
 	DefineFloat(header, "DISTANT_RAIL_HALF", DISTANT_RAIL_HALF);
+	DefineFloat(header, "BEND_STEPS_PER_TILE", BEND_STEPS_PER_TILE);
 	DefineFloat(header, "ROAD_HALF", ROAD_HALF);
 	DefineFloat(header, "TRAM_BED_HALF", TRAM_BED_HALF);
 	DefineFloat(header, "UNRESOLVED_REPEAT_PIXELS", UNRESOLVED_REPEAT_PIXELS);

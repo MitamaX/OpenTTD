@@ -618,3 +618,15 @@ WorldPoint RoadPoint(double x, double y)
 	if (!course.has_value()) return {x, y, GroundLevel(x, y)};
 	return {x, y, course->Level(course->ShareAt({x, y}))};
 }
+
+static double SlideAt(const MapVector &middle)
+{
+	Joint joint = Joint::At(middle);
+	std::optional<JointEase> ease = _ease_book.At(joint);
+	return ease.has_value() ? Dot(ease->at - middle, joint.Side()) : 0.0;
+}
+
+std::pair<double, double> SideSlides(int tx, int ty)
+{
+	return {SlideAt({static_cast<double>(tx), ty + HALF_TILE}), SlideAt({tx + HALF_TILE, static_cast<double>(ty)})};
+}

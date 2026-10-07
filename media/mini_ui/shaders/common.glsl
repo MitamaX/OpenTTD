@@ -2,6 +2,7 @@ uniform usampler2D u_surfaces;
 uniform usampler2D u_tiles;
 uniform sampler2D u_water;
 uniform usampler2D u_network;
+uniform usampler2D u_bends;
 
 const float HALF_TILE = 0.5;
 const vec2 TILE_CENTRE = vec2(HALF_TILE);

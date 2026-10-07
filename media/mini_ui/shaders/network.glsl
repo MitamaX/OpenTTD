@@ -72,7 +72,25 @@ float WayHalf(float half_width)
 	return mix(half_width, min(half_width, THIN_WAY_HALF_PIXELS / tile_pixels), Thinned());
 }
 
-/* Pieces of the neighbouring tiles reach over the seam, so the band is a union over the tiles around that come near enough to reach. */
+const float UNBENT = 128.0;
+
+/* How far the eased line slides along a tile's west and north sides. */
+vec2 SidesSlid(ivec2 tile)
+{
+	return OnMap(tile) ? (vec2(texelFetch(u_bends, tile, 0).xy) - UNBENT) / BEND_STEPS_PER_TILE : vec2(0.0);
+}
+
+/* Where a piece's end lies on its tile's side once the eased line has slid along it, read from the tile whose west or north side it is. */
+vec2 Slid(ivec2 tile, vec2 end)
+{
+	if (end.x == 0.0) return end + vec2(0.0, SidesSlid(tile).x);
+	if (end.x == 1.0) return end + vec2(0.0, SidesSlid(tile + ivec2(1, 0)).x);
+	if (end.y == 0.0) return end + vec2(SidesSlid(tile).y, 0.0);
+	return end + vec2(SidesSlid(tile + ivec2(0, 1)).y, 0.0);
+}
+
+/* Pieces of the neighbouring tiles reach over the seam, so the band is a union over the tiles around that come near enough to reach.
+ * Each piece runs straight between its ends where the eased line crosses the tile's sides. */
 Field TracksNear(vec2 at, ivec2 home, mat2 pixel)
 {
 	Field band = NOWHERE;
@@ -87,7 +105,8 @@ Field TracksNear(vec2 at, ivec2 home, mat2 pixel)
 			for (int index = 0; index < TRACK_PIECES; index++) {
 				if ((pieces & Bit(index)) == 0u) continue;
 				vec2 offset = vec2(tile);
-				band = Nearer(band, Grown(SegmentField(at, offset + TRACK_FROM[index], offset + TRACK_TO[index], pixel), half_width));
+				ivec2 owner = home + tile;
+				band = Nearer(band, Grown(SegmentField(at, offset + Slid(owner, TRACK_FROM[index]), offset + Slid(owner, TRACK_TO[index]), pixel), half_width));
 			}
 		}
 	}

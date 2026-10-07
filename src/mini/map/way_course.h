@@ -114,6 +114,9 @@ private:
 	friend class TrackBook;
 };
 
+/* How far the eased rail line slides along a tile's west side and along its north side, from the middle of each. */
+std::pair<double, double> SideSlides(int tx, int ty);
+
 /* Where a train or a road vehicle at a point of the map is drawn: a train on the line of the piece it is on, either at its way's eased level or on the ground. */
 WorldPoint TrackPoint(double x, double y);
 WorldPoint RoadPoint(double x, double y);

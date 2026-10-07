@@ -24,6 +24,7 @@ public:
 		WATER_UNIT,
 		SURFACES_UNIT,
 		NETWORK_UNIT,
+		BENDS_UNIT,
 		UNIT_COUNT,
 	};
 

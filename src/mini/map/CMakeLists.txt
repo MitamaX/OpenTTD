@@ -32,6 +32,8 @@ add_files(
     vehicle_motion.h
     volume_geometry.cpp
     volume_geometry.h
+    way_bends.cpp
+    way_bends.h
     way_course.cpp
     way_course.h
     way_line.cpp

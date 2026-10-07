@@ -10,6 +10,8 @@
 #include "../../stdafx.h"
 #include "world_textures.h"
 
+#include "../map/way_bends.h"
+
 #include "../../safeguards.h"
 
 WorldTextures::Source WorldTextures::SourceOf(uint unit)
@@ -19,6 +21,7 @@ WorldTextures::Source WorldTextures::SourceOf(uint unit)
 		case WATER_UNIT: return {"u_water", TexelFormat::FilteredRgba, _world_tiles.Water()};
 		case SURFACES_UNIT: return {"u_surfaces", TexelFormat::ExactRgba, _world_tiles.Surfaces()};
 		case NETWORK_UNIT: return {"u_network", TexelFormat::ExactRgba, _world_tiles.Network()};
+		case BENDS_UNIT: return {"u_bends", TexelFormat::ExactRgba, _way_bends.Texels()};
 		default: NOT_REACHED();
 	}
 }
@@ -36,6 +39,7 @@ void WorldTextures::Sync(const WorldChanges &changes)
 		}
 	}
 	if (!whole && changes.water) this->textures[WATER_UNIT].Refilter();
+	if (std::optional<Rect> bent = _way_bends.TakeUpdate(); bent.has_value()) this->textures[BENDS_UNIT].Update(*bent, _way_bends.Texels());
 }
 
 void WorldTextures::Bind() const

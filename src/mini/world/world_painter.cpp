@@ -15,6 +15,7 @@
 #include "../core/ground_trace.h"
 #include "../gpu/gl_api.h"
 #include "../gpu/gl_state.h"
+#include "../map/way_bends.h"
 #include "forest_pass.h"
 #include "network_pass.h"
 #include "street_life_pass.h"
@@ -66,6 +67,7 @@ void WorldPainter::Reload()
 void WorldPainter::Prepare()
 {
 	if (_world_tiles.Size().width == 0) return;
+	_way_bends.Refresh();
 	SceneView view = SceneView::Of(_camera);
 	for (const auto &pass : this->passes) pass->Prepare(view);
 }
