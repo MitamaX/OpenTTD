@@ -10,6 +10,8 @@ flat in uvec4 v_surface;
 out vec4 frag_colour;
 
 const vec3 SNOW = vec3(0.93, 0.95, 0.97);
+const float SNOW_LINE_RAGGED = 1.2;
+const float SNOW_PATCHES_PER_TILE = 6.0;
 const float GLASS_REFLECTANCE = 0.2;
 const float SEED_SCALE = 255.0;
 
@@ -25,6 +27,13 @@ vec3 Tilted(vec3 normal, vec2 tilt)
 	return normalize(normal + across * tilt.x + cross(normal, across) * tilt.y);
 }
 
+float RoofSnow(vec3 normal)
+{
+	float lying = clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * 0.7) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
+	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying);
+	return smoothstep(0.35, 0.65, lying + patchy) * smoothstep(0.4, 0.7, normal.z);
+}
+
 /* Buildings fade out where they grow too small to show, dithered; open claddings show only what they are made of, and glass mirrors the sky. */
 void main()
 {
@@ -38,7 +47,7 @@ void main()
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
 	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_glass.rgb, uint(round(v_glass.a * SEED_SCALE)));
 	vec3 normal = Tilted(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0), clad.tilt);
-	if (Has(SURFACE_ROOF) && v_position.z > SnowLine() * LevelRise()) clad.albedo = mix(clad.albedo, SNOW, smoothstep(0.4, 0.7, normal.z));
+	if (Has(SURFACE_ROOF)) clad.albedo = mix(clad.albedo, SNOW, RoofSnow(normal));
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	vec3 colour = Radiance(albedo, normal, v_position, clad.roughness, v_colour.a * clad.occlusion);
