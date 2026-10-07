@@ -71,7 +71,8 @@ static uint32_t Pick(const std::array<uint32_t, N> &tones, SeedDice &dice)
 	return tones[dice.Below(N)];
 }
 
-static void Place(ScatterCopies &copies, FarmPiece piece, double x, double y, double turn, uint32_t primary, uint32_t secondary = 0)
+template <typename Piece>
+static void Place(ScatterCopies &copies, Piece piece, double x, double y, double turn, uint32_t primary, uint32_t secondary = 0)
 {
 	float z = static_cast<float>(GroundLevel(x, y) * LevelRise());
 	copies[to_underlying(piece)].push_back({static_cast<float>(x), static_cast<float>(y), z, static_cast<float>(turn), 0.0f, 0.0f, 1.0f, InstanceColour(primary), InstanceColour(secondary), {}});
@@ -207,7 +208,7 @@ static void Boundaries(ScatterCopies &copies, int tx, int ty, const SurfaceTexel
 		if (!stone.has_value()) continue;
 		double x = along_x ? tx + HALF_TILE : static_cast<double>(tx);
 		double y = along_x ? static_cast<double>(ty) : ty + HALF_TILE;
-		Place(copies, *stone ? FarmPiece::StoneWall : FarmPiece::Fence, x, y, along_x ? 0.0 : QUARTER_TURN, 0);
+		Place(copies, *stone ? BoundaryPiece::StoneWall : BoundaryPiece::Fence, x, y, along_x ? 0.0 : QUARTER_TURN, 0);
 	}
 }
 
@@ -227,7 +228,6 @@ void Farmsteads::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 			if ((!grass && !field) || !IsBare(tx, ty, ground)) continue;
 
 			SeedDice dice(Hash32(FARMSTEAD_SALT ^ tile.base()));
-			SurfaceTexel surface = _world_tiles.SurfaceAt(tile);
 			if (field) {
 				if (BALED_CROPS[ground.variant % BALED_CROPS.size()] && dice.Below(BALED_FIELD_ODDS) == 0 && FarFromTowns(tx, ty)) {
 					SeedDice bales(Hash32(BALE_SALT ^ tile.base()));
@@ -235,11 +235,21 @@ void Farmsteads::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 				}
 				continue;
 			}
-			if (HoldsFarmstead(tx, ty)) {
-				Farmstead(copies, tx, ty, dice);
-				continue;
-			}
-			if (FarFromTowns(tx, ty)) Boundaries(copies, tx, ty, surface);
+			if (HoldsFarmstead(tx, ty)) Farmstead(copies, tx, ty, dice);
+		}
+	}
+}
+
+FieldBoundaries::FieldBoundaries() : BlockScatter(BOUNDARY_PIECES, TOWN_DISTANCE + FARMSTEAD_SPACING)
+{
+}
+
+void FieldBoundaries::Strew(const TileSpan &tiles, ScatterCopies &copies) const
+{
+	if (_settings_game.game_creation.landscape == LandscapeType::Toyland) return;
+	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
+		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
+			if (IsBareGrass(tx, ty) && !HoldsFarmstead(tx, ty) && FarFromTowns(tx, ty)) Boundaries(copies, tx, ty, _world_tiles.SurfaceAt(TileXY(tx, ty)));
 		}
 	}
 }

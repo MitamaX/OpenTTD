@@ -22,15 +22,23 @@ enum class FarmPiece : uint8_t {
 	Silo,
 	RoundBale,
 	BaleStack,
-	Fence,
-	StoneWall,
 	End,
 };
 
 inline constexpr size_t FARM_PIECES = to_underlying(FarmPiece::End);
 
-/* Each piece stands on the ground at the origin, its long side along x, in tiles; walls, bales and silos take the primary paintwork and roofs the secondary.
- * A fence or a wall runs one tile's side, centred on the origin. */
+enum class BoundaryPiece : uint8_t {
+	Fence,
+	StoneWall,
+	End,
+};
+
+inline constexpr size_t BOUNDARY_PIECES = to_underlying(BoundaryPiece::End);
+
+/* Each piece stands on the ground at the origin, its long side along x, in tiles; walls, bales and silos take the primary paintwork and roofs the secondary. */
 std::vector<ModelMesh> BuildFarmModels();
+
+/* A fence or a wall runs one tile's side, centred on the origin, its foot sunk into the ground so it stays seated where the ground falls away on either side. */
+std::vector<ModelMesh> BuildBoundaryModels();
 
 #endif /* MINI_WORLD_FARM_MODELS_H */

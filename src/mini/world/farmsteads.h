@@ -22,4 +22,13 @@ protected:
 	void Strew(const TileSpan &tiles, ScatterCopies &copies) const override;
 };
 
+/* Fences and walls along the pastures, apart from the farmsteads as they are thin enough to show only from nearer. */
+class FieldBoundaries final : public BlockScatter {
+public:
+	FieldBoundaries();
+
+protected:
+	void Strew(const TileSpan &tiles, ScatterCopies &copies) const override;
+};
+
 #endif /* MINI_WORLD_FARMSTEADS_H */

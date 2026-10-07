@@ -27,9 +27,12 @@ static constexpr uint32_t ROOF = PaintworkTone(Paintwork::Secondary, 1.0);
 static constexpr uint32_t CHIMNEY = 0x7A6E66;
 static constexpr uint32_t DOORS = 0x4A3A2C;
 static constexpr uint32_t TIMBER = 0x6B5638;
-static constexpr uint32_t STONE = 0x7A766C;
+static constexpr uint32_t STONE = 0xA49E90;
 static constexpr int ROUND_SIDES = 10;
 static constexpr double HALF_SIDE = 0.5;
+static constexpr double FOOT_SINK = 0.025;
+static constexpr Vec3 DEEP_BELOW = {0.0, 0.0, -10.0};
+static constexpr double GROUND_LIGHTING = 0.5;
 
 /* A building's body: four walls under a roof running along x, the roof ridged over the middle and its eaves standing out past the walls. */
 struct Shed {
@@ -127,7 +130,7 @@ static ModelMesh BaleStack()
 	return stack.Paint(WALLS);
 }
 
-/* Timber posts along a tile's side carrying two rails. */
+/* Timber posts along a tile's side carrying two rails; like a wall, it is lit half as the ground about it is, so it reads as part of the ground rather than a dark line drawn on it. */
 static ModelMesh Fence()
 {
 	constexpr int POSTS = 5;
@@ -137,10 +140,10 @@ static ModelMesh Fence()
 	ModelMesh fence;
 	for (int post = 0; post < POSTS; post++) {
 		double x = -HALF_SIDE + post * (2.0 * HALF_SIDE) / (POSTS - 1);
-		fence.Append(Box({x - POST / 2.0, -POST / 2.0, 0.0}, {x + POST / 2.0, POST / 2.0, HEIGHT}));
+		fence.Append(Box({x - POST / 2.0, -POST / 2.0, -FOOT_SINK}, {x + POST / 2.0, POST / 2.0, HEIGHT}));
 	}
 	for (double z : {HEIGHT * 0.45, HEIGHT * 0.85}) fence.Append(Box({-HALF_SIDE, -RAIL / 2.0, z - RAIL / 2.0}, {HALF_SIDE, RAIL / 2.0, z + RAIL / 2.0}));
-	return fence.Paint(TIMBER);
+	return fence.Paint(TIMBER).Round(DEEP_BELOW, GROUND_LIGHTING);
 }
 
 /* One course of a dry stone wall: stones of uneven length and height, set a little off the line and tipped this way and that, narrowing toward the top. */
@@ -160,11 +163,11 @@ static constexpr double WALL_SWAY = 0.006;
 static constexpr double WALL_TIP = 0.004;
 static constexpr SeedRange STONE_TONES = {0.65, 1.2};
 static constexpr double STONE_GAP = 0.006;
-static constexpr double FOOT_OPENNESS = 0.45;
+static constexpr double FOOT_OPENNESS = 0.7;
 static constexpr double WALL_HEIGHT = 0.04;
 static constexpr double STONE_FACE_VARIETY = 0.08;
 
-static void LayCourse(ModelMesh &wall, const WallCourse &course, double base, SeedDice &dice)
+static void LayCourse(ModelMesh &wall, const WallCourse &course, double foot, double base, SeedDice &dice)
 {
 	double x0 = -HALF_SIDE - dice.Between(0.0, course.length.low);
 	while (x0 < HALF_SIDE) {
@@ -174,11 +177,11 @@ static void LayCourse(ModelMesh &wall, const WallCourse &course, double base, Se
 		double sway = dice.Between(-WALL_SWAY, WALL_SWAY);
 		double height = dice.Between(course.height);
 		double tip = dice.Between(-WALL_TIP, WALL_TIP);
-		std::array<MapVector, 4> foot = {MapVector{start, sway - course.half_foot}, MapVector{end, sway - course.half_foot}, MapVector{end, sway + course.half_foot}, MapVector{start, sway + course.half_foot}};
-		ModelMesh stone = Extrusion(foot, height);
+		std::array<MapVector, 4> outline = {MapVector{start, sway - course.half_foot}, MapVector{end, sway - course.half_foot}, MapVector{end, sway + course.half_foot}, MapVector{start, sway + course.half_foot}};
+		ModelMesh stone = Extrusion(outline, height);
 		for (ModelVertex &vertex : stone.vertices) {
 			if (vertex.z <= 0.0f) {
-				vertex.z += static_cast<float>(base);
+				vertex.z = static_cast<float>(foot);
 				continue;
 			}
 			vertex.y = static_cast<float>(sway + (vertex.y - sway) * course.half_top / course.half_foot);
@@ -194,12 +197,15 @@ static ModelMesh StoneWall()
 {
 	SeedDice dice(0x5704E);
 	ModelMesh wall;
+	double foot = -FOOT_SINK;
 	double base = 0.0;
 	for (const WallCourse &course : WALL_COURSES) {
-		LayCourse(wall, course, base, dice);
+		LayCourse(wall, course, foot, base, dice);
 		base += course.height.low;
+		foot = base;
 	}
-	return wall.Occlude([](const Vec3 &at) { return FOOT_OPENNESS + (1.0 - FOOT_OPENNESS) * std::min(at.z / WALL_HEIGHT, 1.0); });
+	wall.Round(DEEP_BELOW, GROUND_LIGHTING);
+	return wall.Occlude([](const Vec3 &at) { return FOOT_OPENNESS + (1.0 - FOOT_OPENNESS) * std::clamp(at.z / WALL_HEIGHT, 0.0, 1.0); });
 }
 
 std::vector<ModelMesh> BuildFarmModels()
@@ -210,7 +216,13 @@ std::vector<ModelMesh> BuildFarmModels()
 	pieces[to_underlying(FarmPiece::Silo)] = Silo();
 	pieces[to_underlying(FarmPiece::RoundBale)] = RoundBale();
 	pieces[to_underlying(FarmPiece::BaleStack)] = BaleStack();
-	pieces[to_underlying(FarmPiece::Fence)] = Fence();
-	pieces[to_underlying(FarmPiece::StoneWall)] = StoneWall();
+	return pieces;
+}
+
+std::vector<ModelMesh> BuildBoundaryModels()
+{
+	std::vector<ModelMesh> pieces(BOUNDARY_PIECES);
+	pieces[to_underlying(BoundaryPiece::Fence)] = Fence();
+	pieces[to_underlying(BoundaryPiece::StoneWall)] = StoneWall();
 	return pieces;
 }

@@ -40,10 +40,11 @@ static constexpr GLint REQUIRED_MAJOR = 3;
 static constexpr GLint REQUIRED_MINOR = 3;
 
 /* People show where a tile spans enough pixels to make them out and cast shadows only close up; tufts show only closer still, too small to shadow;
- * the countryside's farmsteads, bales and walls show from further off. */
+ * the countryside's farmsteads and bales show from further off, its fences and walls only once they stand more than a hairline tall. */
 static constexpr ScatterLook WALKER_LOOK = {"walkers", BuildFigureModels, FIGURE_POSES, 26.0, 34.0, 48.0};
 static constexpr ScatterLook TUFT_LOOK = {"tufts", BuildTuftModels, TUFT_SHAPES, 40.0, 56.0, std::numeric_limits<double>::infinity()};
 static constexpr ScatterLook FARM_LOOK = {"farms", BuildFarmModels, FARM_PIECES, 10.0, 16.0, 22.0};
+static constexpr ScatterLook BOUNDARY_LOOK = {"boundaries", BuildBoundaryModels, BOUNDARY_PIECES, 28.0, 40.0, std::numeric_limits<double>::infinity()};
 
 WorldPainter _world_painter;
 
@@ -69,6 +70,7 @@ WorldPainter::WorldPainter()
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<StreetWalkers>(), WALKER_LOOK));
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<GroundCover>(), TUFT_LOOK));
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<Farmsteads>(), FARM_LOOK));
+	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<FieldBoundaries>(), BOUNDARY_LOOK));
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
