@@ -67,28 +67,28 @@ double Stretch::ShareOf(const MapVector &point) const
 	return Dot(point - first, run) / Dot(run, run);
 }
 
-ModelMesh EndCap(const Stretch &stretch, Section section, bool last)
+ModelMesh EndCap(const WayLine &line, Section section, bool last)
 {
-	Vec3 facing = Flat(stretch.Along() * (last ? 1.0 : -1.0));
+	double share = last ? 1.0 : 0.0;
+	Vec3 facing = Flat(line.Along(share) * (last ? 1.0 : -1.0));
 	ModelMesh cap;
-	for (const SectionPoint &point : section) cap.Point(Flat(stretch.At(last ? 1.0 : 0.0, point.lateral), point.height), facing);
+	for (const SectionPoint &point : section) cap.Point(Flat(line.At(share, point.lateral), point.height), facing);
 	for (uint32_t corner = 1; corner + 1 < section.size(); corner++) cap.Triangle(0, corner, corner + 1);
 	return cap.Paint(section.front().tone).Gloss(section.front().gloss);
 }
 
-ModelMesh Laid(const Stretch &stretch, Section section, int rows)
+ModelMesh Laid(const WayLine &line, Section section, int rows)
 {
-	MapVector right = stretch.Right();
 	ModelMesh mesh;
 	for (size_t point = 0; point + 1 < section.size(); point++) {
 		const SectionPoint &low = section[point];
 		const SectionPoint &high = section[point + 1];
-		Vec3 normal = Flat(right * (low.height - high.height), high.lateral - low.lateral);
 		ModelMesh face;
 		for (int row = 0; row <= rows; row++) {
 			double share = static_cast<double>(row) / rows;
-			face.Point(Flat(stretch.At(share, low.lateral), low.height), normal);
-			face.Point(Flat(stretch.At(share, high.lateral), high.height), normal);
+			Vec3 normal = Flat(RightOf(line.Along(share)) * (low.height - high.height), high.lateral - low.lateral);
+			face.Point(Flat(line.At(share, low.lateral), low.height), normal);
+			face.Point(Flat(line.At(share, high.lateral), high.height), normal);
 			if (row > 0) face.Quad(2 * row - 2, 2 * row - 1, 2 * row + 1, 2 * row);
 		}
 		mesh.Append(face.Paint(low.tone).Gloss(low.gloss));

@@ -512,7 +512,7 @@ void WorldTiles::Rebuild()
 	this->network.resize(count);
 	this->eases.resize(count);
 	this->peak = 0;
-	this->revision++;
+	this->ways_revision++;
 	for (uint i = 0; i < count; i++) this->Store(i, Pack(TileIndex{i}));
 
 	this->queued.assign(count, false);
@@ -550,11 +550,11 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 {
 	bool water_changed = packed.water != stored.water;
 	this->changes.water |= water_changed;
-	this->revision++;
 
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->changed_blocks); block.has_value()) this->changes.areas.push_back(*block);
 	bool groundwork_changed = GroundworkOf(packed.ground, packed.network) != GroundworkOf(stored.ground, stored.network);
 	bool ways_changed = packed.network != stored.network || packed.eases != stored.eases;
+	if (ways_changed || packed.surface != stored.surface) this->ways_revision++;
 	if (!water_changed && !groundwork_changed && !ways_changed && packed.surface == stored.surface) return;
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->relief_blocks); block.has_value()) this->changes.reliefs.push_back(*block);
 }

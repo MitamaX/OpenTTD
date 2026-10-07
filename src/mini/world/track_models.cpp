@@ -10,17 +10,19 @@
 #include "../../stdafx.h"
 #include "track_models.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "../../map_func.h"
 #include "../../track_func.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
-#include "../map/way_profile.h"
+#include "../map/way_course.h"
 
 #include "../../safeguards.h"
 
@@ -59,8 +61,10 @@ static constexpr double ARM_LOW = 0.41;
 static constexpr double ARM_HIGH = 0.432;
 static constexpr double MESSENGER_SAG = 0.025;
 static constexpr double MESSENGER_HALF = 0.0035;
+static constexpr double MESSENGER_STEPS_PER_TILE = 6.0;
 static constexpr double DROPPER_HALF = 0.002;
 static constexpr std::array<double, 3> DROPPER_SHARES = {0.25, 0.5, 0.75};
+static constexpr double MAST_SPACING = 1.6;
 
 static constexpr std::array<SectionPoint, 4> BALLAST_SECTION = {{
 	{-BALLAST_HALF, WAY_FOOT, BALLAST}, {-0.19, 0.034, BALLAST}, {0.19, 0.034, BALLAST}, {BALLAST_HALF, WAY_FOOT, BALLAST},
@@ -91,73 +95,27 @@ static constexpr std::array<SectionPoint, 4> ARM_SECTION = {{
 	{-0.008, ARM_LOW, MAST, MAST_GLOSS}, {-0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_LOW, MAST, MAST_GLOSS},
 }};
 
-/* How a piece's end meets the track beyond: the direction that track runs on in when one piece carries it on, and whether none does. */
-struct PieceEnd {
-	MapVector beyond{};
-	bool open = false;
-};
-
-/* A piece's ends only meet pieces of the tile across whose ground stands level with this one's at the joint. */
-static PieceEnd EndAt(int tx, int ty, const MapVector &joint, const MapVector &arrival)
-{
-	MapVector probe = joint + arrival * HALF_TILE;
-	int nx = static_cast<int>(std::floor(probe.x));
-	int ny = static_cast<int>(std::floor(probe.y));
-	if (!OnMap(nx, ny) || TileGround(tx, ty).Level(joint.x, joint.y) != TileGround(nx, ny).Level(joint.x, joint.y)) return {{}, true};
-
-	PieceEnd end{{}, true};
-	int partners = 0;
-	MapVector origin = {static_cast<double>(nx), static_cast<double>(ny)};
-	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(nx, ny)).track))) {
-		auto [from, to] = TRACK_ENDS[track];
-		from = origin + from;
-		to = origin + to;
-		bool starts = from.x == joint.x && from.y == joint.y;
-		bool ends = to.x == joint.x && to.y == joint.y;
-		if (!starts && !ends) continue;
-		end.beyond = Unit(starts ? to - from : from - to);
-		end.open = false;
-		partners++;
-	}
-	if (partners > 1) end.beyond = {};
-	return end;
-}
-
-/* A piece laid on the ground and the pieces beyond it decide how its ends are cut, and an eased run carries it through its joints at one level;
+/* A piece on the ground is laid along the line it is drawn on, at its course's level where it eases, meeting the pieces either side without a seam;
  * on a bridge it runs plainly from edge to edge. */
 class TrackPiece {
 public:
-	TrackPiece(const TrackSite &site, Track track) : site(site), track(track)
-	{
-		MapVector origin = {static_cast<double>(site.tx), static_cast<double>(site.ty)};
-		auto [from, to] = TRACK_ENDS[track];
-		this->stretch = {origin + from, origin + to};
-		if (!site.grounded) return;
+	TrackPiece(const TrackSite &site, Track track) : site(site), track(track), drawn(Drawn(site, track)) {}
 
-		this->course = WayCourse::OfTrack(site.tx, site.ty, track);
-		MapVector along = this->stretch.Along();
-		PieceEnd tail = EndAt(site.tx, site.ty, this->stretch.from, along * -1.0);
-		PieceEnd head = EndAt(site.tx, site.ty, this->stretch.to, along);
-		if (this->course.has_value() && Heads(this->course->Before())) tail = {this->course->Before() * -1.0, false};
-		if (this->course.has_value() && Heads(this->course->After())) head = {this->course->After(), false};
-		this->stretch.before = tail.beyond * -1.0;
-		this->stretch.after = head.beyond;
-		this->open_from = tail.open;
-		this->open_to = head.open;
-	}
+	const WayLine &Line() const { return this->drawn.line; }
 
-	/* Pieces crossing on one tile, and the same piece on the tiles either side, stand a hair apart so their faces never fight. */
+	/* Pieces crossing on one tile, and the same piece on the tiles either side, stand a hair apart so their faces never fight; eased pieces never overlap. */
 	double Lift() const
 	{
+		if (this->drawn.course.has_value()) return 0.0;
 		int parity = (this->site.tx + this->site.ty) & 1;
 		return LIFT_STEP * (static_cast<int>(this->track) + static_cast<int>(TRACK_END) * parity);
 	}
 
 	ModelMesh Body(Section section, bool capped) const
 	{
-		ModelMesh body = Laid(this->stretch, section, this->Rows());
-		if (capped && this->open_from) body.Append(EndCap(this->stretch, section, false));
-		if (capped && this->open_to) body.Append(EndCap(this->stretch, section, true));
+		ModelMesh body = Laid(this->Line(), section, this->Rows());
+		if (capped && this->drawn.open_first) body.Append(EndCap(this->Line(), section, false));
+		if (capped && this->drawn.open_last) body.Append(EndCap(this->Line(), section, true));
 		return body;
 	}
 
@@ -170,7 +128,7 @@ public:
 				shifted[point] = section[point];
 				shifted[point].lateral += side * gap_half;
 			}
-			pair.Append(Laid(this->stretch, shifted, this->Rows()));
+			pair.Append(Laid(this->Line(), shifted, this->Rows()));
 		}
 		return pair;
 	}
@@ -178,36 +136,46 @@ public:
 	/* Sleepers lie on equal slots along the piece, so the same pitch runs on across every seam. */
 	ModelMesh Sleepers() const
 	{
+		const WayLine &line = this->Line();
 		ModelMesh sleepers;
-		double span = this->stretch.Span();
-		int count = std::max(1, static_cast<int>(std::lround(span * SLEEPERS_PER_TILE)));
+		int count = std::max(1, static_cast<int>(std::lround(line.Span() * SLEEPERS_PER_TILE)));
 		SeedDice dice(Hash32(TRACK_SALT + static_cast<uint32_t>(TileXY(this->site.tx, this->site.ty).base() * TRACK_END + this->track)));
 		for (int slot = 0; slot < count; slot++) {
 			double share = (slot + 0.5) / count;
-			ModelMesh sleeper = Block(this->stretch.At(share, 0.0), this->stretch.Along(), SLEEPER_LOW, SLEEPER_HIGH);
+			ModelMesh sleeper = Block(line.At(share, 0.0), line.Along(share), SLEEPER_LOW, SLEEPER_HIGH);
 			sleepers.Append(sleeper.Paint(TIMBER).Vary(TIMBER_VARIETY, dice.Next()));
 		}
 		return sleepers;
 	}
 
-	const Stretch &Run() const { return this->stretch; }
+	std::optional<std::pair<double, double>> Distances() const
+	{
+		if (!this->drawn.course.has_value()) return std::nullopt;
+		return this->drawn.course->Distances();
+	}
 
-	/* An eased piece is laid at its course's level, read along its own cuts; any other on what it stands on. */
+	/* An eased piece is laid at its course's level; any other on what it stands on. */
 	Footing FootingOn(const Footing &ground) const
 	{
-		if (!this->course.has_value()) return ground;
-		return [course = *this->course, stretch = this->stretch](double x, double y) { return course.Level(stretch.ShareOf({x, y})); };
+		if (!this->drawn.course.has_value()) return ground;
+		return [course = *this->drawn.course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
 	}
 
 private:
-	int Rows() const { return std::max(1, static_cast<int>(std::lround(this->stretch.Span() * ROWS_PER_TILE))); }
+	static DrawnTrack Drawn(const TrackSite &site, Track track)
+	{
+		if (site.grounded) return DrawnTrack::Of(site.tx, site.ty, track);
+		MapVector origin = {static_cast<double>(site.tx), static_cast<double>(site.ty)};
+		auto [from, to] = TRACK_ENDS[track];
+		MapVector along = Unit(to - from);
+		return {site.tx, site.ty, origin + from, origin + to, Bend(origin + from, origin + to, along, along), std::nullopt, false, false};
+	}
+
+	int Rows() const { return std::max(1, static_cast<int>(std::lround(this->Line().Span() * ROWS_PER_TILE))); }
 
 	const TrackSite &site;
 	Track track;
-	Stretch stretch{};
-	std::optional<WayCourse> course;
-	bool open_from = false;
-	bool open_to = false;
+	DrawnTrack drawn;
 };
 
 static ModelMesh RailPiece(const TrackPiece &piece, WayDetail detail, uint32_t seed)
@@ -269,40 +237,87 @@ void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &foo
 	}
 }
 
-/* The messenger wire sags from arm to arm over each piece, holding the contact wire level on droppers. */
-static ModelMesh Messenger(const Stretch &run)
-{
-	auto at = [&run](double share) {
-		MapVector point = run.At(share, 0.0);
-		double sag = 4.0 * share * (1.0 - share) * MESSENGER_SAG;
-		return Vec3{point.x, point.y, ARM_LOW - sag};
-	};
-	ModelMesh wires = Strut(at(0.0), at(HALF_TILE), MESSENGER_HALF);
-	wires.Append(Strut(at(HALF_TILE), at(1.0), MESSENGER_HALF));
-	for (double share : DROPPER_SHARES) {
-		Vec3 top = at(share);
-		wires.Append(Strut({top.x, top.y, WIRE_HEIGHT}, top, DROPPER_HALF));
+/* Where along a run a piece's wires hang, and how far apart its masts stand: a piece on an eased run reckons from the run's first end,
+ * so masts stand evenly all along the run; any other reckons from its own start, one span to the piece. */
+struct WireRun {
+	double from;
+	double to;
+	double spacing;
+
+	/* How far through the span between two masts a share of the piece lies. */
+	double SpanShare(double share) const
+	{
+		double spans = std::lerp(this->from, this->to, share) / this->spacing;
+		return spans - std::floor(spans);
 	}
-	return wires.Paint(WIRE);
+
+	/* The shares of the piece passing a given share of every span, its first end counted and its last left to the piece beyond. */
+	std::vector<double> SharesAt(double span_share) const
+	{
+		std::vector<double> shares;
+		double low = std::min(this->from, this->to);
+		double high = std::max(this->from, this->to);
+		for (double span = std::ceil(low / this->spacing - span_share); (span + span_share) * this->spacing < high; span++) {
+			shares.push_back(((span + span_share) * this->spacing - this->from) / (this->to - this->from));
+		}
+		return shares;
+	}
+};
+
+static WireRun WiresOf(const TrackPiece &piece)
+{
+	if (const auto &distances = piece.Distances(); distances.has_value()) return {distances->first, distances->second, MAST_SPACING};
+	double span = piece.Line().Span();
+	return {0.0, span, span};
 }
 
-/* One mast stands at the start of a tile's first piece, its arm reaching over the track to hold the wires every piece hangs. */
+/* The messenger wire sags from mast to mast, holding the contact wire level on droppers. */
+static ModelMesh Messenger(const WayLine &line, const WireRun &wires)
+{
+	auto at = [&](double share) {
+		MapVector point = line.At(share, 0.0);
+		double span = wires.SpanShare(share);
+		return Vec3{point.x, point.y, ARM_LOW - 4.0 * span * (1.0 - span) * MESSENGER_SAG};
+	};
+	std::vector<double> shares = wires.SharesAt(0.0);
+	int steps = std::max(2, static_cast<int>(std::lround(line.Span() * MESSENGER_STEPS_PER_TILE)));
+	for (int step = 0; step <= steps; step++) shares.push_back(static_cast<double>(step) / steps);
+	std::ranges::sort(shares);
+
+	ModelMesh messenger;
+	for (size_t index = 1; index < shares.size(); index++) messenger.Append(Strut(at(shares[index - 1]), at(shares[index]), MESSENGER_HALF));
+	for (double span_share : DROPPER_SHARES) {
+		for (double share : wires.SharesAt(span_share)) {
+			Vec3 top = at(share);
+			messenger.Append(Strut({top.x, top.y, WIRE_HEIGHT}, top, DROPPER_HALF));
+		}
+	}
+	return messenger.Paint(WIRE);
+}
+
+/* A mast beside the track with its arm reaching over to hold the wires. */
+static ModelMesh Mast(const WayLine &line, double share)
+{
+	MapVector foot = line.At(share, MAST_LATERAL);
+	ModelMesh mast = Block(foot, line.Along(share), {-MAST_HALF, -MAST_HALF, -0.02}, {MAST_HALF, MAST_HALF, MAST_HEIGHT}).Paint(MAST).Gloss(MAST_GLOSS);
+	return mast.Append(Laid(Stretch{foot, line.At(share, ARM_REACH)}, ARM_SECTION, 1));
+}
+
+/* Masts stand evenly along an eased run; on any other tile one stands at the start of its first piece. */
 void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
 {
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
 	bool first = true;
 	for (Track track : SetTrackBitIterator(site.bits)) {
 		TrackPiece piece(site, track);
+		const WayLine &line = piece.Line();
+		WireRun wires = WiresOf(piece);
 		ModelMesh parts = piece.Body(WIRE_SECTION, false);
-		parts.Append(Messenger(piece.Run()));
-		if (first) {
-			const Stretch &run = piece.Run();
-			MapVector foot = run.At(0.0, MAST_LATERAL);
-			parts.Append(Block(foot, run.Along(), {-MAST_HALF, -MAST_HALF, -0.02}, {MAST_HALF, MAST_HALF, MAST_HEIGHT}).Paint(MAST).Gloss(MAST_GLOSS));
-			Stretch arm = {foot, run.At(0.0, ARM_REACH)};
-			parts.Append(Laid(arm, ARM_SECTION, 1));
-			first = false;
+		parts.Append(Messenger(line, wires));
+		if (piece.Distances().has_value() || first) {
+			for (double share : wires.SharesAt(0.0)) parts.Append(Mast(line, share));
 		}
+		first = false;
 		Lay(mesh, std::move(parts), piece.Lift(), piece.FootingOn(footing));
 	}
 }

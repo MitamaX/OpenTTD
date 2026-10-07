@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "../core/camera.h"
+#include "../map/way_line.h"
 #include "../model/model_mesh.h"
 
 /* Every way shape is built flat: x and y on the map in tiles, z in tiles above whatever it is laid on. */
@@ -58,25 +59,29 @@ std::array<SectionPoint, 5> BoxSection(double from, double to, double low, doubl
 
 /* A straight stretch of a way. An end is cut square unless given the direction the way runs in beyond it, coming into the first end or leaving the last,
  * when it is cut on the bisector so the two stretches meet in a mitre. */
-struct Stretch {
-	MapVector from;
-	MapVector to;
+struct Stretch final : WayLine {
+	MapVector from{};
+	MapVector to{};
 	MapVector before{};
 	MapVector after{};
 
+	Stretch() = default;
+	Stretch(const MapVector &from, const MapVector &to, const MapVector &before = {}, const MapVector &after = {}) : from(from), to(to), before(before), after(after) {}
+
 	MapVector Along() const { return Unit(this->to - this->from); }
+	MapVector Along(double) const override { return this->Along(); }
 	MapVector Right() const { return RightOf(this->Along()); }
-	double Span() const { return std::hypot(this->to.x - this->from.x, this->to.y - this->from.y); }
-	MapVector At(double share, double lateral) const;
-	/* How far along the stretch a point lies, read along the cuts its ends are made on, so pieces meeting in a mitre agree along the joint. */
-	double ShareOf(const MapVector &point) const;
+	double Span() const override { return std::hypot(this->to.x - this->from.x, this->to.y - this->from.y); }
+	MapVector At(double share, double lateral) const override;
+	/* Read along the cuts its ends are made on, so pieces meeting in a mitre agree along the joint. */
+	double ShareOf(const MapVector &point) const override;
 };
 
-/* The section run along the stretch, split into rows so the footing can bend it. */
-ModelMesh Laid(const Stretch &stretch, Section section, int rows);
+/* The section run along a line, split into rows so the footing can bend it. */
+ModelMesh Laid(const WayLine &line, Section section, int rows);
 
-/* A closed section's face at the stretch's first or last end. */
-ModelMesh EndCap(const Stretch &stretch, Section section, bool last);
+/* A closed section's face at the line's first or last end. */
+ModelMesh EndCap(const WayLine &line, Section section, bool last);
 
 /* A flat plate over an outline that every point of can be seen from its centre. */
 ModelMesh Plate(std::span<const MapVector> outline, const MapVector &centre, double height);

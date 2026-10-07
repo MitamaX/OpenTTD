@@ -18,7 +18,7 @@
 #include "../../tile_map.h"
 #include "../../timer/timer_game_tick.h"
 #include "../../vehicle_base.h"
-#include "way_profile.h"
+#include "way_course.h"
 
 #include "../../safeguards.h"
 
@@ -119,7 +119,7 @@ double VehicleMotion::TurnRate(const Vehicle *v)
 WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)
 {
 	if (!RidesDrawnGround(v)) return point;
-	return {point.x, point.y, WayLevel(point.x, point.y)};
+	return v->type == VEH_TRAIN ? TrackPoint(point.x, point.y) : RoadPoint(point.x, point.y);
 }
 
 VehicleMotion::TickPosition VehicleMotion::PositionOf(const Vehicle *v)

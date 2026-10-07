@@ -24,7 +24,7 @@
 #include "../../track_func.h"
 #include "../../tunnelbridge_map.h"
 #include "../map/tile_shapes.h"
-#include "../map/way_profile.h"
+#include "../map/way_course.h"
 #include "../map/world_tiles.h"
 #include "bridge_models.h"
 #include "road_models.h"
@@ -37,6 +37,7 @@
 /* The game stands a signal about a quarter tile in from the edge its trackdir enters by, clear of the ballast. */
 static constexpr double SIGNAL_ALONG = 0.25;
 static constexpr double SIGNAL_LATERAL = 0.34;
+static constexpr double SIGNAL_SIGHT = 0.1;
 static constexpr uint8_t SIGNAL_SIDE_LEFT = 0;
 static constexpr uint8_t SIGNAL_SIDE_RIGHT = 2;
 static constexpr uint8_t ROAD_SIDE_LEFT = 0;
@@ -57,6 +58,12 @@ static Footing RoadFooting(int tx, int ty)
 	std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty);
 	if (!course.has_value()) return GroundFooting(tx, ty);
 	return [course = *course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
+}
+
+/* Where a point of the game's track is drawn, on the eased line of its course. */
+static WorldPoint Drawn(const WorldPoint &point)
+{
+	return TrackPoint(point.x, point.y);
 }
 
 static bool Wired(TileIndex tile)
@@ -192,11 +199,11 @@ private:
 		for (Track track : SetTrackBitIterator(GetTrackBits(tile))) {
 			for (Trackdir trackdir : {TrackToTrackdir(track), ReverseTrackdir(TrackToTrackdir(track))}) {
 				if (!HasSignalOnTrackdir(tile, trackdir)) continue;
-				WorldPoint foot = TrackdirGroundPoint(tx, ty, trackdir, SIGNAL_ALONG, lateral);
-				WorldPoint entry = TrackdirGroundPoint(tx, ty, trackdir, 0.0, 0.0);
-				WorldPoint exit = TrackdirGroundPoint(tx, ty, trackdir, 1.0, 0.0);
-				double facing = std::atan2(entry.y - exit.y, entry.x - exit.x);
-				this->meshes.signals.push_back({{foot.x, foot.y, WayLevel(foot.x, foot.y) * rise}, facing, tile, trackdir});
+				WorldPoint foot = Drawn(TrackdirGroundPoint(tx, ty, trackdir, SIGNAL_ALONG, lateral));
+				WorldPoint behind = Drawn(TrackdirGroundPoint(tx, ty, trackdir, SIGNAL_ALONG - SIGNAL_SIGHT, 0.0));
+				WorldPoint ahead = Drawn(TrackdirGroundPoint(tx, ty, trackdir, SIGNAL_ALONG + SIGNAL_SIGHT, 0.0));
+				double facing = std::atan2(behind.y - ahead.y, behind.x - ahead.x);
+				this->meshes.signals.push_back({{foot.x, foot.y, foot.level * rise}, facing, tile, trackdir});
 			}
 		}
 	}

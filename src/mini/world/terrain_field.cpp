@@ -13,7 +13,7 @@
 #include <algorithm>
 
 #include "../../map_func.h"
-#include "../map/way_profile.h"
+#include "../map/way_course.h"
 #include "network_field.h"
 #include "seabed.h"
 #include "terrain_mesh.h"

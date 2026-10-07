@@ -20,7 +20,7 @@
 #include "../../track_func.h"
 #include "../map/network_style.h"
 #include "../map/tile_shapes.h"
-#include "../map/way_profile.h"
+#include "../map/way_course.h"
 #include "../map/world_tiles.h"
 #include "seabed.h"
 #include "shore_relief.h"
@@ -377,13 +377,13 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 	CloseBankCorners(mesh, bank_edges);
 }
 
-/* A run of samples along a course's middle line, with the run beyond each end it is mitred toward. */
+/* A run of samples along a course's middle line, carried on a step beyond each end along the course's heading there, so its offsets end square to it. */
 static std::vector<MapVector> FormationLine(const WayCourse &course, int rows)
 {
 	std::vector<MapVector> line;
-	if (Heads(course.Before())) line.push_back(course.From() - course.Before());
+	line.push_back(course.Centre(0.0) - course.Before());
 	for (int row = 0; row <= rows; row++) line.push_back(course.Centre(static_cast<double>(row) / rows));
-	if (Heads(course.After())) line.push_back(course.To() + course.After());
+	line.push_back(course.Centre(1.0) + course.After());
 	return line;
 }
 
@@ -392,7 +392,6 @@ static void AddFormation(TerrainMesh &mesh, const WayCourse &course, double half
 {
 	int rows = std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE)));
 	std::vector<MapVector> line = FormationLine(course, rows);
-	size_t first = Heads(course.Before()) ? 1 : 0;
 	double rise = LevelRise();
 	double spread = half + FORMATION_DEPTH * rise * FORMATION_RUN;
 
@@ -406,8 +405,8 @@ static void AddFormation(TerrainMesh &mesh, const WayCourse &course, double half
 		uint32_t previous = 0;
 		for (int row = 0; row <= rows; row++) {
 			double top = course.Level(static_cast<double>(row) / rows) + WAY_FOOT / rise;
-			MapVector at = inside[first + row];
-			MapVector out = outside[first + row];
+			MapVector at = inside[row + 1];
+			MapVector out = outside[row + 1];
 			MapVector side = Unit(out - at);
 			bool flat = inner.drop == outer.drop;
 			Vec3 normal = flat ? UPRIGHT : Normalised(Vec3{side.x, side.y, FORMATION_RUN});

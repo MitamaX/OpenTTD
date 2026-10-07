@@ -17,7 +17,7 @@
 #include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../core/seed.h"
-#include "../map/way_profile.h"
+#include "../map/way_course.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
