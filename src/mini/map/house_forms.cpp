@@ -106,7 +106,7 @@ static constexpr std::array<MaterialSlots, ERAS> OFFICE_WALLS = {{
 	{Material::Concrete, Material::Concrete, Material::Glass, Material::Stone},
 }};
 
-static constexpr MaterialSlots TILED_ROOFS = {Material::ClayTile, Material::ClayTile, Material::Slate, Material::Slate};
+static constexpr MaterialSlots TILED_ROOFS = {Material::ClayTile, Material::ClayTile, Material::Slate, Material::Shingle};
 static constexpr MaterialSlots THATCHED_ROOFS = {Material::Thatch, Material::Thatch, Material::ClayTile, Material::Slate};
 static constexpr MaterialSlots ARCTIC_ROOFS = {Material::MetalSeam, Material::MetalSeam, Material::Slate, Material::Shingle};
 
