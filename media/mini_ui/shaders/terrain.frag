@@ -94,6 +94,9 @@ const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
 	vec3(0.40, 0.53, 0.30)
 );
 const float FURROWS_PER_TILE = 7.0;
+const float FURROW_DEPTH = 0.55;
+const float LEVEL_FIELD_SLOPE = 0.25;
+const float HILLSIDE_FIELD_SLOPE = 0.6;
 const float HEDGE_WIDTH = 0.035;
 const float HEDGE_GAPS_PER_TILE = 1.9;
 const float HEDGE_OPACITY = 0.85;
@@ -369,17 +372,18 @@ Patch Rocks(Grain grain, vec2 p, Bare bare)
 	return Patch(mix(strewn, bare.rock, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, stones), ROCK_RUGGED, outcrop));
 }
 
-/* A field's crop grows in rows across it, ripening unevenly, with bare soil between the rows. */
+/* A field's crop grows in rows across it, ripening unevenly, with bare soil between the rows; on a hillside it grows rough without rows, so no lattice is drawn over the slope. */
 Patch Fields(Ground ground, Grain grain, vec2 p)
 {
 	vec3 crop = CROPS[int(ground.variant % uint(CROP_COUNT))] * Varied(Octave(p + 1.9, 0.6), 0.16) * Varied(grain.local, 0.08);
 	float across = (ground.variant & 1u) == 0u ? p.x : p.y;
 	float along = (ground.variant & 1u) == 0u ? p.y : p.x;
+	float level = 1.0 - smoothstep(LEVEL_FIELD_SLOPE, HILLSIDE_FIELD_SLOPE, SlopeOf(normalize(v_normal)));
 	float gap = abs(fract(across * FURROWS_PER_TILE) - 0.5) * 2.0;
-	float furrow = smoothstep(0.55, 0.95, gap) * Resolved(2.0 * FURROWS_PER_TILE);
-	float plants = Varied(Noise(vec2(across * FURROWS_PER_TILE, along * MICRO_PER_TILE)), 0.3 * Resolved(MICRO_PER_TILE));
+	float furrow = smoothstep(0.55, 0.95, gap) * level * ResolvedAt(2.0 * FURROWS_PER_TILE, foreshortened_pixels);
+	float plants = Varied(Noise(vec2(across * FURROWS_PER_TILE, along * MICRO_PER_TILE)), 0.3 * ResolvedAt(MICRO_PER_TILE, foreshortened_pixels));
 	vec3 soil = mix(SOIL, crop, 0.25) * 0.85;
-	return Patch(mix(crop * plants, soil, furrow * 0.7), FIELD_RUGGED);
+	return Patch(mix(crop * plants, soil, furrow * FURROW_DEPTH), FIELD_RUGGED);
 }
 
 bool CarriesWay(ivec2 tile)

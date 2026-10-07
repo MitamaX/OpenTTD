@@ -34,6 +34,7 @@ public:
 	bool Active() const { return this->next < this->shots.size(); }
 	bool HidesHud() const { return this->map_only || this->clean; }
 	bool HidesLabels() const { return this->clean; }
+	bool HidesGuides() const { return this->clean; }
 	std::optional<ViewAim> Aim() const;
 	void Grab(Dimension screen);
 
