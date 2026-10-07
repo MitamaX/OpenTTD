@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 
 #include "../../bridge.h"
 #include "../../bridge_map.h"
@@ -106,6 +107,9 @@ static constexpr double LEG_FOOT_LATERAL = 0.34;
 static constexpr double TRESTLE_HALF = 0.018;
 static constexpr double TROUGH_HEIGHT = 0.1;
 static constexpr double WATER_TOP = 0.065;
+static constexpr double CAISSON_MARGIN = 0.03;
+static constexpr double CAISSON_RISE = 0.05;
+static constexpr double CAISSON_SINK = 0.01;
 static constexpr double WATER_GLOSS = 0.9;
 static constexpr double STEEL_GLOSS = 0.45;
 
@@ -225,6 +229,28 @@ private:
 		return (BedLevel(this->tx, this->ty, at.x, at.y) - this->bridge.deck) * LevelRise();
 	}
 
+	/* How far below the deck the water's surface lies over a place on the span, where it stands above the bed there. */
+	std::optional<double> WaterDepth(double span, double lateral) const
+	{
+		if (WaterFormOf(this->tx, this->ty) == WaterForm::Dry) return std::nullopt;
+		double water = (SurfaceLevelOf(this->tx, this->ty) - this->bridge.deck) * LevelRise();
+		if (water <= this->BedDepth(span, lateral)) return std::nullopt;
+		return water;
+	}
+
+	/* Supports standing in water rise from a caisson at the waterline, as what stands below it would only waver through the surface. */
+	double FootDepth(ModelMesh &mesh, double span, double lateral, double half_along, double half_across) const
+	{
+		std::optional<double> water = this->WaterDepth(span, lateral);
+		if (!water.has_value()) return this->BedDepth(span, lateral);
+		MapVector at = this->frame.At(span, lateral);
+		MapVector along = this->frame.At(span + 1.0, lateral) - at;
+		double spread_along = half_along + CAISSON_MARGIN;
+		double spread_across = half_across + CAISSON_MARGIN;
+		mesh.Append(Block(at, along, {-spread_along, -spread_across, *water - CAISSON_SINK}, {spread_along, spread_across, *water + CAISSON_RISE}).Paint(CONCRETE));
+		return *water + CAISSON_RISE;
+	}
+
 	/* Piers stand only on open ground or water, never on a way or a building beneath the bridge. */
 	bool Clear() const
 	{
@@ -247,7 +273,7 @@ private:
 		double middle = this->first + HALF_TILE;
 		MapVector at = this->frame.At(middle, 0.0);
 		MapVector along = this->frame.At(middle + 1.0, 0.0) - at;
-		double foot = this->BedDepth(middle, 0.0);
+		double foot = this->FootDepth(mesh, middle, 0.0, PIER_HALF_ALONG, PIER_HALF_ACROSS);
 		mesh.Append(Block(at, along, {-PIER_HALF_ALONG, -PIER_HALF_ACROSS, foot}, {PIER_HALF_ALONG, PIER_HALF_ACROSS, top - CAP_DEPTH}).Paint(CONCRETE));
 		mesh.Append(Block(at, along, {-CAP_HALF_ALONG, -CAP_HALF_ACROSS, top - CAP_DEPTH}, {CAP_HALF_ALONG, CAP_HALF_ACROSS, top}).Paint(CONCRETE));
 	}
@@ -263,10 +289,11 @@ private:
 		double middle = this->first + HALF_TILE;
 		for (double side : {-1.0, 1.0}) {
 			Vec3 top = this->frame.Point(middle, side * LEG_TOP_LATERAL, -DECK_DEPTH);
-			Vec3 foot = this->frame.Point(middle, side * LEG_FOOT_LATERAL, this->BedDepth(middle, side * LEG_FOOT_LATERAL));
-			this->Member(mesh, foot, top, TRESTLE_HALF);
+			double depth = this->FootDepth(mesh, middle, side * LEG_FOOT_LATERAL, TRESTLE_HALF, TRESTLE_HALF);
+			this->Member(mesh, this->frame.Point(middle, side * LEG_FOOT_LATERAL, depth), top, TRESTLE_HALF);
 		}
 		double low = std::max(this->BedDepth(middle, -LEG_FOOT_LATERAL), this->BedDepth(middle, LEG_FOOT_LATERAL));
+		for (double side : {-1.0, 1.0}) low = std::max(low, this->WaterDepth(middle, side * LEG_FOOT_LATERAL).value_or(low));
 		Vec3 left_top = this->frame.Point(middle, -LEG_TOP_LATERAL, -DECK_DEPTH);
 		Vec3 right_top = this->frame.Point(middle, LEG_TOP_LATERAL, -DECK_DEPTH);
 		Vec3 left_low = this->frame.Point(middle, -LEG_FOOT_LATERAL, low);
@@ -359,7 +386,8 @@ private:
 		if (std::abs(middle - near) > 0.01 && std::abs(middle - far) > 0.01) return;
 		for (double side : {-1.0, 1.0}) {
 			double lateral = side * TOWER_LATERAL;
-			this->Member(mesh, this->frame.Point(middle, lateral, this->BedDepth(middle, lateral)), this->frame.Point(middle, lateral, top), TOWER_HALF);
+			double foot = this->FootDepth(mesh, middle, lateral, TOWER_HALF, TOWER_HALF);
+			this->Member(mesh, this->frame.Point(middle, lateral, foot), this->frame.Point(middle, lateral, top), TOWER_HALF);
 		}
 		for (double height : {-DECK_DEPTH - TOWER_HALF, saddle - TOWER_HALF, top - TOWER_HALF}) {
 			this->Member(mesh, this->frame.Point(middle, -TOWER_LATERAL, height), this->frame.Point(middle, TOWER_LATERAL, height), TOWER_HALF * 0.8);
