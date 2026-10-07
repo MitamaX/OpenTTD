@@ -37,6 +37,7 @@ const float STREAKS_ACROSS = 5.0;
 const float FLOW_SPEED = 0.6;
 const float FLOW_STEEPNESS = 0.006;
 const float RAPIDS_TILT = 0.12;
+const float RAPIDS_REACH = 0.35;
 const float RAPIDS_SPEED = 2.4;
 const float RAPIDS_STEEPNESS = 0.03;
 const float RAPIDS_FOAM = 0.8;
@@ -357,13 +358,33 @@ vec2 DepthBehind(vec2 uv, vec3 sight, float surface)
 	return vec2(behind - surface, v_position.z - bed.z);
 }
 
-/* How steeply the water's own surface leans, which only a river running down a slope does, and which way is down. */
-vec3 Descent()
+/* The level a tile's water stands at a point: down the plane of a river running down a slope, and level with its lowest corner elsewhere. */
+float WaterLevelOn(ivec2 tile, vec2 f)
 {
-	vec3 face = normalize(cross(dFdx(v_position), dFdy(v_position)));
-	face *= sign(face.z);
-	float tilt = length(face.xy);
-	return vec3(tilt > 0.0 ? face.xy / tilt : vec2(0.0), smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, tilt));
+	Corners c = SurfaceOf(tile);
+	bool inclined = texelFetch(u_water, Clamped(tile), 0).a > HALF_TILE && min(c.north, c.south) != max(c.north, c.south);
+	if (!inclined) return min(min(c.north, c.west), min(c.east, c.south));
+	return mix(mix(c.north, c.west, f.x), mix(c.east, c.south, f.x), f.y);
+}
+
+/* The water's level near a point, on the tile there where it holds water and on this tile's water carried on where it does not. */
+float WaterLevelNear(vec2 at, ivec2 home)
+{
+	ivec2 tile = ivec2(floor(at));
+	ivec2 source = texelFetch(u_water, Clamped(tile), 0).r > HALF_TILE ? tile : home;
+	return WaterLevelOn(source, at - vec2(source));
+}
+
+/* How steeply the water's surface leans about a point, measured across a reach so a drop eases in above its lip and runs out into the pool below, and which way is down. */
+vec3 Descent(vec2 p)
+{
+	ivec2 home = ivec2(floor(p));
+	vec2 dx = vec2(RAPIDS_REACH, 0.0);
+	vec2 dy = vec2(0.0, RAPIDS_REACH);
+	vec2 fall = vec2(WaterLevelNear(p - dx, home) - WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home) - WaterLevelNear(p + dy, home));
+	fall *= LevelRise() / (2.0 * RAPIDS_REACH);
+	float tilt = length(fall);
+	return vec3(tilt > 0.0 ? fall / tilt : vec2(0.0), smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, tilt));
 }
 
 /* Where a river drops it breaks white, the broken water racing down the slope in streaks. */
@@ -385,7 +406,7 @@ void main()
 	float outline = Outline(field, body);
 	float river = body.calm * (1.0 - body.canal);
 	vec2 flow = ChannelFlow(p, field.r) * river;
-	vec3 descent = Descent();
+	vec3 descent = Descent(p);
 
 	Surface waves = Waves(p, body.calm);
 	waves = Stirred(waves, Streaks(p, flow, FLOW_SPEED) * FLOW_STEEPNESS * length(flow));
