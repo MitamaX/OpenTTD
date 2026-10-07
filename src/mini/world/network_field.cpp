@@ -29,7 +29,8 @@ static constexpr double HEADROOM_LEVELS = 2.0;
 static constexpr uint64_t EVICT_FRAMES = 600;
 static constexpr int EASE_MARGIN = WAY_EASE_REACH;
 
-/* A change reaching a block only stales it when the ground or the ways it is built from changed, in it or near enough for the runs through it to ease differently. */
+/* Only a change of the ground's shape or the ways can reach a block, and only stales it when the ground or the ways it is built from changed,
+ * in it or near enough for the runs through it to ease differently. */
 void NetworkField::Sync(const WorldChanges &changes)
 {
 	this->frame++;
@@ -40,7 +41,7 @@ void NetworkField::Sync(const WorldChanges &changes)
 		this->Lay(size);
 		return;
 	}
-	this->grid.ForEachTouched(changes.areas, EASE_MARGIN, [&](size_t index) {
+	this->grid.ForEachTouched(changes.reliefs, EASE_MARGIN, [&](size_t index) {
 		NetworkChunk &chunk = this->chunks[index];
 		uint32_t digest = this->Digest(index);
 		if (digest == chunk.digest) return;
