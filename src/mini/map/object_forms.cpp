@@ -71,7 +71,7 @@ static constexpr float HQ_VILLA_HALF = 0.75f;
 static constexpr float HQ_VILLA_HEIGHT = 0.40f;
 static constexpr float HQ_OFFICES_HALF = 0.8f;
 static constexpr float HQ_OFFICES_HEIGHT = 0.7f;
-static constexpr float HQ_PODIUM_HALF = 0.85f;
+static constexpr float HQ_PODIUM_HALF = 0.72f;
 static constexpr float HQ_TOWER_PODIUM_HEIGHT = 0.3f;
 static constexpr float HQ_TOWER_HALF = 0.55f;
 static constexpr float HQ_TOWER_HEIGHT = 1.4f;
@@ -83,6 +83,16 @@ static constexpr float HQ_SETBACK_HEIGHT = 0.3f;
 static constexpr float HQ_ANTENNA_SIDE = 0.06f;
 static constexpr float HQ_ANTENNA_HEIGHT = 0.3f;
 static constexpr uint HQ_GLASS_TRIM_SHARE = 64;
+static constexpr float HQ_GROUNDS_HALF = 0.97f;
+static constexpr float HQ_PLANTER_HALF = 0.14f;
+static constexpr float HQ_PLANTER_INSET = 0.06f;
+static constexpr float HQ_PLANTER_HEIGHT = 0.05f;
+static constexpr uint32_t HQ_PLANTER_TINT = 0xFF4E7A3AU;
+static constexpr float HQ_FLAG_INSET = 0.08f;
+static constexpr std::array<float, 2> HQ_FLAG_OFFSETS = {-0.18f, 0.18f};
+static constexpr float HQ_FLAG_POLE_HEIGHT = 0.45f;
+static constexpr float HQ_FLAG_LENGTH = 0.16f;
+static constexpr float HQ_FLAG_HEIGHT = 0.08f;
 
 static constexpr std::array<Finish, 3> CUSTOM_FINISHES = {Finish::Brick, Finish::Concrete, Finish::Stone};
 static constexpr uint8_t CUSTOM_MAST_LEVELS = 6;
@@ -166,6 +176,36 @@ static Part HqPodium(const SiteLot &lot, float height)
 	return HqMass(Part::Box(HqPlot(HQ_PODIUM_HALF)), Material::Concrete, WindowGrid::Shopfront, height, FinishTint(Finish::Concrete, lot.seed), lot);
 }
 
+/* A flag in the company's colour flies from a pole standing at this spot, out along the front it stands before. */
+static void AddFlagpole(BuildingForm &form, float x, float y, Axis along, uint32_t trim)
+{
+	Plot flag = along == AXIS_X ? Plot{x, y - FLAG_THICKNESS / 2.0f, x + HQ_FLAG_LENGTH, y + FLAG_THICKNESS / 2.0f} : Plot{x - FLAG_THICKNESS / 2.0f, y, x + FLAG_THICKNESS / 2.0f, y + HQ_FLAG_LENGTH};
+	form.Add(Part::Square(x, y, POLE_SIDE).Detailed().Height(HQ_FLAG_POLE_HEIGHT).Clad(Material::Metal, COL_STEEL));
+	form.Add(Part::Box(flag).Detailed().On(HQ_FLAG_POLE_HEIGHT - HQ_FLAG_HEIGHT).Height(HQ_FLAG_HEIGHT).Clad(Material::Plain, trim));
+}
+
+/* Headquarters stand on a paved forecourt with planted beds at its far corners and the company's flags flying before the front. */
+static void AddHqGrounds(BuildingForm &form, const SiteLot &lot, uint32_t trim)
+{
+	Plot grounds = HqPlot(HQ_GROUNDS_HALF);
+	DiagDirections fronts = LotFronts(lot);
+	DiagDirection front = fronts.Any() ? *fronts.GetNthSetBit(0) : DIAGDIR_SE;
+	Axis along = AlongEdge(front);
+	form.Add(Part::Decal(grounds).Covered(Material::Stone, FinishTint(Finish::Stone, lot.seed)));
+	Plot back = grounds.Edge(ReverseDiagDir(front), HQ_PLANTER_INSET + 2.0f * HQ_PLANTER_HALF).Inset(ReverseDiagDir(front), HQ_PLANTER_INSET);
+	for (float side : {-1.0f, 1.0f}) {
+		float mid = HQ_CENTRE + side * (HQ_GROUNDS_HALF - HQ_PLANTER_INSET - HQ_PLANTER_HALF);
+		Plot bed = along == AXIS_X ? Plot{mid - HQ_PLANTER_HALF, back.y0, mid + HQ_PLANTER_HALF, back.y1} : Plot{back.x0, mid - HQ_PLANTER_HALF, back.x1, mid + HQ_PLANTER_HALF};
+		form.Add(Part::Box(bed).Detailed().Height(HQ_PLANTER_HEIGHT).Clad(Material::Hedge, HQ_PLANTER_TINT));
+	}
+	Plot kerb = grounds.Edge(front, HQ_FLAG_INSET);
+	for (float offset : HQ_FLAG_OFFSETS) {
+		float x = along == AXIS_X ? HQ_CENTRE + offset : kerb.Mid(AXIS_X);
+		float y = along == AXIS_X ? kerb.Mid(AXIS_Y) : HQ_CENTRE + offset;
+		AddFlagpole(form, x, y, along, trim);
+	}
+}
+
 static void AddCottageHq(BuildingForm &form, const SiteLot &lot, uint32_t)
 {
 	form.Add(CottageMass(HqPlot(HQ_COTTAGE_HALF), HQ_COTTAGE_HEIGHT, SeedRidge(lot.seed), LotFronts(lot), lot.seed));
@@ -186,10 +226,11 @@ static void AddOfficesHq(BuildingForm &form, const SiteLot &lot, uint32_t)
 static void AddTowerHq(BuildingForm &form, const SiteLot &lot, uint32_t trim)
 {
 	Part podium = HqPodium(lot, HQ_TOWER_PODIUM_HEIGHT);
-	Part tower = HqMass(Part::Box(HqPlot(HQ_TOWER_HALF)).On(LevelAbove(podium)), Material::Glass, WindowGrid::Curtain, HQ_TOWER_HEIGHT, FinishTint(Finish::Glass, lot.seed), lot);
+	Part tower = HqMass(Part::Box(HqPlot(HQ_TOWER_HALF)).On(LevelAbove(podium)), Material::Stone, WindowGrid::Office, HQ_TOWER_HEIGHT, FinishTint(Finish::Stone, lot.seed), lot);
 	form.Add(podium);
 	form.Add(tower);
 	form.Add(CrownBand(tower, HQ_CROWN_HEIGHT, trim));
+	AddRooftopKit(form, tower, lot.seed);
 }
 
 static void AddSkyscraperHq(BuildingForm &form, const SiteLot &lot, uint32_t trim)
@@ -211,6 +252,7 @@ static constexpr std::array HEADQUARTERS_STAGES = {AddCottageHq, AddVillaHq, Add
 static void BuildHeadquarters(BuildingForm &form, const SiteLot &lot, uint32_t trim)
 {
 	size_t stage = std::min<size_t>(GetAnimationFrame(lot.tile), HEADQUARTERS_STAGES.size() - 1);
+	AddHqGrounds(form, lot, trim);
 	HEADQUARTERS_STAGES[stage](form, lot, trim);
 }
 
