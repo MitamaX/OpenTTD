@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "../../map_func.h"
+#include "tile_shapes.h"
 #include "way_course.h"
 #include "world_tiles.h"
 

@@ -35,6 +35,7 @@
 #include "building_form.h"
 #include "house_forms.h"
 #include "industry_forms.h"
+#include "tile_shapes.h"
 
 #include "../../safeguards.h"
 
@@ -622,8 +623,5 @@ void WorldTiles::Claim(TileIndex tile, ChangeKind kind)
 		return;
 	}
 	Rect &span = spans[claims[block] - 1];
-	span.left = std::min(span.left, tx);
-	span.top = std::min(span.top, ty);
-	span.right = std::max(span.right, tx);
-	span.bottom = std::max(span.bottom, ty);
+	span = TakingIn(span, tx, ty);
 }

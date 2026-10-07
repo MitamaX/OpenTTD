@@ -39,17 +39,14 @@ void WorldTextures::Allocate(uint unit)
 	this->textures[unit].Allocate(source.format, _world_tiles.Size(), source.texels);
 }
 
-/* The shore's distances reach across the whole map, so any change of water measures them all again. */
 void WorldTextures::Sync(const WorldChanges &changes)
 {
-	bool whole = changes.whole || !this->textures[TILES_UNIT].Allocated();
-	bool water = changes.Has(ChangeKind::Water);
-	if (whole || water) {
+	if (changes.whole || !this->textures[TILES_UNIT].Allocated()) {
 		_frame_profile.Count("shore_surveys");
-		ProfileScope profile("build", "shore", ProfileClock::Cpu);
-		this->shore.Survey(_world_tiles.Size());
-	}
-	if (whole) {
+		{
+			ProfileScope profile("build", "shore", ProfileClock::Cpu);
+			this->shore.Survey(_world_tiles.Size());
+		}
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) this->Allocate(unit);
 	} else {
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) {
@@ -58,12 +55,28 @@ void WorldTextures::Sync(const WorldChanges &changes)
 				for (const Rect &span : changes.Of(kind)) this->textures[unit].Update(span, source.texels);
 			}
 		}
-		if (water) {
-			this->textures[WATER_UNIT].Refilter();
-			this->Allocate(SHORE_UNIT);
-		}
+		if (changes.Has(ChangeKind::Water)) this->textures[WATER_UNIT].Refilter();
+		this->ResurveyShore(changes);
 	}
 	if (std::optional<Rect> bent = _way_bends.TakeUpdate(); bent.has_value()) this->textures[BENDS_UNIT].Update(*bent, _way_bends.Texels());
+}
+
+/* The shore's distances move only out to the shelf's edge about a tile whose water or shape changed, so only there are they measured again and sent up. */
+void WorldTextures::ResurveyShore(const WorldChanges &changes)
+{
+	if (!changes.Has(ChangeKind::Water) && !changes.Has(ChangeKind::Shape)) return;
+	ProfileScope profile("build", "shore", ProfileClock::Cpu);
+	bool moved = false;
+	for (ChangeKind kind : {ChangeKind::Water, ChangeKind::Shape}) {
+		for (const Rect &span : changes.Of(kind)) {
+			_frame_profile.Count("shore_surveys");
+			std::optional<Rect> shifted = this->shore.Resurvey(span);
+			if (!shifted.has_value()) continue;
+			this->textures[SHORE_UNIT].Update(*shifted, this->shore.Texels());
+			moved = true;
+		}
+	}
+	if (moved) this->textures[SHORE_UNIT].Refilter();
 }
 
 void WorldTextures::Bind() const

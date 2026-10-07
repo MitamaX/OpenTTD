@@ -46,6 +46,7 @@ private:
 
 	Source SourceOf(uint unit) const;
 	void Allocate(uint unit);
+	void ResurveyShore(const WorldChanges &changes);
 
 	std::array<DataTexture, UNIT_COUNT> textures;
 	ShoreField shore;

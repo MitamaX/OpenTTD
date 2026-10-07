@@ -119,9 +119,6 @@ private:
 /* How far the eased rail line slides along a tile's west side and along its north side, from the middle of each. */
 std::pair<double, double> SideSlides(int tx, int ty);
 
-/* The map's tiles within so many tiles of an area. */
-Rect TilesNear(const Rect &area, int reach);
-
 /* The eases and drawn pieces kept within reach of where the ground's shape or the ways changed are worked out afresh when next asked for. */
 void ForgetCourses(const WorldChanges &changes);
 

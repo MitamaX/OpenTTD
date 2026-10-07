@@ -48,6 +48,10 @@ struct StepFace {
 };
 
 bool OnMap(int tx, int ty);
+/* The map's tiles within so many tiles of an area. */
+Rect TilesNear(const Rect &area, int reach);
+/* The area grown just enough to take in a tile. */
+Rect TakingIn(const Rect &area, int tx, int ty);
 MapVector Outward(DiagDirection side);
 std::optional<StepFace> StepFaceOf(int tx, int ty, DiagDirection side);
 

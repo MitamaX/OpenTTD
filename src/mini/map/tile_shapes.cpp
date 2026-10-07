@@ -114,6 +114,17 @@ bool OnMap(int tx, int ty)
 	return tx >= 0 && ty >= 0 && tx <= static_cast<int>(Map::MaxX()) && ty <= static_cast<int>(Map::MaxY());
 }
 
+Rect TilesNear(const Rect &area, int reach)
+{
+	Rect grown = area.Expand(reach);
+	return {std::max(grown.left, 0), std::max(grown.top, 0), std::min(grown.right, static_cast<int>(Map::MaxX())), std::min(grown.bottom, static_cast<int>(Map::MaxY()))};
+}
+
+Rect TakingIn(const Rect &area, int tx, int ty)
+{
+	return {std::min(area.left, tx), std::min(area.top, ty), std::max(area.right, tx), std::max(area.bottom, ty)};
+}
+
 static uint8_t CornerLevel(const SurfaceTexel &surface, CornerOffset corner)
 {
 	if (corner.y == 0) return corner.x == 0 ? surface.north : surface.west;

@@ -363,12 +363,6 @@ void Run::Ease(Store store)
 	}
 }
 
-Rect TilesNear(const Rect &area, int reach)
-{
-	Rect grown = area.Expand(reach);
-	return {std::max(grown.left, 0), std::max(grown.top, 0), std::min(grown.right, static_cast<int>(Map::MaxX())), std::min(grown.bottom, static_cast<int>(Map::MaxY()))};
-}
-
 /* Eases are worked out a whole run at a time, and kept until the ground's shape or the ways change within their reach. */
 class EaseBook {
 public:

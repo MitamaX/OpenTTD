@@ -14,6 +14,7 @@
 #include <cmath>
 #include <limits>
 
+#include "../map/tile_shapes.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
@@ -21,6 +22,8 @@
 static constexpr double UNREACHED = 1e12;
 static constexpr double LAND_EDGE = 0.5;
 static constexpr double TEXEL_SCALE = 255.0;
+/* The farthest a tile's distance reaches before it is clamped to the shelf's edge, in whole tiles. */
+static constexpr int SHELF_REACH = static_cast<int>(SHELF_TILES + LAND_EDGE) + 1;
 
 /* The squared distance from every point of a line to the nearest of its sites, each site weighed by its own squared distance already found:
  * the lower envelope of the parabolas rooted at the sites, after Felzenszwalb and Huttenlocher. */
@@ -57,15 +60,31 @@ static void SquaredDistances(std::vector<double> &line)
 	line = std::move(found);
 }
 
-/* Each tile's squared distance to the nearest land tile's middle, by rows and then by columns; less half a tile, that is the distance to the land's edge. */
 void ShoreField::Survey(Dimension map)
 {
-	size_t width = map.width;
-	size_t height = map.height;
+	this->map = map;
+	this->texels.assign(static_cast<size_t>(map.width) * map.height, 0);
+	Rect whole = {0, 0, static_cast<int>(map.width) - 1, static_cast<int>(map.height) - 1};
+	this->Measure(whole, whole);
+}
+
+/* The span of texels the change moved, if it moved any. */
+std::optional<Rect> ShoreField::Resurvey(const Rect &changed)
+{
+	Rect kept = TilesNear(changed, SHELF_REACH);
+	return this->Measure(TilesNear(kept, SHELF_REACH), kept);
+}
+
+/* Each tile's squared distance to the nearest land tile's middle within the window, by rows and then by columns; less half a tile, that is the distance to the land's edge.
+ * Any land nearer than the shelf's breadth to a kept tile lies within the window, so a kept tile measures the same as it would across the whole map; the span of kept texels that moved comes back. */
+std::optional<Rect> ShoreField::Measure(const Rect &window, const Rect &kept)
+{
+	size_t width = window.Width();
+	size_t height = window.Height();
 	std::vector<double> squared(width * height);
 	for (size_t y = 0; y < height; y++) {
 		for (size_t x = 0; x < width; x++) {
-			bool land = WaterFormOf(static_cast<int>(x), static_cast<int>(y)) != WaterForm::Open;
+			bool land = WaterFormOf(window.left + static_cast<int>(x), window.top + static_cast<int>(y)) != WaterForm::Open;
 			squared[y * width + x] = land ? 0.0 : UNREACHED;
 		}
 	}
@@ -83,9 +102,17 @@ void ShoreField::Survey(Dimension map)
 		for (size_t y = 0; y < height; y++) squared[y * width + x] = line[y];
 	}
 
-	this->texels.resize(width * height);
-	std::ranges::transform(squared, this->texels.begin(), [](double distance_squared) {
-		double offshore = std::clamp(std::sqrt(distance_squared) - LAND_EDGE, 0.0, static_cast<double>(SHELF_TILES));
-		return static_cast<uint8_t>(std::lround(offshore / SHELF_TILES * TEXEL_SCALE));
-	});
+	std::optional<Rect> moved;
+	for (int y = kept.top; y <= kept.bottom; y++) {
+		for (int x = kept.left; x <= kept.right; x++) {
+			double distance_squared = squared[static_cast<size_t>(y - window.top) * width + (x - window.left)];
+			double offshore = std::clamp(std::sqrt(distance_squared) - LAND_EDGE, 0.0, static_cast<double>(SHELF_TILES));
+			uint8_t texel = static_cast<uint8_t>(std::lround(offshore / SHELF_TILES * TEXEL_SCALE));
+			uint8_t &stored = this->texels[static_cast<size_t>(y) * this->map.width + x];
+			if (texel == stored) continue;
+			stored = texel;
+			moved = TakingIn(moved.value_or(Rect{x, y, x, y}), x, y);
+		}
+	}
+	return moved;
 }

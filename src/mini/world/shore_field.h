@@ -11,17 +11,23 @@
 #define MINI_WORLD_SHORE_FIELD_H
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "../../core/geometry_type.hpp"
 
-/* One texel per tile: the distance from its middle to the edge of the nearest tile that is not open water, a share of the shelf's breadth. */
+/* One texel per tile: the distance from its middle to the edge of the nearest tile that is not open water, a share of the shelf's breadth.
+ * A change of the water only moves the distances out to the shelf's edge around it, which are measured again from the tiles within the shelf's breadth of them. */
 class ShoreField {
 public:
 	void Survey(Dimension map);
+	std::optional<Rect> Resurvey(const Rect &changed);
 	const uint8_t *Texels() const { return this->texels.data(); }
 
 private:
+	std::optional<Rect> Measure(const Rect &window, const Rect &kept);
+
+	Dimension map{};
 	std::vector<uint8_t> texels;
 };
 
