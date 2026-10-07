@@ -55,7 +55,6 @@ void WorldTextures::Sync(const WorldChanges &changes)
 				for (const Rect &span : changes.Of(kind)) this->textures[unit].Update(span, source.texels);
 			}
 		}
-		if (changes.Has(ChangeKind::Water)) this->textures[WATER_UNIT].Refilter();
 		this->ResurveyShore(changes);
 	}
 	if (std::optional<Rect> bent = _way_bends.TakeUpdate(); bent.has_value()) this->textures[BENDS_UNIT].Update(*bent, _way_bends.Texels());
@@ -66,17 +65,13 @@ void WorldTextures::ResurveyShore(const WorldChanges &changes)
 {
 	if (!changes.Has(ChangeKind::Water) && !changes.Has(ChangeKind::Shape)) return;
 	ProfileScope profile("build", "shore", ProfileClock::Cpu);
-	bool moved = false;
 	for (ChangeKind kind : {ChangeKind::Water, ChangeKind::Shape}) {
 		for (const Rect &span : changes.Of(kind)) {
 			_frame_profile.Count("shore_surveys");
 			std::optional<Rect> shifted = this->shore.Resurvey(span);
-			if (!shifted.has_value()) continue;
-			this->textures[SHORE_UNIT].Update(*shifted, this->shore.Texels());
-			moved = true;
+			if (shifted.has_value()) this->textures[SHORE_UNIT].Update(*shifted, this->shore.Texels());
 		}
 	}
-	if (moved) this->textures[SHORE_UNIT].Refilter();
 }
 
 void WorldTextures::Bind() const

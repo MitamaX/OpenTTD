@@ -10,6 +10,9 @@
 #ifndef MINI_GPU_DATA_TEXTURE_H
 #define MINI_GPU_DATA_TEXTURE_H
 
+#include <cstddef>
+#include <vector>
+
 #include "../../core/geometry_type.hpp"
 
 enum class TexelFormat : uint8_t {
@@ -19,11 +22,11 @@ enum class TexelFormat : uint8_t {
 	TiledRgba,
 };
 
+/* A filtered texture keeps its smaller levels here as well, each half the size of the one above, so a change of some texels refilters only the area they cover. */
 class DataTexture {
 public:
 	void Allocate(TexelFormat format, Dimension size, const void *texels);
-	void Update(const Rect &area, const void *texels) const;
-	void Refilter() const;
+	void Update(const Rect &area, const void *texels);
 	void Bind(uint unit) const;
 	void Release();
 
@@ -32,9 +35,13 @@ public:
 	bool Allocated() const { return this->name != 0; }
 
 private:
+	void Upload(int level, Dimension level_size, const Rect &area, const std::byte *texels) const;
+	void Refilter(const Rect &area, const std::byte *texels);
+
 	uint32_t name = 0;
 	TexelFormat format = TexelFormat::ExactRgba;
 	Dimension size{};
+	std::vector<std::vector<std::byte>> levels;
 };
 
 #endif /* MINI_GPU_DATA_TEXTURE_H */
