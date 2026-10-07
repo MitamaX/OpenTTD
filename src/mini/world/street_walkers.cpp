@@ -10,6 +10,7 @@
 #include "../../stdafx.h"
 #include "street_walkers.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -135,46 +136,65 @@ void StreetWalkers::Build(size_t index)
 	}
 }
 
-/* A walker turns about at either end of its stretch; one standing about keeps to its spot, facing along the street one way or the other. */
+/* Only blocks within the distance at which a tile still spans the fewest pixels are visited, so the work stays near the eye however big the map. */
 void StreetWalkers::Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch)
 {
 	if (this->grid.Map() != _world_tiles.Size()) this->Sync(WorldChanges{.whole = true});
+	if (this->blocks.empty()) return;
+	double reach = view.focal / fewest_pixels + RUN_REACH;
+	Dimension map = this->grid.Map();
+	auto tile_at = [](double at, uint size) { return std::clamp(static_cast<int>(at), 0, static_cast<int>(size) - 1); };
+	int tx0 = tile_at(view.eye.x - reach, map.width);
+	int tx1 = tile_at(view.eye.x + reach, map.width);
+	int ty0 = tile_at(view.eye.y - reach, map.height);
+	int ty1 = tile_at(view.eye.y + reach, map.height);
 	double top = (_world_tiles.Peak() + 1.0) * LevelRise();
 	int builds = 0;
 	size_t gathered = 0;
-	for (size_t index = 0; index < this->blocks.size() && gathered < MOST_WALKERS; index++) {
-		TileSpan tiles = this->grid.TilesOf(index);
-		Vec3 low = {static_cast<double>(tiles.tx0 - RUN_REACH), static_cast<double>(tiles.ty0 - RUN_REACH), 0.0};
-		Vec3 high = {static_cast<double>(tiles.tx1 + 1 + RUN_REACH), static_cast<double>(tiles.ty1 + 1 + RUN_REACH), top};
-		if (!BoxMeets(frustum, low, high) || view.NearestTilePixels(low, high) < fewest_pixels) continue;
-		Block &block = this->blocks[index];
-		if (block.stale) {
-			if (builds >= MOST_BUILDS) continue;
-			this->Build(index);
-			builds++;
-		}
-		for (const Walker &walker : block.walkers) {
-			bool walking = walker.pace > 0.0f;
-			double walked = view.clock * walker.pace + walker.phase * walker.length;
-			double lap = std::fmod(walked / walker.length, 2.0);
-			double share = walking ? (lap < 1.0 ? lap : 2.0 - lap) : walker.phase;
-			double heading = (walking ? lap < 1.0 : walker.phase < 0.5) ? 1.0 : -1.0;
-			double x = walker.x + walker.along_x * share * walker.length;
-			double y = walker.y + walker.along_y * share * walker.length;
-			double z = GroundLevel(x, y) * LevelRise() + PAVEMENT_TOP;
-			if (view.TilePixelsAt(Length(view.eye - Vec3{x, y, z})) < fewest_pixels) continue;
-
-			double steps = walked / STRIDE;
-			FigurePose pose = walking ? WALK_CYCLE[static_cast<size_t>(std::fmod(steps, 2.0) * 2.0) % WALK_CYCLE.size()] : FigurePose::Upright;
-			double bob = walking ? BOB * std::abs(std::sin(steps * std::numbers::pi)) : 0.0;
-			double yaw = std::atan2(walker.along_y * heading, walker.along_x * heading);
-			batch.Add(to_underlying(pose), VehicleInstance{
-				static_cast<float>(x), static_cast<float>(y), static_cast<float>(z + bob), static_cast<float>(yaw), 0.0f, 0.0f, 1.0f,
-				walker.shirt, walker.trousers, {},
-			});
-			gathered++;
+	for (int by = ty0 - ty0 % BLOCK_TILES; by <= ty1 && gathered < MOST_WALKERS; by += BLOCK_TILES) {
+		for (int bx = tx0 - tx0 % BLOCK_TILES; bx <= tx1 && gathered < MOST_WALKERS; bx += BLOCK_TILES) {
+			size_t index = this->grid.IndexOf(bx, by);
+			TileSpan tiles = this->grid.TilesOf(index);
+			Vec3 low = {static_cast<double>(tiles.tx0 - RUN_REACH), static_cast<double>(tiles.ty0 - RUN_REACH), 0.0};
+			Vec3 high = {static_cast<double>(tiles.tx1 + 1 + RUN_REACH), static_cast<double>(tiles.ty1 + 1 + RUN_REACH), top};
+			if (!BoxMeets(frustum, low, high) || view.NearestTilePixels(low, high) < fewest_pixels) continue;
+			Block &block = this->blocks[index];
+			if (block.stale) {
+				if (builds >= MOST_BUILDS) continue;
+				this->Build(index);
+				builds++;
+			}
+			gathered += GatherBlock(view, block.walkers, fewest_pixels, batch);
 		}
 	}
+}
+
+/* A walker turns about at either end of its stretch; one standing about keeps to its spot, facing along the street one way or the other. */
+size_t StreetWalkers::GatherBlock(const SceneView &view, std::span<const Walker> walkers, double fewest_pixels, VehicleBatch &batch)
+{
+	size_t gathered = 0;
+	for (const Walker &walker : walkers) {
+		bool walking = walker.pace > 0.0f;
+		double walked = view.clock * walker.pace + walker.phase * walker.length;
+		double lap = std::fmod(walked / walker.length, 2.0);
+		double share = walking ? (lap < 1.0 ? lap : 2.0 - lap) : walker.phase;
+		double heading = (walking ? lap < 1.0 : walker.phase < 0.5) ? 1.0 : -1.0;
+		double x = walker.x + walker.along_x * share * walker.length;
+		double y = walker.y + walker.along_y * share * walker.length;
+		double z = GroundLevel(x, y) * LevelRise() + PAVEMENT_TOP;
+		if (view.TilePixelsAt(Length(view.eye - Vec3{x, y, z})) < fewest_pixels) continue;
+
+		double steps = walked / STRIDE;
+		FigurePose pose = walking ? WALK_CYCLE[static_cast<size_t>(std::fmod(steps, 2.0) * 2.0) % WALK_CYCLE.size()] : FigurePose::Upright;
+		double bob = walking ? BOB * std::abs(std::sin(steps * std::numbers::pi)) : 0.0;
+		double yaw = std::atan2(walker.along_y * heading, walker.along_x * heading);
+		batch.Add(to_underlying(pose), VehicleInstance{
+			static_cast<float>(x), static_cast<float>(y), static_cast<float>(z + bob), static_cast<float>(yaw), 0.0f, 0.0f, 1.0f,
+			walker.shirt, walker.trousers, {},
+		});
+		gathered++;
+	}
+	return gathered;
 }
 
 void StreetWalkers::Release()

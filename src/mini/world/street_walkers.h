@@ -11,6 +11,7 @@
 #define MINI_WORLD_STREET_WALKERS_H
 
 #include <array>
+#include <span>
 #include <vector>
 
 #include "chunk_grid.h"
@@ -48,6 +49,7 @@ private:
 	};
 
 	void Build(size_t index);
+	static size_t GatherBlock(const SceneView &view, std::span<const Walker> walkers, double fewest_pixels, VehicleBatch &batch);
 
 	ChunkGrid grid{BLOCK_TILES};
 	std::vector<Block> blocks;
