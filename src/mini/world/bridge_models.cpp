@@ -113,12 +113,12 @@ static constexpr double CAISSON_SINK = 0.01;
 static constexpr double WATER_GLOSS = 0.9;
 static constexpr double STEEL_GLOSS = 0.45;
 static constexpr int EMBANKMENT_ROWS = 4;
-static constexpr double EMBANKMENT_RUN_PER_RISE = 1.2;
-static constexpr double EMBANKMENT_SPREAD_MOST = 0.9;
+static constexpr double EMBANKMENT_RUN_PER_RISE = 0.8;
+static constexpr double EMBANKMENT_SPREAD_MOST = 0.4;
 static constexpr double EMBANKMENT_CROWN_DEPTH = 0.015;
 static constexpr double EMBANKMENT_VARIETY = 0.08;
 static constexpr uint32_t EMBANKMENT_SEED = 0xBA4C;
-static constexpr uint32_t EMBANKMENT_GRASS = 0x667E3E;
+static constexpr uint32_t EMBANKMENT_GRASS = 0x5A7136;
 static constexpr double FACE_LEAST_AREA = 1e-6;
 static constexpr uint32_t EMBANKMENT_CROWN = 0x7D7466;
 
