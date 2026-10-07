@@ -24,6 +24,10 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/solid.vert",
 };
+static constexpr std::array<const char *, 2> SPAN_VERTEX_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/span.vert",
+};
 static constexpr std::array<const char *, 2> SIGNAL_VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/signal.vert",
@@ -50,7 +54,7 @@ static constexpr float OFFSET_SLOPE = -1.0f;
 static constexpr float OFFSET_UNITS = -2.0f;
 
 NetworkPass::NetworkPass() :
-	program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), span_program(VERTEX_SOURCES, FRAGMENT_SOURCES),
+	program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), span_program(SPAN_VERTEX_SOURCES, FRAGMENT_SOURCES),
 	signal_program(SIGNAL_VERTEX_SOURCES, FRAGMENT_SOURCES), signal_caster(CasterProgram(SIGNAL_VERTEX_SOURCES))
 {
 }

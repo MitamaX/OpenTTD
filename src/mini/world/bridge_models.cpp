@@ -219,10 +219,11 @@ public:
 	{
 	}
 
-	ModelMesh Build()
+	SpanMesh Build()
 	{
 		bool aqueduct = this->bridge.transport == TRANSPORT_WATER;
-		ModelMesh mesh = Deck(this->frame.Run(this->first, this->first + 1.0), this->look, aqueduct, this->look.build != BridgeBuild::Girder);
+		SpanMesh mesh;
+		mesh.Append(Deck(this->frame.Run(this->first, this->first + 1.0), this->look, aqueduct, this->look.build != BridgeBuild::Girder));
 		switch (this->look.build) {
 			case BridgeBuild::Trestle: this->Trestle(mesh); break;
 			case BridgeBuild::Beam: this->Beam(mesh); break;
@@ -252,7 +253,7 @@ private:
 	}
 
 	/* Supports standing in water rise from a caisson at the waterline, as what stands below it would only waver through the surface. */
-	double FootDepth(ModelMesh &mesh, double span, double lateral, double half_along, double half_across) const
+	double FootDepth(SpanMesh &mesh, double span, double lateral, double half_along, double half_across) const
 	{
 		std::optional<double> water = this->WaterDepth(span, lateral);
 		if (!water.has_value()) return this->BedDepth(span, lateral);
@@ -281,7 +282,7 @@ private:
 		return this->Clear() && this->frame.Length() > 1.0 && (index + 1) % every == 0 && index + 1 < this->frame.Length();
 	}
 
-	void Pier(ModelMesh &mesh, double top) const
+	void Pier(SpanMesh &mesh, double top) const
 	{
 		double middle = this->first + HALF_TILE;
 		MapVector at = this->frame.At(middle, 0.0);
@@ -291,12 +292,12 @@ private:
 		mesh.Append(Block(at, along, {-CAP_HALF_ALONG, -CAP_HALF_ACROSS, top - CAP_DEPTH}, {CAP_HALF_ALONG, CAP_HALF_ACROSS, top}).Paint(CONCRETE));
 	}
 
-	void Member(ModelMesh &mesh, const Vec3 &from, const Vec3 &to, double half = MEMBER_HALF) const
+	void Member(SpanMesh &mesh, const Vec3 &from, const Vec3 &to, double half = MEMBER_HALF) const
 	{
-		mesh.Append(Strut(from, to, half).Paint(this->look.frame).Gloss(STEEL_GLOSS));
+		mesh.AppendMember(Strut(from, to, half).Paint(this->look.frame).Gloss(STEEL_GLOSS), from, to, half);
 	}
 
-	void Trestle(ModelMesh &mesh) const
+	void Trestle(SpanMesh &mesh) const
 	{
 		if (!this->Clear()) return;
 		double middle = this->first + HALF_TILE;
@@ -315,7 +316,7 @@ private:
 		this->Member(mesh, right_top, left_low, THIN_HALF * 2.0);
 	}
 
-	void Beam(ModelMesh &mesh) const
+	void Beam(SpanMesh &mesh) const
 	{
 		std::array<SectionPoint, 4> box = {{
 			{BOX_HALF_TOP, -DECK_DEPTH, this->look.frame}, {BOX_HALF_FOOT, -BOX_DEPTH, this->look.frame},
@@ -325,7 +326,7 @@ private:
 		if (this->PierHere(2)) this->Pier(mesh, -BOX_DEPTH);
 	}
 
-	void Girder(ModelMesh &mesh) const
+	void Girder(SpanMesh &mesh) const
 	{
 		Stretch run = this->frame.Run(this->first, this->first + 1.0);
 		for (double side : {-1.0, 1.0}) {
@@ -339,7 +340,7 @@ private:
 	}
 
 	/* Each side is a run of triangles: a vertical at every half tile, a diagonal across each half, and the top chord over them. */
-	void Truss(ModelMesh &mesh) const
+	void Truss(SpanMesh &mesh) const
 	{
 		double last = this->first + 1.0;
 		for (double side : {-1.0, 1.0}) {
@@ -364,7 +365,7 @@ private:
 
 	/* A line over the span sampled across this tile, hung from the deck's edges every sample where it stands clear of the deck. */
 	template <class Height>
-	void Hung(ModelMesh &mesh, double lateral, Height height) const
+	void Hung(SpanMesh &mesh, double lateral, Height height) const
 	{
 		for (double side : {-1.0, 1.0}) {
 			for (int sample = 0; sample < SAMPLES_PER_TILE; sample++) {
@@ -377,7 +378,7 @@ private:
 	}
 
 	/* Towers stand a sixth of the way in from either head, taller the longer the span; the cables sag between them and fall back to the heads beyond. */
-	void Suspension(ModelMesh &mesh) const
+	void Suspension(SpanMesh &mesh) const
 	{
 		double length = this->frame.Length();
 		if (length < 2.0) {
@@ -408,7 +409,7 @@ private:
 	}
 
 	/* The arch springs from the heads and rises with the span, braced across where it stands high enough. */
-	void Arch(ModelMesh &mesh) const
+	void Arch(SpanMesh &mesh) const
 	{
 		double length = this->frame.Length();
 		double rise = std::clamp(ARCH_RISE_BASE + ARCH_RISE_PER_TILE * length, ARCH_RISE_BASE, ARCH_RISE_MOST);
@@ -427,10 +428,9 @@ private:
 	double first;
 };
 
-void LayBridgeSpan(ModelMesh &mesh, const BridgeSite &bridge, int tx, int ty)
+void LayBridgeSpan(SpanMesh &mesh, const BridgeSite &bridge, int tx, int ty)
 {
-	ModelMesh span = SpanBuilder(bridge, tx, ty).Build();
-	mesh.Append(Drape(span, DeckFooting(bridge)));
+	mesh.Append(SpanBuilder(bridge, tx, ty).Build().Raise(bridge.deck * LevelRise()));
 }
 
 /* A ramp climbs over its head on the ground's own earth, which the terrain banks up under it; only the crown its way is laid on is the bridge's.

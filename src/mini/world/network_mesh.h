@@ -17,6 +17,7 @@
 #include "../../tile_type.h"
 #include "../../track_type.h"
 #include "../map/map_overlay.h"
+#include "span_mesh.h"
 #include "way_shapes.h"
 
 inline constexpr size_t NETWORK_LAYERS = to_underlying(MiniLayer::Road) + 1;
@@ -32,11 +33,11 @@ struct SignalSpot {
 /* Ways lie on the ground, which takes them over far off; bridges' spans stand clear of it. */
 struct NetworkMeshes {
 	std::array<ModelMesh, NETWORK_LAYERS> layers;
-	std::array<ModelMesh, NETWORK_LAYERS> spans;
+	std::array<SpanMesh, NETWORK_LAYERS> spans;
 	std::vector<SignalSpot> signals;
 
 	ModelMesh &Layer(MiniLayer layer) { return this->layers[to_underlying(layer)]; }
-	ModelMesh &Span(MiniLayer layer) { return this->spans[to_underlying(layer)]; }
+	SpanMesh &Span(MiniLayer layer) { return this->spans[to_underlying(layer)]; }
 };
 
 NetworkMeshes BuildNetwork(const TileSpan &tiles, WayDetail detail);

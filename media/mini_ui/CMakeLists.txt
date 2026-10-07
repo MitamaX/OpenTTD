@@ -94,6 +94,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/smoke.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/span.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.vert

@@ -62,6 +62,8 @@ add_files(
     smoke_pass.cpp
     smoke_pass.h
     smoke_vent.h
+    span_mesh.cpp
+    span_mesh.h
     station_models.cpp
     station_models.h
     street_furniture.cpp

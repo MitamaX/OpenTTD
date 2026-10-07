@@ -155,7 +155,7 @@ void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::
 		if (chunk.waiting.has_value()) {
 			for (size_t layer = 0; layer < NETWORK_LAYERS; layer++) {
 				Hand(chunk.layers[layer], chunk.waiting->layers[layer], MODEL_LAYOUT);
-				Hand(chunk.spans[layer], chunk.waiting->spans[layer], MODEL_LAYOUT);
+				Hand(chunk.spans[layer], chunk.waiting->spans[layer], SPAN_LAYOUT);
 			}
 			chunk.waiting.reset();
 		}
