@@ -121,6 +121,8 @@ struct Plot {
 	Plot Inset(DiagDirections sides, float tiles) const;
 	Plot Inset(float tiles) const { return this->Inset(LOT_SIDES, tiles); }
 	Plot Edge(DiagDirection side, float depth) const;
+	/* The share running in from a side, from one depth to another. */
+	Plot Band(DiagDirection side, float from, float to) const { return this->Edge(side, to).Inset(side, from); }
 	Plot Outside(DiagDirection side, float depth) const;
 	Plot Narrowed(Axis axis, float span) const;
 	Plot Scaled(float share) const;

@@ -320,20 +320,14 @@ static std::optional<BuildingForm> AirportForm(TileIndex tile)
 	return form;
 }
 
-/* The share of a plot running in from one of its sides, from one depth to another. */
-static Plot Band(const Plot &plot, DiagDirection side, float from, float to)
-{
-	return plot.Edge(side, to).Inset(side, from);
-}
-
 /* A portal crane straddles the quay at its edge, its jib reaching out over the water and its counterweighted tail back over the quay. */
 static void AddQuayCrane(BuildingForm &form, DiagDirection water, DiagDirection end, uint32_t seed)
 {
 	uint32_t tint = CRANE_TINTS[SeedBits(seed, CRANE_TINT_FIRST, 3) % CRANE_TINTS.size()];
-	Plot gantry = Band(Band(Plot{}, water, CRANE_EDGE_GAP, CRANE_EDGE_GAP + CRANE_DEPTH), end, CRANE_END_GAP, CRANE_END_GAP + CRANE_SPAN);
+	Plot gantry = Plot{}.Band(water, CRANE_EDGE_GAP, CRANE_EDGE_GAP + CRANE_DEPTH).Band(end, CRANE_END_GAP, CRANE_END_GAP + CRANE_SPAN);
 	for (DiagDirection across : {end, ReverseDiagDir(end)}) {
 		for (DiagDirection depth : {water, ReverseDiagDir(water)}) {
-			form.Add(Part::Box(Band(Band(gantry, across, 0.0f, CRANE_LEG_SIDE), depth, 0.0f, CRANE_LEG_SIDE)).On(QUAY_HEIGHT).Height(CRANE_LEG_HEIGHT).Clad(Material::Metal, tint));
+			form.Add(Part::Box(gantry.Band(across, 0.0f, CRANE_LEG_SIDE).Band(depth, 0.0f, CRANE_LEG_SIDE)).On(QUAY_HEIGHT).Height(CRANE_LEG_HEIGHT).Clad(Material::Metal, tint));
 		}
 	}
 	Part house = Part::Box(gantry).On(QUAY_HEIGHT + CRANE_LEG_HEIGHT).Height(CRANE_HOUSE_HEIGHT).Clad(Material::Metal, tint);
@@ -348,7 +342,7 @@ static void AddContainers(BuildingForm &form, DiagDirection water, DiagDirection
 	SeedDice dice(SubSeed(seed, CONTAINER_TINT_FIRST));
 	for (uint row = 0; row < CONTAINER_ROWS; row++) {
 		float from = CONTAINER_EDGE_GAP + row * (CONTAINER_WIDTH + CONTAINER_GAP);
-		Plot spot = Band(Band(Plot{}, water, from, from + CONTAINER_WIDTH), end, CONTAINER_END_GAP, CONTAINER_END_GAP + CONTAINER_LENGTH);
+		Plot spot = Plot{}.Band(water, from, from + CONTAINER_WIDTH).Band(end, CONTAINER_END_GAP, CONTAINER_END_GAP + CONTAINER_LENGTH);
 		uint stacked = 1 + SeedBits(seed, STACK_FIRST + row * STACK_BITS, STACK_BITS) % MOST_STACKED;
 		for (uint level = 0; level < stacked; level++) {
 			uint32_t tint = CONTAINER_TINTS[dice.Below(static_cast<uint32_t>(CONTAINER_TINTS.size()))];
@@ -360,7 +354,7 @@ static void AddContainers(BuildingForm &form, DiagDirection water, DiagDirection
 static void AddBollards(BuildingForm &form, DiagDirection water, DiagDirection end)
 {
 	for (float spot : BOLLARD_SPOTS) {
-		Plot base = Band(Band(Plot{}, water, BOLLARD_INSET, BOLLARD_INSET + 2.0f * BOLLARD_RADIUS), end, spot - BOLLARD_RADIUS, spot + BOLLARD_RADIUS);
+		Plot base = Plot{}.Band(water, BOLLARD_INSET, BOLLARD_INSET + 2.0f * BOLLARD_RADIUS).Band(end, spot - BOLLARD_RADIUS, spot + BOLLARD_RADIUS);
 		form.Add(Part::Cylinder(base).On(QUAY_HEIGHT).Height(BOLLARD_HEIGHT).Detailed().Clad(Material::Metal, BOLLARD_TINT));
 	}
 }
@@ -373,8 +367,8 @@ static std::optional<BuildingForm> DockForm(TileIndex tile)
 	uint32_t seed = TileSeed(tile);
 	DiagDirection end = SeedBits(seed, CRANE_END_BIT, 1) != 0 ? AxisToDiagDir(AlongEdge(water)) : ReverseDiagDir(AxisToDiagDir(AlongEdge(water)));
 	BuildingForm form = SiteForm(tile);
-	form.Add(Part::Box(Band(Plot{}, water, 0.0f, QUAY_DEPTH)).Height(QUAY_HEIGHT).Clad(Material::Concrete, QUAY_TINT));
-	form.Add(Part::Box(Band(Plot{}, ReverseDiagDir(water), WAREHOUSE_BACK, WAREHOUSE_BACK + WAREHOUSE_DEPTH).Narrowed(AlongEdge(water), WAREHOUSE_WIDTH))
+	form.Add(Part::Box(Plot{}.Band(water, 0.0f, QUAY_DEPTH)).Height(QUAY_HEIGHT).Clad(Material::Concrete, QUAY_TINT));
+	form.Add(Part::Box(Plot{}.Band(ReverseDiagDir(water), WAREHOUSE_BACK, WAREHOUSE_BACK + WAREHOUSE_DEPTH).Narrowed(AlongEdge(water), WAREHOUSE_WIDTH))
 		.Facade(Finish::Metal, WAREHOUSE_HEIGHT, FinishTint(Finish::Metal, seed), water)
 		.Gable(AlongEdge(water), INDUSTRIAL_PITCH)
 		.Covered(Material::MetalSeam, OwnerTint(tile)));

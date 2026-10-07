@@ -146,6 +146,24 @@ static constexpr float FENCE_HEIGHT = 0.026f;
 static constexpr uint32_t FENCE_TINT = 0xFFEDEBE4U;
 static constexpr float GATE_WIDTH = 0.12f;
 
+static constexpr float CAR_LENGTH = 0.17f;
+static constexpr float CAR_WIDTH = 0.08f;
+static constexpr float CAR_CLEARANCE = 0.008f;
+static constexpr float CAR_BODY_HEIGHT = 0.034f;
+static constexpr float CAB_SHARE = 0.55f;
+static constexpr float CAB_INSET = 0.008f;
+static constexpr float CAB_HEIGHT = 0.03f;
+static constexpr uint32_t CAR_GLASS = 0xFF2B3640U;
+static constexpr std::array<uint32_t, 10> CAR_TINTS = {
+	0xFFB9BDC2U, 0xFFE8E8E4U, 0xFF2A2C30U, 0xFFB0302AU, 0xFF2E5A9AU, 0xFF2F5A40U, 0xFFC9B48AU, 0xFF6E7378U, 0xFFD8B03AU, 0xFF7A2638U,
+};
+static constexpr float YARD_EDGE = 0.05f;
+static constexpr float PARKING_MARGIN = 0.008f;
+static constexpr float SMALL_DECAL_AREA = 0.25f;
+static constexpr uint MOST_PARKED = 2;
+static constexpr double PARKING_SHARE = 0.7;
+static constexpr uint32_t PARKING_SALT = 23;
+
 static constexpr float CHIMNEY_SIDE = 0.05f;
 static constexpr float CHIMNEY_END_OFFSET = 0.25f;
 static constexpr float CHIMNEY_ABOVE_RIDGE = 0.05f;
@@ -1088,6 +1106,57 @@ static void ShowConstruction(BuildingForm &form, const HouseSite &site)
 	}
 }
 
+static bool Overlaps(const Plot &a, const Plot &b)
+{
+	return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+}
+
+/* Paths and other small patches of ground keep a car off them, while a decal laid over the whole lot does not. */
+static bool Obstructs(const Solid &solid)
+{
+	Plot plot = FootprintOf(solid);
+	return solid.kind != SolidKind::Decal || plot.Span(AXIS_X) * plot.Span(AXIS_Y) < SMALL_DECAL_AREA;
+}
+
+static bool IsClear(const BuildingForm &form, const Plot &spot)
+{
+	Plot kept = spot.Inset(-PARKING_MARGIN);
+	return std::ranges::none_of(form.Solids(), [&kept](const Solid &solid) { return Obstructs(solid) && Overlaps(kept, FootprintOf(solid)); });
+}
+
+/* A car is a painted body under a glazed cabin roofed in the same paint. */
+static void ParkCar(BuildingForm &form, const Plot &spot, uint32_t paint)
+{
+	Axis length = LongAxis(spot);
+	Plot cabin = spot.Narrowed(length, spot.Span(length) * CAB_SHARE).Narrowed(OtherAxis(length), spot.Span(OtherAxis(length)) - 2.0f * CAB_INSET);
+	Part body = Part::Box(spot).On(CAR_CLEARANCE).Height(CAR_BODY_HEIGHT).Detailed().Clad(Material::Metal, paint);
+	form.Add(body);
+	form.Add(Part::Box(cabin).On(LevelAbove(body)).Height(CAB_HEIGHT).Detailed().Clad(Material::Glass, CAR_GLASS).Covered(Material::Metal, paint));
+}
+
+/* A house, shop or hall on a street may have a car or two standing in its yard: along its front, or up a drive beside it, wherever nothing else stands. */
+static void ParkCars(BuildingForm &form, const HouseSite &site)
+{
+	SeedDice dice(SubSeed(site.seed, PARKING_SALT));
+	bool kept_by_cars = site.kind < HouseKind::Stadium && site.climate != LandscapeType::Toyland;
+	if (!site.on_road || !kept_by_cars || dice.Share() >= PARKING_SHARE) return;
+	Plot lot = FootprintOf(form);
+	DiagDirection end = AxisToDiagDir(AlongEdge(site.front));
+	if (dice.Share() < 0.5) end = ReverseDiagDir(end);
+	uint parked = 0;
+	for (DiagDirection side : {end, ReverseDiagDir(end)}) {
+		std::array<Plot, 2> spots = {
+			lot.Band(site.front, YARD_EDGE, YARD_EDGE + CAR_WIDTH).Band(side, YARD_EDGE, YARD_EDGE + CAR_LENGTH),
+			lot.Band(side, YARD_EDGE, YARD_EDGE + CAR_WIDTH).Band(site.front, YARD_EDGE, YARD_EDGE + CAR_LENGTH),
+		};
+		for (const Plot &spot : spots) {
+			if (parked == MOST_PARKED || form.count + 2 > MAX_SOLIDS || !IsClear(form, spot)) continue;
+			ParkCar(form, spot, CAR_TINTS[dice.Below(static_cast<uint32_t>(CAR_TINTS.size()))]);
+			parked++;
+		}
+	}
+}
+
 static constexpr std::array<HouseBuilder, to_underlying(HouseKind::End)> HOUSE_BUILDERS = {
 	BuildDwelling, BuildDwelling, BuildTerrace, BuildFlats, BuildShops, BuildOffice, BuildTower, BuildGlassTower, BuildHotel,
 	BuildChurch, BuildTheatre, BuildCinema, BuildMall, BuildWarehouse, BuildStadium, BuildPark, BuildStatue, BuildFountain,
@@ -1099,6 +1168,7 @@ std::optional<BuildingForm> HouseForm(TileIndex tile)
 	HouseSite site = ReadHouseSite(tile);
 	BuildingForm form = SiteForm(site.north, SiteFloor(TileArea(site.north, site.size_x, site.size_y)), site.size_x, site.size_y);
 	HOUSE_BUILDERS[to_underlying(site.kind)](form, site);
+	if (GetHouseBuildingStage(site.north) == TOWN_HOUSE_COMPLETED) ParkCars(form, site);
 	ShowConstruction(form, site);
 	if (form.count == 0) return std::nullopt;
 	return form;
