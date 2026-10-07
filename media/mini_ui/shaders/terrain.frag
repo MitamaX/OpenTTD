@@ -40,7 +40,8 @@ const float TERRAIN_ROUGHNESS = 0.85;
 const float TOY_ROUGHNESS = 0.72;
 const float SNOW_ROUGHNESS = 0.7;
 const float SAND_ROUGHNESS = 0.9;
-const float WALL_MARK = 0.5;
+const float WALL_MARK = 0.75;
+const float EDGE_MARK = 0.375;
 const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
 const float DROWNED_LEVELS = 0.6;
@@ -198,6 +199,23 @@ const float COURSES_PER_TILE = 6.0;
 const float BLOCKS_PER_TILE = 3.0;
 const float MORTAR_SHARE = 0.08;
 const vec3 MASONRY = vec3(0.56, 0.53, 0.49);
+
+const int EARTH_STRATA_COUNT = 5;
+const vec3 EARTH_STRATA[EARTH_STRATA_COUNT] = vec3[EARTH_STRATA_COUNT](
+	vec3(0.55, 0.42, 0.29),
+	vec3(0.70, 0.57, 0.40),
+	vec3(0.62, 0.55, 0.46),
+	vec3(0.50, 0.47, 0.43),
+	vec3(0.64, 0.47, 0.33)
+);
+const float EDGE_STRATA_PER_TILE = 1.6;
+const float EDGE_STRATA_WARP = 0.6;
+const float EDGE_STRATA_SWAY = 0.15;
+const float EDGE_LAYER_VARIETY = 0.12;
+const float EDGE_GRAIN_PER_TILE = 4.0;
+const float EDGE_SEAM_SHADE = 0.82;
+const float EDGE_WET_SHADE = 0.6;
+const float EDGE_WET_REACH = 0.35;
 
 const vec3 RUNWAY_ASPHALT = vec3(0.25, 0.26, 0.27);
 const vec3 APRON_CONCRETE = vec3(0.66, 0.65, 0.62);
@@ -929,6 +947,35 @@ vec3 WallFace(vec3 normal)
 	return Altitude(stone, v_world.z);
 }
 
+vec3 EarthStratum(int layer)
+{
+	if (Landscape() == LANDSCAPE_TOYLAND) return TOY_STRATA[abs(layer) % TOY_STRATA_COUNT];
+	int pick = int(Hash(ivec2(layer, 23)) * float(EARTH_STRATA_COUNT)) % EARTH_STRATA_COUNT;
+	return EARTH_STRATA[pick] * Varied(Hash(ivec2(layer, 29)), EDGE_LAYER_VARIETY);
+}
+
+/* The strata blended as they read from too far to make out one from another. */
+vec3 EarthMean()
+{
+	if (Landscape() == LANDSCAPE_TOYLAND) return (TOY_STRATA[0] + TOY_STRATA[1] + TOY_STRATA[2] + TOY_STRATA[3]) / float(TOY_STRATA_COUNT);
+	return (EARTH_STRATA[0] + EARTH_STRATA[1] + EARTH_STRATA[2] + EARTH_STRATA[3] + EARTH_STRATA[4]) / float(EARTH_STRATA_COUNT);
+}
+
+/* The map's edge is cut through the land as a face of earth, bedded in layers of soil and rock wavering a little along it, and dark with wet where the sea washes it. */
+vec3 EdgeFace(vec3 normal, float pixels)
+{
+	float along = dot(v_world.xy, vec2(-normal.y, normal.x));
+	float depth = v_world.z * LevelRise();
+	float bedding = (depth + (Noise(vec2(along * EDGE_STRATA_SWAY, 4.3)) - 0.5) * EDGE_STRATA_WARP) * EDGE_STRATA_PER_TILE;
+	int layer = int(floor(bedding));
+	float bands = ResolvedAt(EDGE_STRATA_PER_TILE, pixels);
+	vec3 earth = mix(EarthMean(), EarthStratum(layer), bands);
+	float seam = mix(1.0, mix(EDGE_SEAM_SHADE, 1.0, smoothstep(0.0, 0.25, fract(bedding))), bands);
+	float grain = Varied(OctaveAt(vec2(along, depth), EDGE_GRAIN_PER_TILE, pixels), 0.25);
+	float wet = mix(EDGE_WET_SHADE, 1.0, smoothstep(0.0, EDGE_WET_REACH, depth));
+	return earth * seam * grain * wet;
+}
+
 vec3 Windblown(vec2 p, float along, float across)
 {
 	vec2 frequency = vec2(along, across);
@@ -1076,9 +1123,12 @@ void main()
 	Relief relief = ReliefAt(normal, levels_per_pixel);
 	Detail detail = DetailAt(RenderPoint(v_world), normal);
 	relief.steep *= 1.0 - clamp(v_mark / FILL_MARK, 0.0, 1.0);
+	float face_pixels = 1.0 / max(max(length(pixel[0]), length(pixel[1])), levels_per_pixel * LevelRise());
 
 	Shade shade;
-	if (OutsideMap(p)) {
+	if (v_mark > EDGE_MARK && v_mark <= WALL_MARK) {
+		shade = Shade(Greyed(EdgeFace(normal, face_pixels)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
+	} else if (OutsideMap(p)) {
 		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (v_mark > WALL_MARK) {
 		shade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);

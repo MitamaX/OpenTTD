@@ -31,6 +31,8 @@ inline constexpr std::array<VertexAttribute, 2> TERRAIN_LAYOUT = {{
 }};
 
 inline constexpr double WALL_MARK = 1.0;
+/* The face of earth the ground is cut down in at the map's edge. */
+inline constexpr double EDGE_MARK = 0.5;
 inline constexpr double DRY_MARK = 0.0;
 /* Earth banked up under a way, which grass covers however steep it stands. */
 inline constexpr double FILL_MARK = 0.25;

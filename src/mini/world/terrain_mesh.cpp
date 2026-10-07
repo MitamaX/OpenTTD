@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <optional>
 #include <span>
 #include <vector>
@@ -54,6 +55,7 @@ static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
 static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
+static constexpr double SEA_FLOOR = -DEEPEST_SINK;
 
 /** A tile's corners as the surface texel names them. */
 enum TileCorner : uint8_t {
@@ -647,19 +649,61 @@ static TerrainMesh BuildLattice(const TileSpan &tiles, int step)
 	};
 	size_t last_row = ys.size() - 1;
 	for (size_t i = 0; i + 1 < columns; i++) {
-		skirt(at(i, 0), at(i + 1, 0));
-		skirt(at(i, last_row), at(i + 1, last_row));
+		if (tiles.ty0 > 0) skirt(at(i, 0), at(i + 1, 0));
+		if (tiles.ty1 < static_cast<int>(Map::MaxY())) skirt(at(i, last_row), at(i + 1, last_row));
 	}
 	for (size_t j = 0; j + 1 < ys.size(); j++) {
-		skirt(at(0, j), at(0, j + 1));
-		skirt(at(columns - 1, j), at(columns - 1, j + 1));
+		if (tiles.tx0 > 0) skirt(at(0, j), at(0, j + 1));
+		if (tiles.tx1 < static_cast<int>(Map::MaxX())) skirt(at(columns - 1, j), at(columns - 1, j + 1));
 	}
 	return mesh;
 }
 
+/* One edge of the map: the line it runs along, across the axis it bounds, and which way the sea lies from it. */
+struct MapEdge {
+	bool bounds_x;
+	float line;
+	double outward;
+
+	WorldPoint At(double along, double level) const
+	{
+		return this->bounds_x ? WorldPoint{this->line, along, level} : WorldPoint{along, this->line, level};
+	}
+};
+
+/* Where the ground meets the map's edge it is cut down to the sea floor in a face of earth, under the highest ground the block laid along the edge. */
+static void AddEdgeFace(TerrainMesh &mesh, const MapEdge &edge)
+{
+	std::map<float, float> tops;
+	for (const TerrainVertex &vertex : mesh.vertices) {
+		if ((edge.bounds_x ? vertex.x : vertex.y) != edge.line) continue;
+		auto [top, fresh] = tops.try_emplace(edge.bounds_x ? vertex.y : vertex.x, vertex.level);
+		if (!fresh) top->second = std::max(top->second, vertex.level);
+	}
+	if (tops.size() < 2) return;
+
+	Vec3 normal = edge.bounds_x ? Vec3{edge.outward, 0.0, 0.0} : Vec3{0.0, edge.outward, 0.0};
+	auto add = [&](double along, double level) { return mesh.Add(edge.At(along, level), normal, EDGE_MARK); };
+	for (auto from = tops.begin(), to = std::next(from); to != tops.end(); from = to++) {
+		mesh.Quad(add(from->first, from->second), add(to->first, to->second), add(to->first, SEA_FLOOR), add(from->first, SEA_FLOOR));
+	}
+}
+
+static void AddEdgeFaces(TerrainMesh &mesh, const TileSpan &tiles)
+{
+	int last_x = static_cast<int>(Map::MaxX());
+	int last_y = static_cast<int>(Map::MaxY());
+	if (tiles.tx0 == 0) AddEdgeFace(mesh, {true, 0.0f, -1.0});
+	if (tiles.tx1 == last_x) AddEdgeFace(mesh, {true, static_cast<float>(last_x + 1), 1.0});
+	if (tiles.ty0 == 0) AddEdgeFace(mesh, {false, 0.0f, -1.0});
+	if (tiles.ty1 == last_y) AddEdgeFace(mesh, {false, static_cast<float>(last_y + 1), 1.0});
+}
+
 TerrainMesh BuildTerrain(const TileSpan &tiles, int step)
 {
-	return step <= 1 ? BuildTiles(tiles) : BuildLattice(tiles, step);
+	TerrainMesh mesh = step <= 1 ? BuildTiles(tiles) : BuildLattice(tiles, step);
+	AddEdgeFaces(mesh, tiles);
+	return mesh;
 }
 
 /* The seabed falls from the map's edge to the open sea's floor over a shelf, then lies flat out to the horizon. */
@@ -668,7 +712,7 @@ TerrainMesh BuildOuterBed(Dimension map, double reach)
 	double width = map.width;
 	double height = map.height;
 	double shelf = SHELF_TILES;
-	double floor = -DEEPEST_SINK;
+	double floor = SEA_FLOOR;
 	TerrainMesh mesh;
 	auto add = [&](double x, double y, double level) { return mesh.Add({x, y, level}, UPRIGHT, SunkMark(-level)); };
 	auto edge = [&](int corners, int cx, int cy, int step_x, int step_y, double out_x, double out_y) {
