@@ -87,6 +87,9 @@ const float BREAKER_SPEED = 1.3;
 const float BREAKER_OPACITY = 0.7;
 const float CONTACT_FOAM_REACH = 0.05;
 const float SHELF_DEPTH = 0.4;
+const float DECK_SHELTER = 0.75;
+const float DECK_SHADE_INNER = 0.2;
+const float DECK_SHADE_OUTER = 0.5;
 const float SHELF_LEVEL = 0.8;
 const float GRAZING_SIGHT = 0.2;
 
@@ -400,6 +403,21 @@ float Whitewater(vec2 p, vec3 descent)
 	return descent.z * smoothstep(0.35, 0.65, churn) * RAPIDS_FOAM;
 }
 
+bool Spanned(ivec2 tile)
+{
+	return (texelFetch(u_network, Clamped(tile), 0).a & NETWORK_BRIDGE_BIT) != 0u;
+}
+
+/* How much of the sky a bridge deck overhead keeps from a point: the deck runs along the line of tiles it spans, down their middles. */
+float DeckCover(vec2 p)
+{
+	ivec2 tile = ivec2(floor(p));
+	if (!Spanned(tile)) return 0.0;
+	bool along_x = Spanned(tile + ivec2(1, 0)) || Spanned(tile - ivec2(1, 0));
+	float across = abs((along_x ? fract(p.y) : fract(p.x)) - HALF_TILE);
+	return 1.0 - smoothstep(DECK_SHADE_INNER, DECK_SHADE_OUTER, across);
+}
+
 /* Off a sea shore the water deepens smoothly with the curved line of its field, however the ground under it steps, so the bed of coast tiles shows no saw teeth through it. */
 float ShelfPath(float level, vec3 sight)
 {
@@ -440,14 +458,15 @@ void main()
 	vec3 up = vec3(0.0, 0.0, 1.0);
 	float sunlit = SunVisibility(v_position, up);
 	vec3 sun = SunRadiance() * sunlit;
-	vec3 light = sun * max(SunDirection().z, 0.0) + AmbientLight(up);
+	float sheltered = 1.0 - DECK_SHELTER * DeckCover(p);
+	vec3 light = sun * max(SunDirection().z, 0.0) + AmbientLight(up) * sheltered;
 
 	vec3 transmittance = exp(-body.absorption * max(bent.x, ShelfPath(field.r, sight) * body.sea)) * (1.0 - body.murk);
 	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(normal.xy));
 	vec3 below = texture(u_scene_colour, bent_uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
 
 	float reflected;
-	vec3 sky = SkyOnWater(sight, waves, view, reflected);
+	vec3 sky = SkyOnWater(sight, waves, view, reflected) * sheltered;
 	vec3 colour = mix(below, sky, reflected) + SunOnWater(waves, view, p, sun);
 
 	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, straight.x);
