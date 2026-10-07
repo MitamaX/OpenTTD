@@ -49,8 +49,8 @@ struct Growth {
 };
 
 static constexpr Growth GROUND_GROWTH = {1.0f, 1.8f};
-static constexpr Growth SHIP_GROWTH = {2.0f, 2.0f};
-static constexpr Growth AIRCRAFT_GROWTH = {3.0f, 3.0f};
+static constexpr Growth SHIP_GROWTH = {1.6f, 1.6f};
+static constexpr Growth AIRCRAFT_GROWTH = {2.0f, 2.0f};
 
 static Growth MostGrowthOf(VehicleLook look)
 {
