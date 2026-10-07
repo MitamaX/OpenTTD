@@ -18,6 +18,8 @@ const float ROCK_EXPOSURE = 0.9;
 const float EXPOSURE_BLEND = 0.14;
 const float BLANKET_SLIP_SLOPE = 1.1;
 const float BLANKET_EDGE = 0.07;
+const float BLANKET_FRAY = 0.35;
+const float BLANKET_FRAY_FREQUENCY = 0.6;
 const float CLINGING = 0.75;
 const float SNOW_LINE_RAGGED = 2.5;
 const float CAP_COVER = 0.85;
@@ -55,6 +57,8 @@ const float NATURAL_WARP = 0.32;
 const float CLIMATE_WARP = 0.6;
 const float CLIMATE_SWAY = 1.1;
 const float CLIMATE_SWAY_FREQUENCY = 0.19;
+const float CLIMATE_FRAY = 1.0;
+const float CLIMATE_FRAY_FREQUENCY = 0.33;
 const float BUILT_WARP = 0.06;
 const float DEPTH_LOD = 3.0;
 const float SANDED_SEA = 0.26;
@@ -691,6 +695,12 @@ float Ragged(vec2 p, Grain grain)
 	return (Octave(p, 0.17) - 0.5) * 0.5 + (Octave(p, 0.45) - 0.5) * 0.4 + (grain.local - 0.5) * 0.4 + (grain.fine - 0.5) * 0.2;
 }
 
+vec2 Drift(vec2 p, float frequency, float reach)
+{
+	vec2 q = OctaveTurn(frequency) * p * frequency;
+	return (vec2(Noise(q + 3.3), Noise(q + 9.1)) - 0.5) * 2.0 * reach;
+}
+
 /* The stone is only worked out where some ground at the point shows it. */
 Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4], vec2 warp, float settled)
 {
@@ -698,8 +708,7 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 	float ragged = 0.0;
 	float trodden = 0.0;
 	if (Landscape() == LANDSCAPE_ARCTIC || Landscape() == LANDSCAPE_TROPIC) {
-		vec2 sway = (vec2(Noise(p * CLIMATE_SWAY_FREQUENCY + 3.3), Noise(p * CLIMATE_SWAY_FREQUENCY + 9.1)) - 0.5) * 2.0 * CLIMATE_SWAY;
-		climate = ClimateAt(p + warp + sway);
+		climate = ClimateAt(p + warp + Drift(p, CLIMATE_SWAY_FREQUENCY, CLIMATE_SWAY) + Drift(p, CLIMATE_FRAY_FREQUENCY, CLIMATE_FRAY));
 		ragged = Ragged(p, grain);
 		climate.lush = smoothstep(0.15, 0.85, climate.lush + ragged * 0.6);
 		if (Landscape() == LANDSCAPE_TROPIC) trodden = smoothstep(0.05, 0.4, settled + ragged * 0.4);
@@ -1065,7 +1074,8 @@ Blanket Sandfield(Site site, float cover)
 Blanket BlanketOver(Site site)
 {
 	if (site.climate.blanket <= 0.0) return NO_BLANKET;
-	float lying = smoothstep(0.5 - BLANKET_EDGE, 0.5 + BLANKET_EDGE, site.climate.blanket + SnowLift(v_world.z + site.ragged * SNOW_LINE_RAGGED) + site.ragged - site.trodden);
+	float fray = (Octave(site.p + 2.7, BLANKET_FRAY_FREQUENCY) - 0.5) * BLANKET_FRAY;
+	float lying = smoothstep(0.5 - BLANKET_EDGE, 0.5 + BLANKET_EDGE, site.climate.blanket + SnowLift(v_world.z + site.ragged * SNOW_LINE_RAGGED) + site.ragged + fray - site.trodden);
 	float slip = smoothstep(BLANKET_SLIP_SLOPE, STEEPEST_SLOPE, site.relief.slope + site.ragged * 0.8);
 	float clinging = smoothstep(0.55, 0.8, site.grain.stones * 0.6 + site.grain.fine * 0.4) * CLINGING;
 	float cover = lying * (1.0 - slip * (1.0 - clinging));

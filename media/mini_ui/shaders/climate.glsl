@@ -15,23 +15,29 @@ float Lushness(uvec4 codes)
 	return (codes.g & LUSH_BIT) != 0u ? 1.0 : 0.0;
 }
 
-float Bilinear(vec4 corners, vec2 f)
+/* The weights a quadratic B-spline gives the three tiles in a row about a point, t from the middle one's centre. */
+vec3 QuadraticWeights(float t)
 {
-	return mix(mix(corners.x, corners.y, f.x), mix(corners.z, corners.w, f.x), f.y);
+	return vec3(0.5 * (0.5 - t) * (0.5 - t), 0.75 - t * t, 0.5 * (0.5 + t) * (0.5 + t));
 }
 
+/* Each tile's blanket and lushness spread over the tiles about it by a quadratic B-spline, so their edges curve through the tiles instead of stepping along them. */
 Climate ClimateAt(vec2 p)
 {
-	vec2 q = p - TILE_CENTRE;
-	ivec2 cell = ivec2(floor(q));
-	vec2 f = smoothstep(0.0, 1.0, fract(q));
-	uvec4 a = CodesAt(cell);
-	uvec4 b = CodesAt(cell + ivec2(1, 0));
-	uvec4 c = CodesAt(cell + ivec2(0, 1));
-	uvec4 d = CodesAt(cell + ivec2(1, 1));
-	float blanket = Bilinear(vec4(BlanketDepth(a), BlanketDepth(b), BlanketDepth(c), BlanketDepth(d)), f);
-	float lush = Bilinear(vec4(Lushness(a), Lushness(b), Lushness(c), Lushness(d)), f);
-	return Climate(blanket, lush);
+	ivec2 middle = ivec2(floor(p));
+	vec2 t = fract(p) - TILE_CENTRE;
+	vec3 wx = QuadraticWeights(t.x);
+	vec3 wy = QuadraticWeights(t.y);
+	Climate climate = Climate(0.0, 0.0);
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			uvec4 codes = CodesAt(middle + ivec2(x, y));
+			float weight = wx[x + 1] * wy[y + 1];
+			climate.blanket += BlanketDepth(codes) * weight;
+			climate.lush += Lushness(codes) * weight;
+		}
+	}
+	return climate;
 }
 
 float SnowLift(float level)
