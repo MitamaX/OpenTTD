@@ -35,7 +35,7 @@ static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/tree.frag",
 };
-static constexpr double TREE_CASTER_WIDTH = 0.3;
+static constexpr double TREE_CASTER_WIDTH = 0.2;
 
 ForestPass::ForestPass(const WorldTextures &textures) : textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
 {
