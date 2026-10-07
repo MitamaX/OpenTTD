@@ -6,6 +6,7 @@ const float DETAIL_SLOPE_DECODING = 1.0 / 6.0;
 const float DETAIL_TEXELS_PER_REPEAT = 512.0;
 const float FACING_SHARPNESS = 4.0;
 const mat2 DETAIL_TURN = mat2(0.8, 0.6, -0.6, 0.8);
+const float UNSEEN_FACING = 0.02;
 const float CLOSE_SCALE = 4.0;
 const float CLOSE_FROM_PIXELS = 120.0;
 const float CLOSE_TO_PIXELS = 260.0;
@@ -29,9 +30,17 @@ struct DetailTap {
 	vec4 relief;
 };
 
+const DetailTap LEVEL_TAP = DetailTap(vec4(0.5), vec4(0.5));
+
 DetailTap DetailTapAt(vec2 uv)
 {
 	return DetailTap(texture(u_grain, uv), texture(u_relief, uv));
+}
+
+/* A plane the surface hardly faces is not read; its level grain stands in, weighing next to nothing. */
+DetailTap FacingTapAt(vec2 uv, float facing)
+{
+	return facing > UNSEEN_FACING ? DetailTapAt(uv) : LEVEL_TAP;
 }
 
 vec2 DecodedSlope(vec2 encoded)
@@ -49,13 +58,12 @@ vec3 FacingWeights(vec3 normal)
 /* Noise of a frequency per tile laid onto the surface the way the detail is, so slopes show it as round as flat ground does; planes the surface hardly faces are skipped. */
 float FacingOctave(Detail detail, float frequency, float offset)
 {
-	const float UNSEEN = 0.02;
 	vec3 q = detail.at + offset;
 	float sum = 0.0;
 	float weight = 0.0;
-	if (detail.facing.z > UNSEEN) { sum += Octave(q.xy, frequency) * detail.facing.z; weight += detail.facing.z; }
-	if (detail.facing.x > UNSEEN) { sum += Octave(q.yz, frequency) * detail.facing.x; weight += detail.facing.x; }
-	if (detail.facing.y > UNSEEN) { sum += Octave(q.xz, frequency) * detail.facing.y; weight += detail.facing.y; }
+	if (detail.facing.z > UNSEEN_FACING) { sum += Octave(q.xy, frequency) * detail.facing.z; weight += detail.facing.z; }
+	if (detail.facing.x > UNSEEN_FACING) { sum += Octave(q.yz, frequency) * detail.facing.x; weight += detail.facing.x; }
+	if (detail.facing.y > UNSEEN_FACING) { sum += Octave(q.xz, frequency) * detail.facing.y; weight += detail.facing.y; }
 	return sum / weight;
 }
 
@@ -84,9 +92,9 @@ Detail DetailAt(vec3 render_point, vec3 normal)
 {
 	vec3 facing = FacingWeights(normal);
 	vec3 q = render_point / DETAIL_REPEAT_TILES;
-	DetailTap top = DetailTapAt(transpose(DETAIL_TURN) * q.xy);
-	DetailTap east = DetailTapAt(transpose(DETAIL_TURN) * q.yz + 0.37);
-	DetailTap north = DetailTapAt(transpose(DETAIL_TURN) * q.xz + 0.71);
+	DetailTap top = FacingTapAt(transpose(DETAIL_TURN) * q.xy, facing.z);
+	DetailTap east = FacingTapAt(transpose(DETAIL_TURN) * q.yz + 0.37, facing.x);
+	DetailTap north = FacingTapAt(transpose(DETAIL_TURN) * q.xz + 0.71, facing.y);
 	vec4 grain = top.grain * facing.z + east.grain * facing.x + north.grain * facing.y;
 	Detail detail = Detail(grain.r, grain.g, grain.b, grain.a - 0.5, FacingSlope(top, east, north, facing, false), FacingSlope(top, east, north, facing, true), facing, render_point);
 	return Closer(detail, q);

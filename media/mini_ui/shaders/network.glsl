@@ -151,8 +151,9 @@ Network NetworkAt(vec2 p, mat2 pixel)
 	vec2 at = p - vec2(home);
 	uvec4 here = NetworkTexel(home);
 	float rail = Inside(TracksNear(at, home, pixel));
-	if (rail <= 0.0 && here.y == 0u && here.z == 0u) return Network(vec4(0.0), vec2(0.0));
-	float road = Inside(Nearer(RoutesThrough(at, here.y, WayHalf(ROAD_HALF), pixel), RoutesThrough(at, here.z, WayHalf(TRAM_BED_HALF), pixel)));
+	bool roads = (here.y | here.z) != 0u;
+	if (rail <= 0.0 && !roads) return Network(vec4(0.0), vec2(0.0));
+	float road = roads ? Inside(Nearer(RoutesThrough(at, here.y, WayHalf(ROAD_HALF), pixel), RoutesThrough(at, here.z, WayHalf(TRAM_BED_HALF), pixel))) : 0.0;
 	float opacity = mix(1.0, FAR_WAY_OPACITY, Thinned());
 	float street = mix(1.0, FAR_STREET_SHARE, (here.w & NETWORK_KERB_BIT) != 0u ? Thinned() : 0.0);
 	vec4 paint = Over(vec4(0.0), DISTANT_RAIL, rail * opacity);
