@@ -31,17 +31,20 @@ add_files(
     road_models.cpp
     road_models.h
     road_vehicle_models.cpp
+    scatter.h
+    scatter_pass.cpp
+    scatter_pass.h
     scene_view.cpp
     scene_view.h
     seabed.cpp
     seabed.h
-    shore_relief.cpp
-    shore_relief.h
     shader_program.cpp
     shader_program.h
     shadow_map.cpp
     shadow_map.h
     ship_models.cpp
+    shore_relief.cpp
+    shore_relief.h
     signal_models.cpp
     signal_models.h
     smoke_pass.cpp
@@ -51,8 +54,6 @@ add_files(
     station_models.h
     street_furniture.cpp
     street_furniture.h
-    street_life_pass.cpp
-    street_life_pass.h
     street_walkers.cpp
     street_walkers.h
     structure_dressing.cpp

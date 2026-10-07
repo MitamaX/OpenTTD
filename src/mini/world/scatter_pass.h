@@ -5,20 +5,30 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file street_life_pass.h The people walking town streets, drawn like vehicles where they are near enough to see and fading out further off. */
+/** @file scatter_pass.h Small things strewn near the eye, such as people walking town streets or tufts of grass, drawn like vehicles and fading out further off. */
 
-#ifndef MINI_WORLD_STREET_LIFE_PASS_H
-#define MINI_WORLD_STREET_LIFE_PASS_H
+#ifndef MINI_WORLD_SCATTER_PASS_H
+#define MINI_WORLD_SCATTER_PASS_H
 
+#include <memory>
 #include <vector>
 
+#include "scatter.h"
 #include "shader_program.h"
-#include "street_walkers.h"
 #include "world_pass.h"
 
-class StreetLifePass final : public WorldPass {
+/* How a scatter shows: the models its copies are drawn with, and where a tile spans enough pixels for them to show, to stand solid and to cast shadows. */
+struct ScatterLook {
+	std::vector<ModelMesh> (*build)();
+	size_t models;
+	double shown_pixels;
+	double solid_pixels;
+	double cast_pixels;
+};
+
+class ScatterPass final : public WorldPass {
 public:
-	StreetLifePass();
+	ScatterPass(std::unique_ptr<Scatter> scatter, const ScatterLook &look);
 
 	void Reload() override;
 	void Sync(const WorldChanges &changes) override;
@@ -29,7 +39,8 @@ public:
 private:
 	void DrawBatch(const ShaderProgram &program);
 
-	StreetWalkers walkers;
+	std::unique_ptr<Scatter> scatter;
+	ScatterLook look;
 	std::vector<ModelMesh> meshes;
 	InstancedMeshes models;
 	VehicleBatch batch;
@@ -37,4 +48,4 @@ private:
 	ShaderProgram caster;
 };
 
-#endif /* MINI_WORLD_STREET_LIFE_PASS_H */
+#endif /* MINI_WORLD_SCATTER_PASS_H */

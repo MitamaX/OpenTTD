@@ -15,8 +15,7 @@
 #include <vector>
 
 #include "chunk_grid.h"
-#include "scene_view.h"
-#include "vehicle_models.h"
+#include "scatter.h"
 
 /* A walker paces up and down a stretch of pavement, from its start along a heading for a length, or stands still where its pace is nothing. */
 struct Walker {
@@ -33,12 +32,12 @@ struct Walker {
 
 /* Walkers stand on the pavements of town streets that run straight on through a tile, more of them where houses crowd close.
  * A block is laid out again once the roads or houses about it change, a few blocks a frame at most. */
-class StreetWalkers {
+class StreetWalkers final : public Scatter {
 public:
-	void Sync(const WorldChanges &changes);
-	/* Adds the walkers the view sees where a tile spans at least the fewest pixels, each copy in the bucket of its pose. */
-	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch);
-	void Release();
+	void Sync(const WorldChanges &changes) override;
+	/* Each walker is gathered in the bucket of its pose. */
+	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) override;
+	void Release() override;
 
 private:
 	static constexpr int BLOCK_TILES = 16;

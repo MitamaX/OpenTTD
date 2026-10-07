@@ -16,6 +16,7 @@
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
 #include "../map/world_tiles.h"
+#include "scene_view.h"
 
 class ChunkGrid {
 public:
@@ -41,6 +42,30 @@ public:
 			int y1 = std::min((area.bottom + margin) / this->chunk_tiles, this->rows - 1);
 			for (int y = y0; y <= y1; y++) {
 				for (int x = x0; x <= x1; x++) visit(static_cast<size_t>(y) * this->columns + x);
+			}
+		}
+	}
+
+	/* Every block within reach of the eye whose box, grown by a margin of tiles and standing up to the top, the frustum meets and in which a tile still spans the fewest pixels;
+	 * the visit says whether to go on. */
+	template <class Visit>
+	void ForEachSeen(const SceneView &view, const Frustum &frustum, double fewest_pixels, int margin, double top, Visit visit) const
+	{
+		if (this->Count() == 0) return;
+		double reach = view.focal / fewest_pixels + margin;
+		auto chunk_at = [&](double at, int chunks) { return std::clamp(static_cast<int>(at) / this->chunk_tiles, 0, chunks - 1); };
+		int x0 = chunk_at(view.eye.x - reach, this->columns);
+		int x1 = chunk_at(view.eye.x + reach, this->columns);
+		int y0 = chunk_at(view.eye.y - reach, this->rows);
+		int y1 = chunk_at(view.eye.y + reach, this->rows);
+		for (int y = y0; y <= y1; y++) {
+			for (int x = x0; x <= x1; x++) {
+				size_t index = static_cast<size_t>(y) * this->columns + x;
+				TileSpan tiles = this->TilesOf(index);
+				Vec3 low = {static_cast<double>(tiles.tx0 - margin), static_cast<double>(tiles.ty0 - margin), 0.0};
+				Vec3 high = {static_cast<double>(tiles.tx1 + 1 + margin), static_cast<double>(tiles.ty1 + 1 + margin), top};
+				if (!BoxMeets(frustum, low, high) || view.NearestTilePixels(low, high) < fewest_pixels) continue;
+				if (!visit(index)) return;
 			}
 		}
 	}

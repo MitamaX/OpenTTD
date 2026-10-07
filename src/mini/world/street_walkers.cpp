@@ -140,33 +140,19 @@ void StreetWalkers::Build(size_t index)
 void StreetWalkers::Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch)
 {
 	if (this->grid.Map() != _world_tiles.Size()) this->Sync(WorldChanges{.whole = true});
-	if (this->blocks.empty()) return;
-	double reach = view.focal / fewest_pixels + RUN_REACH;
-	Dimension map = this->grid.Map();
-	auto tile_at = [](double at, uint size) { return std::clamp(static_cast<int>(at), 0, static_cast<int>(size) - 1); };
-	int tx0 = tile_at(view.eye.x - reach, map.width);
-	int tx1 = tile_at(view.eye.x + reach, map.width);
-	int ty0 = tile_at(view.eye.y - reach, map.height);
-	int ty1 = tile_at(view.eye.y + reach, map.height);
 	double top = (_world_tiles.Peak() + 1.0) * LevelRise();
 	int builds = 0;
 	size_t gathered = 0;
-	for (int by = ty0 - ty0 % BLOCK_TILES; by <= ty1 && gathered < MOST_WALKERS; by += BLOCK_TILES) {
-		for (int bx = tx0 - tx0 % BLOCK_TILES; bx <= tx1 && gathered < MOST_WALKERS; bx += BLOCK_TILES) {
-			size_t index = this->grid.IndexOf(bx, by);
-			TileSpan tiles = this->grid.TilesOf(index);
-			Vec3 low = {static_cast<double>(tiles.tx0 - RUN_REACH), static_cast<double>(tiles.ty0 - RUN_REACH), 0.0};
-			Vec3 high = {static_cast<double>(tiles.tx1 + 1 + RUN_REACH), static_cast<double>(tiles.ty1 + 1 + RUN_REACH), top};
-			if (!BoxMeets(frustum, low, high) || view.NearestTilePixels(low, high) < fewest_pixels) continue;
-			Block &block = this->blocks[index];
-			if (block.stale) {
-				if (builds >= MOST_BUILDS) continue;
-				this->Build(index);
-				builds++;
-			}
-			gathered += GatherBlock(view, block.walkers, fewest_pixels, batch);
+	this->grid.ForEachSeen(view, frustum, fewest_pixels, RUN_REACH, top, [&](size_t index) {
+		Block &block = this->blocks[index];
+		if (block.stale) {
+			if (builds >= MOST_BUILDS) return true;
+			this->Build(index);
+			builds++;
 		}
-	}
+		gathered += GatherBlock(view, block.walkers, fewest_pixels, batch);
+		return gathered < MOST_WALKERS;
+	});
 }
 
 /* A walker turns about at either end of its stretch; one standing about keeps to its spot, facing along the street one way or the other. */
