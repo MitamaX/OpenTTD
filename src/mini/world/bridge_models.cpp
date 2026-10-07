@@ -112,6 +112,15 @@ static constexpr double CAISSON_RISE = 0.05;
 static constexpr double CAISSON_SINK = 0.01;
 static constexpr double WATER_GLOSS = 0.9;
 static constexpr double STEEL_GLOSS = 0.45;
+static constexpr int EMBANKMENT_ROWS = 4;
+static constexpr double EMBANKMENT_RUN_PER_RISE = 1.2;
+static constexpr double EMBANKMENT_SPREAD_MOST = 0.9;
+static constexpr double EMBANKMENT_CROWN_DEPTH = 0.015;
+static constexpr double EMBANKMENT_VARIETY = 0.08;
+static constexpr uint32_t EMBANKMENT_SEED = 0xBA4C;
+static constexpr uint32_t EMBANKMENT_GRASS = 0x667E3E;
+static constexpr double FACE_LEAST_AREA = 1e-6;
+static constexpr uint32_t EMBANKMENT_CROWN = 0x7D7466;
 
 BridgeSite BridgeSite::OfHead(TileIndex head)
 {
@@ -420,13 +429,84 @@ void LayBridgeSpan(ModelMesh &mesh, const BridgeSite &bridge, int tx, int ty)
 	mesh.Append(Drape(span, DeckFooting(bridge)));
 }
 
-/* The ramp is a deck climbing over the head, walled down to the ground beneath it and facing the span with an abutment. */
-void LayBridgeRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex head)
+/* A face of four corners going round, lit from the side it faces out to; one with no area is left out. */
+static void FacingQuad(ModelMesh &mesh, const std::array<Vec3, 4> &corners, const Vec3 &outward)
 {
-	const BridgeLook &look = LookOf(bridge);
+	Vec3 across = Cross(corners[2] - corners[0], corners[3] - corners[1]);
+	if (Length(across) < FACE_LEAST_AREA) return;
+	Vec3 normal = Normalised(across);
+	if (Dot(normal, outward) < 0.0) normal = normal * -1.0;
+	std::array<uint32_t, 4> points;
+	for (size_t i = 0; i < corners.size(); i++) points[i] = mesh.Point(corners[i], normal);
+	mesh.Quad(points[0], points[1], points[2], points[3]);
+}
+
+/* A ramp on the ground climbs over its head on an earth embankment, its sides sloping out onto the ground beside it, and meets the span at a stone abutment
+ * whose wing walls close the bank's end. Points are in render space. */
+class Embankment {
+public:
+	Embankment(const BridgeSite &bridge, TileIndex head) : footing(RampFooting(bridge, head)), onto(Onto(head)), run({EdgeMiddle(head, onto * -1.0), EdgeMiddle(head, onto)})
+	{
+	}
+
+	ModelMesh Build() const
+	{
+		ModelMesh sides;
+		ModelMesh crown;
+		for (int row = 0; row < EMBANKMENT_ROWS; row++) {
+			double from = static_cast<double>(row) / EMBANKMENT_ROWS;
+			double to = static_cast<double>(row + 1) / EMBANKMENT_ROWS;
+			for (double side : {-1.0, 1.0}) FacingQuad(sides, {this->Top(from, side), this->Foot(from, side), this->Foot(to, side), this->Top(to, side)}, this->Outward(side));
+			FacingQuad(crown, {this->Top(from, -1.0), this->Top(from, 1.0), this->Top(to, 1.0), this->Top(to, -1.0)}, {0.0, 0.0, 1.0});
+		}
+		ModelMesh mesh = sides.Paint(EMBANKMENT_GRASS).Vary(EMBANKMENT_VARIETY, EMBANKMENT_SEED);
+		mesh.Append(crown.Paint(EMBANKMENT_CROWN));
+		mesh.Append(this->End(0.0, EMBANKMENT_GRASS));
+		return mesh.Append(this->End(1.0, STONE));
+	}
+
+private:
+	double Depth(const MapVector &at) const { return std::max(this->footing(at.x, at.y) - GroundLevel(at.x, at.y), 0.0) * LevelRise(); }
+	Vec3 Outward(double side) const
+	{
+		MapVector right = this->run.Right() * side;
+		return {right.x, right.y, 1.0};
+	}
+
+	Vec3 Top(double share, double side) const
+	{
+		MapVector at = this->run.At(share, side * DECK_HALF);
+		return {at.x, at.y, this->footing(at.x, at.y) * LevelRise() - EMBANKMENT_CROWN_DEPTH};
+	}
+
+	/* The bank's foot reaches out with the ground's depth below the top, then rests on the ground there. */
+	Vec3 Foot(double share, double side) const
+	{
+		MapVector edge = this->run.At(share, side * DECK_HALF);
+		double spread = std::min(this->Depth(edge) * EMBANKMENT_RUN_PER_RISE, EMBANKMENT_SPREAD_MOST);
+		MapVector at = edge + this->run.Right() * (side * spread);
+		return {at.x, at.y, std::min(GroundLevel(at.x, at.y) * LevelRise(), this->Top(share, side).z)};
+	}
+
+	ModelMesh End(double share, uint32_t tone) const
+	{
+		Vec3 facing = {this->onto.x * (share - 0.5), this->onto.y * (share - 0.5), 0.0};
+		ModelMesh end;
+		FacingQuad(end, {this->Foot(share, -1.0), this->Top(share, -1.0), this->Top(share, 1.0), this->Foot(share, 1.0)}, facing);
+		return end.Paint(tone);
+	}
+
+	Footing footing;
+	MapVector onto;
+	Stretch run;
+};
+
+/* An aqueduct's ramp is its trough climbing over the head, walled down to the ground beneath it and facing the span with an abutment. */
+static void LayAqueductRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex head)
+{
 	MapVector onto = Onto(head);
 	Stretch run = {EdgeMiddle(head, onto * -1.0), EdgeMiddle(head, onto)};
-	ModelMesh ramp = Deck(run, look, bridge.transport == TRANSPORT_WATER, true);
+	ModelMesh ramp = Deck(run, AQUEDUCT_LOOK, true, true);
 
 	Footing footing = RampFooting(bridge, head);
 	TileGround ground(head);
@@ -447,4 +527,13 @@ void LayBridgeRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex head)
 	face(run.At(1.0, -DECK_HALF), run.At(1.0, DECK_HALF), onto);
 	ramp.Append(abutment.Paint(STONE));
 	mesh.Append(Drape(ramp, footing));
+}
+
+void LayBridgeRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex head)
+{
+	if (bridge.transport == TRANSPORT_WATER) {
+		LayAqueductRamp(mesh, bridge, head);
+		return;
+	}
+	mesh.Append(Embankment(bridge, head).Build());
 }
