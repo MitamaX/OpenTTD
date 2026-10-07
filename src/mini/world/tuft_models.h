@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file tuft_models.h Tufts of grass: thin blades fanning out from a foot, painted like a vehicle's paintwork so each tuft takes its own green. */
+/** @file tuft_models.h Tufts of grass, thin blades fanning out from a foot, and low scrub bushes, painted like a vehicle's paintwork so each takes its own green. */
 
 #ifndef MINI_WORLD_TUFT_MODELS_H
 #define MINI_WORLD_TUFT_MODELS_H
@@ -15,9 +15,11 @@
 
 #include "../model/model_mesh.h"
 
-inline constexpr size_t TUFT_SHAPES = 3;
+inline constexpr size_t BLADE_TUFTS = 3;
+inline constexpr size_t SHRUB_TUFTS = 2;
+inline constexpr size_t TUFT_SHAPES = BLADE_TUFTS + SHRUB_TUFTS;
 
-/* A tuft stands at the origin, in tiles; its blades take the primary paintwork, darker at their feet than their tips. */
+/* A tuft stands at the origin, in tiles; its blades or leaves take the primary paintwork, darker at their feet than their tips. The shrubs come after the blades. */
 std::vector<ModelMesh> BuildTuftModels();
 
 #endif /* MINI_WORLD_TUFT_MODELS_H */
