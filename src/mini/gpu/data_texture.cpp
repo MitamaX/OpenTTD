@@ -47,7 +47,11 @@ void DataTexture::Allocate(TexelFormat format, Dimension size, const void *texel
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, layout.filtered ? GL_LINEAR : GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	if (!layout.filtered) glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	if (layout.filtered) {
+		FilterAnisotropically();
+	} else {
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	}
 	glTexImage2D(GL_TEXTURE_2D, 0, layout.internal_format, static_cast<GLsizei>(size.width), static_cast<GLsizei>(size.height), 0, layout.pixel_format, GL_UNSIGNED_BYTE, texels);
 	ResetPixelUnpack();
 	this->Refilter();

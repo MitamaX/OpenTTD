@@ -16,5 +16,7 @@ bool LoadGl();
 bool GlLoaded();
 void UnloadGl();
 void ResetPixelUnpack();
+/* The bound mipmapped texture keeps its detail seen at a glancing angle, where the driver filters anisotropically. */
+void FilterAnisotropically();
 
 #endif /* MINI_GPU_GL_API_H */

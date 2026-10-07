@@ -91,5 +91,6 @@ void TextureStore::Upload(Entry &entry)
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(entry.size.width), static_cast<GLsizei>(entry.size.height), 0, GL_RGBA, GL_UNSIGNED_BYTE, entry.rgba.empty() ? nullptr : entry.rgba.data());
 	if (!mipmapped) return;
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, entry.max_mip_level);
+	FilterAnisotropically();
 	glGenerateMipmap(GL_TEXTURE_2D);
 }

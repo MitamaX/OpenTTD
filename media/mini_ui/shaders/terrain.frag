@@ -194,9 +194,13 @@ struct Canopy {
 	float shade;
 };
 
+/* How many screen pixels a tile spans at the fragment the way the ground is seen most foreshortened; the finest grain and bumps fade by it,
+ * so at a glancing view they settle instead of streaking. */
+float foreshortened_pixels;
+
 Grain GrainAt(vec2 p)
 {
-	float micro = 0.6 * Octave(p, MICRO_PER_TILE) + 0.4 * Octave(p + 3.7, MICRO_PER_TILE * 2.3);
+	float micro = 0.6 * OctaveAt(p, MICRO_PER_TILE, foreshortened_pixels) + 0.4 * OctaveAt(p + 3.7, MICRO_PER_TILE * 2.3, foreshortened_pixels);
 	return Grain(Layered(p, 0.15), Layered(p, 1.3), Octave(p + 2.2, CLUMPS_PER_TILE), Octave(p, 7.0), micro);
 }
 
@@ -552,10 +556,13 @@ vec4 Hedgerow(vec2 p, Grain grain)
 /* Fine bumps catch the light up close: soft on grass and fields, sharp on scree and rock. */
 vec3 Roughened(vec3 normal, vec2 p, float rugged)
 {
-	if (Resolved(BUMP_PER_TILE) <= 0.0 || rugged <= 0.0) return normal;
-	vec3 coarse = NoiseSlope(p * BUMP_PER_TILE);
-	vec3 fine = NoiseSlope(p * BUMP_PER_TILE * FINE_BUMP_SCALE + 7.3);
-	vec2 slope = coarse.yz * Resolved(BUMP_PER_TILE) + fine.yz * 0.5 * FINE_BUMP_SCALE * Resolved(BUMP_PER_TILE * FINE_BUMP_SCALE);
+	float coarse_shown = ResolvedAt(BUMP_PER_TILE, foreshortened_pixels);
+	if (coarse_shown <= 0.0 || rugged <= 0.0) return normal;
+	mat2 coarse_turn = OctaveTurn(BUMP_PER_TILE);
+	mat2 fine_turn = OctaveTurn(BUMP_PER_TILE * FINE_BUMP_SCALE);
+	vec3 coarse = NoiseSlope(coarse_turn * p * BUMP_PER_TILE);
+	vec3 fine = NoiseSlope(fine_turn * p * BUMP_PER_TILE * FINE_BUMP_SCALE + 7.3);
+	vec2 slope = transpose(coarse_turn) * coarse.yz * coarse_shown + transpose(fine_turn) * fine.yz * 0.5 * FINE_BUMP_SCALE * ResolvedAt(BUMP_PER_TILE * FINE_BUMP_SCALE, foreshortened_pixels);
 	return normalize(normal - vec3(slope * BUMP_PER_TILE * BUMP_DEPTH * rugged, 0.0));
 }
 
@@ -754,12 +761,13 @@ vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, float levels_per
 }
 
 /* Everything read through screen derivatives is read before the fragment branches, where neighbouring pixels may part ways.
- * Detail fades by the pixel's mean span, so ground seen at a glancing angle keeps its grain for the antialiasing to settle. */
+ * Detail fades by the pixel's mean span, so ground seen at a glancing angle keeps its grain for the antialiasing to settle, and the finest by its longest. */
 void main()
 {
 	vec2 p = v_world.xy;
 	mat2 pixel = mat2(dFdx(p), dFdy(p));
 	tile_pixels = 1.0 / max(sqrt(length(pixel[0]) * length(pixel[1])), MIN_SPREAD);
+	foreshortened_pixels = 1.0 / max(max(length(pixel[0]), length(pixel[1])), MIN_SPREAD);
 	float levels_per_pixel = max(fwidth(v_world.z), MIN_SPREAD);
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);

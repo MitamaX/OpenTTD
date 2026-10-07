@@ -10,6 +10,9 @@
 #include "../../stdafx.h"
 #include "gl_api.h"
 
+#include <algorithm>
+#include <array>
+#include <string_view>
 #include <utility>
 
 #include <RmlUi_Renderer_GL3.h>
@@ -17,6 +20,12 @@
 #include "../../safeguards.h"
 
 static bool _gl_loaded = false;
+
+/* The anisotropic filtering extensions name these, the same values in either. */
+static constexpr GLenum TEXTURE_MAX_ANISOTROPY = 0x84FE;
+static constexpr GLenum MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
+static constexpr std::array<std::string_view, 2> ANISOTROPY_EXTENSIONS = {"GL_ARB_texture_filter_anisotropic", "GL_EXT_texture_filter_anisotropic"};
+static constexpr GLfloat WANTED_ANISOTROPY = 8.0f;
 
 /* RmlUi's renderer carries the loader, and every mini UI GL caller shares the entry points it fills. */
 bool LoadGl()
@@ -41,4 +50,24 @@ void ResetPixelUnpack()
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+static GLfloat MostAnisotropy()
+{
+	GLint count = 0;
+	glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+	for (GLint index = 0; index < count; index++) {
+		std::string_view name = reinterpret_cast<const char *>(glGetStringi(GL_EXTENSIONS, index));
+		if (std::ranges::find(ANISOTROPY_EXTENSIONS, name) == ANISOTROPY_EXTENSIONS.end()) continue;
+		GLfloat most = 1.0f;
+		glGetFloatv(MAX_TEXTURE_MAX_ANISOTROPY, &most);
+		return most;
+	}
+	return 1.0f;
+}
+
+void FilterAnisotropically()
+{
+	static const GLfloat most = MostAnisotropy();
+	if (most > 1.0f) glTexParameterf(GL_TEXTURE_2D, TEXTURE_MAX_ANISOTROPY, std::min(most, WANTED_ANISOTROPY));
 }

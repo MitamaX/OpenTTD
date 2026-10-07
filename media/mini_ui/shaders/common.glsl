@@ -7,6 +7,7 @@ const float HALF_TILE = 0.5;
 const vec2 TILE_CENTRE = vec2(HALF_TILE);
 const float MIN_SQUARED_SPAN = 1e-6;
 const float MIN_SPREAD = 1e-4;
+const float OCTAVE_TURN = 2.39996323;
 
 const vec2 WEST_CORNER = vec2(1.0, 0.0);
 
@@ -61,16 +62,33 @@ vec3 NoiseSlope(vec2 p)
 	return vec3(value, du * (vec2(b - a, c - a) + twist * u.yx));
 }
 
+float ResolvedAt(float frequency, float pixels)
+{
+	return smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS, pixels / frequency);
+}
+
 float Resolved(float frequency)
 {
-	return smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS, tile_pixels / frequency);
+	return ResolvedAt(frequency, tile_pixels);
+}
+
+/* Each octave is read turned its own way, so the lattice its noise is built on lines up neither with the map nor with the other octaves. */
+mat2 OctaveTurn(float frequency)
+{
+	float angle = frequency * OCTAVE_TURN;
+	return mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
 }
 
 /* Noise too fine for the pixels to show is left at its mean, and not worked out at all. */
+float OctaveAt(vec2 p, float frequency, float pixels)
+{
+	float shown = ResolvedAt(frequency, pixels);
+	return shown <= 0.0 ? 0.5 : mix(0.5, Noise(OctaveTurn(frequency) * p * frequency), shown);
+}
+
 float Octave(vec2 p, float frequency)
 {
-	float shown = Resolved(frequency);
-	return shown <= 0.0 ? 0.5 : mix(0.5, Noise(p * frequency), shown);
+	return OctaveAt(p, frequency, tile_pixels);
 }
 
 float Layered(vec2 p, float frequency)
