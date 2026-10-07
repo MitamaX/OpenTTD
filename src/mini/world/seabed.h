@@ -25,7 +25,7 @@ enum class WaterForm : uint8_t {
 	Incline,
 };
 
-/* Past the map's edge and over its border lies open sea. */
+/* Past the map's edge lies open sea. */
 WaterForm WaterFormOf(int tx, int ty);
 double SurfaceLevelOf(int tx, int ty);
 double CornerSink(int cx, int cy);

@@ -194,7 +194,6 @@ static GroundMaterial Planting(TileIndex tile)
 static Cover CoverOf(TileIndex tile, bool planted)
 {
 	switch (GetTileType(tile)) {
-		case MP_VOID: return {GroundMaterial::Void};
 		case MP_CLEAR: return ClearCover(tile);
 		case MP_TREES: return TreeCover(tile);
 		case MP_RAILWAY: return RailCover(tile);
@@ -268,8 +267,26 @@ static bool IsBuiltOn(TileIndex tile)
 	}
 }
 
+/* The tile just inside the map from one on its border. */
+static TileIndex InnerNeighbour(TileIndex tile)
+{
+	return TileXY(Clamp<uint>(TileX(tile), 1, Map::MaxX() - 1), Clamp<uint>(TileY(tile), 1, Map::MaxY() - 1));
+}
+
+static GroundTexel PackGround(TileIndex tile);
+
+/* The border carries on the ground just inside it, bare of whatever grows or stands there, so the land runs on to the map's edge. */
+static GroundTexel BorderGround(TileIndex tile)
+{
+	TileIndex inner = InnerNeighbour(tile);
+	if (IsTileType(inner, MP_VOID)) return {GroundMaterial::Void};
+	GroundTexel ground = PackGround(inner);
+	return {ground.material, static_cast<uint8_t>(ground.detail & ~GROUND_BUILT_BIT), 0, ground.variant};
+}
+
 static GroundTexel PackGround(TileIndex tile)
 {
+	if (IsTileType(tile, MP_VOID)) return BorderGround(tile);
 	std::optional<FloraPatch> flora = FloraOf(tile);
 	Cover cover = CoverOf(tile, flora.has_value());
 	uint8_t detail = static_cast<uint8_t>((cover.density & GROUND_DENSITY_MASK) | (IsLush(tile) ? GROUND_LUSH_BIT : 0) | (IsBuiltOn(tile) ? GROUND_BUILT_BIT : 0));
@@ -290,7 +307,7 @@ static WaterTexel PackWater(TileIndex tile);
 /* The border carries on the water just inside it, so shores do not bend away from the map's edge. */
 static WaterTexel BorderWater(TileIndex tile)
 {
-	TileIndex inner = TileXY(Clamp<uint>(TileX(tile), 1, Map::MaxX() - 1), Clamp<uint>(TileY(tile), 1, Map::MaxY() - 1));
+	TileIndex inner = InnerNeighbour(tile);
 	return IsTileType(inner, MP_VOID) ? WaterTexel{} : PackWater(inner);
 }
 

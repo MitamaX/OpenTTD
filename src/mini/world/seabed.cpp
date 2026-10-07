@@ -50,7 +50,6 @@ WaterForm WaterFormOf(int tx, int ty)
 {
 	if (!OnMap(tx, ty)) return WaterForm::Open;
 	TileIndex tile = TileXY(tx, ty);
-	if (_world_tiles.GroundAt(tile).material == GroundMaterial::Void) return WaterForm::Open;
 	WaterTexel water = _world_tiles.WaterAt(tile);
 	if (water.level == 0) return WaterForm::Dry;
 	if (IsFlat(_world_tiles.SurfaceAt(tile))) return WaterForm::Open;
