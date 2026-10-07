@@ -31,7 +31,7 @@ public:
 	void Release() override;
 
 private:
-	void DrawWays(const ShaderProgram &program) const;
+	void DrawLayers(const ShaderProgram &program, NetworkBuffers NetworkChunk::*buffers) const;
 	void DrawSignals();
 
 	NetworkField field;
@@ -41,6 +41,7 @@ private:
 	SignalBatch signals;
 	ShaderProgram program;
 	ShaderProgram caster;
+	ShaderProgram span_program;
 	ShaderProgram signal_program;
 	ShaderProgram signal_caster;
 };

@@ -29,11 +29,14 @@ struct SignalSpot {
 	Trackdir trackdir;
 };
 
+/* Ways lie on the ground, which takes them over far off; bridges' spans stand clear of it. */
 struct NetworkMeshes {
 	std::array<ModelMesh, NETWORK_LAYERS> layers;
+	std::array<ModelMesh, NETWORK_LAYERS> spans;
 	std::vector<SignalSpot> signals;
 
 	ModelMesh &Layer(MiniLayer layer) { return this->layers[to_underlying(layer)]; }
+	ModelMesh &Span(MiniLayer layer) { return this->spans[to_underlying(layer)]; }
 };
 
 NetworkMeshes BuildNetwork(const TileSpan &tiles, WayDetail detail);

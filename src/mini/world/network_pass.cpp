@@ -50,7 +50,7 @@ static constexpr float OFFSET_SLOPE = -1.0f;
 static constexpr float OFFSET_UNITS = -2.0f;
 
 NetworkPass::NetworkPass() :
-	program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)),
+	program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), span_program(VERTEX_SOURCES, FRAGMENT_SOURCES),
 	signal_program(SIGNAL_VERTEX_SOURCES, FRAGMENT_SOURCES), signal_caster(CasterProgram(SIGNAL_VERTEX_SOURCES))
 {
 }
@@ -59,6 +59,7 @@ void NetworkPass::Reload()
 {
 	this->program.Reload();
 	this->caster.Reload();
+	this->span_program.Reload();
 	this->signal_program.Reload();
 	this->signal_caster.Reload();
 }
@@ -89,39 +90,42 @@ void NetworkPass::Cast(const ShadowView &view)
 	if (!this->caster.Ready() || !this->signal_caster.Ready() || !view.Resolves(WAY_CASTER_WIDTH)) return;
 	this->field.Gather(view.camera, view.frustum, this->shown);
 	this->caster.Use();
-	this->DrawWays(this->caster);
+	this->DrawLayers(this->caster, &NetworkChunk::layers);
+	this->DrawLayers(this->caster, &NetworkChunk::spans);
 	this->signal_caster.Use();
 	this->DrawSignals();
 }
 
-/* Ways lie on the ground they follow, so they are drawn a little toward the eye to win where their faces meet it. */
+/* Ways lie on the ground they follow, so they are drawn a little toward the eye to win where their faces meet it; bridges' spans stand clear of it and never sink into it. */
 void NetworkPass::Draw(const SceneView &view)
 {
-	if (!this->program.Ready() || !this->signal_program.Ready()) return;
+	if (!this->program.Ready() || !this->span_program.Ready() || !this->signal_program.Ready()) return;
 	this->field.Gather(view, view.frustum, this->shown);
-	for (const ShaderProgram *solid : {&this->program, &this->signal_program}) {
+	for (const ShaderProgram *solid : {&this->program, &this->span_program, &this->signal_program}) {
 		solid->Use();
 		UploadOverlay(*solid);
 		glUniform2f(solid->Uniform("u_fade"), static_cast<float>(NETWORK_FADE_START), static_cast<float>(NETWORK_FADE_END));
-		glUniform2f(solid->Uniform("u_recede"), static_cast<float>(NETWORK_RECEDE_PIXELS), static_cast<float>(NETWORK_RECEDE_DEPTH));
+		glUniform2f(solid->Uniform("u_recede"), static_cast<float>(NETWORK_RECEDE_PIXELS), solid == &this->span_program ? 0.0f : static_cast<float>(NETWORK_RECEDE_DEPTH));
 	}
 
 	glEnable(GL_POLYGON_OFFSET_FILL);
 	glPolygonOffset(OFFSET_SLOPE, OFFSET_UNITS);
 	this->program.Use();
-	this->DrawWays(this->program);
+	this->DrawLayers(this->program, &NetworkChunk::layers);
+	this->span_program.Use();
+	this->DrawLayers(this->span_program, &NetworkChunk::spans);
 	this->signal_program.Use();
 	glUniform1i(this->signal_program.Uniform("u_way"), to_underlying(MiniLayer::Rail));
 	this->DrawSignals();
 	glDisable(GL_POLYGON_OFFSET_FILL);
 }
 
-void NetworkPass::DrawWays(const ShaderProgram &program) const
+void NetworkPass::DrawLayers(const ShaderProgram &program, NetworkBuffers NetworkChunk::*buffers) const
 {
 	int way = program.Uniform("u_way");
 	for (size_t layer = 0; layer < NETWORK_LAYERS; layer++) {
 		glUniform1i(way, static_cast<GLint>(layer));
-		for (const NetworkChunk *chunk : this->shown) chunk->layers[layer].Draw();
+		for (const NetworkChunk *chunk : this->shown) (chunk->*buffers)[layer].Draw();
 	}
 }
 
@@ -140,6 +144,7 @@ void NetworkPass::Release()
 	this->signal_models.Release();
 	this->program.Release();
 	this->caster.Release();
+	this->span_program.Release();
 	this->signal_program.Release();
 	this->signal_caster.Release();
 }

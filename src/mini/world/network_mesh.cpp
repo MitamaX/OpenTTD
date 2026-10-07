@@ -71,6 +71,21 @@ static bool Wired(TileIndex tile)
 	return HasRailCatenaryDrawn(GetRailType(tile));
 }
 
+static void LayWiredTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
+{
+	LayTrack(mesh, site, footing);
+	LayCatenary(mesh, site, footing);
+}
+
+static MiniLayer LayerOf(TransportType transport)
+{
+	switch (transport) {
+		case TRANSPORT_RAIL: return MiniLayer::Rail;
+		case TRANSPORT_ROAD: return MiniLayer::Road;
+		default: return MiniLayer::None;
+	}
+}
+
 /* One block's builder: it walks the block's tiles and lays each one's ways into the layer it belongs to. */
 class NetworkBuilder {
 public:
@@ -101,9 +116,7 @@ private:
 
 	void LayTrackOn(const TrackSite &site, const Footing &footing)
 	{
-		ModelMesh &rail = this->meshes.Layer(MiniLayer::Rail);
-		LayTrack(rail, site, footing);
-		LayCatenary(rail, site, footing);
+		LayWiredTrack(this->meshes.Layer(MiniLayer::Rail), site, footing);
 	}
 
 	RoadSite RoadOf(TileIndex tile, int tx, int ty, bool crossing) const
@@ -151,8 +164,9 @@ private:
 	{
 		if (IsBridge(tile)) {
 			BridgeSite bridge = BridgeSite::OfHead(tile);
-			LayBridgeRamp(this->Layer(bridge.transport), bridge, tile);
-			this->BridgeWay(bridge, tx, ty, RampFooting(bridge, tile));
+			ModelMesh &ramp = this->meshes.Layer(LayerOf(bridge.transport));
+			LayBridgeRamp(ramp, bridge, tile);
+			ramp.Append(this->BridgeWay(bridge, tx, ty, RampFooting(bridge, tile)));
 			return;
 		}
 		TransportType transport = GetTunnelBridgeTransportType(tile);
@@ -161,37 +175,30 @@ private:
 		} else {
 			LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, false), GroundFooting(tx, ty));
 		}
-		LayTunnelPortal(this->Layer(transport), tile);
-	}
-
-	ModelMesh &Layer(TransportType transport)
-	{
-		switch (transport) {
-			case TRANSPORT_RAIL: return this->meshes.Layer(MiniLayer::Rail);
-			case TRANSPORT_ROAD: return this->meshes.Layer(MiniLayer::Road);
-			default: return this->meshes.Layer(MiniLayer::None);
-		}
+		LayTunnelPortal(this->meshes.Layer(LayerOf(transport)), tile);
 	}
 
 	void BridgeSpan(const BridgeSite &bridge, int tx, int ty)
 	{
-		LayBridgeSpan(this->Layer(bridge.transport), bridge, tx, ty);
-		this->BridgeWay(bridge, tx, ty, DeckFooting(bridge));
+		ModelMesh &span = this->meshes.Span(LayerOf(bridge.transport));
+		LayBridgeSpan(span, bridge, tx, ty);
+		span.Append(this->BridgeWay(bridge, tx, ty, DeckFooting(bridge)));
 	}
 
 	/* A bridge carries its head's way straight along its axis, from edge to edge of every tile. */
-	void BridgeWay(const BridgeSite &bridge, int tx, int ty, const Footing &footing)
+	ModelMesh BridgeWay(const BridgeSite &bridge, int tx, int ty, const Footing &footing) const
 	{
+		ModelMesh way;
 		TileIndex head = bridge.north;
 		if (bridge.transport == TRANSPORT_RAIL) {
-			TrackSite site = {tx, ty, AxisToTrackBits(bridge.axis), RailLookOf(GetRailType(head)), Wired(head), false, this->detail};
-			this->LayTrackOn(site, footing);
+			LayWiredTrack(way, {tx, ty, AxisToTrackBits(bridge.axis), RailLookOf(GetRailType(head)), Wired(head), false, this->detail}, footing);
 		} else if (bridge.transport == TRANSPORT_ROAD) {
 			RoadBits bits = AxisToRoadBits(bridge.axis);
 			RoadBits road = HasTileRoadType(head, RTT_ROAD) ? bits : ROAD_NONE;
 			RoadBits tram = HasTileRoadType(head, RTT_TRAM) ? bits : ROAD_NONE;
-			LayRoad(this->meshes.Layer(MiniLayer::Road), {tx, ty, road, tram, false, false, DRD_NONE, this->detail}, footing);
+			LayRoad(way, {tx, ty, road, tram, false, false, DRD_NONE, this->detail}, footing);
 		}
+		return way;
 	}
 
 	void Signals(TileIndex tile, int tx, int ty)

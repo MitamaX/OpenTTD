@@ -93,9 +93,8 @@ void NetworkField::Survey(NetworkChunk &chunk, const TileSpan &tiles) const
 
 void NetworkField::Build(NetworkChunk &chunk, const TileSpan &tiles, WayDetail detail) const
 {
-	NetworkMeshes meshes = BuildNetwork(tiles, detail);
-	chunk.waiting = std::move(meshes.layers);
-	chunk.signals = std::move(meshes.signals);
+	chunk.waiting = BuildNetwork(tiles, detail);
+	chunk.signals = std::move(chunk.waiting->signals);
 	chunk.detail = detail;
 	chunk.built = true;
 	chunk.stale = false;
@@ -137,6 +136,16 @@ void NetworkField::Prepare(const SceneView &camera, std::vector<const NetworkChu
 	}
 }
 
+template <class Vertex>
+static void Hand(MeshBuffer &buffer, const TriangleList<Vertex> &mesh, std::span<const VertexAttribute> layout)
+{
+	if (mesh.indices.empty()) {
+		buffer.Release();
+	} else {
+		buffer.Upload(mesh, layout);
+	}
+}
+
 /* Blocks built since the last frame are handed to the GPU before any view draws them. */
 void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::vector<const NetworkChunk *> &shown)
 {
@@ -145,12 +154,8 @@ void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::
 		NetworkChunk &chunk = this->chunks[index];
 		if (chunk.waiting.has_value()) {
 			for (size_t layer = 0; layer < NETWORK_LAYERS; layer++) {
-				const ModelMesh &mesh = (*chunk.waiting)[layer];
-				if (mesh.indices.empty()) {
-					chunk.layers[layer].Release();
-				} else {
-					chunk.layers[layer].Upload(mesh, MODEL_LAYOUT);
-				}
+				Hand(chunk.layers[layer], chunk.waiting->layers[layer], MODEL_LAYOUT);
+				Hand(chunk.spans[layer], chunk.waiting->spans[layer], MODEL_LAYOUT);
 			}
 			chunk.waiting.reset();
 		}
@@ -165,18 +170,22 @@ void NetworkField::Evict()
 {
 	for (NetworkChunk &chunk : this->chunks) {
 		if (!chunk.built || this->frame - chunk.wanted < EVICT_FRAMES) continue;
-		for (MeshBuffer &layer : chunk.layers) layer.Release();
+		chunk.Release();
 		chunk.waiting.reset();
 		chunk.signals.clear();
 		chunk.built = false;
 	}
 }
 
+void NetworkChunk::Release()
+{
+	for (MeshBuffer &layer : this->layers) layer.Release();
+	for (MeshBuffer &span : this->spans) span.Release();
+}
+
 void NetworkField::Release()
 {
-	for (NetworkChunk &chunk : this->chunks) {
-		for (MeshBuffer &layer : chunk.layers) layer.Release();
-	}
+	for (NetworkChunk &chunk : this->chunks) chunk.Release();
 	this->chunks.clear();
 	this->grid.Clear();
 }

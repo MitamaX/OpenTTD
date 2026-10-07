@@ -24,11 +24,14 @@
 inline constexpr double NETWORK_FADE_START = 9.0;
 inline constexpr double NETWORK_FADE_END = 12.0;
 
-/* A block of tiles: its meshes per layer, built on the game's side and waiting to be handed to the GPU or already there,
+using NetworkBuffers = std::array<MeshBuffer, NETWORK_LAYERS>;
+
+/* A block of tiles: its ways' and its bridges' spans' meshes per layer, built on the game's side and waiting to be handed to the GPU or already there,
  * the detail they were built at, its signals, the levels its ways span, and a digest of the texels its ways were built from. */
 struct NetworkChunk {
-	std::array<MeshBuffer, NETWORK_LAYERS> layers;
-	std::optional<std::array<ModelMesh, NETWORK_LAYERS>> waiting;
+	NetworkBuffers layers;
+	NetworkBuffers spans;
+	std::optional<NetworkMeshes> waiting;
 	std::vector<SignalSpot> signals;
 	WayDetail detail = WayDetail::Simple;
 	double nearest_pixels = 0.0;
@@ -39,6 +42,8 @@ struct NetworkChunk {
 	uint high = 0;
 	uint32_t digest = 0;
 	uint64_t wanted = 0;
+
+	void Release();
 };
 
 /* Blocks are surveyed and built from the map in Prepare, while the game's state holds still; drawing only hands them to the GPU and culls them. */
