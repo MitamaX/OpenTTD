@@ -18,22 +18,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/vehicle.vert",
-};
-static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
-	"mini_ui/shaders/overlay.glsl",
-	"mini_ui/shaders/solid.frag",
-};
-
 /* Vehicles are whole where a tile spans this many pixels, bare masses below it, and cast shadows only where they would read. */
 static constexpr double FULL_DETAIL_PIXELS = 26.0;
 static constexpr double CAST_PIXELS = 7.0;
@@ -68,7 +52,7 @@ static MiniLayer LayerOf(VehicleLook look)
 	return MiniLayer::None;
 }
 
-VehiclePass::VehiclePass() : program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
+VehiclePass::VehiclePass() : program(VEHICLE_VERTEX_SOURCES, VEHICLE_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))
 {
 }
 

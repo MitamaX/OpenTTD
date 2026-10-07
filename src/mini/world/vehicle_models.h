@@ -121,6 +121,23 @@ inline constexpr std::array<VertexAttribute, 6> VEHICLE_INSTANCE_LAYOUT = {{
 
 using VehicleBatch = InstanceBatch<VehicleInstance>;
 
+/* The programs whatever is drawn as a vehicle model shades through. */
+inline constexpr std::array<const char *, 2> VEHICLE_VERTEX_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/vehicle.vert",
+};
+inline constexpr std::array<const char *, 9> VEHICLE_FRAGMENT_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
+	"mini_ui/shaders/common.glsl",
+	"mini_ui/shaders/sky.glsl",
+	"mini_ui/shaders/cloud_field.glsl",
+	"mini_ui/shaders/shadow.glsl",
+	"mini_ui/shaders/lighting.glsl",
+	"mini_ui/shaders/overlay.glsl",
+	"mini_ui/shaders/solid.frag",
+};
+
 /* The box a model fills, in its own frame. */
 struct VehicleBounds {
 	Vec3 low;

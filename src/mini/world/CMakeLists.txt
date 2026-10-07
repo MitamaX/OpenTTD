@@ -4,6 +4,8 @@ add_files(
     bridge_models.h
     chunk_grid.cpp
     chunk_grid.h
+    figure_models.cpp
+    figure_models.h
     fleet_layout.cpp
     fleet_layout.h
     forest_field.cpp
@@ -46,6 +48,10 @@ add_files(
     station_models.h
     street_furniture.cpp
     street_furniture.h
+    street_life_pass.cpp
+    street_life_pass.h
+    street_walkers.cpp
+    street_walkers.h
     structure_dressing.cpp
     structure_dressing.h
     structure_field.cpp

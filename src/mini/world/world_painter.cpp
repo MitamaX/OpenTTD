@@ -17,6 +17,7 @@
 #include "../gpu/gl_state.h"
 #include "forest_pass.h"
 #include "network_pass.h"
+#include "street_life_pass.h"
 #include "structure_pass.h"
 #include "terrain_pass.h"
 #include "vehicle_pass.h"
@@ -49,6 +50,7 @@ WorldPainter::WorldPainter()
 	auto vehicles = std::make_unique<VehiclePass>();
 	this->vehicles = vehicles.get();
 	this->passes.push_back(std::move(vehicles));
+	this->passes.push_back(std::make_unique<StreetLifePass>());
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
 }
