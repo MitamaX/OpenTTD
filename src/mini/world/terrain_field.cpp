@@ -11,7 +11,6 @@
 #include "terrain_field.h"
 
 #include <algorithm>
-#include <chrono>
 
 #include "../../map_func.h"
 #include "../gpu/frame_profile.h"
@@ -27,7 +26,6 @@ static constexpr double OUTER_SEA_REACH = 8192.0;
 static constexpr double FINEST_CELL_PIXELS = NETWORK_FADE_START;
 static constexpr int COARSEST_STEP = 8;
 static constexpr uint64_t EVICT_FRAMES = 600;
-static constexpr std::chrono::microseconds REFINE_BUDGET{1500};
 
 /* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles. */
 static int StepFor(double tile_pixels)
@@ -155,19 +153,14 @@ void TerrainField::Build(size_t index, int step)
  * a build cut short by the end of the slice goes on from where it stopped. */
 void TerrainField::Refine()
 {
-	using Clock = std::chrono::steady_clock;
-	Clock::time_point deadline = Clock::now() + REFINE_BUDGET;
+	BuildSlice slice;
 	for (const Due &entry : this->due) {
 		Chunk &chunk = this->chunks[entry.index];
 		ProfileScope profile("build", "terrain", ProfileClock::Cpu);
 		int step = chunk.NextStep(entry.step);
 		if (chunk.rebuild.has_value() && chunk.rebuild->build.Step() != step) chunk.rebuild.reset();
 		if (!chunk.rebuild.has_value()) chunk.rebuild.emplace(TerrainBuild(this->grid.TilesOf(entry.index), step));
-		TerrainBuild &build = chunk.rebuild->build;
-		while (!build.Done()) {
-			if (Clock::now() >= deadline) return;
-			build.Advance();
-		}
+		if (!slice.Carry(chunk.rebuild->build)) return;
 		this->Finish(entry.index);
 	}
 }

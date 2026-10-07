@@ -16,6 +16,7 @@
 
 #include "../gpu/mesh_buffer.h"
 #include "../map/world_tiles.h"
+#include "build_slice.h"
 #include "chunk_grid.h"
 #include "scene_view.h"
 #include "terrain_mesh.h"
@@ -33,18 +34,12 @@ public:
 private:
 	static constexpr int DRAFT_STEP = 2;
 
-	/* A build under way to replace a block's meshes, and whether the world changed under it since it began. */
-	struct Rebuild {
-		TerrainBuild build;
-		bool outdated = false;
-	};
-
 	/* A block of tiles: the meshes it shows, the step its ground was built at and whether the world changed under them since, the build that will replace them,
 	 * the frame since which they have waited for it, and the height range its ground spans. */
 	struct Chunk {
 		MeshBuffer ground;
 		MeshBuffer water;
-		std::optional<Rebuild> rebuild;
+		std::optional<Rebuild<TerrainBuild>> rebuild;
 		int step = 0;
 		bool stale = true;
 		bool surveyed = false;
