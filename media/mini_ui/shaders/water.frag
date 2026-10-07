@@ -38,9 +38,13 @@ const float FLOW_SPEED = 0.6;
 const float FLOW_STEEPNESS = 0.006;
 const float RAPIDS_TILT = 0.12;
 const float RAPIDS_REACH = 0.35;
-const float RAPIDS_SPEED = 2.4;
+const float RAPIDS_SPEED = 1.3;
 const float RAPIDS_STEEPNESS = 0.03;
 const float RAPIDS_FOAM = 0.8;
+const float RAPIDS_ALONG = 2.6;
+const float RAPIDS_ACROSS = 9.0;
+const float RAPIDS_PATH = 0.4;
+const float RAPIDS_RUFFLE = 0.8;
 const float CREST_GLOW = 0.35;
 
 const float WATER_REFLECTANCE = 0.02;
@@ -396,14 +400,15 @@ vec3 Descent(vec2 p)
 	return vec3(tilt > 0.0 ? fall / tilt : vec2(0.0), smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, tilt));
 }
 
-/* Where a river drops it breaks white, the broken water racing down the slope in streaks. */
+/* Where a river drops it breaks white, the broken water racing down the slope in streaks torn finer where the pixels can show them. */
 float Whitewater(vec2 p, vec3 descent)
 {
 	vec2 down = descent.xy;
 	vec2 across = vec2(-down.y, down.x);
-	vec2 q = vec2(dot(p, down) * 2.2 - Clock() * RAPIDS_SPEED, dot(p, across) * 7.0);
-	float churn = 0.6 * Noise(q) + 0.4 * Noise(q * 2.3 + 5.1);
-	return descent.z * smoothstep(0.35, 0.65, churn) * RAPIDS_FOAM;
+	vec2 q = vec2(dot(p, down) * RAPIDS_ALONG - Clock() * RAPIDS_SPEED, dot(p, across) * RAPIDS_ACROSS);
+	float torn = Resolved(RAPIDS_ACROSS * 2.3);
+	float churn = 0.55 * Noise(q) + 0.3 * Noise(q * 2.3 + 5.1) + 0.15 * mix(0.5, Noise(q * 5.3 + 1.7), torn);
+	return descent.z * smoothstep(0.4, mix(0.65, 0.58, torn), churn) * RAPIDS_FOAM;
 }
 
 bool Spanned(ivec2 tile)
@@ -456,6 +461,7 @@ void main()
 	Surface waves = Waves(p, body.calm);
 	waves = Stirred(waves, Streaks(p, flow, FLOW_SPEED) * FLOW_STEEPNESS * length(flow));
 	waves = Stirred(waves, Streaks(p, descent.xy, RAPIDS_SPEED) * RAPIDS_STEEPNESS * descent.z);
+	waves.ruffled = max(waves.ruffled, descent.z * RAPIDS_RUFFLE);
 	vec3 normal = waves.normal;
 
 	vec3 sight = SightAt(gl_FragCoord.xy);
@@ -478,7 +484,8 @@ void main()
 	float sheltered = 1.0 - DECK_SHELTER * DeckCover(p);
 	vec3 light = sun * max(SunDirection().z, 0.0) + AmbientLight(up) * sheltered;
 
-	vec3 transmittance = exp(-body.absorption * max(bent.x, ShelfPath(p, sight) * body.sea)) * (1.0 - body.murk);
+	float path = max(bent.x, max(ShelfPath(p, sight) * body.sea, RAPIDS_PATH * descent.z));
+	vec3 transmittance = exp(-body.absorption * path) * (1.0 - body.murk);
 	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(normal.xy));
 	vec3 below = texture(u_scene_colour, bent_uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
 
