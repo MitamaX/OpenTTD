@@ -116,7 +116,7 @@ static constexpr std::array<SweepPoint, 5> CACTUS_ARM_BENDS = {{
 static constexpr Vec3 CACTUS_FLOWER = {0.014, 0.014, 0.01};
 
 static constexpr SeedRange TOY_CROWN = {0.27, 0.31};
-static constexpr double TOY_CANDY = 0.11;
+static constexpr double TOY_CANDY = 0.13;
 static constexpr Vec3 TOY_LOLLIPOP = {TOY_CANDY, TOY_CANDY, TOY_CANDY * 0.9};
 static constexpr SeedRange TOY_STICK = {0.013, 0.011};
 static constexpr double TOY_STICK_INSET = 0.03;
@@ -124,7 +124,7 @@ static constexpr int TOY_GUMDROPS = 3;
 static constexpr double TOY_GUMDROP_HEIGHT = 0.1;
 static constexpr double TOY_GUMDROP_TAPER = 0.75;
 static constexpr double TOY_GUMDROP_STEP = 0.2;
-static constexpr double TOY_CUBE_HALF = 0.075;
+static constexpr double TOY_CUBE_HALF = 0.09;
 
 /* A shape's two colours, picked on screen: its leaves, and its wood or whatever else sets them off. */
 struct TreeTones {

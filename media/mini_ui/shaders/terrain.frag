@@ -63,6 +63,9 @@ const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
 const vec3 TOY_TEAL = vec3(0.42, 0.82, 0.6);
 const vec3 TOY_MINT = vec3(0.5, 0.86, 0.48);
 const vec3 TOY_LIME = vec3(0.7, 0.9, 0.42);
+const float TOY_LAWN_CONTRAST = 0.6;
+const float ROUGH_BARE = 0.6;
+const float TOY_ROUGH_BARE = 0.2;
 const vec3 LUSH_DARK = vec3(0.2, 0.35, 0.17);
 const vec3 LUSH_LIGHT = vec3(0.31, 0.47, 0.23);
 const vec3 ROUGH_TINT = vec3(0.55, 0.50, 0.30);
@@ -393,9 +396,11 @@ float Contour(float height, float levels_per_pixel)
 	return line * smoothstep(CROWDED_CONTOUR_PIXELS, SPACED_CONTOUR_PIXELS, 1.0 / levels_per_pixel) * weight;
 }
 
+/* Toyland's lawns drift between teal, mint and lime, held toward the mint between so they wash gently from one to the next. */
 vec3 ToyLawn(float shade)
 {
-	return mix(mix(TOY_TEAL, TOY_MINT, smoothstep(0.2, 0.45, shade)), TOY_LIME, smoothstep(0.55, 0.85, shade));
+	float calm = mix(0.5, shade, TOY_LAWN_CONTRAST);
+	return mix(mix(TOY_TEAL, TOY_MINT, smoothstep(0.2, 0.45, calm)), TOY_LIME, smoothstep(0.55, 0.85, calm));
 }
 
 vec3 GrassTone(float shade, float lush)
@@ -524,7 +529,7 @@ Patch Rough(Grain grain, vec2 p, float lush)
 	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
 	float open = smoothstep(0.58, 0.8, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
 	vec3 stony = mix(Soil(), SCREE, 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
-	return Patch(mix(scrub, stony, open * 0.6), ROUGH_RUGGED);
+	return Patch(mix(scrub, stony, open * (Landscape() == LANDSCAPE_TOYLAND ? TOY_ROUGH_BARE : ROUGH_BARE)), ROUGH_RUGGED);
 }
 
 /* Rocky ground: grass with stones gathered in patches over it, and pale rock breaking through here and there, capped with snow where snow lies. */
