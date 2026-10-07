@@ -45,7 +45,7 @@ const float CREST_GLOW = 0.35;
 const float WATER_REFLECTANCE = 0.02;
 const float REFLECTANCE_CEILING = 0.62;
 const float REFLECTED_LIFT = 0.04;
-const vec3 REFLECTED_SKY = vec3(0.82, 0.9, 0.96);
+const float REFLECTED_SKY = 0.9;
 const float REFRACTION = 0.012;
 const float REFRACTION_DEPTH = 0.5;
 

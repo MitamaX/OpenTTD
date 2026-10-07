@@ -3,6 +3,7 @@ const float PI = 3.14159265;
 const vec3 ZENITH = vec3(0.04, 0.17, 0.66);
 const vec3 HORIZON = vec3(0.27, 0.50, 0.95);
 const vec3 SUN_GLOW = vec3(1.0, 0.66, 0.36);
+const vec3 AUREOLE = vec3(1.0, 0.9, 0.76);
 const float SKY_BRIGHTNESS = 1.35;
 const float SKY_CURVE = 0.45;
 const float GLOW_FOCUS = 0.76;
@@ -31,15 +32,16 @@ float HenyeyGreenstein(float cosine, float focus)
 	return (1.0 - squared) / (4.0 * PI * pow(1.0 + squared - 2.0 * focus * cosine, 1.5));
 }
 
-/* The open sky above the horizon: deep blue overhead paling toward the horizon, warmed where it lies toward the sun. */
+/* The open sky above the horizon: deep blue overhead paling toward the horizon, a pale aureole about the sun, and a warm band low along the horizon beneath it. */
 vec3 OpenSky(vec3 sight)
 {
 	float up = clamp(sight.z, 0.0, 1.0);
 	vec3 gradient = mix(HORIZON, ZENITH, pow(up, SKY_CURVE));
 	float facing = dot(sight, SunDirection());
 	float low = 1.0 - up;
-	float glow = GLOW_STRENGTH * HenyeyGreenstein(facing, GLOW_FOCUS) + HORIZON_GLOW * pow(max(facing, 0.0), HORIZON_GLOW_FOCUS) * low * low * low;
-	return (gradient + SUN_GLOW * glow) * SKY_BRIGHTNESS;
+	vec3 aureole = AUREOLE * GLOW_STRENGTH * HenyeyGreenstein(facing, GLOW_FOCUS);
+	vec3 band = SUN_GLOW * HORIZON_GLOW * pow(max(facing, 0.0), HORIZON_GLOW_FOCUS) * low * low * low;
+	return (gradient + aureole + band) * SKY_BRIGHTNESS;
 }
 
 /* The light the air scatters toward the eye along a sight line: the sky just over the horizon in that direction, so distant ground fades into it. */
