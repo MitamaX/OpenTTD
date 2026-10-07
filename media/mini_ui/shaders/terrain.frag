@@ -20,6 +20,11 @@ const float BLANKET_SLIP_SLOPE = 1.1;
 const float BLANKET_EDGE = 0.07;
 const float CLINGING = 0.75;
 const float SNOW_LINE_RAGGED = 2.5;
+const float CAP_COVER = 0.85;
+const vec3 CAP_SNOW = vec3(0.86, 0.89, 0.94);
+const float BROAD_FREQUENCY = 0.035;
+const vec3 PACKED_SNOW_TINT = vec3(0.8, 0.86, 0.95);
+const vec3 BAKED_SAND_TINT = vec3(0.9, 0.85, 0.78);
 
 const float LINE_HALF_PIXELS = 0.5;
 const float HALF_LEVEL = 0.5;
@@ -240,11 +245,14 @@ struct Exposure {
 	float rock;
 };
 
-/* The loose and the solid stone this point would show where its ground wears through. */
+/* The loose and the solid stone this point would show where its ground wears through, and how far it lies on the shelf atop a layer of the rock. */
 struct Bare {
 	vec3 scree;
 	vec3 rock;
+	float shelf;
 };
+
+const Bare NO_BARE = Bare(vec3(0.0), vec3(0.0), 0.0);
 
 /* A ground's colour and how much its fine bumps and its stones stand out of it. */
 struct Patch {
@@ -453,9 +461,8 @@ float Cracks(vec2 p)
 }
 
 /* Bare rock in layers stepping out in ledges where it stands steep, weathered and veined with cracks where it lies flat. */
-vec3 Rock(vec2 p, Relief relief, Grain grain)
+vec3 Rock(vec2 p, float bedding, Relief relief, Grain grain)
 {
-	float bedding = BeddingAt(p);
 	int layer = int(floor(bedding));
 	float strata = relief.steep * relief.strata;
 	vec3 bed = Stratum(layer);
@@ -468,7 +475,8 @@ vec3 Rock(vec2 p, Relief relief, Grain grain)
 
 Bare BareAt(vec2 p, Relief relief, Grain grain)
 {
-	return Bare(Scree(grain, p), Rock(p, relief, grain));
+	float bedding = BeddingAt(p);
+	return Bare(Scree(grain, p), Rock(p, bedding, relief, grain), smoothstep(0.7, 0.95, fract(bedding)) * relief.steep * relief.strata);
 }
 
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
@@ -482,9 +490,23 @@ Exposure ExposureAt(Relief relief, Grain grain, float blanket)
 	return Exposure(scree, rock);
 }
 
+/* Above the snow line and in snowfields snow lingers on bare stone where it can lie: on the shelves atop the rock's layers and on the tops of stones. */
+float SnowCaps(Site site)
+{
+	if (Landscape() != LANDSCAPE_ARCTIC) return 0.0;
+	float snowy = max(site.climate.blanket, smoothstep(0.0, SNOW_LINE_PULL, SnowLift(v_world.z + site.ragged * SNOW_LINE_RAGGED)));
+	float perch = max(site.bare.shelf, smoothstep(0.55, 0.85, site.grain.stones + site.grain.fine * 0.3 - 0.15));
+	return snowy * perch * CAP_COVER;
+}
+
+vec3 Capped(vec3 stone, Site site)
+{
+	return mix(stone, CAP_SNOW * Varied(site.grain.micro, 0.08), SnowCaps(site));
+}
+
 Patch Exposed(Patch ground, Site site)
 {
-	vec3 tone = mix(mix(ground.tone, site.bare.scree, site.exposure.scree), site.bare.rock, site.exposure.rock);
+	vec3 tone = mix(mix(ground.tone, Capped(site.bare.scree, site), site.exposure.scree), Capped(site.bare.rock, site), site.exposure.rock);
 	vec2 rugged = mix(mix(ground.rugged, SCREE_RUGGED, site.exposure.scree), ROCK_RUGGED, site.exposure.rock);
 	return Patch(tone, rugged);
 }
@@ -502,9 +524,13 @@ Patch Rough(Grain grain, vec2 p, float lush)
 	return Patch(mix(scrub, stony, open * 0.6), ROUGH_RUGGED);
 }
 
-/* Rocky ground: grass with stones gathered in patches over it, and pale rock breaking through here and there. */
-Patch Rocks(Grain grain, vec2 p, Bare bare, float lush)
+/* Rocky ground: grass with stones gathered in patches over it, and pale rock breaking through here and there, capped with snow where snow lies. */
+Patch Rocks(Site site)
 {
+	Grain grain = site.grain;
+	vec2 p = site.p;
+	Bare bare = Bare(Capped(site.bare.scree, site), Capped(site.bare.rock, site), site.bare.shelf);
+	float lush = site.climate.lush;
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
@@ -580,7 +606,7 @@ Patch Albedo(Ground ground, Site site)
 		case MAT_GRASS: return Patch(Grass(ground, grain, site.climate.lush), GRASS_RUGGED);
 		case MAT_ROUGH:
 		case MAT_SNOW: return Rough(grain, p, site.climate.lush);
-		case MAT_ROCKS: return Rocks(grain, p, site.bare, site.climate.lush);
+		case MAT_ROCKS: return Rocks(site);
 		case MAT_FIELDS: return Fields(ground, grain, p);
 		case MAT_DESERT: return Patch(Steppe(grain, site.climate.lush), SAND_RUGGED);
 		case MAT_SHORE: return Shore(site);
@@ -654,7 +680,7 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 	}
 	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
 	bool bared = exposure.scree > 0.0 || armoured || HasCorner(corners, MAT_ROCKS);
-	Bare bare = bared ? BareAt(p, relief, grain) : Bare(vec3(0.0), vec3(0.0));
+	Bare bare = bared ? BareAt(p, relief, grain) : NO_BARE;
 	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden);
 }
 
@@ -917,6 +943,12 @@ float Glint(vec2 p, vec3 normal)
 	return point * pow(max(dot(facet, half_way), 0.0), GLINT_FOCUS) * smoothstep(GLINT_FROM_PIXELS, GLINT_TO_PIXELS, tile_pixels);
 }
 
+/* Across miles a blanket lies in broad sheets, snow wind packed grey and blue in some and fresh in others, sand baked darker in some and pale in others. */
+float Broad(vec2 p)
+{
+	return smoothstep(0.35, 0.72, Layered(p + 31.0, BROAD_FREQUENCY));
+}
+
 Blanket Snowfield(Site site, float cover)
 {
 	vec2 p = site.p;
@@ -926,6 +958,7 @@ Blanket Snowfield(Site site, float cover)
 	vec2 slope = drift.yz * DRIFT_HEIGHT * Resolved(DRIFT_ACROSS) + ridge.yz * RIDGE_HEIGHT * Resolved(RIDGE_ACROSS) + sastrugi.yz * SASTRUGI_HEIGHT * Resolved(SASTRUGI_ACROSS);
 	float scoured = smoothstep(0.55, 0.85, Octave(p + 9.1, 0.7)) * (1.0 - drift.x);
 	vec3 tone = mix(SNOW, SCOURED_SNOW, scoured) * mix(0.95, 1.02, drift.x) * Varied(site.grain.fine, 0.05) * Varied(site.grain.micro, 0.06);
+	tone = mix(tone, tone * PACKED_SNOW_TINT, Broad(p));
 	return Blanket(cover, tone, slope, SNOW_RUGGED, SNOW_ROUGHNESS, 1.0);
 }
 
@@ -969,6 +1002,7 @@ Blanket Sandfield(Site site, float cover)
 	float rippled = Resolved(RIPPLES_PER_TILE) * (1.0 - 0.7 * dune.lee) * (1.0 - gravel);
 	vec2 slope = dune.slope * (1.0 - 0.6 * gravel) + cos(phase) * dune.heading * RIPPLES_PER_TILE * TAU * RIPPLE_HEIGHT * rippled;
 	vec3 sand = mix(SAND, RED_SAND, Layered(p + 8.3, 0.05)) * mix(0.93, 1.04, dune.height) * (1.0 + RIPPLE_SHADE * sin(phase) * rippled) * Varied(site.grain.micro, 0.08);
+	sand = mix(sand, sand * BAKED_SAND_TINT, Broad(p));
 	vec3 stones = GRAVEL * Varied(site.grain.local, 0.15) * Varied(site.grain.micro, 0.3) * mix(0.9, 1.12, site.grain.stones);
 	return Blanket(cover, mix(sand, stones, gravel), slope, mix(SAND_RUGGED, SCREE_RUGGED, gravel * 0.6), SAND_ROUGHNESS, 0.0);
 }
