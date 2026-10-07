@@ -23,7 +23,8 @@ bool ClearAround(int tx, int ty, int reach);
 /* The copies of each model a block holds. */
 using ScatterCopies = std::vector<std::vector<VehicleInstance>>;
 
-/* A block goes stale when a tile within reach of it changes, since what stands on a tile may hang on the tiles about it; only a few stale blocks are strewn again each frame. */
+/* A block goes stale when a tile within reach of it changes, since what stands on a tile may hang on the tiles about it; only a few stale blocks in sight are strewn again each frame,
+ * those strewn longest ago first, the others showing what they held until their turn comes. */
 class BlockScatter : public Scatter {
 public:
 	BlockScatter(size_t models, int reach) : models(models), reach(reach) {}
@@ -43,12 +44,15 @@ private:
 	struct Block {
 		ScatterCopies copies;
 		bool stale = true;
+		uint64_t strewn_turn = 0;
 	};
 
 	void Lay();
 
 	ChunkGrid grid{BLOCK_TILES};
 	std::vector<Block> blocks;
+	std::vector<size_t> waiting;
+	uint64_t strews = 0;
 	size_t models;
 	int reach;
 };

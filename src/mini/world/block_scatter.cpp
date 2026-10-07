@@ -10,6 +10,9 @@
 #include "../../stdafx.h"
 #include "block_scatter.h"
 
+#include <algorithm>
+#include <span>
+
 #include "../../map_func.h"
 #include "../map/tile_shapes.h"
 
@@ -51,17 +54,24 @@ void BlockScatter::Gather(const SceneView &view, const Frustum &frustum, double 
 {
 	if (this->grid.Map() != _world_tiles.Size()) this->Lay();
 	double top = (_world_tiles.Peak() + 1.0) * LevelRise();
-	int strewn = 0;
+	this->waiting.clear();
 	this->grid.ForEachSeen(view, frustum, fewest_pixels, 0, top, [&](size_t index) {
+		if (this->blocks[index].stale) this->waiting.push_back(index);
+		return true;
+	});
+	size_t due = std::min<size_t>(this->waiting.size(), MOST_STREWN_PER_FRAME);
+	std::partial_sort(this->waiting.begin(), this->waiting.begin() + due, this->waiting.end(), [&](size_t a, size_t b) { return this->blocks[a].strewn_turn < this->blocks[b].strewn_turn; });
+	for (size_t index : std::span(this->waiting).first(due)) {
 		Block &block = this->blocks[index];
-		if (block.stale) {
-			if (strewn >= MOST_STREWN_PER_FRAME) return true;
-			block.copies.assign(this->models, {});
-			this->Strew(this->grid.TilesOf(index), block.copies);
-			block.stale = false;
-			strewn++;
-		}
-		for (size_t model = 0; model < this->models; model++) batch.Add(model, block.copies[model]);
+		block.copies.assign(this->models, {});
+		this->Strew(this->grid.TilesOf(index), block.copies);
+		block.stale = false;
+		block.strewn_turn = ++this->strews;
+	}
+
+	this->grid.ForEachSeen(view, frustum, fewest_pixels, 0, top, [&](size_t index) {
+		const Block &block = this->blocks[index];
+		for (size_t model = 0; model < block.copies.size(); model++) batch.Add(model, block.copies[model]);
 		return true;
 	});
 }
