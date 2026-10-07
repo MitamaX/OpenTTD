@@ -54,7 +54,7 @@ const vec3 WET_SAND = vec3(0.50, 0.46, 0.37);
 const vec3 SILT = vec3(0.38, 0.40, 0.33);
 const vec3 MUD = vec3(0.40, 0.36, 0.27);
 const vec3 CANAL_FLOOR = vec3(0.45, 0.45, 0.42);
-const vec3 HEDGE = vec3(0.20, 0.30, 0.14);
+const vec3 HEDGE = vec3(0.24, 0.33, 0.16);
 
 const float STRATA_PER_LEVEL = 2.5;
 const float STRATA_WARP = 1.8;
@@ -94,7 +94,9 @@ const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
 	vec3(0.40, 0.53, 0.30)
 );
 const float FURROWS_PER_TILE = 7.0;
-const float HEDGE_WIDTH = 0.05;
+const float HEDGE_WIDTH = 0.035;
+const float HEDGE_GAPS_PER_TILE = 1.9;
+const float HEDGE_OPACITY = 0.85;
 
 const float FOREST_COVER = 0.9;
 const float CANOPY_OCCLUSION = 0.45;
@@ -506,7 +508,7 @@ bool SameField(ivec2 tile, Ground field)
 	return ground.material == MAT_FIELDS && ground.variant == field.variant;
 }
 
-/* A hedge runs along every side of a field where the next tile is not the same field. */
+/* A hedge with gaps here and there runs along every side of a field where the next tile is not the same field. */
 vec4 Hedgerow(vec2 p, Grain grain)
 {
 	ivec2 tile = ivec2(floor(p));
@@ -518,9 +520,10 @@ vec4 Hedgerow(vec2 p, Grain grain)
 	if (!SameField(tile + ivec2(1, 0), home)) near = min(near, 1.0 - f.x);
 	if (!SameField(tile - ivec2(0, 1), home)) near = min(near, f.y);
 	if (!SameField(tile + ivec2(0, 1), home)) near = min(near, 1.0 - f.y);
-	float width = HEDGE_WIDTH * (0.6 + 0.8 * grain.fine);
-	float hedge = (1.0 - smoothstep(width, width + 1.5 / tile_pixels, near)) * Resolved(1.0 / HEDGE_WIDTH);
-	return vec4(HEDGE * Varied(grain.micro, 0.5), 1.0) * hedge;
+	float width = HEDGE_WIDTH * (0.5 + 0.9 * grain.fine);
+	float gaps = smoothstep(0.25, 0.4, Noise(p * HEDGE_GAPS_PER_TILE + 4.4));
+	float hedge = (1.0 - smoothstep(width, width + 1.5 / tile_pixels, near)) * gaps * Resolved(1.0 / HEDGE_WIDTH);
+	return vec4(HEDGE * Varied(grain.micro, 0.6) * Varied(grain.clump, 0.4), 1.0) * hedge * HEDGE_OPACITY;
 }
 
 /* Fine bumps catch the light up close: soft on grass and fields, sharp on scree and rock. */
