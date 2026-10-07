@@ -30,6 +30,7 @@ const vec3 LOWLAND = vec3(0.90, 0.95, 0.86);
 const vec3 HIGHLAND = vec3(1.12, 1.06, 0.94);
 const float TERRAIN_ROUGHNESS = 0.85;
 const float WALL_MARK = 0.5;
+const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
 
 const float BLEND_WIDTH = 0.28;
@@ -776,6 +777,7 @@ void main()
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);
 	Relief relief = ReliefAt(normal, levels_per_pixel);
+	relief.steep *= 1.0 - clamp(v_mark / FILL_MARK, 0.0, 1.0);
 
 	vec3 albedo;
 	float occlusion = 1.0;

@@ -32,6 +32,8 @@ inline constexpr std::array<VertexAttribute, 2> TERRAIN_LAYOUT = {{
 
 inline constexpr double WALL_MARK = 1.0;
 inline constexpr double DRY_MARK = 0.0;
+/* Earth banked up under a way, which grass covers however steep it stands. */
+inline constexpr double FILL_MARK = 0.25;
 
 struct TerrainMesh : TriangleList<TerrainVertex> {
 	using TriangleList<TerrainVertex>::Add;

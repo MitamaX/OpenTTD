@@ -35,9 +35,14 @@ static constexpr double STEEP_BANK_RUN = 0.35;
 static constexpr double LONGEST_BANK_RUN = 1.0;
 static constexpr double LEAST_BANK_FALL = 0.25;
 static constexpr double BANK_PROBE = 0.25;
-static constexpr double EARTH_BANK_RUN_PER_RISE = 2.0;
+static constexpr double EARTH_BANK_RUN_PER_RISE = 2.5;
 static constexpr double OPEN_EARTH_BANK_RUN = 1.0;
+static constexpr double FAR_EARTH_BANK_RUN = 2.0;
 static constexpr double WAYSIDE_EARTH_BANK_RUN = 0.2;
+static constexpr int EARTH_BANK_ROWS = 5;
+static constexpr double GROUND_PROBE = 0.05;
+/* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
+static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int COAST_DIVISIONS = 4;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
@@ -296,54 +301,114 @@ static Groundwork GroundworkAt(int tx, int ty)
 	return GroundworkOf(_world_tiles.GroundAt(tile), _world_tiles.NetworkAt(tile));
 }
 
-/* Ways climb on embankments and run through cuttings whose earth sides lean out over the lower tile, short of any way along it there;
- * buildings keep the stone walls of their foundations. */
-static std::optional<double> EarthBankRun(int tx, int ty, int nx, int ny)
+/* How a bank between a tile and a lower one beside it is laid: how far it may reach out over the lower ground, and whether it is earth banked up under a way. */
+struct EarthBank {
+	double run;
+	bool fill;
+};
+
+/* Ways climb on embankments and run through cuttings whose earth sides lean out over the lower tile, short of any way along it there,
+ * and an embankment grades out over open ground as far as the tile beyond when that is open too; buildings keep the stone walls of their foundations. */
+static std::optional<EarthBank> EarthBankOf(int tx, int ty, int nx, int ny)
 {
 	if (!OnMap(nx, ny)) return std::nullopt;
 	Groundwork high = GroundworkAt(tx, ty);
 	Groundwork low = GroundworkAt(nx, ny);
 	if (high == Groundwork::Built || low == Groundwork::Built || (high == Groundwork::Open && low == Groundwork::Open)) return std::nullopt;
-	return low == Groundwork::Way ? WAYSIDE_EARTH_BANK_RUN : OPEN_EARTH_BANK_RUN;
+	bool fill = high == Groundwork::Way;
+	if (low == Groundwork::Way) return EarthBank{WAYSIDE_EARTH_BANK_RUN, fill};
+	int fx = 2 * nx - tx;
+	int fy = 2 * ny - ty;
+	bool open_beyond = OnMap(fx, fy) && GroundworkAt(fx, fy) == Groundwork::Open;
+	return EarthBank{open_beyond ? FAR_EARTH_BANK_RUN : OPEN_EARTH_BANK_RUN, fill};
 }
 
-/* Where a bank's top meets a tile corner, and where its foot reaches out to from there. */
+/* The points down one end of a bank, from its top at the step's top to its foot on the ground, and their normals. */
 struct BankEdge {
-	WorldPoint top;
-	WorldPoint foot;
+	std::array<WorldPoint, EARTH_BANK_ROWS + 1> points;
+	std::array<Vec3, EARTH_BANK_ROWS + 1> normals;
 };
 
-/* An earth bank: its top along the step's top, its foot leaning out as far as its run allows and resting on the lower tile's ground there. */
-static std::array<BankEdge, 2> AddEarthBank(TerrainMesh &mesh, const TileGround &low, const StepFace &step, double run)
+/* How far down from its top toward the ground a bank has come a share of the way out, levelling off at both ends so it rounds into the way's shoulder and the ground. */
+static double BankFall(double share)
 {
-	double rise = LevelRise();
-	auto lean = [&](const WorldPoint &top, const WorldPoint &foot) {
-		double reach = std::min((top.level - foot.level) * rise * EARTH_BANK_RUN_PER_RISE, run);
-		double x = foot.x + step.outward.x * reach;
-		double y = foot.y + step.outward.y * reach;
-		return WorldPoint{x, y, std::min(low.Level(x, y), top.level)};
-	};
-	std::array<WorldPoint, 4> ring = {step.ring[0], lean(step.ring[0], step.ring[1]), lean(step.ring[3], step.ring[2]), step.ring[3]};
-	Vec3 face = FaceNormal(ring);
-	auto normal = [&](const WorldPoint &at, bool top) {
-		return top && AtCorner(at) ? SmoothNormal(static_cast<int>(at.x), static_cast<int>(at.y), static_cast<uint8_t>(at.level)) : face;
-	};
-	std::array<uint32_t, 4> corners;
-	for (size_t i = 0; i < ring.size(); i++) corners[i] = mesh.Add(ring[i], normal(ring[i], i == 0 || i == 3), DRY_MARK);
-	mesh.Quad(corners[0], corners[1], corners[2], corners[3]);
-	return {{{ring[0], ring[1]}, {ring[3], ring[2]}}};
+	return share * share * (3.0 - 2.0 * share);
 }
 
-/* Two banks leaning out from the sides of a corner leave a wedge open between their feet, which a facet closes. */
-static void CloseBankCorners(TerrainMesh &mesh, std::span<const BankEdge> edges)
+static double BankFallSlope(double share)
+{
+	return 6.0 * share * (1.0 - share);
+}
+
+/* The ground under a point beyond a step's foot: the lower tile's own as far as it reaches, and whatever tile lies there further out. */
+static double GroundBeyond(const TileGround &low, double x, double y, double reach)
+{
+	return reach < 1.0 ? low.Level(x, y) : GroundLevel(x, y);
+}
+
+/* How the ground climbs along map x and map y at a point, in levels per tile. */
+static MapVector GroundClimb(double x, double y)
+{
+	double east = GroundLevel(x + GROUND_PROBE, y) - GroundLevel(x - GROUND_PROBE, y);
+	double south = GroundLevel(x, y + GROUND_PROBE) - GroundLevel(x, y - GROUND_PROBE);
+	return MapVector{east, south} * (0.5 / GROUND_PROBE);
+}
+
+static Vec3 ClimbNormal(const MapVector &climb)
+{
+	double rise = LevelRise();
+	return Normalised(Vec3{-climb.x * rise, -climb.y * rise, 1.0});
+}
+
+/* One end of an earth bank: from the step's top it grades out over the lower ground, as far as its run allows for the height it falls, onto the ground there. */
+static BankEdge BankEnd(const TileGround &low, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double run)
+{
+	double reach = std::min((top.level - foot.level) * LevelRise() * EARTH_BANK_RUN_PER_RISE, run);
+	BankEdge edge;
+	for (int row = 0; row <= EARTH_BANK_ROWS; row++) {
+		double share = static_cast<double>(row) / EARTH_BANK_ROWS;
+		double out = reach * share;
+		double x = foot.x + outward.x * out;
+		double y = foot.y + outward.y * out;
+		double ground = std::min(GroundBeyond(low, x, y, out) - BANK_FOOT_DIP * share, top.level);
+		double fall = BankFall(share);
+		MapVector climb = GroundClimb(x, y) * fall - outward * ((top.level - ground) * BankFallSlope(share) / std::max(reach, GROUND_PROBE));
+		edge.points[row] = {x, y, top.level + (ground - top.level) * fall};
+		edge.normals[row] = ClimbNormal(climb);
+	}
+	if (AtCorner(top)) edge.normals[0] = SmoothNormal(static_cast<int>(top.x), static_cast<int>(top.y), static_cast<uint8_t>(top.level));
+	return edge;
+}
+
+static void AddBankStrip(TerrainMesh &mesh, const BankEdge &first, const BankEdge &second, double mark)
+{
+	uint32_t previous = 0;
+	for (int row = 0; row <= EARTH_BANK_ROWS; row++) {
+		uint32_t near = mesh.Add(first.points[row], first.normals[row], mark);
+		mesh.Add(second.points[row], second.normals[row], mark);
+		if (row > 0) mesh.Quad(previous, previous + 1, near + 1, near);
+		previous = near;
+	}
+}
+
+/* An earth bank: its top along the step's top, grading out over the lower tile and on beyond it where its run reaches. */
+static std::array<BankEdge, 2> AddEarthBank(TerrainMesh &mesh, const TileGround &low, const StepFace &step, const EarthBank &bank)
+{
+	BankEdge first = BankEnd(low, step.ring[0], step.ring[1], step.outward, bank.run);
+	BankEdge second = BankEnd(low, step.ring[3], step.ring[2], step.outward, bank.run);
+	AddBankStrip(mesh, first, second, bank.fill ? FILL_MARK : DRY_MARK);
+	return {first, second};
+}
+
+/* Two banks grading out from the sides of a corner leave a wedge open between their ends, which a strip closes. */
+static void CloseBankCorners(TerrainMesh &mesh, std::span<const BankEdge> edges, std::span<const double> marks)
 {
 	for (size_t a = 0; a < edges.size(); a++) {
 		for (size_t b = a + 1; b < edges.size(); b++) {
-			const BankEdge &first = edges[a];
-			const BankEdge &second = edges[b];
-			if (first.top.x != second.top.x || first.top.y != second.top.y || !AtCorner(first.top)) continue;
-			Vec3 normal = FaceNormal({first.top, first.foot, second.foot, first.top});
-			mesh.Triangle(mesh.Add(first.top, normal, DRY_MARK), mesh.Add(first.foot, normal, DRY_MARK), mesh.Add(second.foot, normal, DRY_MARK));
+			const WorldPoint &top = edges[a].points[0];
+			const WorldPoint &other = edges[b].points[0];
+			if (top.x != other.x || top.y != other.y || !AtCorner(top)) continue;
+			AddBankStrip(mesh, edges[a], edges[b], std::max(marks[a], marks[b]));
 		}
 	}
 }
@@ -359,6 +424,7 @@ static void AddWall(TerrainMesh &mesh, const StepFace &step)
 static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 {
 	std::vector<BankEdge> bank_edges;
+	std::vector<double> bank_marks;
 	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
 		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
 		if (!step.has_value()) continue;
@@ -367,14 +433,15 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 		int ny = ty + across.y;
 		if (StandsInSea(nx, ny)) {
 			AddBank(mesh, bed, tx, ty, *step);
-		} else if (std::optional<double> run = EarthBankRun(tx, ty, nx, ny); run.has_value()) {
-			std::array<BankEdge, 2> edges = AddEarthBank(mesh, TileGround(nx, ny), *step, *run);
+		} else if (std::optional<EarthBank> bank = EarthBankOf(tx, ty, nx, ny); bank.has_value()) {
+			std::array<BankEdge, 2> edges = AddEarthBank(mesh, TileGround(nx, ny), *step, *bank);
 			bank_edges.insert(bank_edges.end(), edges.begin(), edges.end());
+			bank_marks.insert(bank_marks.end(), 2, bank->fill ? FILL_MARK : DRY_MARK);
 		} else {
 			AddWall(mesh, *step);
 		}
 	}
-	CloseBankCorners(mesh, bank_edges);
+	CloseBankCorners(mesh, bank_edges, bank_marks);
 }
 
 /* A run of samples along a course's middle line, carried on a step beyond each end along the course's heading there, so its offsets end square to it. */
@@ -410,8 +477,8 @@ static void AddFormation(TerrainMesh &mesh, const WayCourse &course, double half
 			MapVector side = Unit(out - at);
 			bool flat = inner.drop == outer.drop;
 			Vec3 normal = flat ? UPRIGHT : Normalised(Vec3{side.x, side.y, FORMATION_RUN});
-			uint32_t near = mesh.Add({at.x, at.y, top - inner.drop}, normal, DRY_MARK);
-			mesh.Add({out.x, out.y, top - outer.drop}, normal, DRY_MARK);
+			uint32_t near = mesh.Add({at.x, at.y, top - inner.drop}, normal, FILL_MARK);
+			mesh.Add({out.x, out.y, top - outer.drop}, normal, FILL_MARK);
 			if (row > 0) mesh.Quad(previous, previous + 1, near + 1, near);
 			previous = near;
 		}
