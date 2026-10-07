@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 #include "../core/seed.h"
@@ -21,8 +22,6 @@
 #include "../../safeguards.h"
 
 static constexpr int DETAIL_SIZE = 512;
-static constexpr int FINE_CELLS = 28;
-static constexpr int MICRO_CELLS = 68;
 static constexpr float SLOPE_ENCODING = 6.0f;
 static constexpr int HOLLOW_REACH = 4;
 static constexpr float HOLLOW_ENCODING = 4.0f;
@@ -83,43 +82,58 @@ private:
 	std::vector<float> values;
 };
 
-static float LatticeShare(int x, int y, int period, uint32_t salt)
+/* One octave of noise: a lattice of this many cells across the texture, read along a turn given as a whole number vector, so it still wraps with the texture but lines up with neither of its edges. */
+struct Lattice {
+	int cells;
+	int turn_x;
+	int turn_y;
+	float weight;
+};
+
+static constexpr std::array<Lattice, 2> FINE_LATTICES = {{{12, 1, 2, 1.0f}, {25, 2, -1, 0.55f}}};
+static constexpr std::array<Lattice, 3> MICRO_LATTICES = {{{30, 2, 1, 1.0f}, {60, 1, -2, 0.55f}, {90, 1, 1, 0.3f}}};
+
+static float Quintic(float f)
+{
+	return f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+}
+
+/* The gradient at a lattice point, wrapping with the lattice. */
+static std::pair<float, float> LatticeGradient(int x, int y, int period, uint32_t salt)
 {
 	uint32_t wx = static_cast<uint32_t>(((x % period) + period) % period);
 	uint32_t wy = static_cast<uint32_t>(((y % period) + period) % period);
-	return Hash32(wx * 0x8DA6B343U ^ Hash32(wy * 0xD8163841U + salt)) / 4294967296.0f;
+	float angle = Hash32(wx * 0x8DA6B343U ^ Hash32(wy * 0xD8163841U + salt)) / 4294967296.0f * 2.0f * static_cast<float>(M_PI);
+	return {std::cos(angle), std::sin(angle)};
 }
 
-static float Eased(float f)
+/* Gradient noise, which unlike value noise shows no ridges along its lattice. */
+static float GradientNoise(float u, float v, int period, uint32_t salt)
 {
-	return f * f * (3.0f - 2.0f * f);
-}
-
-/* Value noise over a lattice of this many cells across the texture, wrapping with it. */
-static float PeriodicNoise(int x, int y, int cells, uint32_t salt)
-{
-	float u = static_cast<float>(x) * cells / DETAIL_SIZE;
-	float v = static_cast<float>(y) * cells / DETAIL_SIZE;
 	int cx = static_cast<int>(std::floor(u));
 	int cy = static_cast<int>(std::floor(v));
-	float fx = Eased(u - cx);
-	float fy = Eased(v - cy);
-	float top = std::lerp(LatticeShare(cx, cy, cells, salt), LatticeShare(cx + 1, cy, cells, salt), fx);
-	float bottom = std::lerp(LatticeShare(cx, cy + 1, cells, salt), LatticeShare(cx + 1, cy + 1, cells, salt), fx);
-	return std::lerp(top, bottom, fy);
+	float fx = u - cx;
+	float fy = v - cy;
+	auto corner = [&](int dx, int dy) {
+		auto [gx, gy] = LatticeGradient(cx + dx, cy + dy, period, salt);
+		return gx * (fx - dx) + gy * (fy - dy);
+	};
+	float sx = Quintic(fx);
+	float sy = Quintic(fy);
+	return std::lerp(std::lerp(corner(0, 0), corner(1, 0), sx), std::lerp(corner(0, 1), corner(1, 1), sx), sy);
 }
 
-static float Octaves(int x, int y, int cells, int count, uint32_t salt)
+template <size_t N>
+static float Octaves(int x, int y, const std::array<Lattice, N> &lattices, uint32_t salt)
 {
 	float sum = 0.0f;
-	float weight = 1.0f;
-	float total = 0.0f;
-	for (int octave = 0; octave < count; octave++) {
-		sum += PeriodicNoise(x, y, cells << octave, salt + octave) * weight;
-		total += weight;
-		weight *= 0.55f;
+	for (const Lattice &lattice : lattices) {
+		float scale = static_cast<float>(lattice.cells) / DETAIL_SIZE;
+		float u = (lattice.turn_x * x - lattice.turn_y * y) * scale;
+		float v = (lattice.turn_y * x + lattice.turn_x * y) * scale;
+		sum += GradientNoise(u, v, lattice.cells, salt++) * lattice.weight;
 	}
-	return sum / total;
+	return sum;
 }
 
 /* A stone's height across its face, rounded on top and easing into the ground at its rim. */
@@ -208,8 +222,8 @@ struct DetailTexels {
 static DetailTexels BuildDetail()
 {
 	DetailPlane fine, micro, stones, bumps;
-	fine.Fill([](int x, int y) { return Octaves(x, y, FINE_CELLS, 2, 11); });
-	micro.Fill([](int x, int y) { return Octaves(x, y, MICRO_CELLS, 3, 23); });
+	fine.Fill([](int x, int y) { return Octaves(x, y, FINE_LATTICES, 11); });
+	micro.Fill([](int x, int y) { return Octaves(x, y, MICRO_LATTICES, 23); });
 	fine.Normalise();
 	micro.Normalise();
 	stones.Fill(StonesAt);

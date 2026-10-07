@@ -78,6 +78,7 @@ const float PALE_STONE = 1.15;
 const float BOULDERS_PER_TILE = 5.5;
 const float MICRO_PER_TILE = 17.0;
 const float CLUMPS_PER_TILE = 3.3;
+const float LOCAL_PER_TILE = 1.3;
 const float RELIEF_DEPTH = 0.035;
 const float STONY_HOLLOWS = 1.0;
 
@@ -216,7 +217,8 @@ mat2 footprint;
 
 Grain GrainAt(vec2 p, Detail detail)
 {
-	return Grain(Layered(p, 0.15), Layered(p, 1.3), Octave(p + 2.2, CLUMPS_PER_TILE), detail.fine, detail.micro, detail.stones, detail.hollow);
+	float local = (2.0 * FacingOctave(detail, LOCAL_PER_TILE, 0.0) + FacingOctave(detail, LOCAL_PER_TILE * 2.07, 17.3)) / 3.0;
+	return Grain(Layered(p, 0.15), local, FacingOctave(detail, CLUMPS_PER_TILE, 2.2), detail.fine, detail.micro, detail.stones, detail.hollow);
 }
 
 Ground GroundAt(ivec2 tile)
