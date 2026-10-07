@@ -42,12 +42,18 @@ protected:
 	int ty;
 
 private:
+	/* The tiles about this one whose ground curves are looked up this far either side of it. */
+	static constexpr int CURVING_REACH = 2;
+	static constexpr int CURVING_SIDE = 2 * CURVING_REACH + 1;
+
 	double Faceted(double x, double y) const;
 	double Freedom(double x, double y) const;
+	bool Curving(int nx, int ny) const;
 
 	std::array<double, 4> corners;
 	double straightening_reach;
 	mutable std::optional<std::array<double, 4>> held;
+	mutable std::optional<std::array<bool, CURVING_SIDE * CURVING_SIDE>> curving;
 };
 
 /* A bare coast's ground: a spline through the bed's corners. */

@@ -97,11 +97,24 @@ double TileRelief::Freedom(double x, double y) const
 	double freedom = 1.0;
 	for (int ny = cy - SPLINE_REACH; ny <= cy + SPLINE_REACH; ny++) {
 		for (int nx = cx - SPLINE_REACH; nx <= cx + SPLINE_REACH; nx++) {
-			if (this->Curves(nx, ny)) continue;
+			if (this->Curving(nx, ny)) continue;
 			freedom = std::min(freedom, SmoothStep(0.0, this->straightening_reach, DistanceToTile(x, y, nx, ny)));
 		}
 	}
 	return freedom;
+}
+
+/* Whether a tile near this one curves, asked of each tile once. */
+bool TileRelief::Curving(int nx, int ny) const
+{
+	if (!this->curving.has_value()) {
+		std::array<bool, CURVING_SIDE * CURVING_SIDE> curving;
+		for (int j = 0; j < CURVING_SIDE; j++) {
+			for (int i = 0; i < CURVING_SIDE; i++) curving[j * CURVING_SIDE + i] = this->Curves(this->tx + i - CURVING_REACH, this->ty + j - CURVING_REACH);
+		}
+		this->curving = curving;
+	}
+	return (*this->curving)[(ny - this->ty + CURVING_REACH) * CURVING_SIDE + nx - this->tx + CURVING_REACH];
 }
 
 ShoreRelief::ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners) : TileRelief(tx, ty, corners, SHORE_STRAIGHTENING_REACH), bed(bed)
