@@ -490,7 +490,8 @@ vec3 Stratum(int layer)
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
 vec3 Scree(Grain grain, vec2 p)
 {
-	vec3 loose = Landscape() == LANDSCAPE_TOYLAND ? Stratum(int(Noise(p * BOULDERS_PER_TILE) * 8.0)) : SCREE;
+	vec3 candy = mix(ToyStrataMean(), Stratum(int(Noise(p * BOULDERS_PER_TILE) * 8.0)), Resolved(BOULDERS_PER_TILE));
+	vec3 loose = Landscape() == LANDSCAPE_TOYLAND ? candy : SCREE;
 	vec3 tone = loose * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
 	return tone * mix(1.0, 1.18, grain.stones) * Hollowed(grain, STONY_HOLLOWS);
 }
