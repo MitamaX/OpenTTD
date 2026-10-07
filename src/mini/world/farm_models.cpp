@@ -10,10 +10,12 @@
 #include "../../stdafx.h"
 #include "farm_models.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
 #include "../core/seed.h"
+#include "../map/building_form.h"
 #include "../model/model_shapes.h"
 #include "vehicle_models.h"
 
@@ -25,7 +27,7 @@ static constexpr uint32_t ROOF = PaintworkTone(Paintwork::Secondary, 1.0);
 static constexpr uint32_t CHIMNEY = 0x7A6E66;
 static constexpr uint32_t DOORS = 0x4A3A2C;
 static constexpr uint32_t TIMBER = 0x6B5638;
-static constexpr uint32_t STONE = 0x8C887E;
+static constexpr uint32_t STONE = 0x7A766C;
 static constexpr int ROUND_SIDES = 10;
 static constexpr double HALF_SIDE = 0.5;
 
@@ -141,27 +143,63 @@ static ModelMesh Fence()
 	return fence.Paint(TIMBER);
 }
 
-/* Dry stone laid along a tile's side in blocks of uneven height, a little wider at the foot. */
-static ModelMesh StoneWall()
+/* One course of a dry stone wall: stones of uneven length and height, set a little off the line and tipped this way and that, narrowing toward the top. */
+struct WallCourse {
+	SeedRange length;
+	SeedRange height;
+	double half_foot;
+	double half_top;
+	double shade;
+};
+
+static constexpr std::array<WallCourse, 2> WALL_COURSES = {{
+	{{0.07, 0.13}, {0.022, 0.03}, 0.022, 0.017, 0.8},
+	{{0.04, 0.08}, {0.012, 0.02}, 0.016, 0.011, 1.0},
+}};
+static constexpr double WALL_SWAY = 0.006;
+static constexpr double WALL_TIP = 0.004;
+static constexpr SeedRange STONE_TONES = {0.65, 1.2};
+static constexpr double STONE_GAP = 0.006;
+static constexpr double FOOT_OPENNESS = 0.45;
+static constexpr double WALL_HEIGHT = 0.04;
+static constexpr double STONE_FACE_VARIETY = 0.08;
+
+static void LayCourse(ModelMesh &wall, const WallCourse &course, double base, SeedDice &dice)
 {
-	constexpr int BLOCKS = 10;
-	constexpr double HALF_FOOT = 0.02;
-	constexpr double HALF_TOP = 0.013;
-	constexpr SeedRange HEIGHT = {0.036, 0.048};
-	SeedDice dice(0x5704E);
-	ModelMesh wall;
-	double length = 2.0 * HALF_SIDE / BLOCKS;
-	for (int block = 0; block < BLOCKS; block++) {
-		double x0 = -HALF_SIDE + block * length;
-		double height = dice.Between(HEIGHT);
-		std::array<MapVector, 4> foot = {MapVector{x0, -HALF_FOOT}, MapVector{x0 + length, -HALF_FOOT}, MapVector{x0 + length, HALF_FOOT}, MapVector{x0, HALF_FOOT}};
+	double x0 = -HALF_SIDE - dice.Between(0.0, course.length.low);
+	while (x0 < HALF_SIDE) {
+		double x1 = std::min(x0 + dice.Between(course.length), HALF_SIDE);
+		double start = std::max(x0, -HALF_SIDE) + STONE_GAP / 2.0;
+		double end = x1 - STONE_GAP / 2.0;
+		double sway = dice.Between(-WALL_SWAY, WALL_SWAY);
+		double height = dice.Between(course.height);
+		double tip = dice.Between(-WALL_TIP, WALL_TIP);
+		std::array<MapVector, 4> foot = {MapVector{start, sway - course.half_foot}, MapVector{end, sway - course.half_foot}, MapVector{end, sway + course.half_foot}, MapVector{start, sway + course.half_foot}};
 		ModelMesh stone = Extrusion(foot, height);
 		for (ModelVertex &vertex : stone.vertices) {
-			if (vertex.z > 0.0f) vertex.y *= static_cast<float>(HALF_TOP / HALF_FOOT);
+			if (vertex.z <= 0.0f) {
+				vertex.z += static_cast<float>(base);
+				continue;
+			}
+			vertex.y = static_cast<float>(sway + (vertex.y - sway) * course.half_top / course.half_foot);
+			vertex.z += static_cast<float>(base + tip * (vertex.x - (start + end) / 2.0) / (end - start));
 		}
-		wall.Append(stone.Facet().Paint(STONE).Vary(0.12, dice.Next()));
+		wall.Append(stone.Facet().Paint(ScaledRgb(STONE, course.shade * dice.Between(STONE_TONES))).Vary(STONE_FACE_VARIETY, dice.Next()));
+		x0 = x1;
 	}
-	return wall;
+}
+
+/* Dry stone laid along a tile's side in two courses, big stones below and smaller ones on top, so its line breaks up against the sky; the grass about its foot keeps the light off it there. */
+static ModelMesh StoneWall()
+{
+	SeedDice dice(0x5704E);
+	ModelMesh wall;
+	double base = 0.0;
+	for (const WallCourse &course : WALL_COURSES) {
+		LayCourse(wall, course, base, dice);
+		base += course.height.low;
+	}
+	return wall.Occlude([](const Vec3 &at) { return FOOT_OPENNESS + (1.0 - FOOT_OPENNESS) * std::min(at.z / WALL_HEIGHT, 1.0); });
 }
 
 std::vector<ModelMesh> BuildFarmModels()
