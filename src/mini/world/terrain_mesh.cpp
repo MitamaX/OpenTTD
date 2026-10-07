@@ -601,9 +601,8 @@ static void AddFormations(TerrainMesh &mesh, int tx, int ty)
 	if (std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty); course.has_value() && course->Raised()) AddFormation(mesh, *course, ROAD_HALF);
 }
 
-static TerrainMesh BuildTiles(const TileSpan &tiles)
+static TerrainMesh BuildTiles(const TileSpan &tiles, const Seabed &bed)
 {
-	Seabed bed(tiles);
 	TerrainMesh mesh;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
@@ -625,9 +624,8 @@ static std::vector<int> LatticeLines(int first, int last, int step)
 	return lines;
 }
 
-static TerrainMesh BuildLattice(const TileSpan &tiles, int step)
+static TerrainMesh BuildLattice(const TileSpan &tiles, const Seabed &bed, int step)
 {
-	Seabed bed(tiles);
 	std::vector<int> xs = LatticeLines(tiles.tx0, tiles.tx1, step);
 	std::vector<int> ys = LatticeLines(tiles.ty0, tiles.ty1, step);
 	size_t columns = xs.size();
@@ -660,17 +658,33 @@ static TerrainMesh BuildLattice(const TileSpan &tiles, int step)
 	return mesh;
 }
 
-/* One edge of the map: the line it runs along, across the axis it bounds, and which way the sea lies from it. */
+/* One edge of the map: the line it runs along, across the axis it bounds, which way the sea lies from it, and the corners of a block's side along it. */
 struct MapEdge {
 	bool bounds_x;
 	float line;
 	double outward;
+	int first;
+	int last;
 
-	WorldPoint At(double along, double level) const
+	WorldPoint At(double along, double level, double out = 0.0) const
 	{
-		return this->bounds_x ? WorldPoint{this->line, along, level} : WorldPoint{along, this->line, level};
+		double across = this->line + this->outward * out;
+		return this->bounds_x ? WorldPoint{across, along, level} : WorldPoint{along, across, level};
 	}
 };
+
+/* The edges of the map a block of tiles lies along. */
+static std::vector<MapEdge> EdgesOf(const TileSpan &tiles)
+{
+	int last_x = static_cast<int>(Map::MaxX());
+	int last_y = static_cast<int>(Map::MaxY());
+	std::vector<MapEdge> edges;
+	if (tiles.tx0 == 0) edges.push_back({true, 0.0f, -1.0, tiles.ty0, tiles.ty1 + 1});
+	if (tiles.tx1 == last_x) edges.push_back({true, static_cast<float>(last_x + 1), 1.0, tiles.ty0, tiles.ty1 + 1});
+	if (tiles.ty0 == 0) edges.push_back({false, 0.0f, -1.0, tiles.tx0, tiles.tx1 + 1});
+	if (tiles.ty1 == last_y) edges.push_back({false, static_cast<float>(last_y + 1), 1.0, tiles.tx0, tiles.tx1 + 1});
+	return edges;
+}
 
 /* Where the ground meets the map's edge it is cut down to the sea floor in a face of earth, under the highest ground the block laid along the edge. */
 static void AddEdgeFace(TerrainMesh &mesh, const MapEdge &edge)
@@ -690,62 +704,60 @@ static void AddEdgeFace(TerrainMesh &mesh, const MapEdge &edge)
 	}
 }
 
-static void AddEdgeFaces(TerrainMesh &mesh, const TileSpan &tiles)
+static uint32_t AddSeaFloor(TerrainMesh &mesh, double x, double y)
 {
-	int last_x = static_cast<int>(Map::MaxX());
-	int last_y = static_cast<int>(Map::MaxY());
-	if (tiles.tx0 == 0) AddEdgeFace(mesh, {true, 0.0f, -1.0});
-	if (tiles.tx1 == last_x) AddEdgeFace(mesh, {true, static_cast<float>(last_x + 1), 1.0});
-	if (tiles.ty0 == 0) AddEdgeFace(mesh, {false, 0.0f, -1.0});
-	if (tiles.ty1 == last_y) AddEdgeFace(mesh, {false, static_cast<float>(last_y + 1), 1.0});
+	return mesh.Add({x, y, SEA_FLOOR}, UPRIGHT, SunkMark(-SEA_FLOOR));
+}
+
+/* A corner of the map's edge, sunk as the bed at the border; along the edge it leans as the bed inside does, so the two are lit alike where they meet. */
+static uint32_t AddRim(TerrainMesh &mesh, const Seabed &bed, const WorldPoint &at)
+{
+	int cx = static_cast<int>(at.x);
+	int cy = static_cast<int>(at.y);
+	double sink = CornerSink(cx, cy);
+	return mesh.Add({at.x, at.y, -sink}, sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : UPRIGHT, SunkMark(sink));
+}
+
+/* Beside a block on the map's edge the seabed falls to the open sea's floor over a shelf, which also fills the nook outside a corner of the map. */
+static void AddShelves(TerrainMesh &mesh, const Seabed &bed, std::span<const MapEdge> edges)
+{
+	double shelf = SHELF_TILES;
+	for (const MapEdge &edge : edges) {
+		for (int along = edge.first; along < edge.last; along++) {
+			WorldPoint far = edge.At(along, SEA_FLOOR, shelf);
+			WorldPoint far_next = edge.At(along + 1, SEA_FLOOR, shelf);
+			uint32_t near = AddRim(mesh, bed, edge.At(along, 0.0));
+			uint32_t next = AddRim(mesh, bed, edge.At(along + 1, 0.0));
+			mesh.Quad(near, next, AddSeaFloor(mesh, far_next.x, far_next.y), AddSeaFloor(mesh, far.x, far.y));
+		}
+	}
+	for (const MapEdge &across : edges) {
+		for (const MapEdge &down : edges) {
+			if (!across.bounds_x || down.bounds_x) continue;
+			double x = across.line;
+			double y = down.line;
+			double dx = across.outward * shelf;
+			double dy = down.outward * shelf;
+			mesh.Quad(AddRim(mesh, bed, {x, y, 0.0}), AddSeaFloor(mesh, x + dx, y), AddSeaFloor(mesh, x + dx, y + dy), AddSeaFloor(mesh, x, y + dy));
+		}
+	}
 }
 
 TerrainMesh BuildTerrain(const TileSpan &tiles, int step)
 {
-	TerrainMesh mesh = step <= 1 ? BuildTiles(tiles) : BuildLattice(tiles, step);
-	AddEdgeFaces(mesh, tiles);
+	Seabed bed(tiles);
+	TerrainMesh mesh = step <= 1 ? BuildTiles(tiles, bed) : BuildLattice(tiles, bed, step);
+	std::vector<MapEdge> edges = EdgesOf(tiles);
+	for (const MapEdge &edge : edges) AddEdgeFace(mesh, edge);
+	AddShelves(mesh, bed, edges);
 	return mesh;
 }
 
-/* The seabed falls from the map's edge to the open sea's floor over a shelf, then lies flat out to the horizon; along the edge it leans as the bed inside does, so the two are lit alike where they meet. */
 TerrainMesh BuildOuterBed(Dimension map, double reach)
 {
-	double shelf = SHELF_TILES;
-	double floor = SEA_FLOOR;
-	int columns = static_cast<int>(map.width);
-	int rows = static_cast<int>(map.height);
-	Seabed bed({0, 0, columns - 1, rows - 1});
 	TerrainMesh mesh;
-	auto add = [&](double x, double y, double level) { return mesh.Add({x, y, level}, UPRIGHT, SunkMark(-level)); };
-	auto rim = [&](int cx, int cy) {
-		double sink = CornerSink(cx, cy);
-		return mesh.Add({static_cast<double>(cx), static_cast<double>(cy), -sink}, sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : UPRIGHT, SunkMark(sink));
-	};
-	auto edge = [&](int corners, int cx, int cy, int step_x, int step_y, double out_x, double out_y) {
-		for (int corner = 0; corner < corners; corner++) {
-			int ax = cx + corner * step_x;
-			int ay = cy + corner * step_y;
-			int bx = ax + step_x;
-			int by = ay + step_y;
-			mesh.Quad(rim(ax, ay), rim(bx, by), add(bx + out_x, by + out_y, floor), add(ax + out_x, ay + out_y, floor));
-		}
-	};
-	edge(columns, 0, 0, 1, 0, 0.0, -shelf);
-	edge(columns, 0, rows, 1, 0, 0.0, shelf);
-	edge(rows, 0, 0, 0, 1, -shelf, 0.0);
-	edge(rows, columns, 0, 0, 1, shelf, 0.0);
-
-	auto nook = [&](int cx, int cy, double dx, double dy) {
-		mesh.Quad(rim(cx, cy), add(cx + dx, cy, floor), add(cx + dx, cy + dy, floor), add(cx, cy + dy, floor));
-	};
-	nook(0, 0, -shelf, -shelf);
-	nook(columns, 0, shelf, -shelf);
-	nook(0, rows, -shelf, shelf);
-	nook(columns, rows, shelf, shelf);
-
-	SeaFrame frame(map, shelf, reach);
-	uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
-	for (const MapVector &point : frame.points) add(point.x, point.y, floor);
-	for (const auto &[a, b, c] : frame.triangles) mesh.Triangle(first + a, first + b, first + c);
+	SeaFrame frame(map, SHELF_TILES, reach);
+	for (const MapVector &point : frame.points) AddSeaFloor(mesh, point.x, point.y);
+	for (const auto &[a, b, c] : frame.triangles) mesh.Triangle(a, b, c);
 	return mesh;
 }

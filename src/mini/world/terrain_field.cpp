@@ -36,14 +36,6 @@ static int StepFor(double tile_pixels)
 	return step;
 }
 
-/* The seabed beyond the map meets the bed of the border tiles, which sinks by how far the shore lies within a shelf of them. */
-static bool ShapesOuterBed(const Rect &area, Dimension map)
-{
-	int width = static_cast<int>(map.width);
-	int height = static_cast<int>(map.height);
-	return area.left <= SHELF_TILES || area.top <= SHELF_TILES || area.right >= width - 1 - SHELF_TILES || area.bottom >= height - 1 - SHELF_TILES;
-}
-
 /* A tile whose shape or water changed reshapes the walls, the shading and the seabed of the tiles beside it, and one whose ways changed eases the runs through it afresh,
  * so the blocks around it go stale too. */
 void TerrainField::Sync(const WorldChanges &changes)
@@ -62,7 +54,6 @@ void TerrainField::Sync(const WorldChanges &changes)
 		chunk.stale = true;
 		chunk.surveyed = false;
 	});
-	if (std::ranges::any_of(changes.reliefs, [&](const Rect &area) { return ShapesOuterBed(area, size); })) this->LayOuterBed(size);
 }
 
 void TerrainField::Lay(Dimension map)
@@ -72,15 +63,8 @@ void TerrainField::Lay(Dimension map)
 	this->chunks = std::vector<Chunk>(this->grid.Count());
 	if (this->chunks.empty()) return;
 
-	this->LayOuterBed(map);
-	this->outer_water.Upload(BuildOuterWater(map, OUTER_SEA_REACH), WATER_LAYOUT);
-}
-
-void TerrainField::LayOuterBed(Dimension map)
-{
-	_frame_profile.Count("outer_bed_builds");
-	ProfileScope profile("build", "outer_bed", ProfileClock::Cpu);
 	this->outer_bed.Upload(BuildOuterBed(map, OUTER_SEA_REACH), TERRAIN_LAYOUT);
+	this->outer_water.Upload(BuildOuterWater(map, OUTER_SEA_REACH), WATER_LAYOUT);
 }
 
 void TerrainField::Survey(Chunk &chunk, const TileSpan &tiles) const
@@ -97,6 +81,18 @@ void TerrainField::Survey(Chunk &chunk, const TileSpan &tiles) const
 	chunk.surveyed = true;
 }
 
+/* A block's box reaches out over the shelf of seabed beside it where it lies along the map's edge. */
+std::pair<Vec3, Vec3> TerrainField::Bounds(const Chunk &chunk, const TileSpan &tiles) const
+{
+	Dimension map = this->grid.Map();
+	auto shelf = [](bool on_edge) { return on_edge ? static_cast<double>(SHELF_TILES) : 0.0; };
+	double rise = LevelRise();
+	return {
+		{tiles.tx0 - shelf(tiles.tx0 == 0), tiles.ty0 - shelf(tiles.ty0 == 0), (chunk.low - DEEPEST_SINK) * rise},
+		{tiles.tx1 + 1.0 + shelf(tiles.tx1 + 1 == static_cast<int>(map.width)), tiles.ty1 + 1.0 + shelf(tiles.ty1 + 1 == static_cast<int>(map.height)), chunk.high * rise},
+	};
+}
+
 /* A block out of the frustum is left alone; one inside is built at the step the camera's view of its nearest point asks for, whichever view draws it. */
 TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera, const Frustum &frustum)
 {
@@ -104,9 +100,7 @@ TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera
 	TileSpan tiles = this->grid.TilesOf(index);
 	if (!chunk.surveyed) this->Survey(chunk, tiles);
 
-	double rise = LevelRise();
-	Vec3 low = {static_cast<double>(tiles.tx0), static_cast<double>(tiles.ty0), (chunk.low - DEEPEST_SINK) * rise};
-	Vec3 high = {tiles.tx1 + 1.0, tiles.ty1 + 1.0, chunk.high * rise};
+	auto [low, high] = this->Bounds(chunk, tiles);
 	if (!BoxMeets(frustum, low, high)) return nullptr;
 
 	int step = StepFor(camera.NearestTilePixels(low, high));

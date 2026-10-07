@@ -10,6 +10,7 @@
 #ifndef MINI_WORLD_TERRAIN_FIELD_H
 #define MINI_WORLD_TERRAIN_FIELD_H
 
+#include <utility>
 #include <vector>
 
 #include "../gpu/mesh_buffer.h"
@@ -40,8 +41,8 @@ private:
 	};
 
 	void Lay(Dimension map);
-	void LayOuterBed(Dimension map);
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
+	std::pair<Vec3, Vec3> Bounds(const Chunk &chunk, const TileSpan &tiles) const;
 	Chunk *Prepare(size_t index, const SceneView &camera, const Frustum &frustum);
 	void Evict();
 

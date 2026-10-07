@@ -45,8 +45,9 @@ struct TerrainMesh : TriangleList<TerrainVertex> {
 double SunkMark(double sink);
 
 /* At step one every tile keeps its own facets and walls; a longer step lays a lattice over every step-th corner, skirted down so nothing shows through beside a finer neighbour.
- * Under water the ground sinks toward the seabed. */
+ * Under water the ground sinks toward the seabed; along the map's edge it is cut down in a face of earth over the shelf of seabed falling away beyond. */
 TerrainMesh BuildTerrain(const TileSpan &tiles, int step);
+/* The open sea's floor, flat from the foot of the shelves around the map out to the horizon. */
 TerrainMesh BuildOuterBed(Dimension map, double reach);
 
 #endif /* MINI_WORLD_TERRAIN_MESH_H */
