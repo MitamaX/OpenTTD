@@ -149,6 +149,7 @@ bool WorldPainter::Ready()
 void WorldPainter::Render(const SceneView &view)
 {
 	this->SyncChanges();
+	this->field.Refresh(view);
 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_STENCIL_TEST);

@@ -15,6 +15,7 @@
 #include <map>
 #include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "../../map_func.h"
@@ -601,20 +602,6 @@ static void AddFormations(TerrainMesh &mesh, int tx, int ty)
 	if (std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty); course.has_value() && course->Raised()) AddFormation(mesh, *course, ROAD_HALF);
 }
 
-static TerrainMesh BuildTiles(const TileSpan &tiles, const Seabed &bed)
-{
-	TerrainMesh mesh;
-	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
-		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
-			AddTile(mesh, bed, tx, ty);
-			AddWalls(mesh, bed, tx, ty);
-			AddFormations(mesh, tx, ty);
-			AddRampBank(mesh, tx, ty);
-		}
-	}
-	return mesh;
-}
-
 /* Every step-th corner from the block's first to past its last tile, the last one always included. */
 static std::vector<int> LatticeLines(int first, int last, int step)
 {
@@ -743,14 +730,32 @@ static void AddShelves(TerrainMesh &mesh, const Seabed &bed, std::span<const Map
 	}
 }
 
-TerrainMesh BuildTerrain(const TileSpan &tiles, int step)
+TerrainBuild::TerrainBuild(const TileSpan &tiles, int step) : tiles(tiles), step(step), next_row(tiles.ty0), bed(tiles)
 {
-	Seabed bed(tiles);
-	TerrainMesh mesh = step <= 1 ? BuildTiles(tiles, bed) : BuildLattice(tiles, bed, step);
-	std::vector<MapEdge> edges = EdgesOf(tiles);
-	for (const MapEdge &edge : edges) AddEdgeFace(mesh, edge);
-	AddShelves(mesh, bed, edges);
-	return mesh;
+}
+
+void TerrainBuild::Advance()
+{
+	if (this->step > 1) {
+		this->mesh = BuildLattice(this->tiles, this->bed, this->step);
+		this->next_row = this->tiles.ty1 + 1;
+		return;
+	}
+	int ty = this->next_row++;
+	for (int tx = this->tiles.tx0; tx <= this->tiles.tx1; tx++) {
+		AddTile(this->mesh, this->bed, tx, ty);
+		AddWalls(this->mesh, this->bed, tx, ty);
+		AddFormations(this->mesh, tx, ty);
+		AddRampBank(this->mesh, tx, ty);
+	}
+}
+
+TerrainMesh TerrainBuild::Finish()
+{
+	std::vector<MapEdge> edges = EdgesOf(this->tiles);
+	for (const MapEdge &edge : edges) AddEdgeFace(this->mesh, edge);
+	AddShelves(this->mesh, this->bed, edges);
+	return std::move(this->mesh);
 }
 
 TerrainMesh BuildOuterBed(Dimension map, double reach)

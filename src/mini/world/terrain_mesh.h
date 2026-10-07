@@ -16,6 +16,7 @@
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
 #include "../gpu/mesh_buffer.h"
+#include "seabed.h"
 
 /* Positions run in tiles and height levels; the normal is in render space and its last byte marks a wall, or how far below the water the ground has sunk. */
 struct TerrainVertex {
@@ -44,9 +45,26 @@ struct TerrainMesh : TriangleList<TerrainVertex> {
 
 double SunkMark(double sink);
 
-/* At step one every tile keeps its own facets and walls; a longer step lays a lattice over every step-th corner, skirted down so nothing shows through beside a finer neighbour.
+/* A block's ground, built a row of tiles at a time so the work may be spread over frames. At step one every tile keeps its own facets and walls;
+ * a longer step lays a lattice over every step-th corner in one go, skirted down so nothing shows through beside a finer neighbour.
  * Under water the ground sinks toward the seabed; along the map's edge it is cut down in a face of earth over the shelf of seabed falling away beyond. */
-TerrainMesh BuildTerrain(const TileSpan &tiles, int step);
+class TerrainBuild {
+public:
+	TerrainBuild(const TileSpan &tiles, int step);
+
+	int Step() const { return this->step; }
+	bool Done() const { return this->next_row > this->tiles.ty1; }
+	void Advance();
+	TerrainMesh Finish();
+
+private:
+	TileSpan tiles;
+	int step;
+	int next_row;
+	Seabed bed;
+	TerrainMesh mesh;
+};
+
 /* The open sea's floor, flat from the foot of the shelves around the map out to the horizon. */
 TerrainMesh BuildOuterBed(Dimension map, double reach);
 
