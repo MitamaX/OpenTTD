@@ -105,7 +105,7 @@ const float FOREST_COVER = 0.9;
 const float CANOPY_OCCLUSION = 0.45;
 const float CANOPY_VARIETY = 0.2;
 const float GRID_DEPTH = 0.6;
-const float HIDDEN_BAND_MARGIN = 1.5;
+const float HIDDEN_BAND_MARGIN = 1.1;
 
 const float COURSES_PER_TILE = 6.0;
 const float BLOCKS_PER_TILE = 3.0;
