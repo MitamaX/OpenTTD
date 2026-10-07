@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <limits>
 
+#include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
 #include "../map/volume_geometry.h"
@@ -30,6 +31,7 @@ static constexpr uint SEED_BITS = 8;
 static constexpr uint32_t BARE_EARTH = 0xFF8A7458U;
 static constexpr uint32_t COPING_STONE = 0xFFD8D2C4U;
 static constexpr uint COPING_SHARE = 140;
+static constexpr double VENT_SEED_STEPS = 64.0;
 static constexpr double FASCIA_SHADE = 0.72;
 
 void StructureMesh::Polygon(std::span<const StructureVertex> corners)
@@ -171,7 +173,8 @@ static void AddVent(const BuildingForm &form, const Solid &solid, double floor, 
 	if (solid.fixture != Fixture::Smokestack) return;
 	double top_share = 1.0 - 2.0 * solid.taper;
 	Vec3 mouth = {form.tx + (solid.x0 + solid.x1) / 2.0, form.ty + (solid.y0 + solid.y1) / 2.0, floor + solid.Top() * FORM_HEIGHT_SCALE};
-	vents.push_back({mouth, std::min(solid.x1 - solid.x0, solid.y1 - solid.y0) / 2.0 * top_share});
+	uint32_t seed = Hash32(static_cast<uint32_t>(mouth.x * VENT_SEED_STEPS) ^ Hash32(static_cast<uint32_t>(mouth.y * VENT_SEED_STEPS)));
+	vents.push_back({mouth, std::min(solid.x1 - solid.x0, solid.y1 - solid.y0) / 2.0 * top_share, {}, seed});
 }
 
 static void AddPick(const BuildingForm &form, const Solid &solid, double floor, std::vector<StructurePick> &picks)

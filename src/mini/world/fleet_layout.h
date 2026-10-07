@@ -17,6 +17,7 @@
 
 #include "../../vehicle_type.h"
 #include "../core/camera.h"
+#include "smoke_vent.h"
 #include "vehicle_models.h"
 
 struct Vehicle;
@@ -61,6 +62,7 @@ public:
 	void Lay(double clock);
 	std::span<const PlacedUnit> Units() const { return this->units; }
 	std::span<const ShipWake> Wakes() const { return this->wakes; }
+	std::span<const SmokeVent> Funnels() const { return this->funnels; }
 
 private:
 	struct Link {
@@ -73,10 +75,12 @@ private:
 	void LayShip(const Vehicle *ship);
 	void LayAircraft(const Vehicle *aircraft);
 	void Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length);
+	void AddFunnel(const Vehicle *engine, double heading);
 
 	std::span<const VehicleBounds, VEHICLE_LOOKS> bounds;
 	std::vector<PlacedUnit> units;
 	std::vector<ShipWake> wakes;
+	std::vector<SmokeVent> funnels;
 	std::vector<Link> links;
 	std::vector<WorldPoint> path;
 	double clock = 0.0;

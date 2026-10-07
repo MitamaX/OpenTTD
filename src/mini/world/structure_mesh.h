@@ -20,7 +20,7 @@
 #include "../map/building_form.h"
 #include "../map/map_overlay.h"
 #include "../model/model_mesh.h"
-#include "smoke_plumes.h"
+#include "smoke_vent.h"
 
 /* Forms count a storey an eighth of a tile; standing a sixth of a tile tall, it keeps a building in scale with the ground under it. */
 inline constexpr double FORM_HEIGHT_SCALE = 1.3;

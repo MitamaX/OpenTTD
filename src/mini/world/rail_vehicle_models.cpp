@@ -79,7 +79,7 @@ static ModelMesh SteamEngine(VehicleDetail detail)
 	kit.Body(Plank({-UNIT_REACH, -0.11, 0.05}, {UNIT_REACH, 0.11, 0.074}, RUNNING_GEAR));
 	kit.Body(Barrel(-0.08, 0.17, 0.075, 0.15, 10).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(Barrel(0.17, 0.215, 0.077, 0.15, 10).Paint(RUNNING_GEAR));
-	kit.Body(Column(8, 0.024, 0.028, 0.075).Transform(Mat4::Translation({0.185, 0.0, 0.21})).Paint(RUNNING_GEAR));
+	kit.Body(Column(8, 0.024, STEAM_CHIMNEY_MOUTH, STEAM_CHIMNEY_HEIGHT).Transform(Mat4::Translation(STEAM_CHIMNEY_FOOT)).Paint(RUNNING_GEAR));
 	kit.Body(Hull({0.125, 0.074, 0.255, 0.01}, -0.215, -0.08).Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(Plank({-0.228, -0.135, 0.255}, {-0.07, 0.135, 0.268}, RUNNING_GEAR));
 	kit.Fine(Column(8, 0.032, 0.022, 0.04).Transform(Mat4::Translation({0.06, 0.0, 0.215})).Paint(BRASS).Gloss(METAL_GLOSS));

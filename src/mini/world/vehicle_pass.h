@@ -38,6 +38,7 @@ public:
 	/* The vehicle a sight line from the eye meets first, as the last frame laid them out. */
 	std::optional<VehicleHit> Pick(const Vec3 &origin, const Vec3 &direction) const;
 	std::span<const ShipWake> Wakes() const { return this->fleet.Wakes(); }
+	std::span<const SmokeVent> Funnels() const { return this->fleet.Funnels(); }
 
 private:
 	void Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels);

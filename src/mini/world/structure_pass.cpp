@@ -54,7 +54,6 @@ void StructurePass::Reload()
 {
 	this->program.Reload();
 	this->caster.Reload();
-	this->plumes.Reload();
 }
 
 /* Roofs above the snow line wear snow, on maps that have one. */
@@ -87,10 +86,6 @@ void StructurePass::Draw(const SceneView &view)
 	glUniform2f(this->program.Uniform("u_fade"), static_cast<float>(STRUCTURE_FADE_START), static_cast<float>(STRUCTURE_FADE_END));
 	glUniform1f(this->program.Uniform("u_snow_level"), static_cast<float>(this->snow_level));
 	this->DrawChunks();
-
-	this->plumes.Begin();
-	for (const StructureChunk *chunk : this->shown) this->plumes.Add(view, chunk->vents);
-	this->plumes.Draw();
 }
 
 void StructurePass::DrawChunks() const
@@ -101,7 +96,6 @@ void StructurePass::DrawChunks() const
 void StructurePass::Release()
 {
 	this->field.Release();
-	this->plumes.Release();
 	this->program.Release();
 	this->caster.Release();
 }

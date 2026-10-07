@@ -138,6 +138,11 @@ inline constexpr std::array<const char *, 9> VEHICLE_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/solid.frag",
 };
 
+/* Where a steam engine's chimney stands on its model, how tall and how wide at the mouth its smoke leaves. */
+inline constexpr Vec3 STEAM_CHIMNEY_FOOT = {0.185, 0.0, 0.21};
+inline constexpr double STEAM_CHIMNEY_HEIGHT = 0.075;
+inline constexpr double STEAM_CHIMNEY_MOUTH = 0.028;
+
 /* The box a model fills, in its own frame. */
 struct VehicleBounds {
 	Vec3 low;

@@ -44,8 +44,9 @@ add_files(
     ship_models.cpp
     signal_models.cpp
     signal_models.h
-    smoke_plumes.cpp
-    smoke_plumes.h
+    smoke_pass.cpp
+    smoke_pass.h
+    smoke_vent.h
     station_models.cpp
     station_models.h
     street_furniture.cpp

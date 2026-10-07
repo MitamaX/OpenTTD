@@ -18,6 +18,7 @@
 #include "../../ground_vehicle.hpp"
 #include "../../train.h"
 #include "../../vehicle_base.h"
+#include "../core/seed.h"
 #include "../gpu/draw_list.h"
 #include "../map/tile_shapes.h"
 #include "../map/vehicle_motion.h"
@@ -35,6 +36,7 @@ static constexpr double BANK_PER_TURN = 0.35;
 static constexpr double MAX_BANK = 0.55;
 static constexpr double AIRBORNE_LEVELS = 1.0;
 static constexpr double ROTOR_TURNS_PER_SECOND = 3.3;
+static constexpr double TRAIL_TILES_PER_SECOND = 1.6;
 /* The game keeps a stopped rotor's animation state at zero. */
 static constexpr uint8_t ROTOR_STOPPED = 0;
 
@@ -103,6 +105,7 @@ void FleetLayout::Lay(double clock)
 	this->clock = clock;
 	this->units.clear();
 	this->wakes.clear();
+	this->funnels.clear();
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle()) continue;
 		switch (v->type) {
@@ -136,9 +139,12 @@ void FleetLayout::LayConsist(const Vehicle *head)
 		WorldPoint back = VehicleMotion::Grounded(link.unit, Along(this->path, arc + link.length));
 		arc += link.length;
 		double run = FlatDistance(back, front);
-		double yaw = std::atan2(front.y - back.y, front.x - back.x) + (IsReversed(link.unit) ? std::numbers::pi : 0.0);
+		double heading = std::atan2(front.y - back.y, front.x - back.x);
+		double yaw = heading + (IsReversed(link.unit) ? std::numbers::pi : 0.0);
 		double pitch = std::atan2((front.level - back.level) * LevelRise(), std::max(run, 1e-6)) * (IsReversed(link.unit) ? -1.0 : 1.0);
-		this->Add(link.unit, LookOf(link.unit), Between(back, front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH));
+		VehicleLook look = LookOf(link.unit);
+		this->Add(link.unit, look, Between(back, front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH));
+		if (look == VehicleLook::SteamEngine) this->AddFunnel(link.unit, heading);
 	}
 }
 
@@ -155,6 +161,19 @@ void FleetLayout::LayShip(const Vehicle *ship)
 	if (pace <= 0.0) return;
 	const PlacedUnit &hull = this->units.back();
 	this->wakes.push_back({hull.centre, {std::cos(bearing), std::sin(bearing)}, hull.half.x, hull.half.y, std::min(pace, 1.0)});
+}
+
+/* Steam leaves an engine's chimney and is left behind as the engine runs on, the faster the further. */
+void FleetLayout::AddFunnel(const Vehicle *engine, double heading)
+{
+	const PlacedUnit &placed = this->units.back();
+	const VehicleInstance &instance = placed.instance;
+	Vec3 mouth = {STEAM_CHIMNEY_FOOT.x * instance.length, STEAM_CHIMNEY_FOOT.y, STEAM_CHIMNEY_FOOT.z + STEAM_CHIMNEY_HEIGHT};
+	Vec3 at = Vec3{instance.x, instance.y, instance.z} + Transformed(placed.turn, mouth);
+	const Vehicle *head = engine->First();
+	double pace = head->cur_speed / static_cast<double>(std::max<uint16_t>(head->vcache.cached_max_speed, 1));
+	Vec3 motion = Vec3{std::cos(heading), std::sin(heading), 0.0} * (pace * TRAIL_TILES_PER_SECOND);
+	this->funnels.push_back({at, STEAM_CHIMNEY_MOUTH, motion, Hash32(engine->index.base())});
 }
 
 /* Planes bank into their turns while airborne; a helicopter's rotor turns while the game has it running. */

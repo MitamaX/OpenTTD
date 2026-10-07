@@ -11,6 +11,7 @@
 #define MINI_WORLD_STRUCTURE_PASS_H
 
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "shader_program.h"
@@ -29,12 +30,13 @@ public:
 	void Release() override;
 
 	std::optional<StructureHit> Pick(const Vec3 &origin, const Vec3 &direction) const { return this->field.Pick(origin, direction); }
+	/* The blocks the last frame drew. */
+	std::span<const StructureChunk *const> Shown() const { return this->shown; }
 
 private:
 	void DrawChunks() const;
 
 	StructureField field;
-	SmokePlumes plumes;
 	std::vector<const StructureChunk *> shown;
 	ShaderProgram program;
 	ShaderProgram caster;

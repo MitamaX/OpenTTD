@@ -18,6 +18,7 @@
 #include "../map/way_bends.h"
 #include "forest_pass.h"
 #include "network_pass.h"
+#include "smoke_pass.h"
 #include "street_life_pass.h"
 #include "structure_pass.h"
 #include "terrain_pass.h"
@@ -54,6 +55,7 @@ WorldPainter::WorldPainter()
 	this->passes.push_back(std::make_unique<StreetLifePass>());
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
+	this->passes.push_back(std::make_unique<SmokePass>(*this->structures, *this->vehicles));
 }
 
 void WorldPainter::Reload()
