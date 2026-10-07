@@ -10,32 +10,16 @@
 #ifndef MINI_WORLD_GROUND_COVER_H
 #define MINI_WORLD_GROUND_COVER_H
 
-#include <array>
-#include <vector>
-
-#include "chunk_grid.h"
-#include "scatter.h"
+#include "block_scatter.h"
 #include "tuft_models.h"
 
-class GroundCover final : public Scatter {
+/* Each tuft is gathered in the bucket of its shape. */
+class GroundCover final : public BlockScatter {
 public:
-	void Sync(const WorldChanges &changes) override;
-	/* Each tuft is gathered in the bucket of its shape, a whole block at a time. */
-	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) override;
-	void Release() override;
+	GroundCover();
 
-private:
-	static constexpr int BLOCK_TILES = 16;
-
-	struct Block {
-		std::array<std::vector<VehicleInstance>, TUFT_SHAPES> tufts;
-		bool stale = true;
-	};
-
-	void Build(size_t index);
-
-	ChunkGrid grid{BLOCK_TILES};
-	std::vector<Block> blocks;
+protected:
+	void Strew(const TileSpan &tiles, ScatterCopies &copies) const override;
 };
 
 #endif /* MINI_WORLD_GROUND_COVER_H */

@@ -11,8 +11,10 @@
 #include "vehicle_models.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
+#include "../core/tones.h"
 #include "vehicle_parts.h"
 
 #include "../../safeguards.h"
@@ -33,6 +35,11 @@ static ModelMesh VehicleModel(VehicleLook look, VehicleDetail detail)
 	if (look < VehicleLook::Ferry) return RoadVehicleModel(look, detail);
 	if (look < VehicleLook::PropPlane) return ShipModel(look, detail);
 	return AircraftModel(look, detail);
+}
+
+std::array<uint8_t, 4> InstanceColour(uint32_t rgb, double alpha)
+{
+	return {static_cast<uint8_t>(Red(rgb)), static_cast<uint8_t>(Green(rgb)), static_cast<uint8_t>(Blue(rgb)), static_cast<uint8_t>(std::lround(alpha * CHANNEL_MAX))};
 }
 
 std::vector<ModelMesh> BuildVehicleModels()

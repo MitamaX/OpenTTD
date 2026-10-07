@@ -46,11 +46,6 @@ static constexpr std::array<uint32_t, 12> SHIRTS = {
 };
 static constexpr std::array<uint32_t, 7> TROUSERS = {0x2C3E50, 0x1E1E20, 0x5D6D7E, 0x6E4B2A, 0x3B5998, 0xBFA77A, 0x7A2E2E};
 
-static std::array<uint8_t, 4> Paint(uint32_t rgb)
-{
-	return {static_cast<uint8_t>(Red(rgb)), static_cast<uint8_t>(Green(rgb)), static_cast<uint8_t>(Blue(rgb)), static_cast<uint8_t>(CHANNEL_MAX)};
-}
-
 static MapVector AlongAxis(Axis axis)
 {
 	return axis == AXIS_X ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0};
@@ -125,7 +120,7 @@ void StreetWalkers::Build(size_t index)
 						Walker placed = {
 							static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(along.x), static_cast<float>(along.y),
 							static_cast<float>(std::hypot(to.x - from.x, to.y - from.y)), static_cast<float>(dice.Share()), static_cast<float>(dice.Between(PACE)),
-							Paint(SHIRTS[dice.Below(SHIRTS.size())]), Paint(TROUSERS[dice.Below(TROUSERS.size())]),
+							InstanceColour(SHIRTS[dice.Below(SHIRTS.size())]), InstanceColour(TROUSERS[dice.Below(TROUSERS.size())]),
 						};
 						if (dice.Share() < STANDING_SHARE) placed.pace = 0.0f;
 						block.walkers.push_back(placed);

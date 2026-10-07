@@ -121,6 +121,9 @@ inline constexpr std::array<VertexAttribute, 6> VEHICLE_INSTANCE_LAYOUT = {{
 
 using VehicleBatch = InstanceBatch<VehicleInstance>;
 
+/* A colour as an instance carries it, with its last byte for how full a load is or how opaque. */
+std::array<uint8_t, 4> InstanceColour(uint32_t rgb, double alpha = 1.0);
+
 /* The programs whatever is drawn as a vehicle model shades through. */
 inline constexpr std::array<const char *, 2> VEHICLE_VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",

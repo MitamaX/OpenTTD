@@ -61,11 +61,6 @@ std::optional<double> PlacedUnit::Meets(const Vec3 &origin, const Vec3 &directio
 	return BoxEntry(IntoFrame(this->turn, origin - this->centre), IntoFrame(this->turn, direction), Vec3{0.0, 0.0, 0.0} - grown, grown);
 }
 
-static std::array<uint8_t, 4> ColourBytes(uint32_t rgb, double alpha)
-{
-	return {static_cast<uint8_t>(Red(rgb)), static_cast<uint8_t>(Green(rgb)), static_cast<uint8_t>(Blue(rgb)), static_cast<uint8_t>(std::lround(alpha * CHANNEL_MAX))};
-}
-
 static double FlatDistance(const WorldPoint &a, const WorldPoint &b)
 {
 	return std::hypot(b.x - a.x, b.y - a.y);
@@ -205,7 +200,7 @@ void FleetLayout::Add(const Vehicle *unit, VehicleLook look, const WorldPoint &g
 	VehicleInstance instance = {
 		static_cast<float>(place.x), static_cast<float>(place.y), static_cast<float>(place.z),
 		static_cast<float>(attitude.yaw), static_cast<float>(attitude.pitch), static_cast<float>(attitude.roll), static_cast<float>(length),
-		ColourBytes(paint.primary, 1.0), ColourBytes(paint.secondary, 1.0), ColourBytes(paint.cargo, paint.load),
+		InstanceColour(paint.primary), InstanceColour(paint.secondary), InstanceColour(paint.cargo, paint.load),
 	};
 	this->units.push_back({instance, look, place + Transformed(turn, middle), turn, half, Length(half), unit->First()->index});
 }

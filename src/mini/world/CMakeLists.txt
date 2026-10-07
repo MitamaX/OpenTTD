@@ -1,5 +1,7 @@
 add_files(
     aircraft_models.cpp
+    block_scatter.cpp
+    block_scatter.h
     bridge_models.cpp
     bridge_models.h
     chunk_grid.cpp
