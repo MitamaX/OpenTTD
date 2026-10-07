@@ -55,7 +55,16 @@ private:
 		bool transparent;
 		LabelTarget target;
 		double shown_from_pixels;
+		double shown_until_pixels;
 		LabelRank rank;
+	};
+
+	/* A plate drawn this frame, at the scale its distance gives it. */
+	struct Shown {
+		const Label *label;
+		Rect area;
+		double scale;
+		double opacity;
 	};
 
 	struct Plate {
@@ -64,8 +73,8 @@ private:
 	};
 
 	std::vector<Label> Gather() const;
-	std::optional<Rect> Area(const Label &label) const;
-	void Draw(const Label &label, const Rect &area, double opacity);
+	std::optional<Rect> Area(const Label &label, double scale) const;
+	void Draw(const Shown &shown);
 
 	std::map<LabelTarget, double> opacities;
 	std::vector<Plate> plates;

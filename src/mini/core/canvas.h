@@ -76,7 +76,7 @@ public:
 	void FillTriangle(int cx, int cy, int r, uint32_t c);
 
 	const CanvasText *Text(std::string_view text);
-	void DrawText(const CanvasText &text, int x, int y, uint32_t tint);
+	void DrawText(const CanvasText &text, int x, int y, uint32_t tint, double scale = 1.0);
 	void DrawText(std::string_view text, int x, int y, uint32_t tint);
 
 private:

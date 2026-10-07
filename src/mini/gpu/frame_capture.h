@@ -27,11 +27,13 @@ class FrameCapture {
 public:
 	static constexpr const char SHOT_LIST_VARIABLE[] = "OTTD_MINI_CAPTURE";
 	static constexpr const char MAP_ONLY_VARIABLE[] = "OTTD_MINI_CAPTURE_NOHUD";
+	static constexpr const char CLEAN_VARIABLE[] = "OTTD_MINI_CAPTURE_CLEAN";
 
 	FrameCapture();
 
 	bool Active() const { return this->next < this->shots.size(); }
-	bool HidesHud() const { return this->map_only; }
+	bool HidesHud() const { return this->map_only || this->clean; }
+	bool HidesLabels() const { return this->clean; }
 	std::optional<ViewAim> Aim() const;
 	void Grab(Dimension screen);
 
@@ -42,6 +44,7 @@ private:
 	size_t next = 0;
 	uint frames = 0;
 	bool map_only = false;
+	bool clean = false;
 };
 
 extern FrameCapture _frame_capture;

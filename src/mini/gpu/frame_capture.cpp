@@ -91,6 +91,7 @@ FrameCapture::FrameCapture()
 
 	this->shots = ReadShotList(*list);
 	this->map_only = GetEnv(MAP_ONLY_VARIABLE) == "1";
+	this->clean = GetEnv(CLEAN_VARIABLE) == "1";
 }
 
 std::optional<ViewAim> FrameCapture::Aim() const

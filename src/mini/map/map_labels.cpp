@@ -11,6 +11,7 @@
 #include "map_labels.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "../../company_func.h"
 #include "../../gfx_func.h"
@@ -23,6 +24,7 @@
 #include "../core/canvas.h"
 #include "../core/ground_trace.h"
 #include "../core/tones.h"
+#include "../gpu/frame_capture.h"
 #include "tile_shapes.h"
 
 #include "../../table/strings.h"
@@ -32,7 +34,12 @@
 static constexpr int PLATE_PAD = 3;
 static constexpr int PLATE_GAP = 3;
 static constexpr int PLATE_CLEARANCE = 2;
-static constexpr uint TRANSPARENT_PLATE_ALPHA = 0xAA;
+static constexpr uint TRANSPARENT_PLATE_ALPHA = 0x90;
+static constexpr double SOLID_PLATE_SHARE = 0.72;
+static constexpr double FAR_PLATE_SCALE = 0.68;
+static constexpr double NEAR_PLATE_SCALE = 0.88;
+static constexpr double FAR_PLATE_PIXELS = 6.0;
+static constexpr double NEAR_PLATE_PIXELS = 32.0;
 
 static constexpr double PLACE_LIFT_LEVELS = 2.0;
 static constexpr double TOWN_LIFT_LEVELS = 4.0;
@@ -41,6 +48,9 @@ static constexpr double CITY_SHOWN_FROM_PIXELS = 0.0;
 static constexpr double TOWN_SHOWN_FROM_PIXELS = 4.0;
 static constexpr double STATION_SHOWN_FROM_PIXELS = 12.0;
 static constexpr double INDUSTRY_SHOWN_FROM_PIXELS = 16.0;
+static constexpr double TOWN_SHOWN_UNTIL_PIXELS = 64.0;
+static constexpr double PLACE_SHOWN_UNTIL_PIXELS = 40.0;
+static constexpr double SIGN_SHOWN_UNTIL_PIXELS = std::numeric_limits<double>::infinity();
 static constexpr double OPACITY_STEP = 0.2;
 static constexpr double CLICKABLE_OPACITY = 0.5;
 static constexpr double HIDDEN_OPACITY = 0.01;
@@ -87,56 +97,71 @@ std::vector<MapLabels::Label> MapLabels::Gather() const
 	for (const Sign *si : Sign::Iterate()) {
 		if (si->name.empty()) continue;
 		WorldPoint anchor = {si->x / (double)TILE_SIZE, si->y / (double)TILE_SIZE, si->z / (double)TILE_HEIGHT + SIGN_LIFT_LEVELS};
-		labels.push_back({anchor, si->name, COL_ST_BUOY, false, si->index, 0.0, {LabelBand::Sign, DistanceTo(anchor)}});
+		labels.push_back({anchor, si->name, COL_ST_BUOY, false, si->index, 0.0, SIGN_SHOWN_UNTIL_PIXELS, {LabelBand::Sign, DistanceTo(anchor)}});
 	}
 	for (const Town *t : Town::Iterate()) {
 		std::string text = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
 		double shown_from = t->larger_town ? CITY_SHOWN_FROM_PIXELS : TOWN_SHOWN_FROM_PIXELS;
-		labels.push_back({LiftedOver(t->xy, TOWN_LIFT_LEVELS), std::move(text), MINI_CH_PANEL, true, t->index, shown_from, {LabelBand::Town, -static_cast<double>(t->cache.population)}});
+		labels.push_back({LiftedOver(t->xy, TOWN_LIFT_LEVELS), std::move(text), MINI_CH_PANEL, true, t->index, shown_from, TOWN_SHOWN_UNTIL_PIXELS, {LabelBand::Town, -static_cast<double>(t->cache.population)}});
 	}
 	for (const Station *st : Station::Iterate()) {
 		WorldPoint anchor = LiftedOver(st->xy, PLACE_LIFT_LEVELS);
 		uint32_t plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COL_OBJ : _company_rgb[_company_colours[st->owner]];
-		labels.push_back({anchor, GetString(STR_VIEWPORT_STATION, st->index, st->facilities), plate, false, st->index, STATION_SHOWN_FROM_PIXELS, {LabelBand::Station, DistanceTo(anchor)}});
+		labels.push_back({anchor, GetString(STR_VIEWPORT_STATION, st->index, st->facilities), plate, false, st->index, STATION_SHOWN_FROM_PIXELS, PLACE_SHOWN_UNTIL_PIXELS, {LabelBand::Station, DistanceTo(anchor)}});
 	}
 	/* Oil rigs already carry the plate of their neutral station. */
 	for (const Industry *ind : Industry::Iterate()) {
 		if (ind->neutral_station != nullptr) continue;
 		WorldPoint anchor = LiftedOver(ind->location.GetCenterTile(), PLACE_LIFT_LEVELS);
-		labels.push_back({anchor, GetString(STR_INDUSTRY_NAME, ind->index), COL_IND, false, ind->index, INDUSTRY_SHOWN_FROM_PIXELS, {LabelBand::Industry, DistanceTo(anchor)}});
+		labels.push_back({anchor, GetString(STR_INDUSTRY_NAME, ind->index), COL_IND, false, ind->index, INDUSTRY_SHOWN_FROM_PIXELS, PLACE_SHOWN_UNTIL_PIXELS, {LabelBand::Industry, DistanceTo(anchor)}});
 	}
 	std::ranges::sort(labels, {}, &Label::rank);
 	return labels;
 }
 
+/* Plates shrink with distance, so the far ones crowd less. */
+static double PlateScale(double pixels)
+{
+	return FAR_PLATE_SCALE + (NEAR_PLATE_SCALE - FAR_PLATE_SCALE) * SmoothStep(FAR_PLATE_PIXELS, NEAR_PLATE_PIXELS, pixels);
+}
+
+static int Scaled(int length, double scale)
+{
+	return static_cast<int>(std::lround(length * scale));
+}
+
 /* The plate stands centred over its anchor; nothing when the anchor is off screen. */
-std::optional<Rect> MapLabels::Area(const Label &label) const
+std::optional<Rect> MapLabels::Area(const Label &label, double scale) const
 {
 	const CanvasText *text = _canvas.Text(label.text);
 	int text_width = text != nullptr ? text->w : static_cast<int>(GetStringBoundingBox(label.text).width);
-	int w = text_width + 2 * PLATE_PAD;
-	int h = GetCharacterHeight(FS_NORMAL) + 2 * PLATE_PAD;
+	int pad = Scaled(PLATE_PAD, scale);
+	int w = Scaled(text_width, scale) + 2 * pad;
+	int h = Scaled(GetCharacterHeight(FS_NORMAL), scale) + 2 * pad;
 	Point at = _camera.ScreenOf(label.anchor);
 	Rect area = {at.x - w / 2, at.y - h - PLATE_GAP, at.x - w / 2 + w - 1, at.y - PLATE_GAP - 1};
 	if (area.right < 0 || area.bottom < 0 || area.left >= _camera.Width() || area.top >= _camera.Height()) return std::nullopt;
 	return area;
 }
 
-/* A plate is wanted where its anchor is near enough, in sight and clear of every plate ranked above it; its opacity eases toward that each frame.
- * Plates are drawn lowest rank last, so the plates that matter most lie on top. */
+/* A plate is wanted where its anchor is near enough, though not so near that its place shows for itself, in sight and clear of every plate ranked above it;
+ * its opacity eases toward that each frame. Plates are drawn lowest rank last, so the plates that matter most lie on top. A clean capture shows none. */
 void MapLabels::Paint()
 {
 	this->plates.clear();
+	if (_frame_capture.HidesLabels()) return;
 	std::vector<Rect> taken;
-	std::vector<std::pair<const Label *, Rect>> drawn;
+	std::vector<Shown> drawn;
 	std::map<LabelTarget, double> eased;
 	std::vector<Label> labels = this->Gather();
 	for (const Label &label : labels) {
-		std::optional<Rect> area = this->Area(label);
+		double pixels = _camera.Focal() / std::max(DistanceTo(label.anchor), _camera.Near());
+		double scale = PlateScale(pixels);
+		std::optional<Rect> area = this->Area(label, scale);
 		if (!area.has_value()) continue;
 
-		double pixels = _camera.Focal() / std::max(DistanceTo(label.anchor), _camera.Near());
-		bool wanted = pixels >= label.shown_from_pixels && !Overlaps(*area, taken) && !HiddenByGround(label.anchor);
+		bool near_enough = pixels >= label.shown_from_pixels && pixels < label.shown_until_pixels;
+		bool wanted = near_enough && !Overlaps(*area, taken) && !HiddenByGround(label.anchor);
 		if (wanted) taken.push_back(*area);
 
 		auto previous = this->opacities.find(label.target);
@@ -145,11 +170,11 @@ void MapLabels::Paint()
 		if (opacity <= HIDDEN_OPACITY) continue;
 
 		eased[label.target] = opacity;
-		drawn.emplace_back(&label, *area);
+		drawn.push_back({&label, *area, scale, opacity});
 		if (opacity >= CLICKABLE_OPACITY) this->plates.push_back({*area, label.target});
 	}
 	this->opacities = std::move(eased);
-	for (auto it = drawn.rbegin(); it != drawn.rend(); ++it) this->Draw(*it->first, it->second, this->opacities[it->first->target]);
+	for (auto it = drawn.rbegin(); it != drawn.rend(); ++it) this->Draw(*it);
 }
 
 std::optional<LabelTarget> MapLabels::HitAt(int x, int y) const
@@ -164,15 +189,18 @@ std::optional<LabelTarget> MapLabels::HitAt(int x, int y) const
 }
 
 /* Flat mini-style plate; drawn in mini UI screen space because the native sign kdtree lives in viewport coordinates. */
-void MapLabels::Draw(const Label &label, const Rect &area, double opacity)
+void MapLabels::Draw(const Shown &shown)
 {
+	const Label &label = *shown.label;
+	const Rect &area = shown.area;
+	int pad = Scaled(PLATE_PAD, shown.scale);
 	if (label.transparent) {
-		_map_draw.FillRoundRect(area.left, area.top, area.right, area.bottom, PLATE_PAD, WithAlpha(label.fill, FadedAlpha(opacity, TRANSPARENT_PLATE_ALPHA)));
+		_map_draw.FillRoundRect(area.left, area.top, area.right, area.bottom, pad, WithAlpha(label.fill, FadedAlpha(shown.opacity, TRANSPARENT_PLATE_ALPHA)));
 	} else {
-		_map_draw.FillRoundRect(area.left, area.top, area.right, area.bottom, PLATE_PAD, WithAlpha(MINI_CH_EDGE, FadedAlpha(opacity, Alpha(MINI_CH_EDGE))));
-		_map_draw.FillRoundRect(area.left + 1, area.top + 1, area.right - 1, area.bottom - 1, PLATE_PAD, WithAlpha(label.fill, FadedAlpha(opacity)));
+		_map_draw.FillRoundRect(area.left, area.top, area.right, area.bottom, pad, WithAlpha(MINI_CH_EDGE, FadedAlpha(shown.opacity * SOLID_PLATE_SHARE, Alpha(MINI_CH_EDGE))));
+		_map_draw.FillRoundRect(area.left + 1, area.top + 1, area.right - 1, area.bottom - 1, pad, WithAlpha(label.fill, FadedAlpha(shown.opacity * SOLID_PLATE_SHARE)));
 	}
 	TextColour colour = label.transparent ? TC_WHITE : PlateTextColour(label.fill);
 	uint32_t tint = TextTint(colour);
-	if (const CanvasText *text = _canvas.Text(label.text); text != nullptr) _canvas.DrawText(*text, area.left + PLATE_PAD, area.top + PLATE_PAD, WithAlpha(tint, FadedAlpha(opacity)));
+	if (const CanvasText *text = _canvas.Text(label.text); text != nullptr) _canvas.DrawText(*text, area.left + pad, area.top + pad, WithAlpha(tint, FadedAlpha(shown.opacity)), shown.scale);
 }

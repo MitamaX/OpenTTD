@@ -188,9 +188,11 @@ const CanvasText *Canvas::Text(std::string_view text)
 	return &it->second;
 }
 
-void Canvas::DrawText(const CanvasText &text, int x, int y, uint32_t tint)
+void Canvas::DrawText(const CanvasText &text, int x, int y, uint32_t tint, double scale)
 {
-	Rect area = {x - text.pad, y - text.pad, x + text.w + text.pad - 1, y + text.h + text.pad - 1};
+	auto scaled = [scale](int length) { return static_cast<int>(std::lround(length * scale)); };
+	int pad = scaled(text.pad);
+	Rect area = {x - pad, y - pad, x + scaled(text.w) + pad - 1, y + scaled(text.h) + pad - 1};
 	_map_draw.Image(text.tex, area, FULL_UV, tint);
 }
 
