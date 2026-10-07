@@ -21,8 +21,8 @@
 #include "scene_view.h"
 
 /* Past the tile pixels the simple detail ends at, the ground's bands stand in for the ways; meshes fade into them over the band given here. */
-inline constexpr double NETWORK_FADE_START = 3.5;
-inline constexpr double NETWORK_FADE_END = 5.0;
+inline constexpr double NETWORK_FADE_START = 6.0;
+inline constexpr double NETWORK_FADE_END = 8.0;
 
 /* A block of tiles: its meshes per layer, built on the game's side and waiting to be handed to the GPU or already there,
  * the detail they were built at, its signals, the levels its ways span, and a digest of the texels its ways were built from. */

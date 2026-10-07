@@ -5,6 +5,10 @@ const int TRACK_PIECES = 6;
 const vec2 TRACK_FROM[TRACK_PIECES] = vec2[TRACK_PIECES](vec2(0.0, 0.5), vec2(0.5, 0.0), vec2(0.0, 0.5), vec2(1.0, 0.5), vec2(0.5, 0.0), vec2(0.0, 0.5));
 const vec2 TRACK_TO[TRACK_PIECES] = vec2[TRACK_PIECES](vec2(1.0, 0.5), vec2(0.5, 1.0), vec2(0.5, 0.0), vec2(0.5, 1.0), vec2(1.0, 0.5), vec2(0.5, 1.0));
 
+const float THIN_WAY_HALF_PIXELS = 0.55;
+const float THIN_WAY_PPT = 2.5;
+const float FAR_WAY_OPACITY = 0.5;
+
 const int ROAD_ENDS = 4;
 const vec2 ROAD_END[ROAD_ENDS] = vec2[ROAD_ENDS](vec2(0.5, 0.0), vec2(1.0, 0.5), vec2(0.5, 1.0), vec2(0.0, 0.5));
 
@@ -56,11 +60,23 @@ float OutsideTile(vec2 local)
 	return length(max(abs(local - TILE_CENTRE) - HALF_TILE, 0.0));
 }
 
+/* How far toward a thin faint line the far network has drawn in, so from afar it reads as fine lines over the land rather than a dark web. */
+float Thinned()
+{
+	return 1.0 - smoothstep(THIN_WAY_PPT, NETWORK_OPAQUE_PPT, tile_pixels);
+}
+
+float WayHalf(float half_width)
+{
+	return mix(half_width, min(half_width, THIN_WAY_HALF_PIXELS / tile_pixels), Thinned());
+}
+
 /* Pieces of the neighbouring tiles reach over the seam, so the band is a union over the tiles around that come near enough to reach. */
 Field TracksNear(vec2 at, ivec2 home, mat2 pixel)
 {
 	Field band = NOWHERE;
-	float reach = DISTANT_RAIL_HALF + max(Spread(pixel, vec2(1.0, 0.0)), Spread(pixel, vec2(0.0, 1.0)));
+	float half_width = WayHalf(DISTANT_RAIL_HALF);
+	float reach = half_width + max(Spread(pixel, vec2(1.0, 0.0)), Spread(pixel, vec2(0.0, 1.0)));
 	for (int j = -WINDOW_REACH; j <= WINDOW_REACH; j++) {
 		for (int i = -WINDOW_REACH; i <= WINDOW_REACH; i++) {
 			ivec2 tile = ivec2(i, j);
@@ -70,7 +86,7 @@ Field TracksNear(vec2 at, ivec2 home, mat2 pixel)
 			for (int index = 0; index < TRACK_PIECES; index++) {
 				if ((pieces & Bit(index)) == 0u) continue;
 				vec2 offset = vec2(tile);
-				band = Nearer(band, Grown(SegmentField(at, offset + TRACK_FROM[index], offset + TRACK_TO[index], pixel), DISTANT_RAIL_HALF));
+				band = Nearer(band, Grown(SegmentField(at, offset + TRACK_FROM[index], offset + TRACK_TO[index], pixel), half_width));
 			}
 		}
 	}
@@ -116,8 +132,9 @@ Network NetworkAt(vec2 p, mat2 pixel)
 	uvec4 here = NetworkTexel(home);
 	float rail = Inside(TracksNear(at, home, pixel));
 	if (rail <= 0.0 && here.y == 0u && here.z == 0u) return Network(vec4(0.0), vec2(0.0));
-	float road = Inside(Nearer(RoutesThrough(at, here.y, ROAD_HALF, pixel), RoutesThrough(at, here.z, TRAM_BED_HALF, pixel)));
-	vec4 paint = Over(vec4(0.0), DISTANT_RAIL, rail);
-	paint = Over(paint, DISTANT_ROAD, road);
+	float road = Inside(Nearer(RoutesThrough(at, here.y, WayHalf(ROAD_HALF), pixel), RoutesThrough(at, here.z, WayHalf(TRAM_BED_HALF), pixel)));
+	float opacity = mix(1.0, FAR_WAY_OPACITY, Thinned());
+	vec4 paint = Over(vec4(0.0), DISTANT_RAIL, rail * opacity);
+	paint = Over(paint, DISTANT_ROAD, road * opacity);
 	return Network(paint, vec2(rail, road));
 }
