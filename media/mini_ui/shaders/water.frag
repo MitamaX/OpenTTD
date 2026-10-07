@@ -73,8 +73,13 @@ const vec3 RIVER_SCATTER = vec3(0.026, 0.066, 0.068);
 const vec3 CANAL_ABSORPTION = vec3(2.6, 1.6, 1.4);
 const vec3 CANAL_SCATTER = vec3(0.022, 0.060, 0.074);
 const float INLAND_MURK = 0.85;
+const vec3 TOY_ABSORPTION = vec3(2.4, 0.6, 0.3);
+const vec3 TOY_SCATTER = vec3(0.012, 0.075, 0.2);
+const float TOY_REFLECTANCE_CEILING = 0.3;
 
 const vec3 FOAM = vec3(0.80, 0.84, 0.86);
+const vec3 TOY_FOAM = vec3(0.95, 0.97, 1.0);
+const vec2 TOY_WHITEWATER_EDGES = vec2(0.36, 0.42);
 const float FOAM_SCALE = 3.1;
 const float FOAM_DRIFT = 0.12;
 const float CONTACT_DEPTH = 0.025;
@@ -232,8 +237,9 @@ Body BodyOf(vec4 field)
 	float total = dot(field.gba, vec3(1.0));
 	vec3 share = total > MIN_SPREAD ? field.gba / total : vec3(1.0, 0.0, 0.0);
 	Body body;
-	body.absorption = SEA_ABSORPTION * share.x + CANAL_ABSORPTION * share.y + RIVER_ABSORPTION * share.z;
-	body.scatter = SEA_SCATTER * share.x + CANAL_SCATTER * share.y + RIVER_SCATTER * share.z;
+	bool toy = Landscape() == LANDSCAPE_TOYLAND;
+	body.absorption = toy ? TOY_ABSORPTION : SEA_ABSORPTION * share.x + CANAL_ABSORPTION * share.y + RIVER_ABSORPTION * share.z;
+	body.scatter = toy ? TOY_SCATTER : SEA_SCATTER * share.x + CANAL_SCATTER * share.y + RIVER_SCATTER * share.z;
 	body.calm = 1.0 - share.x;
 	body.murk = INLAND_MURK * body.calm;
 	body.sea = share.x;
@@ -360,7 +366,8 @@ vec3 SkyOnWater(vec3 sight, Surface surface, vec3 view, out float reflected)
 {
 	vec3 mirrored = reflect(sight, surface.normal);
 	mirrored.z = max(mirrored.z, REFLECTED_LIFT) + surface.ruffled * RUFFLED_SPREAD;
-	reflected = min(Fresnel(dot(surface.normal, view), WATER_REFLECTANCE), REFLECTANCE_CEILING) * (1.0 - surface.ruffled * RUFFLED_DIMMING);
+	float ceiling = Landscape() == LANDSCAPE_TOYLAND ? TOY_REFLECTANCE_CEILING : REFLECTANCE_CEILING;
+	reflected = min(Fresnel(dot(surface.normal, view), WATER_REFLECTANCE), ceiling) * (1.0 - surface.ruffled * RUFFLED_DIMMING);
 	return SkyRadiance(normalize(mirrored)) * REFLECTED_SKY;
 }
 
@@ -410,7 +417,8 @@ float Whitewater(vec2 p, vec3 descent)
 	vec2 q = vec2(dot(p, down) * RAPIDS_ALONG - Clock() * RAPIDS_SPEED, dot(p, across) * RAPIDS_ACROSS);
 	float torn = Resolved(RAPIDS_ACROSS * 2.3);
 	float churn = 0.55 * Noise(q) + 0.3 * Noise(q * 2.3 + 5.1) + 0.15 * mix(0.5, Noise(q * 5.3 + 1.7), torn);
-	return descent.z * smoothstep(0.4, mix(0.65, 0.58, torn), churn) * RAPIDS_FOAM;
+	vec2 edges = Landscape() == LANDSCAPE_TOYLAND ? TOY_WHITEWATER_EDGES : vec2(0.4, mix(0.65, 0.58, torn));
+	return descent.z * smoothstep(edges.x, edges.y, churn) * RAPIDS_FOAM;
 }
 
 bool Spanned(ivec2 tile)
@@ -501,7 +509,7 @@ void main()
 	float floes;
 	float ice = ShoreIce(p, field.r, floes);
 	float foam = max(max(shore, Breakers(p, field.r, body)), max(Whitewater(p, descent) * river, Wake(p))) * (1.0 - ice);
-	colour = mix(colour, Linear(FOAM) * light, foam);
+	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
 	colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + SunOnWater(waves, view, p, sun) * 0.3, ice);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
