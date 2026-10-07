@@ -90,7 +90,10 @@ void WorldPainter::Prepare()
 {
 	if (_world_tiles.Size().width == 0) return;
 	ProfileScope profile("prepare", ProfileClock::Cpu);
-	_way_bends.Refresh();
+	{
+		ProfileScope bends_profile("prepare", "bends", ProfileClock::Cpu);
+		_way_bends.Refresh();
+	}
 	SceneView view = SceneView::Of(_camera);
 	for (const auto &pass : this->passes) {
 		ProfileScope pass_profile("prepare", pass->Name(), ProfileClock::Cpu);
@@ -184,6 +187,7 @@ void WorldPainter::SyncChanges()
 	{
 		ProfileScope ways_profile("sync", "ways", ProfileClock::Cpu);
 		ForgetCourses(changes);
+		_way_bends.Sync(changes);
 	}
 	{
 		ProfileScope textures_profile("sync", "textures", ProfileClock::Cpu);

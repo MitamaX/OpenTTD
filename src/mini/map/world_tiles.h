@@ -176,8 +176,6 @@ public:
 	RampTexel RampAt(TileIndex tile) const;
 	/* Whether a tile's ways may be eased off its ground: plain track and country roads, not stations, depots, crossings, bridges, tunnels or town streets. */
 	bool WaysEase(TileIndex tile) const;
-	/* A count that moves on whenever the ground's shape or the ways on it change. */
-	uint64_t WaysRevision() const { return this->ways_revision; }
 
 private:
 	struct Texels {
@@ -216,7 +214,6 @@ private:
 	std::vector<uint32_t> relief_claims;
 	WorldChanges changes;
 	uint sweep_next = 0;
-	uint64_t ways_revision = 0;
 	bool stale = true;
 };
 

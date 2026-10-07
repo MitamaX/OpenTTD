@@ -10,10 +10,13 @@
 #ifndef MINI_MAP_WAY_BENDS_H
 #define MINI_MAP_WAY_BENDS_H
 
+#include <deque>
 #include <optional>
 #include <vector>
 
 #include "../../core/geometry_type.hpp"
+
+struct WorldChanges;
 
 /* A slide is stored as a byte about the middle of its range, this many steps to a tile. */
 inline constexpr double BEND_STEPS_PER_TILE = 254.0;
@@ -28,17 +31,20 @@ struct BendTexel {
 
 class WayBends {
 public:
-	/* Reads the map a band of rows at a time after the ways change, so it runs only while the game's state holds still. */
+	/* The tiles whose sides a change of the ground's shape or the ways may ease differently are read again by the refreshes to come. */
+	void Sync(const WorldChanges &changes);
+	/* Reads a band of the tiles due at a time, so it runs only while the game's state holds still. */
 	void Refresh();
 	/* The rows read again since the last time they were taken. */
 	std::optional<Rect> TakeUpdate();
 	const BendTexel *Texels() const { return this->texels.data(); }
 
 private:
+	Rect Whole() const;
+
 	std::vector<BendTexel> texels;
 	Dimension size{};
-	uint64_t revision = UINT64_MAX;
-	uint next_row = 0;
+	std::deque<Rect> due;
 	std::optional<Rect> update;
 };
 

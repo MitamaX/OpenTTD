@@ -20,7 +20,9 @@
 
 #include "../../safeguards.h"
 
-static constexpr uint ROWS_PER_REFRESH = 32;
+static constexpr uint TILES_PER_REFRESH = 8192;
+/* A tile's texel reads the eases at its west and north sides, the first of them on the side of the tile before it. */
+static constexpr int BEND_REACH = WAY_EASE_REACH + 1;
 static constexpr uint8_t UNBENT = 128;
 static constexpr BendTexel STRAIGHT = {UNBENT, UNBENT, 0, 0};
 
@@ -38,31 +40,42 @@ static BendTexel BendOf(int tx, int ty)
 	return {BendByte(west), BendByte(north), 0, 0};
 }
 
+void WayBends::Sync(const WorldChanges &changes)
+{
+	if (changes.whole || _world_tiles.Size() != this->size) {
+		this->size = _world_tiles.Size();
+		this->texels.assign(static_cast<size_t>(this->size.width) * this->size.height, STRAIGHT);
+		this->due.assign(1, this->Whole());
+		return;
+	}
+	Rect whole = this->Whole();
+	for (const Rect &relief : changes.reliefs) {
+		Rect reach = relief.Expand(BEND_REACH);
+		this->due.push_back({std::max(reach.left, whole.left), std::max(reach.top, whole.top), std::min(reach.right, whole.right), std::min(reach.bottom, whole.bottom)});
+	}
+}
+
 void WayBends::Refresh()
 {
-	Dimension map = _world_tiles.Size();
-	if (map != this->size) {
-		this->size = map;
-		this->texels.assign(static_cast<size_t>(map.width) * map.height, STRAIGHT);
-		this->revision = UINT64_MAX;
-	}
-	if (this->revision != _world_tiles.WaysRevision()) {
-		this->revision = _world_tiles.WaysRevision();
-		this->next_row = 0;
-	}
-	if (this->next_row >= this->size.height) return;
+	uint tiles_left = TILES_PER_REFRESH;
+	while (!this->due.empty() && tiles_left > 0) {
+		Rect &area = this->due.front();
+		int ty = area.top++;
+		for (int tx = area.left; tx <= area.right; tx++) this->texels[static_cast<size_t>(ty) * this->size.width + tx] = BendOf(tx, ty);
+		tiles_left -= std::min<uint>(tiles_left, area.Width());
 
-	uint last = std::min(this->next_row + ROWS_PER_REFRESH, this->size.height) - 1;
-	for (uint ty = this->next_row; ty <= last; ty++) {
-		for (uint tx = 0; tx < this->size.width; tx++) this->texels[static_cast<size_t>(ty) * this->size.width + tx] = BendOf(tx, ty);
+		Rect row{area.left, ty, area.right, ty};
+		if (this->update.has_value()) {
+			row = {std::min(row.left, this->update->left), std::min(row.top, this->update->top), std::max(row.right, this->update->right), std::max(row.bottom, this->update->bottom)};
+		}
+		this->update = row;
+		if (area.top > area.bottom) this->due.pop_front();
 	}
-	Rect rows{0, static_cast<int>(this->next_row), static_cast<int>(this->size.width) - 1, static_cast<int>(last)};
-	if (this->update.has_value()) {
-		rows.top = std::min(rows.top, this->update->top);
-		rows.bottom = std::max(rows.bottom, this->update->bottom);
-	}
-	this->update = rows;
-	this->next_row = last + 1;
+}
+
+Rect WayBends::Whole() const
+{
+	return {0, 0, static_cast<int>(this->size.width) - 1, static_cast<int>(this->size.height) - 1};
 }
 
 std::optional<Rect> WayBends::TakeUpdate()

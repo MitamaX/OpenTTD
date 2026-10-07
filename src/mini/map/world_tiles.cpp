@@ -548,7 +548,6 @@ void WorldTiles::Rebuild()
 	this->ramps.resize(count);
 	this->eases.resize(count);
 	this->peak = 0;
-	this->ways_revision++;
 	for (uint i = 0; i < count; i++) this->Store(i, Pack(TileIndex{i}));
 
 	this->queued.assign(count, false);
@@ -597,10 +596,6 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 	if (packed.network.style != stored.network.style) _frame_profile.Count("tile_style");
 	if (packed.network.track != stored.network.track || packed.network.road != stored.network.road || packed.network.tram != stored.network.tram) _frame_profile.Count("tile_ways");
 	if (packed.eases != stored.eases || packed.ramp != stored.ramp) _frame_profile.Count("tile_eases");
-	if (ways_changed || packed.surface != stored.surface) {
-		_frame_profile.Count("ways_revisions");
-		this->ways_revision++;
-	}
 	if (!water_changed && !groundwork_changed && !ways_changed && packed.surface == stored.surface) return;
 	this->Claim(tile, this->relief_claims, this->changes.reliefs);
 }
