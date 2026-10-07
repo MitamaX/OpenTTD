@@ -67,7 +67,6 @@ const vec3 CANAL_SCATTER = vec3(0.022, 0.060, 0.074);
 const float INLAND_MURK = 0.85;
 
 const vec3 FOAM = vec3(0.80, 0.84, 0.86);
-const float FOAM_DEPTH = 0.16;
 const float FOAM_SCALE = 3.1;
 const float FOAM_DRIFT = 0.12;
 const float CONTACT_DEPTH = 0.025;
@@ -75,9 +74,10 @@ const float INLAND_FOAM = 0.15;
 const float FOAM_EDGE_THRESHOLD = 0.3;
 const float FOAM_OPACITY = 0.85;
 const float OUTLINE_FOAM_WIDTH = 0.12;
-const float BREAKER_DEPTH = 0.55;
-const float BREAKERS_PER_DEPTH = 24.0;
+const float BREAKER_REACH = 0.38;
+const float BREAKERS_PER_REACH = 40.0;
 const float BREAKER_SPEED = 1.3;
+const float BREAKER_OPACITY = 0.7;
 
 struct Body {
 	vec3 absorption;
@@ -208,20 +208,21 @@ float Foam(vec2 p, float band, Body body)
 	return band * smoothstep(threshold, threshold + 0.2, lace) * FOAM_OPACITY * mix(INLAND_FOAM, 1.0, body.sea) * Resolved(FOAM_SCALE);
 }
 
-/* Near the shore: shallow over the ground below, or close inside the water's outline. */
-float ShoreBand(float depth, float level)
+/* Near the shore: close inside the water's outline, which curves where the ground's own edge runs in steps. */
+float ShoreBand(float level)
 {
-	return max(1.0 - smoothstep(0.0, FOAM_DEPTH, depth), 1.0 - smoothstep(0.0, OUTLINE_FOAM_WIDTH, level - WATERLINE));
+	return 1.0 - smoothstep(0.0, OUTLINE_FOAM_WIDTH, level - WATERLINE);
 }
 
-/* Over the shallows the swell breaks in lines that run along the shore and roll in toward it, broken where the waves are lower. */
-float Breakers(vec2 p, float depth, Body body)
+/* Off the shore the swell breaks in lines that run along it and roll in toward it, broken where the waves are lower. */
+float Breakers(vec2 p, float level, Body body)
 {
-	float reach = smoothstep(0.02, 0.08, depth) * (1.0 - smoothstep(0.0, BREAKER_DEPTH, depth));
-	float phase = depth * BREAKERS_PER_DEPTH + Clock() * BREAKER_SPEED + Noise(p * 0.7) * 3.0;
+	float offshore = level - WATERLINE;
+	float reach = smoothstep(0.03, 0.08, offshore) * (1.0 - smoothstep(0.15, BREAKER_REACH, offshore));
+	float phase = offshore * BREAKERS_PER_REACH + Clock() * BREAKER_SPEED + Noise(p * 0.7) * 3.0;
 	float crest = smoothstep(0.78, 0.98, 0.5 + 0.5 * sin(phase));
-	float broken = smoothstep(0.35, 0.7, Noise(p * 2.2 + vec2(Clock() * 0.07, 0.0)));
-	return crest * broken * reach * body.sea * Resolved(4.0);
+	float broken = smoothstep(0.4, 0.75, Noise(p * 2.2 + vec2(Clock() * 0.07, 0.0)));
+	return crest * broken * reach * BREAKER_OPACITY * body.sea * Resolved(4.0);
 }
 
 /* Sun on water: a soft path where the waves are too fine to make out, and close up glints off single wavelets turned to catch it, each twinkling as it turns. */
@@ -325,7 +326,7 @@ void main()
 	vec3 sky = SkyOnWater(sight, waves, view, reflected);
 	vec3 colour = mix(below, sky, reflected) + SunOnWater(waves, view, p, sun);
 
-	float foam = max(max(Foam(p, ShoreBand(straight.y, field.r), body), Breakers(p, straight.y, body)), Whitewater(p, descent) * river);
+	float foam = max(max(Foam(p, ShoreBand(field.r), body), Breakers(p, field.r, body)), Whitewater(p, descent) * river);
 	colour = mix(colour, Linear(FOAM) * light, foam);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
