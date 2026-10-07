@@ -64,6 +64,13 @@ static constexpr float SHIP_DEPOT_BOLLARD_SIDE = 0.02f;
 static constexpr float SHIP_DEPOT_BOLLARD_HEIGHT = 0.025f;
 static constexpr uint SHIP_DEPOT_OWNER_SHARE = 48;
 static constexpr uint32_t PILE_TINT = 0xFF4B4540U;
+static constexpr int JETTY_MOST_TILES = 4;
+static constexpr float JETTY_WIDTH = 0.14f;
+static constexpr float JETTY_LANDING = 0.45f;
+static constexpr float JETTY_PILE_EVERY = 0.4f;
+static constexpr int JETTY_MOST_PILES = 4;
+static constexpr float JETTY_PILE_SIDE = 0.04f;
+static constexpr uint32_t JETTY_TINT = 0xFF8A6E4FU;
 
 static constexpr SiteLook TERMINAL_LOOK = BlockLook(4.0f, Finish::Glass);
 static constexpr SiteLook LOW_BLOCK_LOOK = BlockLook(2.0f, Finish::Concrete);
@@ -218,7 +225,57 @@ static void AddPileRow(BuildingForm &form, const Plot &deck, Axis axis, DiagDire
 	}
 }
 
-/* A low boathouse with doors at both ends on a concrete deck over the water, its walls in a touch of the owner's colour under a plain metal roof, walkways along its sides. */
+static bool IsLand(TileIndex tile)
+{
+	return !IsTileType(tile, MP_WATER) ? !IsBuoyTile(tile) : IsCoast(tile);
+}
+
+/* Where a boathouse's nearest shore lies off one of its sides: which side, which of its tiles faces it and how many tiles out the land begins. */
+struct Landing {
+	DiagDirection side;
+	uint8_t tile;
+	int tiles_out;
+};
+
+static std::optional<Landing> NearestLanding(TileIndex north, Axis axis, DiagDirections sides)
+{
+	TileIndexDiffC along = axis == AXIS_X ? TileIndexDiffC{1, 0} : TileIndexDiffC{0, 1};
+	for (int out = 1; out <= JETTY_MOST_TILES; out++) {
+		for (DiagDirection side : sides) {
+			TileIndexDiffC step = TileIndexDiffCByDiagDir(side);
+			for (uint8_t tile = 0; tile < SHIP_DEPOT_LENGTH; tile++) {
+				TileIndex probe = TileAddWrap(north, along.x * tile + step.x * out, along.y * tile + step.y * out);
+				if (probe != INVALID_TILE && IsLand(probe)) return Landing{side, tile, out};
+			}
+		}
+	}
+	return std::nullopt;
+}
+
+/* A timber jetty on piles runs from a boathouse's walkway across the water to the nearest shore, if one lies near enough. */
+static void AddJetty(BuildingForm &form, TileIndex north, Axis axis, DiagDirections sides, const Plot &deck)
+{
+	std::optional<Landing> landing = NearestLanding(north, axis, sides);
+	if (!landing.has_value()) return;
+
+	float reach = SHIP_DEPOT_WALK_EDGE + static_cast<float>(landing->tiles_out - 1) + JETTY_LANDING;
+	float middle = landing->tile + LOT_CENTRE;
+	Plot span = deck.Outside(landing->side, reach);
+	Plot walk = axis == AXIS_X ? Plot{middle - JETTY_WIDTH / 2.0f, span.y0, middle + JETTY_WIDTH / 2.0f, span.y1} : Plot{span.x0, middle - JETTY_WIDTH / 2.0f, span.x1, middle + JETTY_WIDTH / 2.0f};
+	form.Add(Part::Box(walk).On(SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS).Height(SHIP_DEPOT_DECK_THICKNESS).Clad(Material::Timber, JETTY_TINT));
+
+	Axis out_axis = OtherAxis(axis);
+	float underside = SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS;
+	int piles = std::min(static_cast<int>(reach / JETTY_PILE_EVERY), JETTY_MOST_PILES);
+	for (int pile = 1; pile <= piles; pile++) {
+		float out = (out_axis == AXIS_X ? span.x0 : span.y0) + span.Span(out_axis) * pile / (piles + 1);
+		Part post = axis == AXIS_X ? Part::Square(middle, out, JETTY_PILE_SIDE) : Part::Square(out, middle, JETTY_PILE_SIDE);
+		form.Add(post.On(-SHIP_DEPOT_PILE_SINK).Height(SHIP_DEPOT_PILE_SINK + underside).Detailed().Clad(Material::Timber, PILE_TINT));
+	}
+}
+
+/* A low boathouse with doors at both ends on a concrete deck over the water, its walls in a touch of the owner's colour under a plain metal roof, walkways along its sides
+ * and a jetty out to the nearest shore. */
 static BuildingForm ShipDepotForm(TileIndex tile)
 {
 	TileIndex north = GetShipDepotNorthTile(tile);
@@ -229,6 +286,7 @@ static BuildingForm ShipDepotForm(TileIndex tile)
 	Plot deck = FootprintOf(form).Inset(sides, SHIP_DEPOT_WALK_EDGE);
 	form.Add(Part::Box(deck).On(SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS).Height(SHIP_DEPOT_DECK_THICKNESS).Clad(Material::Concrete, QUAY_TINT));
 	for (DiagDirection side : sides) AddPileRow(form, deck, axis, side);
+	AddJetty(form, north, axis, sides, deck);
 	Plot hall = FootprintOf(form).Inset(sides, SHIP_DEPOT_SIDE);
 	uint32_t walls = Mix(FinishTint(Finish::Metal, seed), OwnerTint(north), SHIP_DEPOT_OWNER_SHARE);
 	form.Add(Part::Box(hall)
