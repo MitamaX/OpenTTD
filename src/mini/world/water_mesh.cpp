@@ -10,20 +10,12 @@
 #include "../../stdafx.h"
 #include "water_mesh.h"
 
-#include <optional>
-
 #include "../../map_func.h"
 #include "../map/world_tiles.h"
+#include "sea_frame.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
-
-/* A run of tiles along map X whose water stands at one level. */
-struct LevelRun {
-	int x0;
-	int x1;
-	double level;
-};
 
 static uint32_t Add(WaterMesh &mesh, double x, double y, double level)
 {
@@ -53,43 +45,27 @@ static bool CarriesSheet(int tx, int ty)
 	}
 }
 
+/* Every tile lays its own sheet, so neighbours at one level share each point along their sides and leave no crack between them. */
 WaterMesh BuildWaterSurface(const TileSpan &tiles)
 {
 	WaterMesh mesh;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
-		std::optional<LevelRun> run;
-		auto finish = [&]() {
-			if (run.has_value()) AddSheet(mesh, run->x0, ty, run->x1 + 1, ty + 1, run->level);
-			run.reset();
-		};
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
-			if (!CarriesSheet(tx, ty)) {
-				finish();
-				if (WaterFormOf(tx, ty) == WaterForm::Incline) AddIncline(mesh, tx, ty);
-				continue;
+			if (CarriesSheet(tx, ty)) {
+				AddSheet(mesh, tx, ty, tx + 1, ty + 1, SurfaceLevelOf(tx, ty));
+			} else if (WaterFormOf(tx, ty) == WaterForm::Incline) {
+				AddIncline(mesh, tx, ty);
 			}
-			double level = SurfaceLevelOf(tx, ty);
-			if (run.has_value() && run->level == level) {
-				run->x1 = tx;
-				continue;
-			}
-			finish();
-			run = LevelRun{tx, tx, level};
 		}
-		finish();
 	}
 	return mesh;
 }
 
-/* Four sheets around the map at sea level, meeting its edge where the border tiles lie. */
 WaterMesh BuildOuterWater(Dimension map, double reach)
 {
-	double width = map.width;
-	double height = map.height;
+	SeaFrame frame(map, 0.0, reach);
 	WaterMesh mesh;
-	AddSheet(mesh, -reach, -reach, width + reach, 0.0, 0.0);
-	AddSheet(mesh, -reach, height, width + reach, height + reach, 0.0);
-	AddSheet(mesh, -reach, 0.0, 0.0, height, 0.0);
-	AddSheet(mesh, width, 0.0, width + reach, height, 0.0);
+	for (const MapVector &point : frame.points) Add(mesh, point.x, point.y, 0.0);
+	for (const auto &[a, b, c] : frame.triangles) mesh.Triangle(a, b, c);
 	return mesh;
 }

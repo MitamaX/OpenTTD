@@ -24,6 +24,7 @@
 #include "../map/way_course.h"
 #include "../map/world_tiles.h"
 #include "bridge_models.h"
+#include "sea_frame.h"
 #include "seabed.h"
 #include "shore_relief.h"
 #include "track_models.h"
@@ -709,8 +710,6 @@ TerrainMesh BuildTerrain(const TileSpan &tiles, int step)
 /* The seabed falls from the map's edge to the open sea's floor over a shelf, then lies flat out to the horizon. */
 TerrainMesh BuildOuterBed(Dimension map, double reach)
 {
-	double width = map.width;
-	double height = map.height;
 	double shelf = SHELF_TILES;
 	double floor = SEA_FLOOR;
 	TerrainMesh mesh;
@@ -739,12 +738,9 @@ TerrainMesh BuildOuterBed(Dimension map, double reach)
 	nook(0, rows, -shelf, shelf);
 	nook(columns, rows, shelf, shelf);
 
-	auto strip = [&](double x0, double y0, double x1, double y1) {
-		mesh.Quad(add(x0, y0, floor), add(x1, y0, floor), add(x1, y1, floor), add(x0, y1, floor));
-	};
-	strip(-reach, -reach, width + reach, -shelf);
-	strip(-reach, height + shelf, width + reach, height + reach);
-	strip(-reach, -shelf, -shelf, height + shelf);
-	strip(width + shelf, -shelf, width + reach, height + shelf);
+	SeaFrame frame(map, shelf, reach);
+	uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
+	for (const MapVector &point : frame.points) add(point.x, point.y, floor);
+	for (const auto &[a, b, c] : frame.triangles) mesh.Triangle(first + a, first + b, first + c);
 	return mesh;
 }
