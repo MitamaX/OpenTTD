@@ -67,12 +67,13 @@ const float CRACKS_PER_TILE = 3.1;
 const float CRACK_WIDTH = 0.05;
 const float CRACK_DEPTH = 0.18;
 const float OUTCROPS_PER_TILE = 0.9;
-const float TUFTS_PER_TILE = 6.5;
+const float STONE_PATCHES_PER_TILE = 1.7;
+const float STONE_GAPS = 0.3;
+const float PALE_STONE = 1.15;
 const float BOULDERS_PER_TILE = 5.5;
 const float MICRO_PER_TILE = 17.0;
 const float CLUMPS_PER_TILE = 3.3;
 const float RELIEF_DEPTH = 0.035;
-const float GRASS_HOLLOWS = 1.2;
 const float STONY_HOLLOWS = 1.0;
 
 const vec2 GRASS_RUGGED = vec2(0.6, 0.0);
@@ -290,7 +291,7 @@ vec3 Grass(Ground ground, Grain grain)
 {
 	vec3 green = GrassTone(grain.broad, ground.lush);
 	vec3 straw = green * STRAW_TINT;
-	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7) * Hollowed(grain, GRASS_HOLLOWS);
+	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7);
 	vec3 blades = mix(green, straw, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro)) * shade;
 	vec3 soil = SOIL * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
 	return mix(soil, blades, Cover(ground.density, grain.local));
@@ -357,23 +358,24 @@ Patch Exposed(Patch ground, Site site)
 /* Rough land: tussocks of dry and green grass in clumps, opening onto patches of stony soil. */
 Patch Rough(Ground ground, Grain grain, vec2 p)
 {
-	vec3 green = GrassTone(grain.broad, ground.lush) * 0.8;
-	vec3 dry = mix(green, ROUGH_TINT, 0.7);
-	float clumps = smoothstep(0.4, 0.6, Octave(p, 2.3));
-	float tufts = smoothstep(0.5, 0.62, 0.65 * Octave(p + 9.1, TUFTS_PER_TILE) + 0.35 * grain.micro);
-	vec3 scrub = mix(green, dry, clumps) * mix(1.12, 0.7, tufts) * Varied(grain.micro, 0.3);
-	float open = smoothstep(0.6, 0.72, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
-	vec3 stony = mix(SOIL, SCREE, 0.5) * Varied(grain.micro, 0.4);
-	return Patch(mix(scrub, stony, open * 0.8), ROUGH_RUGGED);
+	vec3 green = GrassTone(grain.broad, ground.lush) * 0.9;
+	vec3 dry = mix(green, ROUGH_TINT, 0.5);
+	float clumps = smoothstep(0.35, 0.65, Octave(p, 2.3));
+	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
+	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
+	float open = smoothstep(0.58, 0.8, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
+	vec3 stony = mix(SOIL, SCREE, 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
+	return Patch(mix(scrub, stony, open * 0.6), ROUGH_RUGGED);
 }
 
-/* Rocky ground: grass strewn with scree, and rock breaking through it in outcrops. */
+/* Rocky ground: grass with stones gathered in patches over it, and pale rock breaking through here and there. */
 Patch Rocks(Grain grain, vec2 p, Bare bare)
 {
-	float stones = smoothstep(0.3, 0.55, 0.6 * Noise(p * 2.1 + 6.2) + 0.25 * grain.fine + 0.15 * grain.micro);
-	float outcrop = smoothstep(0.5, 0.64, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
-	vec3 strewn = mix(Meadow(grain, false), bare.scree, stones);
-	return Patch(mix(strewn, bare.rock, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, stones), ROCK_RUGGED, outcrop));
+	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
+	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
+	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
+	vec3 strewn = mix(Meadow(grain, false), bare.scree * PALE_STONE, stones);
+	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, patches), ROCK_RUGGED, outcrop));
 }
 
 /* A field's crop grows in rows across it, ripening unevenly, with bare soil between the rows; on a hillside it grows rough without rows, so no lattice is drawn over the slope. */
