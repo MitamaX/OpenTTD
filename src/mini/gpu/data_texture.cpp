@@ -12,6 +12,7 @@
 
 #include <cstddef>
 
+#include "frame_profile.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
@@ -42,6 +43,8 @@ void DataTexture::Allocate(TexelFormat format, Dimension size, const void *texel
 	this->size = size;
 
 	TexelLayout layout = LayoutOf(format);
+	_frame_profile.Count("texture_allocs");
+	_frame_profile.Count("texture_bytes", static_cast<size_t>(size.width) * size.height * layout.bytes);
 	ResetPixelUnpack();
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glGenTextures(1, &this->name);
@@ -65,6 +68,7 @@ void DataTexture::Update(const Rect &area, const void *texels) const
 {
 	TexelLayout layout = LayoutOf(this->format);
 	size_t first = (static_cast<size_t>(area.top) * this->size.width + area.left) * layout.bytes;
+	_frame_profile.Count("texture_bytes", static_cast<size_t>(area.Width()) * area.Height() * layout.bytes);
 	glBindTexture(GL_TEXTURE_2D, this->name);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(this->size.width));
@@ -75,6 +79,7 @@ void DataTexture::Update(const Rect &area, const void *texels) const
 void DataTexture::Refilter() const
 {
 	if (!LayoutOf(this->format).filtered) return;
+	_frame_profile.Count("mipmap_builds");
 	glBindTexture(GL_TEXTURE_2D, this->name);
 	glGenerateMipmap(GL_TEXTURE_2D);
 }

@@ -17,6 +17,7 @@
 #include "../../map_func.h"
 #include "../core/seed.h"
 #include "../gpu/draw_list.h"
+#include "../gpu/frame_profile.h"
 #include "../map/tile_shapes.h"
 #include "seabed.h"
 
@@ -102,6 +103,8 @@ static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance
 
 void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 {
+	_frame_profile.Count("forest_plants");
+	ProfileScope profile("build", "forest", ProfileClock::Cpu);
 	std::vector<std::pair<size_t, TreeInstance>> planted;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) PlantTile(tx, ty, planted);

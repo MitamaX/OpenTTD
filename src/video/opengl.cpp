@@ -37,6 +37,7 @@
 #include "../core/string_consumer.hpp"
 #include "../mini_ui.h"
 #include "../mini/gpu/frame_capture.h"
+#include "../mini/gpu/frame_profile.h"
 
 #include "../table/opengl_shader.h"
 #include "../table/sprites.h"
@@ -1217,6 +1218,7 @@ void OpenGLBackend::ReleaseVideoBuffer(const Rect &update_rect)
 
 	/* Update changed rect of the video buffer texture. */
 	if (!IsEmptyRect(update_rect)) {
+		_frame_profile.Count("video_pixels", static_cast<size_t>(update_rect.right - update_rect.left) * (update_rect.bottom - update_rect.top));
 		_glActiveTexture(GL_TEXTURE0);
 		_glBindTexture(GL_TEXTURE_2D, this->vid_texture);
 		_glPixelStorei(GL_UNPACK_ROW_LENGTH, _screen.pitch);

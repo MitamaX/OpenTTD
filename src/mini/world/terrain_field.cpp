@@ -13,6 +13,7 @@
 #include <algorithm>
 
 #include "../../map_func.h"
+#include "../gpu/frame_profile.h"
 #include "../map/way_course.h"
 #include "network_field.h"
 #include "seabed.h"
@@ -77,6 +78,8 @@ void TerrainField::Lay(Dimension map)
 
 void TerrainField::LayOuterBed(Dimension map)
 {
+	_frame_profile.Count("outer_bed_builds");
+	ProfileScope profile("build", "outer_bed", ProfileClock::Cpu);
 	this->outer_bed.Upload(BuildOuterBed(map, OUTER_SEA_REACH), TERRAIN_LAYOUT);
 }
 
@@ -108,6 +111,8 @@ TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera
 
 	int step = StepFor(camera.NearestTilePixels(low, high));
 	if (chunk.stale || chunk.step != step) {
+		_frame_profile.Count("terrain_builds");
+		ProfileScope profile("build", "terrain", ProfileClock::Cpu);
 		chunk.ground.Upload(BuildTerrain(tiles, step), TERRAIN_LAYOUT);
 		if (chunk.stale) chunk.water.Upload(BuildWaterSurface(tiles), WATER_LAYOUT);
 		chunk.step = step;

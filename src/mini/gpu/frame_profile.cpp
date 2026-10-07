@@ -47,9 +47,9 @@ static double Highest(const std::vector<double> &values)
 }
 
 /* The log lies beside the shot list when frames are captured, else in the working folder. */
-static std::filesystem::path LogPath()
+static std::filesystem::path LogPath(const char *log_name)
 {
-	std::filesystem::path name = FrameProfile::LOG_NAME;
+	std::filesystem::path name = log_name;
 	std::optional<std::string_view> list = GetEnv(FrameCapture::SHOT_LIST_VARIABLE);
 	if (!list.has_value()) return name;
 	return std::filesystem::path(OTTD2FS(*list)).parent_path() / name;
@@ -57,7 +57,8 @@ static std::filesystem::path LogPath()
 
 FrameProfile::FrameProfile()
 {
-	this->active = GetEnv(VARIABLE) == "1";
+	this->tracing = GetEnv(TIMELINE_VARIABLE) == "1";
+	this->active = this->tracing || GetEnv(VARIABLE) == "1";
 }
 
 uint32_t FrameProfile::TakeQuery(Frame &frame)
@@ -88,11 +89,26 @@ void FrameProfile::Close(size_t record)
 	if (timed.begin_query != NO_QUERY) timed.end_query = this->TakeQuery(frame);
 }
 
+void FrameProfile::Count(std::string_view counter, size_t amount)
+{
+	if (!this->active) return;
+	auto &counters = this->frames[this->current].counters;
+	auto it = std::ranges::find(counters, counter, &std::pair<std::string_view, size_t>::first);
+	if (it == counters.end()) {
+		counters.emplace_back(counter, amount);
+	} else {
+		it->second += amount;
+	}
+}
+
 /* A frame's queries are read back only once it has had the frames in flight to finish on the GPU. */
 void FrameProfile::EndFrame()
 {
 	Clock::time_point now = Clock::now();
-	if (this->frame_count > 0) this->SamplesOf({}, INTERVAL_SECTION).cpu_ms.push_back(Milliseconds(now - this->last_frame_end));
+	Frame &ended = this->frames[this->current];
+	ended.number = this->frame_count;
+	ended.interval_ms = this->frame_count > 0 ? Milliseconds(now - this->last_frame_end) : 0.0;
+	if (this->frame_count > 0) this->SamplesOf({}, INTERVAL_SECTION).cpu_ms.push_back(ended.interval_ms);
 	this->last_frame_end = now;
 	this->frame_count++;
 
@@ -119,6 +135,7 @@ void FrameProfile::Collect(Frame &frame)
 		tally.gpu_ms += static_cast<double>(end - begin) / NANOSECONDS_PER_MILLISECOND;
 		tally.on_gpu = true;
 	}
+	if (this->tracing && frame.interval_ms > 0.0) this->Trace(frame);
 	for (Samples &samples : this->samples) {
 		if (!samples.frame.ran) continue;
 		samples.cpu_ms.push_back(samples.frame.cpu_ms);
@@ -126,7 +143,23 @@ void FrameProfile::Collect(Frame &frame)
 		samples.frame = {};
 	}
 	frame.records.clear();
+	frame.counters.clear();
 	frame.used_queries = 0;
+	frame.interval_ms = 0.0;
+}
+
+void FrameProfile::Trace(const Frame &frame)
+{
+	if (!this->timeline.is_open()) this->timeline.open(LogPath(TIMELINE_NAME), std::ios::out | std::ios::trunc);
+
+	std::string line = fmt::format("{} {:.3f}", frame.number, frame.interval_ms);
+	for (const Samples &samples : this->samples) {
+		if (!samples.frame.ran) continue;
+		line += fmt::format(" {}={:.3f}", samples.section, samples.frame.cpu_ms);
+		if (samples.frame.on_gpu) line += fmt::format("/{:.3f}", samples.frame.gpu_ms);
+	}
+	for (const auto &[counter, amount] : frame.counters) line += fmt::format(" #{}={}", counter, amount);
+	this->timeline << line << std::endl;
 }
 
 FrameProfile::Samples &FrameProfile::SamplesOf(std::string_view group, std::string_view section)
@@ -151,7 +184,7 @@ void FrameProfile::Report(std::string_view label)
 
 void FrameProfile::Write(std::string_view label)
 {
-	if (!this->log.is_open()) this->log.open(LogPath(), std::ios::out | std::ios::trunc);
+	if (!this->log.is_open()) this->log.open(LogPath(LOG_NAME), std::ios::out | std::ios::trunc);
 
 	this->log << fmt::format("# {}\n{:<20}{:>9}{:>9}{:>9}{:>9}{:>9}{:>9}\n", label, "section", "gpu_med", "gpu_p90", "gpu_max", "cpu_med", "cpu_p90", "cpu_max");
 	for (const Samples &section : this->samples) {

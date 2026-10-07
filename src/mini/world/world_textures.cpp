@@ -10,6 +10,7 @@
 #include "../../stdafx.h"
 #include "world_textures.h"
 
+#include "../gpu/frame_profile.h"
 #include "../map/way_bends.h"
 #include "frame_units.h"
 
@@ -42,7 +43,11 @@ void WorldTextures::Allocate(uint unit)
 void WorldTextures::Sync(const WorldChanges &changes)
 {
 	bool whole = changes.whole || !this->textures[TILES_UNIT].Allocated();
-	if (whole || changes.water) this->shore.Survey(_world_tiles.Size());
+	if (whole || changes.water) {
+		_frame_profile.Count("shore_surveys");
+		ProfileScope profile("build", "shore", ProfileClock::Cpu);
+		this->shore.Survey(_world_tiles.Size());
+	}
 	if (whole) {
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) this->Allocate(unit);
 	} else {

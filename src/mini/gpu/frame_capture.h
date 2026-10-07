@@ -21,6 +21,7 @@ struct CaptureShot {
 	std::string path;
 	ViewAim aim;
 	uint wait_frames;
+	std::optional<ViewAim> from = std::nullopt;
 };
 
 class FrameCapture {
@@ -28,6 +29,7 @@ public:
 	static constexpr const char SHOT_LIST_VARIABLE[] = "OTTD_MINI_CAPTURE";
 	static constexpr const char MAP_ONLY_VARIABLE[] = "OTTD_MINI_CAPTURE_NOHUD";
 	static constexpr const char CLEAN_VARIABLE[] = "OTTD_MINI_CAPTURE_CLEAN";
+	static constexpr const char SPEED_VARIABLE[] = "OTTD_MINI_CAPTURE_SPEED";
 
 	FrameCapture();
 
@@ -36,6 +38,7 @@ public:
 	bool HidesLabels() const { return this->clean; }
 	bool HidesGuides() const { return this->clean; }
 	std::optional<ViewAim> Aim() const;
+	std::optional<uint16_t> GameSpeed() const { return this->Active() ? this->speed : std::nullopt; }
 	void Grab(Dimension screen);
 
 private:
@@ -46,6 +49,7 @@ private:
 	uint frames = 0;
 	bool map_only = false;
 	bool clean = false;
+	std::optional<uint16_t> speed;
 };
 
 extern FrameCapture _frame_capture;

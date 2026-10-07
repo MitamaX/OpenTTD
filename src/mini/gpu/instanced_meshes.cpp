@@ -10,6 +10,7 @@
 #include "../../stdafx.h"
 #include "instanced_meshes.h"
 
+#include "frame_profile.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
@@ -24,6 +25,8 @@ void InstancedMeshes::Upload(std::span<const std::byte> vertices, size_t vertex_
 		glGenBuffers(1, &this->index_buffer);
 		glGenBuffers(1, &this->instance_buffer);
 	}
+	_frame_profile.Count("mesh_uploads");
+	_frame_profile.Count("mesh_bytes", vertices.size() + indices.size_bytes());
 	this->instance_layout.assign(instance_layout.begin(), instance_layout.end());
 	this->instance_stride = instance_stride;
 
@@ -42,6 +45,8 @@ void InstancedMeshes::Upload(std::span<const std::byte> vertices, size_t vertex_
 /* Fresh storage each time, so the driver need not wait for draws still reading the last batch. */
 void InstancedMeshes::Stream(std::span<const std::byte> instances)
 {
+	_frame_profile.Count("streams");
+	_frame_profile.Count("stream_bytes", instances.size());
 	glBindBuffer(GL_ARRAY_BUFFER, this->instance_buffer);
 	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(instances.size()), instances.data(), GL_STREAM_DRAW);
 }

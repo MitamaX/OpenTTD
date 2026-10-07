@@ -30,6 +30,7 @@
 #include "../../tunnel_map.h"
 #include "../../tunnelbridge_map.h"
 #include "../../water_map.h"
+#include "../gpu/frame_profile.h"
 #include "airfield_marks.h"
 #include "building_form.h"
 #include "house_forms.h"
@@ -458,6 +459,7 @@ void WorldTiles::Sync()
 		return;
 	}
 
+	_frame_profile.Count("touched_tiles", this->pending.size());
 	for (TileIndex tile : this->pending) {
 		this->queued[tile.base()] = false;
 		this->Repack(tile);
@@ -588,7 +590,17 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->changed_blocks); block.has_value()) this->changes.areas.push_back(*block);
 	bool groundwork_changed = GroundworkOf(packed.ground, packed.network) != GroundworkOf(stored.ground, stored.network);
 	bool ways_changed = packed.network != stored.network || packed.ramp != stored.ramp || packed.eases != stored.eases;
-	if (ways_changed || packed.surface != stored.surface) this->ways_revision++;
+	if (packed.ground != stored.ground) _frame_profile.Count("tile_ground");
+	if (water_changed) _frame_profile.Count("tile_water");
+	if (groundwork_changed) _frame_profile.Count("tile_groundwork");
+	if (packed.surface != stored.surface) _frame_profile.Count("tile_surface");
+	if (packed.network.style != stored.network.style) _frame_profile.Count("tile_style");
+	if (packed.network.track != stored.network.track || packed.network.road != stored.network.road || packed.network.tram != stored.network.tram) _frame_profile.Count("tile_ways");
+	if (packed.eases != stored.eases || packed.ramp != stored.ramp) _frame_profile.Count("tile_eases");
+	if (ways_changed || packed.surface != stored.surface) {
+		_frame_profile.Count("ways_revisions");
+		this->ways_revision++;
+	}
 	if (!water_changed && !groundwork_changed && !ways_changed && packed.surface == stored.surface) return;
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->relief_blocks); block.has_value()) this->changes.reliefs.push_back(*block);
 }

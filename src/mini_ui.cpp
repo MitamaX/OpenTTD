@@ -61,6 +61,7 @@
 #include "mini/fleet/consist_draft.h"
 #include "mini/fleet/fleet_deploy.h"
 #include "mini/gpu/frame_capture.h"
+#include "mini/gpu/frame_profile.h"
 #include "mini/gpu/gpu_frame.h"
 #include "mini/hud/build_dock.h"
 #include "mini/hud/clear_panel.h"
@@ -862,7 +863,10 @@ void MiniUiFrame(uint delta_ms)
 
 	_canvas.BeginFrame();
 	MiniAtlasEnsure();
-	_world_tiles.Sync();
+	{
+		ProfileScope profile("tiles", ProfileClock::Cpu);
+		_world_tiles.Sync();
+	}
 	_camera.SetPeak(_world_tiles.Peak());
 	_vehicle_motion.Advance(delta_ms);
 	_toast_feed.Age(delta_ms);
@@ -872,6 +876,7 @@ void MiniUiFrame(uint delta_ms)
 
 	_camera.Update(delta_ms, _mode.FollowTarget());
 	if (std::optional<ViewAim> aim = _frame_capture.Aim(); aim.has_value()) _camera.Aim(*aim);
+	if (std::optional<uint16_t> speed = _frame_capture.GameSpeed(); speed.has_value()) _game_speed = *speed;
 	_world_painter.Prepare();
 
 	int ppt = _camera.TilePixels();
@@ -886,5 +891,6 @@ void MiniUiFrame(uint delta_ms)
 
 	DrawOrderRoute();
 	DrawVehicleRing(ppt);
+	ProfileScope profile("present", ProfileClock::Cpu);
 	Present();
 }

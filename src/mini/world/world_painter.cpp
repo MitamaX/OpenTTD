@@ -177,9 +177,20 @@ void WorldPainter::SyncChanges()
 {
 	ProfileScope profile("sync");
 	WorldChanges changes = _world_tiles.TakeChanges();
-	this->textures.Sync(changes);
-	this->field.Sync(changes);
-	for (const auto &pass : this->passes) pass->Sync(changes);
+	_frame_profile.Count("changed_areas", changes.areas.size());
+	_frame_profile.Count("relief_areas", changes.reliefs.size());
+	{
+		ProfileScope textures_profile("sync", "textures", ProfileClock::Cpu);
+		this->textures.Sync(changes);
+	}
+	{
+		ProfileScope field_profile("sync", "field", ProfileClock::Cpu);
+		this->field.Sync(changes);
+	}
+	for (const auto &pass : this->passes) {
+		ProfileScope pass_profile("sync", pass->Name(), ProfileClock::Cpu);
+		pass->Sync(changes);
+	}
 }
 
 void WorldPainter::LayDepth(const SceneView &view)

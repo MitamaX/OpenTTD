@@ -20,6 +20,7 @@
 #include "../../station_map.h"
 #include "../../tile_map.h"
 #include "../core/seed.h"
+#include "../gpu/frame_profile.h"
 #include "../map/structure_forms.h"
 
 #include "../../safeguards.h"
@@ -97,6 +98,7 @@ void StructureField::Lay(Dimension map)
 /* A marked tile may change the forms of the tiles around it too: which way a house faces, or which sides an industry's roofs join. */
 void StructureField::Notice(TileIndex tile)
 {
+	_frame_profile.Count("structure_notices");
 	Dimension map = this->grid.Map();
 	int x = TileX(tile);
 	int y = TileY(tile);
@@ -132,6 +134,8 @@ void StructureField::Survey(StructureChunk &chunk, size_t index) const
 /* The block's box shrinks to the mesh once it is built, so culling and detail go by what really stands there. */
 void StructureField::Build(StructureChunk &chunk, size_t index, StructureDetail detail)
 {
+	_frame_profile.Count("structure_builds");
+	ProfileScope profile("build", "structures", ProfileClock::Cpu);
 	TileSpan tiles = this->grid.TilesOf(index);
 	StructureParts parts;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {

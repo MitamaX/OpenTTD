@@ -16,6 +16,7 @@
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 /** Whether a section is timed on the GPU as well as the CPU; sections run outside the GL context are timed on the CPU only. */
@@ -27,13 +28,16 @@ enum class ProfileClock : uint8_t {
 class FrameProfile {
 public:
 	static constexpr const char VARIABLE[] = "OTTD_MINI_PROFILE";
+	static constexpr const char TIMELINE_VARIABLE[] = "OTTD_MINI_TIMELINE";
 	static constexpr const char LOG_NAME[] = "profile.txt";
+	static constexpr const char TIMELINE_NAME[] = "timeline.txt";
 
 	FrameProfile();
 
 	bool Active() const { return this->active; }
 	size_t Open(std::string_view group, std::string_view section, ProfileClock clock);
 	void Close(size_t record);
+	void Count(std::string_view counter, size_t amount = 1);
 	void EndFrame();
 	void Report(std::string_view label);
 	void Release();
@@ -53,7 +57,10 @@ private:
 	struct Frame {
 		std::vector<Record> records;
 		std::vector<uint32_t> queries;
+		std::vector<std::pair<std::string_view, size_t>> counters;
 		size_t used_queries = 0;
+		size_t number = 0;
+		double interval_ms = 0.0;
 	};
 
 	/** A section's time over one frame, summed over every time it ran in it. */
@@ -78,15 +85,18 @@ private:
 	void Collect(Frame &frame);
 	Samples &SamplesOf(std::string_view group, std::string_view section);
 	void Write(std::string_view label);
+	void Trace(const Frame &frame);
 
 	std::array<Frame, FRAMES_IN_FLIGHT> frames;
 	std::vector<Samples> samples;
 	std::ofstream log;
+	std::ofstream timeline;
 	size_t current = 0;
 	size_t frame_count = 0;
 	size_t reported_frames = 0;
 	Clock::time_point last_frame_end;
 	bool active = false;
+	bool tracing = false;
 };
 
 /** Times what runs while it lives as one section of the frame. */

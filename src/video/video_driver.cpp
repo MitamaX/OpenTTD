@@ -17,6 +17,7 @@
 #include "../gfx_func.h"
 #include "../gfxinit.h"
 #include "../mini_ui.h"
+#include "../mini/gpu/frame_profile.h"
 #include "../progress.h"
 #include "../rev.h"
 #include "../thread.h"
@@ -122,12 +123,20 @@ void VideoDriver::Tick()
 		if (this->next_draw_tick < now - ALLOWED_DRIFT * this->GetDrawInterval()) this->next_draw_tick = now;
 
 		/* Locking video buffer can block (especially with vsync enabled), do it before taking game state lock. */
-		this->LockVideoBuffer();
+		{
+			ProfileScope profile("tick", "vidlock", ProfileClock::Cpu);
+			this->LockVideoBuffer();
+		}
 
 		{
 			/* Tell the game-thread to stop so we can have a go. */
-			std::lock_guard<std::mutex> lock_wait(this->game_thread_wait_mutex);
-			std::lock_guard<std::mutex> lock_state(this->game_state_mutex);
+			std::unique_lock<std::mutex> lock_wait(this->game_thread_wait_mutex, std::defer_lock);
+			std::unique_lock<std::mutex> lock_state(this->game_state_mutex, std::defer_lock);
+			{
+				ProfileScope profile("tick", "lock", ProfileClock::Cpu);
+				lock_wait.lock();
+				lock_state.lock();
+			}
 
 			/* Keep the interactive randomizer a bit more random by requesting
 			 * new values when-ever we can. */
@@ -161,12 +170,16 @@ void VideoDriver::Tick()
 
 		/* The mini UI samples the screen while it paints, so this tick's drawing goes to the GPU first. */
 		if (MiniUiActive()) {
+			ProfileScope profile("tick", "vidbuffer", ProfileClock::Cpu);
 			this->UnlockVideoBuffer();
 			this->LockVideoBuffer();
 		}
 		this->Paint();
 
-		this->UnlockVideoBuffer();
+		{
+			ProfileScope profile("tick", "vidunlock", ProfileClock::Cpu);
+			this->UnlockVideoBuffer();
+		}
 
 		/* Wait till the first successful drawing tick before marking the driver as operational. */
 		static bool first_draw_tick = true;

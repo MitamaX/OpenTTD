@@ -14,6 +14,7 @@
 #include <span>
 
 #include "../../map_func.h"
+#include "../gpu/frame_profile.h"
 #include "../map/tile_shapes.h"
 
 #include "../../safeguards.h"
@@ -63,6 +64,8 @@ void BlockScatter::Gather(const SceneView &view, const Frustum &frustum, double 
 	std::partial_sort(this->waiting.begin(), this->waiting.begin() + due, this->waiting.end(), [&](size_t a, size_t b) { return this->blocks[a].strewn_turn < this->blocks[b].strewn_turn; });
 	for (size_t index : std::span(this->waiting).first(due)) {
 		Block &block = this->blocks[index];
+		_frame_profile.Count("scatter_strews");
+		ProfileScope profile("build", "scatter", ProfileClock::Cpu);
 		block.copies.assign(this->models, {});
 		this->Strew(this->grid.TilesOf(index), block.copies);
 		block.stale = false;

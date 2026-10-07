@@ -17,6 +17,7 @@
 #include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../core/seed.h"
+#include "../gpu/frame_profile.h"
 #include "../map/way_course.h"
 #include "seabed.h"
 
@@ -93,6 +94,8 @@ void NetworkField::Survey(NetworkChunk &chunk, const TileSpan &tiles) const
 
 void NetworkField::Build(NetworkChunk &chunk, const TileSpan &tiles, WayDetail detail) const
 {
+	_frame_profile.Count("network_builds");
+	ProfileScope profile("build", "network", ProfileClock::Cpu);
 	chunk.waiting = BuildNetwork(tiles, detail);
 	chunk.signals = std::move(chunk.waiting->signals);
 	chunk.detail = detail;

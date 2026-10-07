@@ -23,6 +23,7 @@
 #include "../../road_type.h"
 #include "../../track_func.h"
 #include "../../tunnelbridge_map.h"
+#include "../gpu/frame_profile.h"
 #include "tile_shapes.h"
 #include "world_tiles.h"
 
@@ -375,6 +376,7 @@ public:
 			this->eases.emplace(joint.Key(), std::nullopt);
 			return std::nullopt;
 		}
+		_frame_profile.Count("ease_runs");
 		Run(joint).Ease([this](const Joint &eased, const std::optional<JointEase> &ease) { this->eases.insert_or_assign(eased.Key(), ease); });
 		return this->eases[joint.Key()];
 	}
@@ -565,7 +567,10 @@ public:
 		}
 		uint64_t key = static_cast<uint64_t>(TileXY(tx, ty).base()) * TRACK_END + track;
 		auto found = this->tracks.find(key);
-		if (found == this->tracks.end()) found = this->tracks.emplace(key, DrawnTrack::Build(tx, ty, track)).first;
+		if (found == this->tracks.end()) {
+			_frame_profile.Count("track_builds");
+			found = this->tracks.emplace(key, DrawnTrack::Build(tx, ty, track)).first;
+		}
 		return found->second;
 	}
 

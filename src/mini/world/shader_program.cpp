@@ -25,6 +25,7 @@
 #include "../core/canvas.h"
 #include "../core/tones.h"
 #include "../core/tuning.h"
+#include "../gpu/frame_profile.h"
 #include "../gpu/gl_api.h"
 #include "../map/airfield_marks.h"
 #include "../map/map_overlay.h"
@@ -216,6 +217,7 @@ bool ShaderProgram::Ready()
 	}
 	if (!this->attempted) {
 		this->attempted = true;
+		_frame_profile.Count("shader_builds");
 		if (this->program.Build(ShaderSource(this->vertex_sources), ShaderSource(this->fragment_sources))) this->BindShared();
 	}
 	return static_cast<bool>(this->program);

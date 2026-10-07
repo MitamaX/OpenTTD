@@ -10,6 +10,7 @@
 #include "../../stdafx.h"
 #include "mesh_buffer.h"
 
+#include "frame_profile.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
@@ -40,6 +41,8 @@ void MeshBuffer::Upload(std::span<const std::byte> vertices, size_t stride, std:
 		glGenBuffers(1, &this->index_buffer);
 	}
 
+	_frame_profile.Count("mesh_uploads");
+	_frame_profile.Count("mesh_bytes", vertices.size() + indices.size_bytes());
 	glBindVertexArray(this->vertex_array);
 	glBindBuffer(GL_ARRAY_BUFFER, this->vertex_buffer);
 	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size()), vertices.data(), GL_STATIC_DRAW);

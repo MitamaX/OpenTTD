@@ -11,10 +11,12 @@
 #include "frame_capture.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 
+#include "../../core/string_consumer.hpp"
 #include "../../debug.h"
 #include "../../gfx_type.h"
 #include "../../openttd.h"
@@ -27,6 +29,7 @@
 
 static constexpr uint DEFAULT_WAIT_FRAMES = 60;
 static constexpr std::string_view WAIT_COMMAND = "wait";
+static constexpr std::string_view GLIDE_COMMAND = "glide";
 static constexpr std::string_view COMMENT_MARK = "#";
 static constexpr std::string_view PNG_PROVIDER = "png";
 static constexpr std::string_view PNG_EXTENSION = ".png";
@@ -73,6 +76,16 @@ static std::vector<CaptureShot> ReadShotList(std::string_view list_path)
 			continue;
 		}
 
+		if (name == GLIDE_COMMAND) {
+			uint frames;
+			if (!(fields >> frames)) continue;
+			std::optional<ViewAim> aim = ReadAim(fields);
+			if (!aim.has_value()) continue;
+			ViewAim from = shots.empty() ? *aim : shots.back().aim;
+			shots.push_back({{}, *aim, std::max(1U, frames), from});
+			continue;
+		}
+
 		if (std::optional<ViewAim> aim = ReadAim(fields); aim.has_value()) shots.push_back({ShotPath(list, name), *aim, wait_frames});
 	}
 	return shots;
@@ -93,12 +106,21 @@ FrameCapture::FrameCapture()
 	this->shots = ReadShotList(*list);
 	this->map_only = GetEnv(MAP_ONLY_VARIABLE) == "1";
 	this->clean = GetEnv(CLEAN_VARIABLE) == "1";
+	if (std::optional<std::string_view> speed = GetEnv(SPEED_VARIABLE); speed.has_value()) this->speed = ParseInteger<uint16_t>(*speed);
 }
 
 std::optional<ViewAim> FrameCapture::Aim() const
 {
 	if (!this->Active()) return std::nullopt;
-	return this->shots[this->next].aim;
+	const CaptureShot &shot = this->shots[this->next];
+	if (!shot.from.has_value()) return shot.aim;
+
+	double share = std::min(1.0, (this->frames + 1.0) / shot.wait_frames);
+	const ViewAim &from = *shot.from;
+	return ViewAim{
+		{std::lerp(from.focus.first, shot.aim.focus.first, share), std::lerp(from.focus.second, shot.aim.focus.second, share)},
+		std::lerp(from.zoom, shot.aim.zoom, share), std::lerp(from.yaw, shot.aim.yaw, share), std::lerp(from.pitch, shot.aim.pitch, share),
+	};
 }
 
 /* Every composed frame counts toward the shot in hand; the game ends once the last shot is written. */
@@ -106,8 +128,11 @@ void FrameCapture::Grab(Dimension screen)
 {
 	if (!this->Active() || ++this->frames < this->shots[this->next].wait_frames) return;
 
-	this->Write(this->shots[this->next], screen);
-	_frame_profile.Report(this->shots[this->next].path);
+	const CaptureShot &shot = this->shots[this->next];
+	if (!shot.from.has_value()) {
+		this->Write(shot, screen);
+		_frame_profile.Report(shot.path);
+	}
 	this->frames = 0;
 	if (++this->next == this->shots.size()) _exit_game = true;
 }
