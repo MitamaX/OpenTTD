@@ -50,9 +50,15 @@ static constexpr uint COMPANY_ROOF_SHARE = 128;
 static constexpr uint8_t ONE_TILE = 1;
 static constexpr uint8_t SHIP_DEPOT_LENGTH = 2;
 static constexpr float SHIP_DEPOT_SIDE = 0.15f;
-static constexpr float SHIP_DEPOT_BASE = 0.05f;
+static constexpr float SHIP_DEPOT_WALK_EDGE = 0.02f;
+static constexpr float SHIP_DEPOT_DECK = 0.08f;
+static constexpr float SHIP_DEPOT_DECK_THICKNESS = 0.025f;
+static constexpr float SHIP_DEPOT_PILE_SIDE = 0.035f;
+static constexpr float SHIP_DEPOT_PILE_SINK = 0.06f;
+static constexpr std::array<float, 4> SHIP_DEPOT_PILES = {0.04f, 0.35f, 0.65f, 0.96f};
 static constexpr float SHIP_DEPOT_HEIGHT = 0.3f;
-static constexpr uint SHIP_DEPOT_OWNER_SHARE = 96;
+static constexpr uint SHIP_DEPOT_OWNER_SHARE = 48;
+static constexpr uint32_t PILE_TINT = 0xFF4B4540U;
 
 static constexpr SiteLook TERMINAL_LOOK = BlockLook(4.0f, Finish::Glass);
 static constexpr SiteLook LOW_BLOCK_LOOK = BlockLook(2.0f, Finish::Concrete);
@@ -183,17 +189,33 @@ static BuildingForm LandDepotForm(TileIndex tile, DiagDirection exit, const Depo
 	return form;
 }
 
-/* A low boathouse with doors onto the water at both ends, its walls in a touch of the owner's colour under a plain metal roof. */
+/* A concrete walkway along one side of a boathouse, held over the water on piles driven into it. */
+static void AddPiledWalk(BuildingForm &form, Axis axis, DiagDirection side)
+{
+	Plot walk = FootprintOf(form).Band(side, SHIP_DEPOT_WALK_EDGE, SHIP_DEPOT_SIDE);
+	form.Add(Part::Box(walk).On(SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS).Height(SHIP_DEPOT_DECK_THICKNESS).Clad(Material::Concrete, QUAY_TINT));
+	float length = FootprintOf(form).Span(axis);
+	float across = walk.Mid(OtherAxis(axis));
+	for (float share : SHIP_DEPOT_PILES) {
+		float along = (axis == AXIS_X ? walk.x0 : walk.y0) + share * length;
+		Part pile = axis == AXIS_X ? Part::Square(along, across, SHIP_DEPOT_PILE_SIDE) : Part::Square(across, along, SHIP_DEPOT_PILE_SIDE);
+		form.Add(pile.On(-SHIP_DEPOT_PILE_SINK).Height(SHIP_DEPOT_PILE_SINK + SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS).Detailed().Clad(Material::Metal, PILE_TINT));
+	}
+}
+
+/* A low boathouse over the water with doors at both ends, its walls in a touch of the owner's colour under a plain metal roof, between walkways on piles. */
 static BuildingForm ShipDepotForm(TileIndex tile)
 {
 	TileIndex north = GetShipDepotNorthTile(tile);
 	Axis axis = GetShipDepotAxis(north);
 	uint32_t seed = TileSeed(north);
 	BuildingForm form = SiteForm(north, SiteFloor(north), axis == AXIS_X ? SHIP_DEPOT_LENGTH : ONE_TILE, axis == AXIS_Y ? SHIP_DEPOT_LENGTH : ONE_TILE);
-	Plot hall = FootprintOf(form).Inset(AxisToDiagDirs(OtherAxis(axis)), SHIP_DEPOT_SIDE);
+	DiagDirections sides = AxisToDiagDirs(OtherAxis(axis));
+	for (DiagDirection side : sides) AddPiledWalk(form, axis, side);
+	Plot hall = FootprintOf(form).Inset(sides, SHIP_DEPOT_SIDE);
 	uint32_t walls = Mix(FinishTint(Finish::Metal, seed), OwnerTint(north), SHIP_DEPOT_OWNER_SHARE);
 	form.Add(Part::Box(hall)
-		.On(SHIP_DEPOT_BASE)
+		.On(SHIP_DEPOT_DECK)
 		.Facade(Material::Corrugated, WindowGrid::Doors, SHIP_DEPOT_HEIGHT, walls, AxisToDiagDirs(axis))
 		.Gable(axis, INDUSTRIAL_PITCH)
 		.Covered(Material::MetalSeam, RoofTint(Material::MetalSeam, seed)));

@@ -151,9 +151,14 @@ static constexpr float PUMPJACK_POST_HEIGHT = 0.16f;
 static constexpr Plot PUMPJACK_BEAM = Plot::Around(LOT_CENTRE, LOT_CENTRE, 0.3f, 0.025f);
 static constexpr float PUMPJACK_BEAM_HEIGHT = 0.03f;
 
-static constexpr float DECK_LEVEL = 0.25f;
-static constexpr float DECK_THICKNESS = 0.05f;
-static constexpr float DECK_LEG_SIDE = 0.06f;
+static constexpr float DECK_LEVEL = 0.42f;
+static constexpr float DECK_THICKNESS = 0.06f;
+static constexpr float DECK_LEG_SIDE = 0.07f;
+static constexpr float DECK_LEG_SINK = 0.08f;
+static constexpr uint32_t DECK_SIDE_TINT = 0xFF55595DU;
+static constexpr uint32_t DECK_PLATE_TINT = 0xFF707478U;
+static constexpr uint32_t JACKET_TINT = 0xFFD3A43AU;
+static constexpr uint32_t DERRICK_TINT = 0xFFD8D2C4U;
 static constexpr float DECK_LEG_INSET = 0.1f;
 static constexpr Plot CRANE_POST = Plot::Around(0.3f, 0.3f, 0.03f, 0.03f);
 static constexpr float CRANE_HEIGHT = 0.5f;
@@ -166,7 +171,7 @@ static constexpr Plot QUARTERS = {0.15f, 0.2f, 0.85f, 0.8f};
 static constexpr SiteLook QUARTERS_LOOK = BlockLook(1.25f);
 static constexpr float DECK_TANK_HEIGHT = 0.15f;
 static constexpr float BRACE_SIDE = 0.02f;
-static constexpr float BRACE_LEVEL = 0.11f;
+static constexpr float BRACE_LEVEL = 0.2f;
 static constexpr float DECK_RAIL_HEIGHT = 0.03f;
 static constexpr float DECK_RAIL_THICKNESS = 0.008f;
 static constexpr uint32_t SAFETY_YELLOW = 0xFFE3BE2EU;
@@ -715,8 +720,8 @@ static void AddDeckModule(BuildingForm &form, const Solid &platform, const SiteL
 			break;
 
 		case DeckModule::Derrick:
-			form.Add(Part::Square(LOT_CENTRE, LOT_CENTRE, DERRICK_SIDE).On(level).Height(DERRICK_HEIGHT).Taper(DERRICK_TAPER).Clad(Material::Lattice, livery.wall));
-			AddFlareBoom(form, FootprintOf(platform), level, lot, livery.wall);
+			form.Add(Part::Square(LOT_CENTRE, LOT_CENTRE, DERRICK_SIDE).On(level).Height(DERRICK_HEIGHT).Taper(DERRICK_TAPER).Clad(Material::Lattice, DERRICK_TINT));
+			AddFlareBoom(form, FootprintOf(platform), level, lot, DERRICK_TINT);
 			break;
 
 		case DeckModule::Quarters:
@@ -849,16 +854,16 @@ static void BuildPumpjack(BuildingForm &form, const SiteLot &, const SiteLook &,
 	form.Add(Part::Box(PUMPJACK_BEAM).On(LevelAbove(post)).Height(PUMPJACK_BEAM_HEIGHT).Clad(Material::Metal, livery.trim));
 }
 
-/* A rig's deck stands on braced legs and is railed along its open sides. */
+/* A rig's steel deck stands high on a braced jacket of legs driven into the sea and is railed along its open sides. */
 static void BuildDeck(BuildingForm &form, const SiteLot &lot, const SiteLook &look, const SiteLivery &livery)
 {
 	Plot deck = LotPlot(lot);
 	Plot legs = deck.Inset(DECK_LEG_INSET);
 	for (float x : {legs.x0, legs.x1}) {
-		for (float y : {legs.y0, legs.y1}) form.Add(Part::Square(x, y, DECK_LEG_SIDE).Height(DECK_LEVEL).Clad(Material::Metal, livery.wall));
+		for (float y : {legs.y0, legs.y1}) form.Add(Part::Square(x, y, DECK_LEG_SIDE).On(-DECK_LEG_SINK).Height(DECK_LEVEL + DECK_LEG_SINK).Clad(Material::Metal, JACKET_TINT));
 	}
-	for (DiagDirection side : LOT_SIDES) form.Add(Part::Box(legs.Edge(side, BRACE_SIDE)).On(BRACE_LEVEL).Height(BRACE_SIDE).Detailed().Clad(Material::Metal, livery.wall));
-	Part platform = Part::Box(deck).On(DECK_LEVEL).Height(DECK_THICKNESS).Clad(Material::Metal, livery.wall).Covered(Material::RoofDeck, livery.roof);
+	for (DiagDirection side : LOT_SIDES) form.Add(Part::Box(legs.Edge(side, BRACE_SIDE)).On(BRACE_LEVEL).Height(BRACE_SIDE).Detailed().Clad(Material::Metal, JACKET_TINT));
+	Part platform = Part::Box(deck).On(DECK_LEVEL).Height(DECK_THICKNESS).Clad(Material::Metal, DECK_SIDE_TINT).Covered(Material::RoofDeck, DECK_PLATE_TINT);
 	form.Add(platform);
 	for (DiagDirection side : OpenSides(lot.joined)) {
 		form.Add(Part::Box(deck.Edge(side, DECK_RAIL_THICKNESS)).On(LevelAbove(platform)).Height(DECK_RAIL_HEIGHT).Detailed().Clad(Material::Metal, SAFETY_YELLOW));
