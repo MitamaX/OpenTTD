@@ -27,6 +27,9 @@ static constexpr double CROWN_REACH = 0.3;
 static constexpr double SLOT_JITTER = 0.09;
 static constexpr double EDGE_MARGIN = 0.08;
 static constexpr double SPARE_TREE_SCALE = 0.85;
+static constexpr double TOY_SCALE = 1.4;
+static constexpr double TOY_HUDDLE = 0.3;
+static constexpr SeedRange TOY_HUDDLE_SPOT = {0.3, 0.7};
 static constexpr uint32_t PLANTING_SALT = 0x7EE5F00DU;
 
 /* Spots a tile's trees stand on, spread so neighbours' crowns just meet; the middle one comes last, clear of a park's paths. */
@@ -37,6 +40,7 @@ static constexpr size_t OUTER_SLOTS = SLOTS.size() - 1;
 
 /* How many trees show for the game's count of one to four on a tile: a full tile reads as woodland, not as an orchard. */
 static constexpr std::array<uint, FLORA_MOST_TREES + 1> SHOWN_TREES = {0, 1, 3, 4, 6};
+static constexpr std::array<uint, FLORA_MOST_TREES + 1> SHOWN_TOYS = {0, 3, 4, 6, 6};
 
 
 /* The finest and the coarsest detail a tree this many tile pixels across shows in, counting the bands where details crossfade, down to the coarsest asked for; none when first passes last. */
@@ -78,13 +82,17 @@ static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance
 	bool mirror_y = (dice.Next() & 1) != 0;
 	bool swap = (dice.Next() & 1) != 0;
 	size_t turn = dice.Next() % OUTER_SLOTS;
-	uint shown = SHOWN_TREES[count];
+	bool toy = kind == TreeKind::Toy;
+	MapVector huddle = toy ? MapVector{dice.Between(TOY_HUDDLE_SPOT), dice.Between(TOY_HUDDLE_SPOT)} : MapVector{HALF_TILE, HALF_TILE};
+	uint shown = (toy ? SHOWN_TOYS : SHOWN_TREES)[count];
 	for (uint tree = 0; tree < shown; tree++) {
 		auto [sx, sy] = tree < OUTER_SLOTS ? SLOTS[(tree + turn) % OUTER_SLOTS] : SLOTS.back();
 		if (swap) std::swap(sx, sy);
-		double x = tx + std::clamp((mirror_x ? 1.0 - sx : sx) + dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
-		double y = ty + std::clamp((mirror_y ? 1.0 - sy : sy) + dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
-		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(0.82, 1.15) * (tree < count ? 1.0 : SPARE_TREE_SCALE);
+		double fx = std::clamp((mirror_x ? 1.0 - sx : sx) + dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
+		double fy = std::clamp((mirror_y ? 1.0 - sy : sy) + dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
+		double x = tx + (toy ? std::lerp(fx, huddle.x, TOY_HUDDLE) : fx);
+		double y = ty + (toy ? std::lerp(fy, huddle.y, TOY_HUDDLE) : fy);
+		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(0.82, 1.15) * (tree < count ? 1.0 : SPARE_TREE_SCALE) * (toy ? TOY_SCALE : 1.0);
 		double wither = age == TreeAge::Dying ? dice.Between(0.35, 0.7) : 0.0;
 		TreeShape shape = {kind, static_cast<uint8_t>(dice.Next() % TREE_SHAPES)};
 		TreeInstance instance = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(tx, ty, x, y)), {ShareByte(dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(dice.Share()), ShareByte(wither)}};
