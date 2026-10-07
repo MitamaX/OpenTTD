@@ -18,6 +18,7 @@
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
 #include "seabed.h"
+#include "shore_relief.h"
 
 #include "../../safeguards.h"
 
@@ -27,6 +28,7 @@ static constexpr double STEEP_BANK_RUN = 0.35;
 static constexpr double LONGEST_BANK_RUN = 1.0;
 static constexpr double LEAST_BANK_FALL = 0.25;
 static constexpr double BANK_PROBE = 0.25;
+static constexpr int COAST_DIVISIONS = 4;
 static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
 
 /** A tile's corners as the surface texel names them. */
@@ -165,6 +167,42 @@ static void AddBasin(TerrainMesh &mesh, const Seabed &bed, const std::array<uint
 	}
 }
 
+static TileCorner CornerAt(int dx, int dy)
+{
+	for (TileCorner corner : {NORTH, WEST, EAST, SOUTH}) {
+		if (CORNER_OFFSETS[corner][0] == dx && CORNER_OFFSETS[corner][1] == dy) return corner;
+	}
+	NOT_REACHED();
+}
+
+/* A bare coast tile is laid as a fine grid over its curved ground, sharing the corners the tile would have had. */
+static void AddCoast(TerrainMesh &mesh, const Seabed &bed, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty)
+{
+	std::array<double, CORNER_COUNT> levels;
+	std::ranges::transform(corners, levels.begin(), [&](uint32_t index) { return static_cast<double>(mesh.vertices[index].level); });
+	ShoreRelief relief(bed, tx, ty, levels);
+	double water = SurfaceLevelOf(tx, ty);
+
+	constexpr int SIDE = COAST_DIVISIONS + 1;
+	std::array<uint32_t, SIDE * SIDE> grid;
+	for (int j = 0; j < SIDE; j++) {
+		for (int i = 0; i < SIDE; i++) {
+			bool on_corner = (i % COAST_DIVISIONS == 0) && (j % COAST_DIVISIONS == 0);
+			if (on_corner) {
+				grid[j * SIDE + i] = corners[CornerAt(i / COAST_DIVISIONS, j / COAST_DIVISIONS)];
+				continue;
+			}
+			double x = tx + static_cast<double>(i) / COAST_DIVISIONS;
+			double y = ty + static_cast<double>(j) / COAST_DIVISIONS;
+			double level = relief.Level(x, y);
+			grid[j * SIDE + i] = mesh.Add({x, y, level}, relief.Normal(x, y), SunkMark(std::max(water - level, 0.0)));
+		}
+	}
+	for (int j = 0; j < COAST_DIVISIONS; j++) {
+		for (int i = 0; i < COAST_DIVISIONS; i++) mesh.Quad(grid[j * SIDE + i], grid[j * SIDE + i + 1], grid[(j + 1) * SIDE + i + 1], grid[(j + 1) * SIDE + i]);
+	}
+}
+
 static void AddTile(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 {
 	TileSurface tile(tx, ty);
@@ -179,6 +217,10 @@ static void AddTile(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 	}
 	if (WaterFormOf(tx, ty) == WaterForm::Open) {
 		AddBasin(mesh, bed, corners, tx, ty);
+		return;
+	}
+	if (IsBareCoast(tx, ty)) {
+		AddCoast(mesh, bed, corners, tx, ty);
 		return;
 	}
 	for (const Facet &facet : tile.Facets()) mesh.Triangle(corners[facet[0]], corners[facet[1]], corners[facet[2]]);

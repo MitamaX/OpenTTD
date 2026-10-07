@@ -31,6 +31,8 @@ add_files(
     scene_view.h
     seabed.cpp
     seabed.h
+    shore_relief.cpp
+    shore_relief.h
     shader_program.cpp
     shader_program.h
     shadow_map.cpp
