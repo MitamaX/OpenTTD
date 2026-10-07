@@ -26,13 +26,6 @@ static Vec3 Flat(const MapVector &v, double z = 0.0)
 	return {v.x, v.y, z};
 }
 
-/* The point a lateral offset reaches on an end's cut, which runs square to the bisector of the two directions meeting there. */
-static MapVector OnCut(const MapVector &joint, const MapVector &right, const MapVector &arriving, const MapVector &leaving, double lateral)
-{
-	MapVector cut = RightOf(Unit(arriving + leaving));
-	return joint + cut * (lateral / Dot(cut, right));
-}
-
 Footing GroundFooting(int tx, int ty)
 {
 	return [ground = TileGround(tx, ty)](double x, double y) { return ground.Level(x, y); };
@@ -52,19 +45,13 @@ std::array<SectionPoint, 5> BoxSection(double from, double to, double low, doubl
 
 MapVector Stretch::At(double share, double lateral) const
 {
-	MapVector along = this->Along();
-	MapVector right = RightOf(along);
-	MapVector first = OnCut(this->from, right, Heads(this->before) ? this->before : along, along, lateral);
-	MapVector last = OnCut(this->to, right, along, Heads(this->after) ? this->after : along, lateral);
-	return first + (last - first) * share;
+	return this->from + (this->to - this->from) * share + this->Right() * lateral;
 }
 
 double Stretch::ShareOf(const MapVector &point) const
 {
-	double lateral = Dot(point - this->from, this->Right());
-	MapVector first = this->At(0.0, lateral);
-	MapVector run = this->At(1.0, lateral) - first;
-	return Dot(point - first, run) / Dot(run, run);
+	MapVector run = this->to - this->from;
+	return Dot(point - this->from, run) / Dot(run, run);
 }
 
 ModelMesh EndCap(const WayLine &line, Section section, bool last)

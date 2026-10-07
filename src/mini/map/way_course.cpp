@@ -506,19 +506,19 @@ static double SegmentDistance(const MapVector &point, const MapVector &from, con
 
 /* How a rail piece's end meets the track beyond: the way that track runs there, along the piece, where one piece alone carries it on at the piece's level;
  * and whether none does. The track beyond runs on along an eased course as that course heads, or else along its own piece. */
-struct TrackEnd {
+struct PieceEnd {
 	std::optional<MapVector> run;
 	bool open;
 };
 
-static TrackEnd TrackEndAt(int tx, int ty, const MapVector &joint, const MapVector &outward)
+static PieceEnd PieceEndAt(int tx, int ty, const MapVector &joint, const MapVector &outward)
 {
 	MapVector probe = joint + outward * HALF_TILE;
 	int nx = static_cast<int>(std::floor(probe.x));
 	int ny = static_cast<int>(std::floor(probe.y));
 	if (!OnMap(nx, ny) || TileGround(tx, ty).Level(joint.x, joint.y) != TileGround(nx, ny).Level(joint.x, joint.y)) return {std::nullopt, true};
 
-	TrackEnd end{std::nullopt, true};
+	PieceEnd end{std::nullopt, true};
 	int partners = 0;
 	Joint at = Joint::At(joint);
 	for (Track track : SetTrackBitIterator(TrackBitsOf(nx, ny))) {
@@ -533,10 +533,12 @@ static TrackEnd TrackEndAt(int tx, int ty, const MapVector &joint, const MapVect
 	return end;
 }
 
-/* A piece off any course leans at an end halfway toward the way the track runs on beyond, which leans as far toward it, so the two meet on one heading. */
-static MapVector Leaning(const MapVector &own, const TrackEnd &end)
+/* A piece off any course leans at an end halfway toward the way the track runs on beyond, which leans as far toward it, so the two meet on one heading;
+ * the track beyond the first end runs on away from the piece, so it is turned about to lean along it. */
+static MapVector Leaning(const MapVector &own, const PieceEnd &end, bool first)
 {
-	return end.run.has_value() ? Unit(own + *end.run) : own;
+	if (!end.run.has_value()) return own;
+	return Unit(own + *end.run * (first ? -1.0 : 1.0));
 }
 
 DrawnTrack DrawnTrack::Build(int tx, int ty, Track track)
@@ -545,12 +547,11 @@ DrawnTrack DrawnTrack::Build(int tx, int ty, Track track)
 	MapVector from = piece.from.Point();
 	MapVector to = piece.to.Point();
 	MapVector own = Unit(to - from);
-	TrackEnd first = TrackEndAt(tx, ty, from, own * -1.0);
-	TrackEnd last = TrackEndAt(tx, ty, to, own);
+	PieceEnd first = PieceEndAt(tx, ty, from, own * -1.0);
+	PieceEnd last = PieceEndAt(tx, ty, to, own);
 	std::optional<WayCourse> course = WayCourse::OfTrack(tx, ty, track);
 	if (course.has_value()) return {tx, ty, from, to, course->Line(), course, first.open, last.open};
-	if (first.run.has_value()) first.run = *first.run * -1.0;
-	return {tx, ty, from, to, Bend(from, to, Leaning(own, first), Leaning(own, last)), std::nullopt, first.open, last.open};
+	return {tx, ty, from, to, Bend(from, to, Leaning(own, first, true), Leaning(own, last, false)), std::nullopt, first.open, last.open};
 }
 
 /* Drawn pieces are worked out once and kept until the ground's shape or the ways change, as every unit of every train asks for its own each frame. */

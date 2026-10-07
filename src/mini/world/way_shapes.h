@@ -48,32 +48,22 @@ using Section = std::span<const SectionPoint>;
 /* How far below its footing a way's sides reach, where the ground or an eased way's bank meets them. */
 inline constexpr double WAY_FOOT = -0.012;
 
-/* Whether a direction beyond a stretch's end is given, so the end is cut on the bisector toward it. */
-inline bool Heads(const MapVector &beyond)
-{
-	return beyond.x != 0.0 || beyond.y != 0.0;
-}
-
 /* A box section from one lateral to another and from one height to another, closed underneath; its top takes one paint, its sides and underside another. */
 std::array<SectionPoint, 5> BoxSection(double from, double to, double low, double high, uint32_t top, uint32_t sides, double gloss = 0.0);
 
-/* A straight stretch of a way. An end is cut square unless given the direction the way runs in beyond it, coming into the first end or leaving the last,
- * when it is cut on the bisector so the two stretches meet in a mitre. */
+/* A straight stretch of a way, its ends cut square. */
 struct Stretch final : WayLine {
 	MapVector from{};
 	MapVector to{};
-	MapVector before{};
-	MapVector after{};
 
 	Stretch() = default;
-	Stretch(const MapVector &from, const MapVector &to, const MapVector &before = {}, const MapVector &after = {}) : from(from), to(to), before(before), after(after) {}
+	Stretch(const MapVector &from, const MapVector &to) : from(from), to(to) {}
 
 	MapVector Along() const { return Unit(this->to - this->from); }
 	MapVector Along(double) const override { return this->Along(); }
 	MapVector Right() const { return RightOf(this->Along()); }
 	double Span() const override { return std::hypot(this->to.x - this->from.x, this->to.y - this->from.y); }
 	MapVector At(double share, double lateral) const override;
-	/* Read along the cuts its ends are made on, so pieces meeting in a mitre agree along the joint. */
 	double ShareOf(const MapVector &point) const override;
 };
 
