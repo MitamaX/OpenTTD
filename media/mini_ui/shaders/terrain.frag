@@ -49,6 +49,8 @@ const float EDGE_MARK = 0.375;
 const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
 const float DROWNED_LEVELS = 0.6;
+const float SCATTERED_SHADOW = 0.7;
+const float SCATTERING_LEVELS = 0.8;
 
 const float BLEND_WIDTH = 0.28;
 const float BUILT_BLEND_WIDTH = 0.03;
@@ -393,10 +395,14 @@ vec3 Soil()
 	return Landscape() == LANDSCAPE_TOYLAND ? TOY_SOIL : SOIL;
 }
 
-/* The ground's colours are picked on screen; they are lit as the light they reflect. */
+/* The ground's colours are picked on screen; they are lit as the light they reflect.
+ * Below the sea the waves scatter the sunlight, so the shadows falling on the bed lighten with the depth of the water over it. */
 vec3 Lit(Shade shade)
 {
-	return GlintingRadiance(Linear(shade.albedo), shade.normal, RenderPoint(v_world), shade.roughness, shade.occlusion, shade.glint * GLINT_GAIN);
+	vec3 position = RenderPoint(v_world);
+	float scattered = SCATTERED_SHADOW * smoothstep(0.0, SCATTERING_LEVELS, -v_world.z);
+	float sunlit = mix(SunVisibility(position, shade.normal), 1.0, scattered);
+	return SunlitRadiance(Linear(shade.albedo), shade.normal, position, shade.roughness, shade.occlusion, shade.glint * GLINT_GAIN, sunlit);
 }
 
 /* How steeply the ground leans at the fragment, in levels per tile. */

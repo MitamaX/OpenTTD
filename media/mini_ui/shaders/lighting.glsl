@@ -46,14 +46,20 @@ float Highlight(vec3 normal, vec3 view, vec3 light, float roughness)
 	return facets * masking * 0.25 * Fresnel(dot(half_way, view), DIELECTRIC_REFLECTANCE);
 }
 
-/* The light a surface point sends toward the eye: sunlight unless shadowed, sky and ground light dimmed by occlusion, the sun's highlight and its glints off crystals.
- * Every lit world shader shades through this, with albedo in linear light and the point and normal in render space. */
-vec3 GlintingRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint)
+/* The light a surface point sends toward the eye with the share of the sun that reaches it given: sunlight, sky and ground light dimmed by occlusion, the sun's highlight and its glints off crystals. */
+vec3 SunlitRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint, float sunlit)
 {
 	vec3 light = SunDirection();
 	vec3 view = normalize(Eye() - position);
-	vec3 sun = SunRadiance() * max(dot(normal, light), 0.0) * SunVisibility(position, normal);
+	vec3 sun = SunRadiance() * max(dot(normal, light), 0.0) * sunlit;
 	return Diffuse(albedo, sun, normal, occlusion) + sun * (Highlight(normal, view, light, roughness) + glint);
+}
+
+/* The light a surface point sends toward the eye, the sun's shut out where it is shadowed.
+ * Every lit world shader shades through this, with albedo in linear light and the point and normal in render space. */
+vec3 GlintingRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint)
+{
+	return SunlitRadiance(albedo, normal, position, roughness, occlusion, glint, SunVisibility(position, normal));
 }
 
 vec3 Radiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion)
