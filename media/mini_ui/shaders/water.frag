@@ -86,7 +86,8 @@ const float BREAKERS_PER_REACH = 40.0;
 const float BREAKER_SPEED = 1.3;
 const float BREAKER_OPACITY = 0.7;
 const float CONTACT_FOAM_REACH = 0.05;
-const float SHELF_DEPTH = 0.3;
+const float SHELF_DEPTH = 0.4;
+const float SHELF_LEVEL = 0.8;
 const float GRAZING_SIGHT = 0.2;
 
 const float KELVIN_SLOPE = 0.354;
@@ -402,7 +403,7 @@ float Whitewater(vec2 p, vec3 descent)
 /* Off a sea shore the water deepens smoothly with the curved line of its field, however the ground under it steps, so the bed of coast tiles shows no saw teeth through it. */
 float ShelfPath(float level, vec3 sight)
 {
-	float depth = SHELF_DEPTH * smoothstep(WATERLINE, 1.0, level);
+	float depth = SHELF_DEPTH * smoothstep(WATERLINE, SHELF_LEVEL, level);
 	return depth / max(-sight.z, GRAZING_SIGHT);
 }
 

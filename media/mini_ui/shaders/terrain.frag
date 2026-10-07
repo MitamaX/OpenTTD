@@ -32,6 +32,7 @@ const float TERRAIN_ROUGHNESS = 0.85;
 const float WALL_MARK = 0.5;
 const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
+const float DROWNED_LEVELS = 0.6;
 
 const float BLEND_WIDTH = 0.28;
 const float BUILT_BLEND_WIDTH = 0.03;
@@ -770,7 +771,8 @@ vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, f
 	normal = Roughened(normal, detail, surface.rugged * (1.0 - water.cover));
 	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
 	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p, grain)), Airfield(p)), v_world.z);
-	land = mix(Banks(land, water, beach), Seabed(water, grain), clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0));
+	float drowned = max(clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0), water.sea * smoothstep(0.0, DROWNED_LEVELS, -v_world.z));
+	land = mix(Banks(land, water, beach), Seabed(water, grain), drowned);
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 
 	vec3 colour = Composite(land, network.paint);
