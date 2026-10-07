@@ -1,4 +1,3 @@
-uniform int u_landscape;
 uniform float u_contour;
 uniform float u_grid;
 
@@ -275,13 +274,13 @@ vec3 GrassTone(float shade, bool lush)
 	if (lush) {
 		dark = vec3(0.20, 0.35, 0.17);
 		light = vec3(0.31, 0.47, 0.23);
-	} else if (u_landscape == LANDSCAPE_ARCTIC) {
+	} else if (Landscape() == LANDSCAPE_ARCTIC) {
 		dark = vec3(0.38, 0.47, 0.34);
 		light = vec3(0.53, 0.60, 0.44);
-	} else if (u_landscape == LANDSCAPE_TROPIC) {
+	} else if (Landscape() == LANDSCAPE_TROPIC) {
 		dark = vec3(0.52, 0.55, 0.28);
 		light = vec3(0.68, 0.66, 0.36);
-	} else if (u_landscape == LANDSCAPE_TOYLAND) {
+	} else if (Landscape() == LANDSCAPE_TOYLAND) {
 		dark = vec3(0.42, 0.72, 0.38);
 		light = vec3(0.58, 0.85, 0.48);
 	}

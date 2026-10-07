@@ -12,7 +12,6 @@
 
 #include <array>
 
-#include "../../settings_type.h"
 #include "../core/tones.h"
 #include "../core/tuning.h"
 #include "../gpu/frame_capture.h"
@@ -72,7 +71,6 @@ void TerrainPass::Configure() const
 	this->program.Use();
 	WorldTextures::BindSamplers(this->program);
 	GroundDetail::BindSamplers(this->program);
-	glUniform1i(this->program.Uniform("u_landscape"), to_underlying(_settings_game.game_creation.landscape));
 	bool guides = !_frame_capture.HidesGuides();
 	glUniform1f(this->program.Uniform("u_contour"), guides ? ChannelShare(_tuning.contour_alpha) : 0.0f);
 	glUniform1f(this->program.Uniform("u_grid"), guides ? ChannelShare(_tuning.grid_alpha) : 0.0f);

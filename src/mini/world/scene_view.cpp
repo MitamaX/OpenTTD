@@ -14,6 +14,8 @@
 #include <array>
 #include <chrono>
 
+#include "../../landscape.h"
+#include "../../settings_type.h"
 #include "../core/sunlight.h"
 #include "../gpu/gl_api.h"
 #include "../map/world_tiles.h"
@@ -23,6 +25,8 @@
 static constexpr double FOG_START_SHARE = 5.0;
 static constexpr double SHADOW_REACH_SHARE = 6.0;
 static constexpr double CLOCK_PERIOD_SECONDS = 3600.0;
+static constexpr double NO_SNOW_LINE = 1e6;
+static constexpr double NO_BLANKET = -1.0;
 
 /* The layout of the Scene block in scene.glsl, std140. */
 struct SceneBlock {
@@ -34,6 +38,7 @@ struct SceneBlock {
 	std::array<float, 4> lens;
 	std::array<float, 4> world;
 	std::array<float, 4> screen;
+	std::array<float, 4> climate;
 };
 
 static double Clock()
@@ -41,6 +46,17 @@ static double Clock()
 	static const auto start = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
 	return std::fmod(elapsed.count(), CLOCK_PERIOD_SECONDS);
+}
+
+/* Snow lies over arctic ground above the snow line and sand over tropic desert; the other climates lay nothing over theirs. */
+static std::array<double, 3> Climate()
+{
+	LandscapeType landscape = _settings_game.game_creation.landscape;
+	double snow_line = landscape == LandscapeType::Arctic ? GetSnowLine() : NO_SNOW_LINE;
+	double blanket = NO_BLANKET;
+	if (landscape == LandscapeType::Arctic) blanket = to_underlying(GroundMaterial::Snow);
+	if (landscape == LandscapeType::Tropic) blanket = to_underlying(GroundMaterial::Desert);
+	return {static_cast<double>(to_underlying(landscape)), snow_line, blanket};
 }
 
 SceneView SceneView::Of(const Camera &camera)
@@ -95,6 +111,7 @@ void SceneUniforms::Upload(const SceneView &view)
 	auto floats = [](double x, double y, double z, double w) { return std::array<float, 4>{static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), static_cast<float>(w)}; };
 	SunVector sun = Sun();
 	Dimension map = _world_tiles.Size();
+	auto [landscape, snow_line, blanket] = Climate();
 	SceneBlock block = {
 		view.view.Floats(),
 		view.projection.Floats(),
@@ -104,6 +121,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		floats(view.near, view.far, view.fog_start, view.far),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
 		floats(view.viewport.width, view.viewport.height, view.clock, view.phase),
+		floats(landscape, snow_line, blanket, 0.0),
 	};
 
 	if (this->buffer == 0) glGenBuffers(1, &this->buffer);

@@ -11,10 +11,7 @@
 #include "structure_pass.h"
 
 #include <array>
-#include <limits>
 
-#include "../../landscape.h"
-#include "../../settings_type.h"
 #include "../gpu/gl_api.h"
 #include "shadow_map.h"
 
@@ -56,11 +53,8 @@ void StructurePass::Reload()
 	this->caster.Reload();
 }
 
-/* Roofs above the snow line wear snow, on maps that have one. */
 void StructurePass::Prepare(const SceneView &view)
 {
-	bool snowy = _settings_game.game_creation.landscape == LandscapeType::Arctic;
-	this->snow_level = snowy ? GetSnowLine() * LevelRise() : std::numeric_limits<float>::max();
 	this->field.Prepare(view);
 }
 
@@ -84,7 +78,6 @@ void StructurePass::Draw(const SceneView &view)
 	this->program.Use();
 	UploadOverlay(this->program);
 	glUniform2f(this->program.Uniform("u_fade"), static_cast<float>(STRUCTURE_FADE_START), static_cast<float>(STRUCTURE_FADE_END));
-	glUniform1f(this->program.Uniform("u_snow_level"), static_cast<float>(this->snow_level));
 	this->DrawChunks();
 }
 

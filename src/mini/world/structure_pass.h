@@ -40,7 +40,6 @@ private:
 	std::vector<const StructureChunk *> shown;
 	ShaderProgram program;
 	ShaderProgram caster;
-	double snow_level = 0.0;
 };
 
 #endif /* MINI_WORLD_STRUCTURE_PASS_H */

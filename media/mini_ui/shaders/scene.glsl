@@ -7,6 +7,7 @@ layout(std140) uniform Scene {
 	vec4 u_lens;
 	vec4 u_world;
 	vec4 u_screen;
+	vec4 u_climate;
 };
 
 const int CASCADES = 4;
@@ -32,6 +33,23 @@ float Peak()
 float LevelRise()
 {
 	return u_world.w;
+}
+
+int Landscape()
+{
+	return int(u_climate.x);
+}
+
+/* The level above which arctic ground lies under snow. */
+float SnowLine()
+{
+	return u_climate.y;
+}
+
+/* Whether a tile's ground is the one its climate lays a blanket of snow or sand over. */
+bool Blanketed(uint material)
+{
+	return float(material) == u_climate.z;
 }
 
 float Clock()

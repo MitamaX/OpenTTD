@@ -1,5 +1,4 @@
 uniform vec2 u_fade;
-uniform float u_snow_level;
 
 in vec3 v_position;
 in vec3 v_normal;
@@ -39,7 +38,7 @@ void main()
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
 	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_glass.rgb, uint(round(v_glass.a * SEED_SCALE)));
 	vec3 normal = Tilted(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0), clad.tilt);
-	if (Has(SURFACE_ROOF) && v_position.z > u_snow_level) clad.albedo = mix(clad.albedo, SNOW, smoothstep(0.4, 0.7, normal.z));
+	if (Has(SURFACE_ROOF) && v_position.z > SnowLine() * LevelRise()) clad.albedo = mix(clad.albedo, SNOW, smoothstep(0.4, 0.7, normal.z));
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	vec3 colour = Radiance(albedo, normal, v_position, clad.roughness, v_colour.a * clad.occlusion);
