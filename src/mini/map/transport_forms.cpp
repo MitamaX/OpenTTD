@@ -57,6 +57,11 @@ static constexpr float SHIP_DEPOT_PILE_SIDE = 0.035f;
 static constexpr float SHIP_DEPOT_PILE_SINK = 0.06f;
 static constexpr std::array<float, 4> SHIP_DEPOT_PILES = {0.04f, 0.35f, 0.65f, 0.96f};
 static constexpr float SHIP_DEPOT_HEIGHT = 0.3f;
+static constexpr float SHIP_DEPOT_GUIDE_SIDE = 0.05f;
+static constexpr float SHIP_DEPOT_GUIDE_RISE = 0.12f;
+static constexpr std::array<float, 2> SHIP_DEPOT_BOLLARDS = {0.2f, 0.8f};
+static constexpr float SHIP_DEPOT_BOLLARD_SIDE = 0.02f;
+static constexpr float SHIP_DEPOT_BOLLARD_HEIGHT = 0.025f;
 static constexpr uint SHIP_DEPOT_OWNER_SHARE = 48;
 static constexpr uint32_t PILE_TINT = 0xFF4B4540U;
 
@@ -189,21 +194,31 @@ static BuildingForm LandDepotForm(TileIndex tile, DiagDirection exit, const Depo
 	return form;
 }
 
-/* A concrete walkway along one side of a boathouse, held over the water on piles driven into it. */
-static void AddPiledWalk(BuildingForm &form, Axis axis, DiagDirection side)
+static Part AlongWalk(Axis axis, float along, float across, float side)
 {
-	Plot walk = FootprintOf(form).Band(side, SHIP_DEPOT_WALK_EDGE, SHIP_DEPOT_SIDE);
-	form.Add(Part::Box(walk).On(SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS).Height(SHIP_DEPOT_DECK_THICKNESS).Clad(Material::Concrete, QUAY_TINT));
-	float length = FootprintOf(form).Span(axis);
+	return axis == AXIS_X ? Part::Square(along, across, side) : Part::Square(across, along, side);
+}
+
+/* A row of piles along one side of a boathouse's deck, driven into the water; those at its ends stand on above the deck to guide boats in to the doors, and bollards stand between them. */
+static void AddPileRow(BuildingForm &form, const Plot &deck, Axis axis, DiagDirection side)
+{
+	Plot walk = deck.Band(side, 0.0f, SHIP_DEPOT_SIDE - SHIP_DEPOT_WALK_EDGE);
+	float start = axis == AXIS_X ? deck.x0 : deck.y0;
+	float length = deck.Span(axis);
 	float across = walk.Mid(OtherAxis(axis));
-	for (float share : SHIP_DEPOT_PILES) {
-		float along = (axis == AXIS_X ? walk.x0 : walk.y0) + share * length;
-		Part pile = axis == AXIS_X ? Part::Square(along, across, SHIP_DEPOT_PILE_SIDE) : Part::Square(across, along, SHIP_DEPOT_PILE_SIDE);
-		form.Add(pile.On(-SHIP_DEPOT_PILE_SINK).Height(SHIP_DEPOT_PILE_SINK + SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS).Detailed().Clad(Material::Metal, PILE_TINT));
+	float underside = SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS;
+	for (size_t pile = 0; pile < SHIP_DEPOT_PILES.size(); pile++) {
+		bool guide = pile == 0 || pile + 1 == SHIP_DEPOT_PILES.size();
+		float top = guide ? SHIP_DEPOT_DECK + SHIP_DEPOT_GUIDE_RISE : underside;
+		Part post = AlongWalk(axis, start + SHIP_DEPOT_PILES[pile] * length, across, guide ? SHIP_DEPOT_GUIDE_SIDE : SHIP_DEPOT_PILE_SIDE).On(-SHIP_DEPOT_PILE_SINK).Height(SHIP_DEPOT_PILE_SINK + top);
+		form.Add((guide ? post : post.Detailed()).Clad(guide ? Material::Timber : Material::Metal, PILE_TINT));
+	}
+	for (float share : SHIP_DEPOT_BOLLARDS) {
+		form.Add(AlongWalk(axis, start + share * length, across, SHIP_DEPOT_BOLLARD_SIDE).On(SHIP_DEPOT_DECK).Height(SHIP_DEPOT_BOLLARD_HEIGHT).Detailed().Clad(Material::Metal, SOOT_TINT));
 	}
 }
 
-/* A low boathouse over the water with doors at both ends, its walls in a touch of the owner's colour under a plain metal roof, between walkways on piles. */
+/* A low boathouse with doors at both ends on a concrete deck over the water, its walls in a touch of the owner's colour under a plain metal roof, walkways along its sides. */
 static BuildingForm ShipDepotForm(TileIndex tile)
 {
 	TileIndex north = GetShipDepotNorthTile(tile);
@@ -211,7 +226,9 @@ static BuildingForm ShipDepotForm(TileIndex tile)
 	uint32_t seed = TileSeed(north);
 	BuildingForm form = SiteForm(north, SiteFloor(north), axis == AXIS_X ? SHIP_DEPOT_LENGTH : ONE_TILE, axis == AXIS_Y ? SHIP_DEPOT_LENGTH : ONE_TILE);
 	DiagDirections sides = AxisToDiagDirs(OtherAxis(axis));
-	for (DiagDirection side : sides) AddPiledWalk(form, axis, side);
+	Plot deck = FootprintOf(form).Inset(sides, SHIP_DEPOT_WALK_EDGE);
+	form.Add(Part::Box(deck).On(SHIP_DEPOT_DECK - SHIP_DEPOT_DECK_THICKNESS).Height(SHIP_DEPOT_DECK_THICKNESS).Clad(Material::Concrete, QUAY_TINT));
+	for (DiagDirection side : sides) AddPileRow(form, deck, axis, side);
 	Plot hall = FootprintOf(form).Inset(sides, SHIP_DEPOT_SIDE);
 	uint32_t walls = Mix(FinishTint(Finish::Metal, seed), OwnerTint(north), SHIP_DEPOT_OWNER_SHARE);
 	form.Add(Part::Box(hall)
