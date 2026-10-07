@@ -40,6 +40,7 @@ private:
 	};
 
 	void Lay(Dimension map);
+	void LayOuterBed(Dimension map);
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
 	Chunk *Prepare(size_t index, const SceneView &camera, const Frustum &frustum);
 	void Evict();

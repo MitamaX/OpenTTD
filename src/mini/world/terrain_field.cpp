@@ -35,6 +35,14 @@ static int StepFor(double tile_pixels)
 	return step;
 }
 
+/* The seabed beyond the map meets the bed of the border tiles, which sinks by how far the shore lies within a shelf of them. */
+static bool ShapesOuterBed(const Rect &area, Dimension map)
+{
+	int width = static_cast<int>(map.width);
+	int height = static_cast<int>(map.height);
+	return area.left <= SHELF_TILES || area.top <= SHELF_TILES || area.right >= width - 1 - SHELF_TILES || area.bottom >= height - 1 - SHELF_TILES;
+}
+
 /* A tile whose shape or water changed reshapes the walls, the shading and the seabed of the tiles beside it, and one whose ways changed eases the runs through it afresh,
  * so the blocks around it go stale too. */
 void TerrainField::Sync(const WorldChanges &changes)
@@ -53,6 +61,7 @@ void TerrainField::Sync(const WorldChanges &changes)
 		chunk.stale = true;
 		chunk.surveyed = false;
 	});
+	if (std::ranges::any_of(changes.reliefs, [&](const Rect &area) { return ShapesOuterBed(area, size); })) this->LayOuterBed(size);
 }
 
 void TerrainField::Lay(Dimension map)
@@ -62,8 +71,13 @@ void TerrainField::Lay(Dimension map)
 	this->chunks = std::vector<Chunk>(this->grid.Count());
 	if (this->chunks.empty()) return;
 
-	this->outer_bed.Upload(BuildOuterBed(map, OUTER_SEA_REACH), TERRAIN_LAYOUT);
+	this->LayOuterBed(map);
 	this->outer_water.Upload(BuildOuterWater(map, OUTER_SEA_REACH), WATER_LAYOUT);
+}
+
+void TerrainField::LayOuterBed(Dimension map)
+{
+	this->outer_bed.Upload(BuildOuterBed(map, OUTER_SEA_REACH), TERRAIN_LAYOUT);
 }
 
 void TerrainField::Survey(Chunk &chunk, const TileSpan &tiles) const
