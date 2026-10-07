@@ -22,6 +22,7 @@
 #include "../map/tile_shapes.h"
 #include "../map/way_course.h"
 #include "../map/world_tiles.h"
+#include "bridge_models.h"
 #include "seabed.h"
 #include "shore_relief.h"
 #include "track_models.h"
@@ -40,6 +41,10 @@ static constexpr double OPEN_EARTH_BANK_RUN = 1.0;
 static constexpr double FAR_EARTH_BANK_RUN = 2.0;
 static constexpr double WAYSIDE_EARTH_BANK_RUN = 0.2;
 static constexpr int EARTH_BANK_ROWS = 5;
+/* Earth stands no steeper than this, in tile widths of fall for each of run; a way banked up any steeper over a way below stands on a retaining wall. */
+static constexpr double STEEPEST_EARTH = 1.6;
+static constexpr int RAMP_BANK_ROWS = 4;
+static constexpr double RAMP_BANK_RUN = 1.2;
 static constexpr double GROUND_PROBE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
@@ -305,6 +310,13 @@ static Groundwork GroundworkAt(int tx, int ty)
 struct EarthBank {
 	double run;
 	bool fill;
+
+	/* Whether earth could hold a fall this deep over the bank's run; a cutting is left rock, however steep. */
+	bool Holds(const StepFace &step) const
+	{
+		double fall = std::max(step.ring[0].level - step.ring[1].level, step.ring[3].level - step.ring[2].level) * LevelRise();
+		return !this->fill || fall <= this->run * STEEPEST_EARTH;
+	}
 };
 
 /* Ways climb on embankments and run through cuttings whose earth sides lean out over the lower tile, short of any way along it there,
@@ -360,17 +372,19 @@ static Vec3 ClimbNormal(const MapVector &climb)
 	return Normalised(Vec3{-climb.x * rise, -climb.y * rise, 1.0});
 }
 
-/* One end of an earth bank: from the step's top it grades out over the lower ground, as far as its run allows for the height it falls, onto the ground there. */
-static BankEdge BankEnd(const TileGround &low, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double run)
+/* One end of an earth bank: from the step's top it grades out over the lower ground, as far as its run allows for the height it falls, onto the ground there;
+ * the ground is read a point and how far out it lies. */
+template <class GroundUnder>
+static BankEdge BankEnd(const GroundUnder &ground_under, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double run)
 {
-	double reach = std::min((top.level - foot.level) * LevelRise() * EARTH_BANK_RUN_PER_RISE, run);
+	double reach = std::clamp((top.level - foot.level) * LevelRise() * EARTH_BANK_RUN_PER_RISE, 0.0, run);
 	BankEdge edge;
 	for (int row = 0; row <= EARTH_BANK_ROWS; row++) {
 		double share = static_cast<double>(row) / EARTH_BANK_ROWS;
 		double out = reach * share;
 		double x = foot.x + outward.x * out;
 		double y = foot.y + outward.y * out;
-		double ground = std::min(GroundBeyond(low, x, y, out) - BANK_FOOT_DIP * share, top.level);
+		double ground = std::min(ground_under(x, y, out) - BANK_FOOT_DIP * share, top.level);
 		double fall = BankFall(share);
 		MapVector climb = GroundClimb(x, y) * fall - outward * ((top.level - ground) * BankFallSlope(share) / std::max(reach, GROUND_PROBE));
 		edge.points[row] = {x, y, top.level + (ground - top.level) * fall};
@@ -394,8 +408,9 @@ static void AddBankStrip(TerrainMesh &mesh, const BankEdge &first, const BankEdg
 /* An earth bank: its top along the step's top, grading out over the lower tile and on beyond it where its run reaches. */
 static std::array<BankEdge, 2> AddEarthBank(TerrainMesh &mesh, const TileGround &low, const StepFace &step, const EarthBank &bank)
 {
-	BankEdge first = BankEnd(low, step.ring[0], step.ring[1], step.outward, bank.run);
-	BankEdge second = BankEnd(low, step.ring[3], step.ring[2], step.outward, bank.run);
+	auto ground_under = [&low](double x, double y, double out) { return GroundBeyond(low, x, y, out); };
+	BankEdge first = BankEnd(ground_under, step.ring[0], step.ring[1], step.outward, bank.run);
+	BankEdge second = BankEnd(ground_under, step.ring[3], step.ring[2], step.outward, bank.run);
 	AddBankStrip(mesh, first, second, bank.fill ? FILL_MARK : DRY_MARK);
 	return {first, second};
 }
@@ -433,7 +448,7 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 		int ny = ty + across.y;
 		if (StandsInSea(nx, ny)) {
 			AddBank(mesh, bed, tx, ty, *step);
-		} else if (std::optional<EarthBank> bank = EarthBankOf(tx, ty, nx, ny); bank.has_value()) {
+		} else if (std::optional<EarthBank> bank = EarthBankOf(tx, ty, nx, ny); bank.has_value() && bank->Holds(*step)) {
 			std::array<BankEdge, 2> edges = AddEarthBank(mesh, TileGround(nx, ny), *step, *bank);
 			bank_edges.insert(bank_edges.end(), edges.begin(), edges.end());
 			bank_marks.insert(bank_marks.end(), 2, bank->fill ? FILL_MARK : DRY_MARK);
@@ -442,6 +457,59 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 		}
 	}
 	CloseBankCorners(mesh, bank_edges, bank_marks);
+}
+
+static WorldPoint Grounded(const WorldPoint &at)
+{
+	return {at.x, at.y, GroundLevel(at.x, at.y) - BANK_FOOT_DIP};
+}
+
+/* A stone face from a line of points down to the ground under them, facing out one way. */
+static void AddMasonry(TerrainMesh &mesh, std::span<const WorldPoint> line, const MapVector &facing)
+{
+	Vec3 outward = {facing.x, facing.y, 0.0};
+	for (size_t i = 0; i + 1 < line.size(); i++) {
+		uint32_t top = mesh.Add(line[i], outward, WALL_MARK);
+		mesh.Add(line[i + 1], outward, WALL_MARK);
+		mesh.Add(Grounded(line[i + 1]), outward, WALL_MARK);
+		mesh.Add(Grounded(line[i]), outward, WALL_MARK);
+		mesh.Quad(top, top + 1, top + 2, top + 3);
+	}
+}
+
+/* A bridge head's ramp climbs on a bank of the ground's own earth, grading out over the ground on either side, and meets the span at a stone abutment whose wing walls close the bank's end. */
+static void AddRampBank(TerrainMesh &mesh, int tx, int ty)
+{
+	TileIndex head = TileXY(tx, ty);
+	RampTexel ramp = _world_tiles.RampAt(head);
+	if (!ramp.Present()) return;
+
+	DiagDirection onto = static_cast<DiagDirection>(ramp.onto);
+	Footing footing = RampFooting(head, onto, ramp.deck);
+	Stretch run = RampRun(head, onto);
+	double crown = EMBANKMENT_CROWN_DEPTH / LevelRise();
+	auto crest = [&](double share, double side) {
+		MapVector at = run.At(share, side * DECK_HALF);
+		return WorldPoint{at.x, at.y, footing(at.x, at.y) - crown};
+	};
+	auto ground_under = [](double x, double y, double) { return GroundLevel(x, y); };
+
+	std::vector<WorldPoint> abutment;
+	for (double side : {-1.0, 1.0}) {
+		std::vector<BankEdge> edges;
+		for (int row = 0; row <= RAMP_BANK_ROWS; row++) {
+			WorldPoint top = crest(static_cast<double>(row) / RAMP_BANK_ROWS, side);
+			edges.push_back(BankEnd(ground_under, top, Grounded(top), run.Right() * side, RAMP_BANK_RUN));
+		}
+		for (size_t i = 0; i + 1 < edges.size(); i++) AddBankStrip(mesh, edges[i], edges[i + 1], FILL_MARK);
+		const auto &end = edges.back().points;
+		if (side < 0.0) {
+			abutment.insert(abutment.end(), end.rbegin(), end.rend());
+		} else {
+			abutment.insert(abutment.end(), end.begin(), end.end());
+		}
+	}
+	AddMasonry(mesh, abutment, Outward(onto));
 }
 
 /* A run of samples along a course's middle line, carried on a step beyond each end along the course's heading there, so its offsets end square to it. */
@@ -505,6 +573,7 @@ static TerrainMesh BuildTiles(const TileSpan &tiles)
 			AddTile(mesh, bed, tx, ty);
 			AddWalls(mesh, bed, tx, ty);
 			AddFormations(mesh, tx, ty);
+			AddRampBank(mesh, tx, ty);
 		}
 	}
 	return mesh;

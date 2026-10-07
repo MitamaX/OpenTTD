@@ -135,6 +135,17 @@ struct NetworkTexel {
 	bool operator==(const NetworkTexel &) const = default;
 };
 
+inline constexpr uint8_t NO_RAMP = 0xFF;
+
+/** A bridge head's ramp: the side it climbs toward onto the bridge, and the level its deck meets the bridge at. */
+struct RampTexel {
+	uint8_t onto = NO_RAMP;
+	uint8_t deck = 0;
+
+	bool Present() const { return this->onto != NO_RAMP; }
+	bool operator==(const RampTexel &) const = default;
+};
+
 /* The blocks where any texel changed, and the fewer where the ground's shape, its water or the ways banked up on it did. */
 struct WorldChanges {
 	std::vector<Rect> areas;
@@ -162,6 +173,7 @@ public:
 	GroundTexel GroundAt(TileIndex tile) const;
 	WaterTexel WaterAt(TileIndex tile) const;
 	NetworkTexel NetworkAt(TileIndex tile) const;
+	RampTexel RampAt(TileIndex tile) const;
 	/* Whether a tile's ways may be eased off its ground: plain track and country roads, not stations, depots, crossings, bridges, tunnels or town streets. */
 	bool WaysEase(TileIndex tile) const;
 	/* A count that moves on whenever the ground's shape or the ways on it change. */
@@ -173,6 +185,7 @@ private:
 		GroundTexel ground;
 		WaterTexel water;
 		NetworkTexel network;
+		RampTexel ramp;
 		bool eases;
 
 		bool operator==(const Texels &) const = default;
@@ -193,6 +206,7 @@ private:
 	std::vector<GroundTexel> ground;
 	std::vector<WaterTexel> water;
 	std::vector<NetworkTexel> network;
+	std::vector<RampTexel> ramps;
 	std::vector<bool> eases;
 	std::vector<TileIndex> pending;
 	std::vector<TileIndex> touched;
