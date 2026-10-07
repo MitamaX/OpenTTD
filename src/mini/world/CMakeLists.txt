@@ -13,6 +13,8 @@ add_files(
     forest_pass.cpp
     forest_pass.h
     frame_units.h
+    ground_cover.cpp
+    ground_cover.h
     ground_detail.cpp
     ground_detail.h
     ground_overlay.cpp
@@ -74,6 +76,8 @@ add_files(
     track_models.h
     tree_models.cpp
     tree_models.h
+    tuft_models.cpp
+    tuft_models.h
     tunnel_models.cpp
     tunnel_models.h
     vehicle_looks.cpp

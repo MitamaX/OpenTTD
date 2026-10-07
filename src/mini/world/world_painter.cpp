@@ -10,6 +10,8 @@
 #include "../../stdafx.h"
 #include "world_painter.h"
 
+#include <limits>
+
 #include "../core/camera.h"
 #include "../core/canvas.h"
 #include "../core/ground_trace.h"
@@ -18,12 +20,14 @@
 #include "../map/way_bends.h"
 #include "figure_models.h"
 #include "forest_pass.h"
+#include "ground_cover.h"
 #include "network_pass.h"
 #include "scatter_pass.h"
 #include "smoke_pass.h"
 #include "street_walkers.h"
 #include "structure_pass.h"
 #include "terrain_pass.h"
+#include "tuft_models.h"
 #include "vehicle_pass.h"
 #include "water_pass.h"
 
@@ -32,8 +36,9 @@
 static constexpr GLint REQUIRED_MAJOR = 3;
 static constexpr GLint REQUIRED_MINOR = 3;
 
-/* People show where a tile spans enough pixels to make them out and cast shadows only close up. */
+/* People show where a tile spans enough pixels to make them out and cast shadows only close up; tufts show only closer still, too small to shadow. */
 static constexpr ScatterLook WALKER_LOOK = {BuildFigureModels, FIGURE_POSES, 26.0, 34.0, 48.0};
+static constexpr ScatterLook TUFT_LOOK = {BuildTuftModels, TUFT_SHAPES, 40.0, 56.0, std::numeric_limits<double>::infinity()};
 
 WorldPainter _world_painter;
 
@@ -58,6 +63,7 @@ WorldPainter::WorldPainter()
 	this->vehicles = vehicles.get();
 	this->passes.push_back(std::move(vehicles));
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<StreetWalkers>(), WALKER_LOOK));
+	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<GroundCover>(), TUFT_LOOK));
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
 	this->passes.push_back(std::make_unique<SmokePass>(*this->structures, *this->vehicles));
