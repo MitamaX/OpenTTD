@@ -44,6 +44,6 @@ void main()
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	vec3 colour = Radiance(albedo, normal, v_position, clad.roughness, v_colour.a * clad.occlusion);
 	vec3 view = normalize(Eye() - v_position);
-	colour += clad.glass * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * SkyRadiance(reflect(-view, normal));
+	colour += clad.glass * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * CloudedSky(reflect(-view, normal));
 	frag_colour = vec4(colour, 1.0);
 }

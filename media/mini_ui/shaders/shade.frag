@@ -52,7 +52,7 @@ void main()
 	vec3 sight = SightAt(gl_FragCoord.xy);
 	float depth = texelFetch(u_depth, texel, 0).r;
 	if (depth >= SKY_DEPTH) {
-		frag_colour = vec4(SkyRadiance(sight) + SunDisc(sight), 1.0);
+		frag_colour = vec4(CloudedSky(sight) + SunDisc(sight), 1.0);
 		return;
 	}
 

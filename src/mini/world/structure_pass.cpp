@@ -24,10 +24,11 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/structure.vert",
 };
-static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/common.glsl",
 	"mini_ui/shaders/sky.glsl",
+	"mini_ui/shaders/clouds.glsl",
 	"mini_ui/shaders/shadow.glsl",
 	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/overlay.glsl",

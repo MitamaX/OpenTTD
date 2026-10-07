@@ -1,13 +1,13 @@
 const float PI = 3.14159265;
 
 const vec3 ZENITH = vec3(0.04, 0.17, 0.66);
-const vec3 HORIZON = vec3(0.34, 0.56, 0.95);
-const vec3 SUN_GLOW = vec3(1.0, 0.70, 0.42);
+const vec3 HORIZON = vec3(0.27, 0.50, 0.95);
+const vec3 SUN_GLOW = vec3(1.0, 0.66, 0.36);
 const float SKY_BRIGHTNESS = 1.35;
 const float SKY_CURVE = 0.45;
 const float GLOW_FOCUS = 0.76;
 const float GLOW_STRENGTH = 0.8;
-const float HORIZON_GLOW = 0.25;
+const float HORIZON_GLOW = 0.6;
 const float HORIZON_GLOW_FOCUS = 5.0;
 const float HAZE_LIFT = 0.015;
 
