@@ -282,8 +282,15 @@ static WorldPoint Settled(const Seabed &bed, const WorldPoint &at)
 	return {at.x, at.y, at.level - bed.Sink(static_cast<int>(at.x), static_cast<int>(at.y))};
 }
 
+/* Where a sea bank's top reaches a corner of its tile: the corner, how far out the bank's foot leans there and the way its face looks. */
+struct BankCorner {
+	WorldPoint top;
+	WorldPoint foot;
+	Vec3 face;
+};
+
 /* A step whose foot stands in the sea leans out into it as a bank of the ground above, instead of standing upright; along its top it shades on as the ground it hangs from. */
-static void AddBank(TerrainMesh &mesh, const Seabed &bed, int tx, int ty, const StepFace &step)
+static std::array<BankCorner, 2> AddBank(TerrainMesh &mesh, const Seabed &bed, int tx, int ty, const StepFace &step)
 {
 	double run = BankRun(tx, ty, step);
 	auto lean = [&](const WorldPoint &top, const WorldPoint &foot) {
@@ -298,6 +305,21 @@ static void AddBank(TerrainMesh &mesh, const Seabed &bed, int tx, int ty, const 
 	std::array<uint32_t, 4> corners;
 	for (size_t i = 0; i < ring.size(); i++) corners[i] = mesh.Add(Settled(bed, ring[i]), normal(ring[i], i == 0 || i == 3), DRY_MARK);
 	mesh.Quad(corners[0], corners[1], corners[2], corners[3]);
+	return {{{ring[0], ring[1], face}, {ring[3], ring[2], face}}};
+}
+
+/* Two sea banks leaning out from the sides of a corner part around it, which a face between their feet closes. */
+static void CloseSeaBankCorners(TerrainMesh &mesh, const Seabed &bed, std::span<const BankCorner> corners)
+{
+	for (size_t a = 0; a < corners.size(); a++) {
+		for (size_t b = a + 1; b < corners.size(); b++) {
+			const BankCorner &first = corners[a];
+			const BankCorner &second = corners[b];
+			if (first.top.x != second.top.x || first.top.y != second.top.y || !AtCorner(first.top)) continue;
+			Vec3 face = Normalised(first.face + second.face);
+			mesh.Triangle(mesh.Add(Settled(bed, first.top), face, DRY_MARK), mesh.Add(Settled(bed, first.foot), face, DRY_MARK), mesh.Add(Settled(bed, second.foot), face, DRY_MARK));
+		}
+	}
 }
 
 static Groundwork GroundworkAt(int tx, int ty)
@@ -440,6 +462,7 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 {
 	std::vector<BankEdge> bank_edges;
 	std::vector<double> bank_marks;
+	std::vector<BankCorner> sea_corners;
 	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
 		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
 		if (!step.has_value()) continue;
@@ -447,7 +470,8 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 		int nx = tx + across.x;
 		int ny = ty + across.y;
 		if (StandsInSea(nx, ny)) {
-			AddBank(mesh, bed, tx, ty, *step);
+			std::array<BankCorner, 2> ends = AddBank(mesh, bed, tx, ty, *step);
+			sea_corners.insert(sea_corners.end(), ends.begin(), ends.end());
 		} else if (std::optional<EarthBank> bank = EarthBankOf(tx, ty, nx, ny); bank.has_value() && bank->Holds(*step)) {
 			std::array<BankEdge, 2> edges = AddEarthBank(mesh, TileGround(nx, ny), *step, *bank);
 			bank_edges.insert(bank_edges.end(), edges.begin(), edges.end());
@@ -457,6 +481,7 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 		}
 	}
 	CloseBankCorners(mesh, bank_edges, bank_marks);
+	CloseSeaBankCorners(mesh, bed, sea_corners);
 }
 
 static WorldPoint Grounded(const WorldPoint &at)
