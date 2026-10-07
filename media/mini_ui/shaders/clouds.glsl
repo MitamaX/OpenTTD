@@ -1,4 +1,3 @@
-const vec2 CLOUD_WIND = vec2(0.004, 0.0015);
 const float CLOUD_SCALE = 1.6;
 const float CLOUD_CURVE = 0.05;
 const float CLOUD_COVER_FROM = 0.5;
@@ -15,26 +14,14 @@ const float CLOUD_SUNLIT = 0.34;
 const float CLOUD_SILVER = 1.4;
 const float CLOUD_SILVER_FOCUS = 0.6;
 
-float Billow(vec2 p)
-{
-	float sum = 0.0;
-	float weight = 0.5;
-	for (int octave = 0; octave < CLOUD_OCTAVES; octave++) {
-		sum += Noise(p) * weight;
-		p = p * 2.03 + 11.7;
-		weight *= 0.5;
-	}
-	return sum;
-}
-
 /* A thin layer of fair weather cloud drifting overhead, thinning out toward the horizon, lit on its tops and silvered toward the sun. */
 vec3 Clouded(vec3 sky, vec3 sight)
 {
 	if (sight.z <= 0.0) return sky;
 	vec2 p = sight.xy / (sight.z + CLOUD_CURVE) * CLOUD_SCALE + CLOUD_WIND * Clock();
-	float body = Billow(p);
+	float body = Billow(p, CLOUD_OCTAVES);
 	float cover = smoothstep(CLOUD_COVER_FROM, CLOUD_COVER_TO, body) * smoothstep(0.0, CLOUD_HORIZON_FADE, sight.z) * CLOUD_OPACITY;
-	float toward_sun = Billow(p + normalize(SunDirection().xy) * CLOUD_LIGHT_STEP);
+	float toward_sun = Billow(p + normalize(SunDirection().xy) * CLOUD_LIGHT_STEP, CLOUD_OCTAVES);
 	float sunlit = clamp(0.5 + (body - toward_sun) * CLOUD_RELIEF, 0.0, 1.0);
 	vec3 lit = (CLOUD_SHADE * CLOUD_AMBIENT + CLOUD_LIT * CLOUD_SUNLIT * sunlit) * SunRadiance();
 	lit += SunRadiance() * HenyeyGreenstein(dot(sight, SunDirection()), CLOUD_SILVER_FOCUS) * CLOUD_SILVER * (1.0 - cover);

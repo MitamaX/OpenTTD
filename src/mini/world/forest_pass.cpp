@@ -17,15 +17,18 @@
 
 #include "../../safeguards.h"
 
-static constexpr std::array<const char *, 4> VERTEX_SOURCES = {
+static constexpr std::array<const char *, 5> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/tree.vert",
 };
-static constexpr std::array<const char *, 6> FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/sky.glsl",
+	"mini_ui/shaders/cloud_field.glsl",
 	"mini_ui/shaders/shadow.glsl",
 	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/flora.glsl",

@@ -29,8 +29,8 @@ float CascadeLight(int cascade, vec3 position, vec3 normal)
 	return lit / float(FILTER_SPAN * FILTER_SPAN);
 }
 
-/* How much of the sun reaches a point: the nearest cascade holding it decides, handing over to the next across a band, and shadows fade out where the cascades end. */
-float SunVisibility(vec3 position, vec3 normal)
+/* How much of the sun the world lets reach a point: the nearest cascade holding it decides, handing over to the next across a band, and shadows fade out where the cascades end. */
+float CascadedLight(vec3 position, vec3 normal)
 {
 	float depth = ViewDepth(position);
 	if (depth >= u_shadow_fade.y) return 1.0;
@@ -44,4 +44,10 @@ float SunVisibility(vec3 position, vec3 normal)
 		if (depth > start) light = mix(light, CascadeLight(cascade + 1, position, normal), smoothstep(start, end, depth));
 	}
 	return mix(light, 1.0, smoothstep(u_shadow_fade.x, u_shadow_fade.y, depth));
+}
+
+/* How much of the sun reaches a point past whatever stands in its way and the clouds drifting over. */
+float SunVisibility(vec3 position, vec3 normal)
+{
+	return CascadedLight(position, normal) * CloudLight(position);
 }
