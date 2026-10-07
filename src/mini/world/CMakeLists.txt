@@ -6,6 +6,10 @@ add_files(
     bridge_models.h
     chunk_grid.cpp
     chunk_grid.h
+    farm_models.cpp
+    farm_models.h
+    farmsteads.cpp
+    farmsteads.h
     figure_models.cpp
     figure_models.h
     fleet_layout.cpp
