@@ -888,6 +888,14 @@ bool OutsideMap(vec2 p)
 	return !OnMap(tile) || texelFetch(u_tiles, tile, 0).r == MAT_VOID;
 }
 
+/* Past the map's edge the bed deepens from what lies along the edge to the open sea's silt across the shelf, so it meets the bed inside without a seam. */
+float OffshoreDepth(vec2 p)
+{
+	vec2 edge = clamp(p, vec2(0.0), MapSize());
+	float wide = textureLod(u_water, edge / MapSize(), DEPTH_LOD).r;
+	return mix(smoothstep(0.55, 1.0, wide), 1.0, smoothstep(0.0, SHELF_TILES, distance(p, edge)));
+}
+
 uint MarkAt(ivec2 tile)
 {
 	uvec4 codes = CodesAt(tile);
@@ -1211,7 +1219,7 @@ void main()
 	if (v_mark > EDGE_MARK && v_mark <= WALL_MARK) {
 		shade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(detail, levels_per_pixel))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (OutsideMap(p)) {
-		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
+		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (v_mark > WALL_MARK) {
 		shade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else {

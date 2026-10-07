@@ -707,31 +707,36 @@ TerrainMesh BuildTerrain(const TileSpan &tiles, int step)
 	return mesh;
 }
 
-/* The seabed falls from the map's edge to the open sea's floor over a shelf, then lies flat out to the horizon. */
+/* The seabed falls from the map's edge to the open sea's floor over a shelf, then lies flat out to the horizon; along the edge it leans as the bed inside does, so the two are lit alike where they meet. */
 TerrainMesh BuildOuterBed(Dimension map, double reach)
 {
 	double shelf = SHELF_TILES;
 	double floor = SEA_FLOOR;
+	int columns = static_cast<int>(map.width);
+	int rows = static_cast<int>(map.height);
+	Seabed bed({0, 0, columns - 1, rows - 1});
 	TerrainMesh mesh;
 	auto add = [&](double x, double y, double level) { return mesh.Add({x, y, level}, UPRIGHT, SunkMark(-level)); };
+	auto rim = [&](int cx, int cy) {
+		double sink = CornerSink(cx, cy);
+		return mesh.Add({static_cast<double>(cx), static_cast<double>(cy), -sink}, sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : UPRIGHT, SunkMark(sink));
+	};
 	auto edge = [&](int corners, int cx, int cy, int step_x, int step_y, double out_x, double out_y) {
 		for (int corner = 0; corner < corners; corner++) {
 			int ax = cx + corner * step_x;
 			int ay = cy + corner * step_y;
 			int bx = ax + step_x;
 			int by = ay + step_y;
-			mesh.Quad(add(ax, ay, -CornerSink(ax, ay)), add(bx, by, -CornerSink(bx, by)), add(bx + out_x, by + out_y, floor), add(ax + out_x, ay + out_y, floor));
+			mesh.Quad(rim(ax, ay), rim(bx, by), add(bx + out_x, by + out_y, floor), add(ax + out_x, ay + out_y, floor));
 		}
 	};
-	int columns = static_cast<int>(map.width);
-	int rows = static_cast<int>(map.height);
 	edge(columns, 0, 0, 1, 0, 0.0, -shelf);
 	edge(columns, 0, rows, 1, 0, 0.0, shelf);
 	edge(rows, 0, 0, 0, 1, -shelf, 0.0);
 	edge(rows, columns, 0, 0, 1, shelf, 0.0);
 
 	auto nook = [&](int cx, int cy, double dx, double dy) {
-		mesh.Quad(add(cx, cy, -CornerSink(cx, cy)), add(cx + dx, cy, floor), add(cx + dx, cy + dy, floor), add(cx, cy + dy, floor));
+		mesh.Quad(rim(cx, cy), add(cx + dx, cy, floor), add(cx + dx, cy + dy, floor), add(cx, cy + dy, floor));
 	};
 	nook(0, 0, -shelf, -shelf);
 	nook(columns, 0, shelf, -shelf);
