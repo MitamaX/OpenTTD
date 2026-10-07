@@ -86,6 +86,8 @@ const float BREAKERS_PER_REACH = 40.0;
 const float BREAKER_SPEED = 1.3;
 const float BREAKER_OPACITY = 0.7;
 const float CONTACT_FOAM_REACH = 0.05;
+const float SHELF_DEPTH = 0.3;
+const float GRAZING_SIGHT = 0.2;
 
 const float KELVIN_SLOPE = 0.354;
 const float WAKE_ARM_WIDTH = 0.03;
@@ -397,6 +399,13 @@ float Whitewater(vec2 p, vec3 descent)
 	return descent.z * smoothstep(0.35, 0.65, churn) * RAPIDS_FOAM;
 }
 
+/* Off a sea shore the water deepens smoothly with the curved line of its field, however the ground under it steps, so the bed of coast tiles shows no saw teeth through it. */
+float ShelfPath(float level, vec3 sight)
+{
+	float depth = SHELF_DEPTH * smoothstep(WATERLINE, 1.0, level);
+	return depth / max(-sight.z, GRAZING_SIGHT);
+}
+
 void main()
 {
 	vec2 p = v_world.xy;
@@ -432,7 +441,7 @@ void main()
 	vec3 sun = SunRadiance() * sunlit;
 	vec3 light = sun * max(SunDirection().z, 0.0) + AmbientLight(up);
 
-	vec3 transmittance = exp(-body.absorption * max(bent.x, 0.0)) * (1.0 - body.murk);
+	vec3 transmittance = exp(-body.absorption * max(bent.x, ShelfPath(field.r, sight) * body.sea)) * (1.0 - body.murk);
 	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(normal.xy));
 	vec3 below = texture(u_scene_colour, bent_uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
 
