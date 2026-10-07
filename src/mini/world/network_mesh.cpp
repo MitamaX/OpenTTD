@@ -124,11 +124,13 @@ private:
 	{
 		Footing footing = RoadFooting(tx, ty);
 		bool crossing = IsLevelCrossingTile(tile);
-		LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, crossing), footing);
+		RoadSite site = this->RoadOf(tile, tx, ty, crossing);
+		site.kerbside = !crossing;
+		LayRoad(this->meshes.Layer(MiniLayer::Road), site, footing);
 		if (!crossing) return;
-		TrackSite site = this->TrackOf(tile, tx, ty);
-		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), site, footing);
-		LayCatenary(this->meshes.Layer(MiniLayer::Rail), site, footing);
+		TrackSite rails = this->TrackOf(tile, tx, ty);
+		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), rails, footing);
+		LayCatenary(this->meshes.Layer(MiniLayer::Rail), rails, footing);
 	}
 
 	void Station(TileIndex tile, int tx, int ty)

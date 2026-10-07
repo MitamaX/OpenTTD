@@ -18,6 +18,7 @@
 
 #include "../core/seed.h"
 #include "../core/tones.h"
+#include "../map/car_look.h"
 #include "../map/network_style.h"
 #include "street_furniture.h"
 
@@ -57,6 +58,11 @@ static constexpr double TREE_SHARE = 0.3;
 static constexpr double BENCH_SHARE = 0.18;
 static constexpr double BIN_SHARE = 0.16;
 static constexpr uint32_t AMENITY_SALT = 0x3A11E7U;
+static constexpr double KERBSIDE_SHARE = 0.4;
+static constexpr double KERBSIDE_REACH = 0.3;
+static constexpr double KERBSIDE_LATERAL = ROAD_HALF;
+static constexpr double KERB_PERCH = 0.012;
+static constexpr uint32_t KERBSIDE_SALT = 0x6A7C11E5U;
 static constexpr double BARRIER_ALONG = 0.4;
 static constexpr double BARRIER_LATERAL = ROAD_HALF + 0.06;
 
@@ -247,6 +253,7 @@ private:
 		this->OneWay();
 		this->Crosswalks();
 		this->StreetLight();
+		this->KerbsideParking();
 		this->Barriers();
 	}
 
@@ -289,6 +296,19 @@ private:
 			this->Lay(Bench(at, toward_road * -1.0, PAVEMENT_TOP));
 		} else if (pick < TREE_SHARE + BENCH_SHARE + BIN_SHARE) {
 			this->Lay(LitterBin(at, PAVEMENT_TOP));
+		}
+	}
+
+	/* Along a plain town street a car may stand at either kerb, half up on the pavement, clear of the lane traffic drives in and of the walkers on the pavement, nose toward the traffic on its side. */
+	void KerbsideParking()
+	{
+		if (!this->site.kerbside || !this->site.kerbed || !Plain(this->site.road)) return;
+		SeedDice dice(Hash32(KERBSIDE_SALT + static_cast<uint32_t>(this->site.tx * 4099 + this->site.ty)));
+		MapVector along = Along(this->site.road);
+		for (double side : {-1.0, 1.0}) {
+			if (dice.Share() >= KERBSIDE_SHARE) continue;
+			MapVector at = along * dice.Between(-KERBSIDE_REACH, KERBSIDE_REACH) + RightOf(along) * (side * KERBSIDE_LATERAL);
+			this->Lay(ParkedCar(at, along * -side, PAVEMENT_TOP - KERB_PERCH, CAR_TINTS[dice.Below(static_cast<uint32_t>(CAR_TINTS.size()))]));
 		}
 	}
 

@@ -24,6 +24,7 @@
 #include "../../town.h"
 #include "../../town_map.h"
 #include "../core/tones.h"
+#include "car_look.h"
 #include "house_kinds.h"
 #include "material_palette.h"
 #include "site_shapes.h"
@@ -146,17 +147,6 @@ static constexpr float FENCE_HEIGHT = 0.026f;
 static constexpr uint32_t FENCE_TINT = 0xFFEDEBE4U;
 static constexpr float GATE_WIDTH = 0.12f;
 
-static constexpr float CAR_LENGTH = 0.17f;
-static constexpr float CAR_WIDTH = 0.08f;
-static constexpr float CAR_CLEARANCE = 0.008f;
-static constexpr float CAR_BODY_HEIGHT = 0.034f;
-static constexpr float CAB_SHARE = 0.55f;
-static constexpr float CAB_INSET = 0.008f;
-static constexpr float CAB_HEIGHT = 0.03f;
-static constexpr uint32_t CAR_GLASS = 0xFF2B3640U;
-static constexpr std::array<uint32_t, 10> CAR_TINTS = {
-	0xFFB9BDC2U, 0xFFE8E8E4U, 0xFF2A2C30U, 0xFFB0302AU, 0xFF2E5A9AU, 0xFF2F5A40U, 0xFFC9B48AU, 0xFF6E7378U, 0xFFD8B03AU, 0xFF7A2638U,
-};
 static constexpr float YARD_EDGE = 0.05f;
 static constexpr float PARKING_MARGIN = 0.008f;
 static constexpr float SMALL_DECAL_AREA = 0.25f;

@@ -17,7 +17,7 @@
 inline constexpr double ASPHALT_TOP = 0.012;
 inline constexpr double PAVEMENT_TOP = 0.036;
 
-/* A tile's road and tram ends and how they are laid; a road over a rail crossing carries no markings across the rails. */
+/* A tile's road and tram ends and how they are laid; a road over a rail crossing carries no markings across the rails, and only a street of its own has room for cars at its kerbs. */
 struct RoadSite {
 	int tx;
 	int ty;
@@ -27,6 +27,7 @@ struct RoadSite {
 	bool crossing;
 	DisallowedRoadDirections one_way;
 	WayDetail detail;
+	bool kerbside = false;
 };
 
 void LayRoad(ModelMesh &mesh, const RoadSite &site, const Footing &footing);

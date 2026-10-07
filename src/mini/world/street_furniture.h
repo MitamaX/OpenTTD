@@ -19,5 +19,7 @@ ModelMesh LitterBin(const MapVector &at, double base);
 /* A young tree standing in the pavement, its canopy high enough to walk under; the seed shapes and shades it. */
 ModelMesh StreetTree(const MapVector &at, double base, uint32_t seed);
 ModelMesh CrossingBarrier(const MapVector &at, const MapVector &facing, double base);
+/* A car left at the kerb, its nose toward the facing direction, in the paint given. */
+ModelMesh ParkedCar(const MapVector &at, const MapVector &facing, double base, uint32_t paint);
 
 #endif /* MINI_WORLD_STREET_FURNITURE_H */
