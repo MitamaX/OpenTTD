@@ -74,7 +74,9 @@ static constexpr float HQ_OFFICES_HEIGHT = 0.7f;
 static constexpr float HQ_PODIUM_HALF = 0.72f;
 static constexpr float HQ_TOWER_PODIUM_HEIGHT = 0.3f;
 static constexpr float HQ_TOWER_HALF = 0.55f;
-static constexpr float HQ_TOWER_HEIGHT = 1.4f;
+static constexpr float HQ_TOWER_HEIGHT = 1.0f;
+static constexpr float HQ_TOWER_UPPER_HALF = 0.44f;
+static constexpr float HQ_TOWER_UPPER_HEIGHT = 0.4f;
 static constexpr float HQ_CROWN_HEIGHT = 0.08f;
 static constexpr float HQ_SKYSCRAPER_PODIUM_HEIGHT = 0.4f;
 static constexpr float HQ_SHAFT_HALF = 0.5f;
@@ -225,12 +227,15 @@ static void AddOfficesHq(BuildingForm &form, const SiteLot &lot, uint32_t)
 
 static void AddTowerHq(BuildingForm &form, const SiteLot &lot, uint32_t trim)
 {
+	uint32_t stone = FinishTint(Finish::Stone, lot.seed);
 	Part podium = HqPodium(lot, HQ_TOWER_PODIUM_HEIGHT);
-	Part tower = HqMass(Part::Box(HqPlot(HQ_TOWER_HALF)).On(LevelAbove(podium)), Material::Stone, WindowGrid::Office, HQ_TOWER_HEIGHT, FinishTint(Finish::Stone, lot.seed), lot);
+	Part tower = HqMass(Part::Box(HqPlot(HQ_TOWER_HALF)).On(LevelAbove(podium)), Material::Stone, WindowGrid::Office, HQ_TOWER_HEIGHT, stone, lot);
+	Part upper = HqMass(Part::Box(HqPlot(HQ_TOWER_UPPER_HALF)).On(LevelAbove(tower)), Material::Stone, WindowGrid::Office, HQ_TOWER_UPPER_HEIGHT, stone, lot);
 	form.Add(podium);
 	form.Add(tower);
-	form.Add(CrownBand(tower, HQ_CROWN_HEIGHT, trim));
-	AddRooftopKit(form, tower, lot.seed);
+	form.Add(upper);
+	form.Add(CrownBand(upper, HQ_CROWN_HEIGHT, trim));
+	AddRooftopKit(form, upper, lot.seed);
 }
 
 static void AddSkyscraperHq(BuildingForm &form, const SiteLot &lot, uint32_t trim)
