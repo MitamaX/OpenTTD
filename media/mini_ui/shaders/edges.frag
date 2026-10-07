@@ -15,10 +15,7 @@ float LumaAt(vec2 uv)
 	return PerceivedLuma(textureLod(u_current, uv, 0.0).rgb);
 }
 
-float LumaBeside(vec2 uv, ivec2 offset)
-{
-	return PerceivedLuma(textureLodOffset(u_current, uv, 0.0, offset).rgb);
-}
+#define LumaBeside(uv, offset) PerceivedLuma(textureLodOffset(u_current, uv, 0.0, offset).rgb)
 
 /* Fast approximate antialiasing: an edge found across the pixel is followed along both ways to its ends,
  * and the pixel reads from across the edge by how near it lies to the end where the edge steps. */
