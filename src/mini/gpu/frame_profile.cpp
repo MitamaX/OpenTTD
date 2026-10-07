@@ -107,15 +107,23 @@ void FrameProfile::EndFrame()
 void FrameProfile::Collect(Frame &frame)
 {
 	for (const Record &record : frame.records) {
-		Samples &samples = this->SamplesOf(record.group, record.section);
-		samples.cpu_ms.push_back(record.cpu_ms);
+		Tally &tally = this->SamplesOf(record.group, record.section).frame;
+		tally.ran = true;
+		tally.cpu_ms += record.cpu_ms;
 		if (record.end_query == NO_QUERY) continue;
 
 		GLuint64 begin = 0;
 		GLuint64 end = 0;
 		glGetQueryObjectui64v(record.begin_query, GL_QUERY_RESULT, &begin);
 		glGetQueryObjectui64v(record.end_query, GL_QUERY_RESULT, &end);
-		samples.gpu_ms.push_back(static_cast<double>(end - begin) / NANOSECONDS_PER_MILLISECOND);
+		tally.gpu_ms += static_cast<double>(end - begin) / NANOSECONDS_PER_MILLISECOND;
+		tally.on_gpu = true;
+	}
+	for (Samples &samples : this->samples) {
+		if (!samples.frame.ran) continue;
+		samples.cpu_ms.push_back(samples.frame.cpu_ms);
+		if (samples.frame.on_gpu) samples.gpu_ms.push_back(samples.frame.gpu_ms);
+		samples.frame = {};
 	}
 	frame.records.clear();
 	frame.used_queries = 0;

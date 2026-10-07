@@ -56,10 +56,19 @@ private:
 		size_t used_queries = 0;
 	};
 
+	/** A section's time over one frame, summed over every time it ran in it. */
+	struct Tally {
+		double gpu_ms = 0.0;
+		double cpu_ms = 0.0;
+		bool on_gpu = false;
+		bool ran = false;
+	};
+
 	struct Samples {
 		std::string section;
 		std::vector<double> gpu_ms;
 		std::vector<double> cpu_ms;
+		Tally frame;
 	};
 
 	static constexpr size_t FRAMES_IN_FLIGHT = 4;
