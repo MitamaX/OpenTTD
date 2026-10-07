@@ -128,6 +128,7 @@ bool IsRiverBank(int tx, int ty)
 	GroundTexel ground = _world_tiles.GroundAt(tile);
 	NetworkTexel network = _world_tiles.NetworkAt(tile);
 	if (ground.flora != 0 || (network.style & NETWORK_BRIDGE_BIT) != 0 || GroundworkOf(ground, network) != Groundwork::Open) return false;
+	if (!IsFlat(_world_tiles.SurfaceAt(tile))) return false;
 	double level = SurfaceLevelOf(tx, ty);
 	for (int ny = ty - 1; ny <= ty + 1; ny++) {
 		for (int nx = tx - 1; nx <= tx + 1; nx++) {
