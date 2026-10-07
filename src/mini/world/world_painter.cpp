@@ -19,6 +19,7 @@
 #include "../gpu/gl_api.h"
 #include "../gpu/gl_state.h"
 #include "../map/way_bends.h"
+#include "../map/way_course.h"
 #include "farm_models.h"
 #include "farmsteads.h"
 #include "figure_models.h"
@@ -180,6 +181,10 @@ void WorldPainter::SyncChanges()
 	WorldChanges changes = _world_tiles.TakeChanges();
 	_frame_profile.Count("changed_areas", changes.areas.size());
 	_frame_profile.Count("relief_areas", changes.reliefs.size());
+	{
+		ProfileScope ways_profile("sync", "ways", ProfileClock::Cpu);
+		ForgetCourses(changes);
+	}
 	{
 		ProfileScope textures_profile("sync", "textures", ProfileClock::Cpu);
 		this->textures.Sync(changes);

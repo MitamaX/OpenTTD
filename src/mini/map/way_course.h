@@ -32,7 +32,9 @@ inline constexpr std::array<std::pair<MapVector, MapVector>, TRACK_END> TRACK_EN
 /* How many joints along a run a change of the ways can move its ease, which is also how many tiles away it can reach. */
 inline constexpr int WAY_EASE_REACH = 16;
 
+struct Joint;
 struct Piece;
+struct WorldChanges;
 
 /* One piece of way across a tile, from one side to another along its eased line, and the level it is eased to along its length.
  * Its ends meet the pieces either side at one point, heading and level; an end at a junction, station, crossing, depot, bridge, tunnel or town street
@@ -52,8 +54,8 @@ public:
 	MapVector OnwardFrom(const MapVector &end) const;
 	double Length() const;
 	double ShareAt(const MapVector &point) const { return this->line.ShareOf(point); }
-	/* How far along its run from the run's first end the course's first and last ends lie, unless it holds at both. */
-	const std::optional<std::pair<double, double>> &Distances() const { return this->distances; }
+	/* How far along its run from the run's first end the course's first and last ends lie, unless it holds at both; read afresh, as a change far along the run moves them. */
+	std::optional<std::pair<double, double>> Distances() const;
 	double Level(double share) const;
 	/* How far the eased level stands above the tile's ground under the middle line. */
 	double Lift(double share) const;
@@ -66,17 +68,18 @@ private:
 		double growth;
 	};
 
-	/* How a course meets the run at one end: where and at what level, its heading along the course, and where the run eases through it, its climb along the course and its mark along the run. */
+	/* How a course meets the run at one end: where and at what level, its heading along the course, and where the run eases through it, its climb along the course. */
 	struct CourseEnd {
 		MapVector at;
 		double level;
 		std::optional<double> slope;
 		MapVector heading;
-		std::optional<RunMark> mark;
 	};
 
 	WayCourse(int tx, int ty, const Piece &piece, bool road);
 	CourseEnd EndAt(const MapVector &point, bool leaving) const;
+	std::optional<RunMark> MarkAt(const MapVector &point, bool leaving) const;
+	bool Onward(const Joint &joint, bool leaving) const;
 	MapVector HeldHeading(const MapVector &point, bool leaving) const;
 
 	int tx;
@@ -89,7 +92,6 @@ private:
 	double end_level = 0.0;
 	double start_slope = 0.0;
 	double end_slope = 0.0;
-	std::optional<std::pair<double, double>> distances;
 };
 
 /* A rail piece as it is drawn: along its course's eased line where it eases, or else along the game's straight piece leaning at either end halfway toward
@@ -116,6 +118,9 @@ private:
 
 /* How far the eased rail line slides along a tile's west side and along its north side, from the middle of each. */
 std::pair<double, double> SideSlides(int tx, int ty);
+
+/* The eases and drawn pieces kept within reach of where the ground's shape or the ways changed are worked out afresh when next asked for. */
+void ForgetCourses(const WorldChanges &changes);
 
 /* Where a train or a road vehicle at a point of the map is drawn: a train on the line of the piece it is on, either at its way's eased level or on the ground. */
 WorldPoint TrackPoint(double x, double y);

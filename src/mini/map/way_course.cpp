@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -43,6 +44,8 @@ static constexpr int LONGEST_WALK = 1024;
 static constexpr double RAISED_LIFT = 0.02;
 static constexpr int RAISED_SAMPLES = 8;
 static constexpr int ROAD_ARMS = 4;
+/* A drawn piece reads the eases at the sides of its tile and of the tiles beside it, up to this far from its tile's middle. */
+static constexpr double DRAWN_READ_REACH = 1.5;
 
 /* Where each of the game's road bits leads out of its tile, in bit order. */
 static constexpr std::array<MapVector, ROAD_ARMS> ROAD_ENDS = {{{0.5, 0.0}, {1.0, 0.5}, {0.5, 1.0}, {0.0, 0.5}}};
@@ -61,6 +64,7 @@ struct Joint {
 	int hy;
 
 	static Joint At(const MapVector &point) { return {static_cast<int>(std::lround(point.x * 2.0)), static_cast<int>(std::lround(point.y * 2.0))}; }
+	static Joint OfKey(uint64_t key) { return {static_cast<int>(static_cast<uint32_t>(key >> 32)), static_cast<int>(static_cast<uint32_t>(key))}; }
 	MapVector Point() const { return {this->hx * HALF_TILE, this->hy * HALF_TILE}; }
 	bool AlongX() const { return (this->hx & 1) != 0; }
 	/* Which way along its tile side a joint slides. */
@@ -361,15 +365,19 @@ void Run::Ease(Store store)
 	}
 }
 
-/* Eases are worked out a whole run at a time, and kept until the ground's shape or the ways change. */
+/* Whether a point of the map lies within so many tiles of any of the areas. */
+static bool Reaches(std::span<const Rect> areas, const MapVector &point, double reach)
+{
+	return std::ranges::any_of(areas, [&](const Rect &area) {
+		return point.x >= area.left - reach && point.x <= area.right + 1 + reach && point.y >= area.top - reach && point.y <= area.bottom + 1 + reach;
+	});
+}
+
+/* Eases are worked out a whole run at a time, and kept until the ground's shape or the ways change within their reach. */
 class EaseBook {
 public:
 	std::optional<JointEase> At(const Joint &joint)
 	{
-		if (this->revision != _world_tiles.WaysRevision()) {
-			this->eases.clear();
-			this->revision = _world_tiles.WaysRevision();
-		}
 		auto found = this->eases.find(joint.Key());
 		if (found != this->eases.end()) return found->second;
 		if (!::Eases(joint)) {
@@ -381,9 +389,18 @@ public:
 		return this->eases[joint.Key()];
 	}
 
+	void Forget(const WorldChanges &changes)
+	{
+		if (changes.whole) {
+			this->eases.clear();
+			return;
+		}
+		if (changes.reliefs.empty()) return;
+		std::erase_if(this->eases, [&](const auto &entry) { return Reaches(changes.reliefs, Joint::OfKey(entry.first).Point(), WAY_EASE_REACH); });
+	}
+
 private:
 	std::unordered_map<uint64_t, std::optional<JointEase>> eases;
-	uint64_t revision = UINT64_MAX;
 };
 
 static EaseBook _ease_book;
@@ -399,10 +416,12 @@ WayCourse::WayCourse(int tx, int ty, const Piece &piece, bool road) :
 	double chord = (last.level - first.level) / this->Length();
 	this->start_slope = first.slope.value_or(chord);
 	this->end_slope = last.slope.value_or(chord);
-	if (!first.mark.has_value() && !last.mark.has_value()) return;
-	double start = first.mark.has_value() ? first.mark->distance : last.mark->distance - last.mark->growth * this->Length();
-	double end = last.mark.has_value() ? last.mark->distance : first.mark->distance + first.mark->growth * this->Length();
-	this->distances = std::pair{start, end};
+}
+
+/* Whether the course runs across the joint at one of its ends toward the joint's higher tile. */
+bool WayCourse::Onward(const Joint &joint, bool leaving) const
+{
+	return (joint.Tiles()[1] == TileCoord{this->tx, this->ty}) == leaving;
 }
 
 /* An end where the run eases takes the joint's place, level, climb and heading along the course; one that holds keeps to the middle of the tile side
@@ -411,11 +430,28 @@ WayCourse::CourseEnd WayCourse::EndAt(const MapVector &point, bool leaving) cons
 {
 	Joint joint = Joint::At(point);
 	std::optional<JointEase> ease = _ease_book.At(joint);
-	if (!ease.has_value()) return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, this->HeldHeading(point, leaving), std::nullopt};
+	if (!ease.has_value()) return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, this->HeldHeading(point, leaving)};
 
-	bool high = joint.Tiles()[1] == TileCoord{this->tx, this->ty};
-	double sign = high == leaving ? 1.0 : -1.0;
-	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign, RunMark{ease->distance, ease->rising == (high == leaving) ? 1.0 : -1.0}};
+	double sign = this->Onward(joint, leaving) ? 1.0 : -1.0;
+	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign};
+}
+
+std::optional<WayCourse::RunMark> WayCourse::MarkAt(const MapVector &point, bool leaving) const
+{
+	Joint joint = Joint::At(point);
+	std::optional<JointEase> ease = _ease_book.At(joint);
+	if (!ease.has_value()) return std::nullopt;
+	return RunMark{ease->distance, ease->rising == this->Onward(joint, leaving) ? 1.0 : -1.0};
+}
+
+std::optional<std::pair<double, double>> WayCourse::Distances() const
+{
+	std::optional<RunMark> first = this->MarkAt(this->from, true);
+	std::optional<RunMark> last = this->MarkAt(this->to, false);
+	if (!first.has_value() && !last.has_value()) return std::nullopt;
+	double start = first.has_value() ? first->distance : last->distance - last->growth * this->Length();
+	double end = last.has_value() ? last->distance : first->distance + first->growth * this->Length();
+	return std::pair{start, end};
 }
 
 /* A road heads square across the tile side; a rail heads on along whichever piece beyond the side runs on most nearly straight, or along its own piece where none does. */
@@ -556,15 +592,12 @@ DrawnTrack DrawnTrack::Build(int tx, int ty, Track track)
 	return {tx, ty, from, to, Bend(from, to, Leaning(own, first, true), Leaning(own, last, false)), std::nullopt, first.open, last.open};
 }
 
-/* Drawn pieces are worked out once and kept until the ground's shape or the ways change, as every unit of every train asks for its own each frame. */
+/* Drawn pieces are worked out once and kept until the ground's shape or the ways change within reach of the eases they read,
+ * as every unit of every train asks for its own each frame. */
 class TrackBook {
 public:
 	const DrawnTrack &At(int tx, int ty, Track track)
 	{
-		if (this->revision != _world_tiles.WaysRevision()) {
-			this->tracks.clear();
-			this->revision = _world_tiles.WaysRevision();
-		}
 		uint64_t key = static_cast<uint64_t>(TileXY(tx, ty).base()) * TRACK_END + track;
 		auto found = this->tracks.find(key);
 		if (found == this->tracks.end()) {
@@ -574,9 +607,21 @@ public:
 		return found->second;
 	}
 
+	void Forget(const WorldChanges &changes)
+	{
+		if (changes.whole) {
+			this->tracks.clear();
+			return;
+		}
+		if (changes.reliefs.empty()) return;
+		std::erase_if(this->tracks, [&](const auto &entry) {
+			const DrawnTrack &drawn = entry.second;
+			return Reaches(changes.reliefs, {drawn.tx + HALF_TILE, drawn.ty + HALF_TILE}, WAY_EASE_REACH + DRAWN_READ_REACH);
+		});
+	}
+
 private:
 	std::unordered_map<uint64_t, DrawnTrack> tracks;
-	uint64_t revision = UINT64_MAX;
 };
 
 static TrackBook _track_book;
@@ -635,4 +680,10 @@ static double SlideAt(const MapVector &middle)
 std::pair<double, double> SideSlides(int tx, int ty)
 {
 	return {SlideAt({static_cast<double>(tx), ty + HALF_TILE}), SlideAt({tx + HALF_TILE, static_cast<double>(ty)})};
+}
+
+void ForgetCourses(const WorldChanges &changes)
+{
+	_ease_book.Forget(changes);
+	_track_book.Forget(changes);
 }
