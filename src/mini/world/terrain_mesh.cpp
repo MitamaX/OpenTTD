@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <span>
+#include <vector>
 
 #include "../../map_func.h"
 #include "../map/tile_shapes.h"
@@ -28,6 +30,9 @@ static constexpr double STEEP_BANK_RUN = 0.35;
 static constexpr double LONGEST_BANK_RUN = 1.0;
 static constexpr double LEAST_BANK_FALL = 0.25;
 static constexpr double BANK_PROBE = 0.25;
+static constexpr double EARTH_BANK_RUN_PER_RISE = 1.0;
+static constexpr double OPEN_EARTH_BANK_RUN = 0.45;
+static constexpr double WAYSIDE_EARTH_BANK_RUN = 0.12;
 static constexpr int COAST_DIVISIONS = 4;
 static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
 
@@ -277,6 +282,64 @@ static void AddBank(TerrainMesh &mesh, const Seabed &bed, int tx, int ty, const 
 	mesh.Quad(corners[0], corners[1], corners[2], corners[3]);
 }
 
+static Groundwork GroundworkAt(int tx, int ty)
+{
+	TileIndex tile = TileXY(tx, ty);
+	return GroundworkOf(_world_tiles.GroundAt(tile), _world_tiles.NetworkAt(tile));
+}
+
+/* Ways climb on embankments and run through cuttings whose earth sides lean out over the lower tile, short of any way along it there;
+ * buildings keep the stone walls of their foundations. */
+static std::optional<double> EarthBankRun(int tx, int ty, int nx, int ny)
+{
+	if (!OnMap(nx, ny)) return std::nullopt;
+	Groundwork high = GroundworkAt(tx, ty);
+	Groundwork low = GroundworkAt(nx, ny);
+	if (high == Groundwork::Built || low == Groundwork::Built || (high == Groundwork::Open && low == Groundwork::Open)) return std::nullopt;
+	return low == Groundwork::Way ? WAYSIDE_EARTH_BANK_RUN : OPEN_EARTH_BANK_RUN;
+}
+
+/* Where a bank's top meets a tile corner, and where its foot reaches out to from there. */
+struct BankEdge {
+	WorldPoint top;
+	WorldPoint foot;
+};
+
+/* An earth bank: its top along the step's top, its foot leaning out as far as its run allows and resting on the lower tile's ground there. */
+static std::array<BankEdge, 2> AddEarthBank(TerrainMesh &mesh, const TileGround &low, const StepFace &step, double run)
+{
+	double rise = LevelRise();
+	auto lean = [&](const WorldPoint &top, const WorldPoint &foot) {
+		double reach = std::min((top.level - foot.level) * rise * EARTH_BANK_RUN_PER_RISE, run);
+		double x = foot.x + step.outward.x * reach;
+		double y = foot.y + step.outward.y * reach;
+		return WorldPoint{x, y, std::min(low.Level(x, y), top.level)};
+	};
+	std::array<WorldPoint, 4> ring = {step.ring[0], lean(step.ring[0], step.ring[1]), lean(step.ring[3], step.ring[2]), step.ring[3]};
+	Vec3 face = FaceNormal(ring);
+	auto normal = [&](const WorldPoint &at, bool top) {
+		return top && AtCorner(at) ? SmoothNormal(static_cast<int>(at.x), static_cast<int>(at.y), static_cast<uint8_t>(at.level)) : face;
+	};
+	std::array<uint32_t, 4> corners;
+	for (size_t i = 0; i < ring.size(); i++) corners[i] = mesh.Add(ring[i], normal(ring[i], i == 0 || i == 3), DRY_MARK);
+	mesh.Quad(corners[0], corners[1], corners[2], corners[3]);
+	return {{{ring[0], ring[1]}, {ring[3], ring[2]}}};
+}
+
+/* Two banks leaning out from the sides of a corner leave a wedge open between their feet, which a facet closes. */
+static void CloseBankCorners(TerrainMesh &mesh, std::span<const BankEdge> edges)
+{
+	for (size_t a = 0; a < edges.size(); a++) {
+		for (size_t b = a + 1; b < edges.size(); b++) {
+			const BankEdge &first = edges[a];
+			const BankEdge &second = edges[b];
+			if (first.top.x != second.top.x || first.top.y != second.top.y || !AtCorner(first.top)) continue;
+			Vec3 normal = FaceNormal({first.top, first.foot, second.foot, first.top});
+			mesh.Triangle(mesh.Add(first.top, normal, DRY_MARK), mesh.Add(first.foot, normal, DRY_MARK), mesh.Add(second.foot, normal, DRY_MARK));
+		}
+	}
+}
+
 static void AddWall(TerrainMesh &mesh, const StepFace &step)
 {
 	Vec3 outward = {step.outward.x, step.outward.y, 0.0};
@@ -287,16 +350,23 @@ static void AddWall(TerrainMesh &mesh, const StepFace &step)
 
 static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 {
+	std::vector<BankEdge> bank_edges;
 	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
 		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
 		if (!step.has_value()) continue;
 		TileIndexDiffC across = TileIndexDiffCByDiagDir(side);
-		if (StandsInSea(tx + across.x, ty + across.y)) {
+		int nx = tx + across.x;
+		int ny = ty + across.y;
+		if (StandsInSea(nx, ny)) {
 			AddBank(mesh, bed, tx, ty, *step);
+		} else if (std::optional<double> run = EarthBankRun(tx, ty, nx, ny); run.has_value()) {
+			std::array<BankEdge, 2> edges = AddEarthBank(mesh, TileGround(nx, ny), *step, *run);
+			bank_edges.insert(bank_edges.end(), edges.begin(), edges.end());
 		} else {
 			AddWall(mesh, *step);
 		}
 	}
+	CloseBankCorners(mesh, bank_edges);
 }
 
 static TerrainMesh BuildTiles(const TileSpan &tiles)

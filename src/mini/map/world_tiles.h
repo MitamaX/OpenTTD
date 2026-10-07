@@ -71,6 +71,7 @@ RailLook RailLookOf(RailType railtype);
 
 inline constexpr uint8_t GROUND_DENSITY_MASK = 0x03;
 inline constexpr uint8_t GROUND_LUSH_BIT = 0x04;
+inline constexpr uint8_t GROUND_BUILT_BIT = 0x08;
 inline constexpr uint8_t FLORA_COUNT_MASK = 0x07;
 inline constexpr uint8_t FLORA_MOST_TREES = 4;
 inline constexpr uint8_t FLORA_AGE_SHIFT = 3;
@@ -105,6 +106,16 @@ struct GroundTexel {
 
 	bool operator==(const GroundTexel &) const = default;
 };
+
+/** What stands on a tile, as far as the face where it steps above a neighbour goes: open ground, a way, or a building on its foundation. */
+enum class Groundwork : uint8_t {
+	Open,
+	Way,
+	Built,
+};
+
+struct NetworkTexel;
+Groundwork GroundworkOf(const GroundTexel &ground, const NetworkTexel &network);
 
 struct WaterTexel {
 	uint8_t level;

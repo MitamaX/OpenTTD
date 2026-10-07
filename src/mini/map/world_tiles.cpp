@@ -241,11 +241,25 @@ static uint8_t PackFlora(const std::optional<FloraPatch> &flora)
 	return static_cast<uint8_t>((flora->count & FLORA_COUNT_MASK) | age | kind);
 }
 
+/* Buildings, water works and the heads of bridges and tunnels stand on foundations of their own. */
+static bool IsBuiltOn(TileIndex tile)
+{
+	switch (GetTileType(tile)) {
+		case MP_HOUSE:
+		case MP_INDUSTRY:
+		case MP_OBJECT:
+		case MP_STATION:
+		case MP_WATER:
+		case MP_TUNNELBRIDGE: return true;
+		default: return false;
+	}
+}
+
 static GroundTexel PackGround(TileIndex tile)
 {
 	std::optional<FloraPatch> flora = FloraOf(tile);
 	Cover cover = CoverOf(tile, flora.has_value());
-	uint8_t detail = static_cast<uint8_t>((cover.density & GROUND_DENSITY_MASK) | (IsLush(tile) ? GROUND_LUSH_BIT : 0));
+	uint8_t detail = static_cast<uint8_t>((cover.density & GROUND_DENSITY_MASK) | (IsLush(tile) ? GROUND_LUSH_BIT : 0) | (IsBuiltOn(tile) ? GROUND_BUILT_BIT : 0));
 	return {cover.material, detail, PackFlora(flora), static_cast<uint8_t>(cover.variant)};
 }
 
@@ -290,6 +304,12 @@ static WaterTexel PackWater(TileIndex tile)
 		default:
 			return {};
 	}
+}
+
+Groundwork GroundworkOf(const GroundTexel &ground, const NetworkTexel &network)
+{
+	if (network.track != 0 || network.road != 0 || network.tram != 0) return Groundwork::Way;
+	return (ground.detail & GROUND_BUILT_BIT) != 0 ? Groundwork::Built : Groundwork::Open;
 }
 
 RailLook RailLookOf(RailType railtype)
@@ -506,7 +526,8 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 	this->changes.water |= water_changed;
 
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->changed_blocks); block.has_value()) this->changes.areas.push_back(*block);
-	if (!water_changed && packed.surface == stored.surface) return;
+	bool groundwork_changed = GroundworkOf(packed.ground, packed.network) != GroundworkOf(stored.ground, stored.network);
+	if (!water_changed && !groundwork_changed && packed.surface == stored.surface) return;
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->relief_blocks); block.has_value()) this->changes.reliefs.push_back(*block);
 }
 
