@@ -21,13 +21,15 @@ struct TexelLayout {
 	GLenum pixel_format;
 	size_t bytes;
 	bool filtered;
+	GLint wrap;
 };
 
 static TexelLayout LayoutOf(TexelFormat format)
 {
 	switch (format) {
-		case TexelFormat::FilteredRgba: return {GL_RGBA8, GL_RGBA, 4, true};
-		default: return {GL_RGBA8UI, GL_RGBA_INTEGER, 4, false};
+		case TexelFormat::FilteredRgba: return {GL_RGBA8, GL_RGBA, 4, true, GL_CLAMP_TO_EDGE};
+		case TexelFormat::TiledRgba: return {GL_RGBA8, GL_RGBA, 4, true, GL_REPEAT};
+		default: return {GL_RGBA8UI, GL_RGBA_INTEGER, 4, false, GL_CLAMP_TO_EDGE};
 	}
 }
 
@@ -45,8 +47,8 @@ void DataTexture::Allocate(TexelFormat format, Dimension size, const void *texel
 	glBindTexture(GL_TEXTURE_2D, this->name);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, layout.filtered ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, layout.filtered ? GL_LINEAR : GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, layout.wrap);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, layout.wrap);
 	if (layout.filtered) {
 		FilterAnisotropically();
 	} else {

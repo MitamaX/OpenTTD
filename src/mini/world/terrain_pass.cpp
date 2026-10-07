@@ -25,10 +25,11 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/terrain.vert",
 };
-static constexpr std::array<const char *, 11> FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 12> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
+	"mini_ui/shaders/detail.glsl",
 	"mini_ui/shaders/sky.glsl",
 	"mini_ui/shaders/cloud_field.glsl",
 	"mini_ui/shaders/shadow.glsl",
@@ -62,6 +63,7 @@ void TerrainPass::Draw(const SceneView &view)
 	if (!this->program.Ready()) return;
 	this->Configure();
 	this->textures.Bind();
+	this->detail.Bind();
 	this->field.DrawGround(view, view.frustum);
 }
 
@@ -69,6 +71,7 @@ void TerrainPass::Configure() const
 {
 	this->program.Use();
 	WorldTextures::BindSamplers(this->program);
+	GroundDetail::BindSamplers(this->program);
 	glUniform1i(this->program.Uniform("u_landscape"), to_underlying(_settings_game.game_creation.landscape));
 	bool guides = !_frame_capture.HidesGuides();
 	glUniform1f(this->program.Uniform("u_contour"), guides ? ChannelShare(_tuning.contour_alpha) : 0.0f);
@@ -80,4 +83,5 @@ void TerrainPass::Release()
 {
 	this->program.Release();
 	this->caster.Release();
+	this->detail.Release();
 }

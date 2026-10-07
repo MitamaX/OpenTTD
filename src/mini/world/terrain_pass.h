@@ -10,6 +10,7 @@
 #ifndef MINI_WORLD_TERRAIN_PASS_H
 #define MINI_WORLD_TERRAIN_PASS_H
 
+#include "ground_detail.h"
 #include "shader_program.h"
 #include "terrain_field.h"
 #include "world_pass.h"
@@ -29,6 +30,7 @@ private:
 
 	const WorldTextures &textures;
 	TerrainField &field;
+	GroundDetail detail;
 	ShaderProgram program;
 	ShaderProgram caster;
 };

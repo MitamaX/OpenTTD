@@ -64,26 +64,24 @@ const float LEDGE_SHADE = 0.8;
 const float SLABS_PER_TILE = 1.7;
 const float SLAB_VARIETY = 0.3;
 const float CRACKS_PER_TILE = 3.1;
-const float CRACK_WIDTH = 0.035;
-const float CRACK_DEPTH = 0.3;
-const float GRAVEL_PER_TILE = 21.0;
-const float PEBBLES_PER_TILE = 7.0;
+const float CRACK_WIDTH = 0.05;
+const float CRACK_DEPTH = 0.18;
 const float OUTCROPS_PER_TILE = 0.9;
 const float TUFTS_PER_TILE = 6.5;
 const float BOULDERS_PER_TILE = 5.5;
 const float MICRO_PER_TILE = 17.0;
 const float CLUMPS_PER_TILE = 3.3;
-const float BUMP_PER_TILE = 9.0;
-const float FINE_BUMP_SCALE = 2.6;
-const float BUMP_DEPTH = 0.02;
+const float RELIEF_DEPTH = 0.035;
+const float GRASS_HOLLOWS = 1.2;
+const float STONY_HOLLOWS = 1.0;
 
-const float GRASS_RUGGED = 0.6;
-const float ROUGH_RUGGED = 0.7;
-const float SCREE_RUGGED = 1.0;
-const float ROCK_RUGGED = 0.9;
-const float FIELD_RUGGED = 0.35;
-const float SAND_RUGGED = 0.2;
-const float PAVED_RUGGED = 0.1;
+const vec2 GRASS_RUGGED = vec2(0.6, 0.0);
+const vec2 ROUGH_RUGGED = vec2(0.7, 0.25);
+const vec2 SCREE_RUGGED = vec2(0.6, 1.0);
+const vec2 ROCK_RUGGED = vec2(1.0, 0.15);
+const vec2 FIELD_RUGGED = vec2(0.35, 0.05);
+const vec2 SAND_RUGGED = vec2(0.2, 0.05);
+const vec2 PAVED_RUGGED = vec2(0.1, 0.0);
 
 const int CROP_COUNT = 6;
 const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
@@ -149,6 +147,8 @@ struct Grain {
 	float clump;
 	float fine;
 	float micro;
+	float stones;
+	float hollow;
 };
 
 /* How the ground leans and how well its rock layers resolve, read before the fragment branches. */
@@ -169,9 +169,10 @@ struct Bare {
 	vec3 rock;
 };
 
+/* A ground's colour and how much its fine bumps and its stones stand out of it. */
 struct Patch {
 	vec3 tone;
-	float rugged;
+	vec2 rugged;
 };
 
 /* What every ground meeting at a point is shaded with: where it is, how it leans, how far it wears bare, the stone it would show and whether its shore is armoured. */
@@ -202,10 +203,9 @@ struct Canopy {
  * so at a glancing view they settle instead of streaking. */
 float foreshortened_pixels;
 
-Grain GrainAt(vec2 p)
+Grain GrainAt(vec2 p, Detail detail)
 {
-	float micro = 0.6 * OctaveAt(p, MICRO_PER_TILE, foreshortened_pixels) + 0.4 * OctaveAt(p + 3.7, MICRO_PER_TILE * 2.3, foreshortened_pixels);
-	return Grain(Layered(p, 0.15), Layered(p, 1.3), Octave(p + 2.2, CLUMPS_PER_TILE), Octave(p, 7.0), micro);
+	return Grain(Layered(p, 0.15), Layered(p, 1.3), Octave(p + 2.2, CLUMPS_PER_TILE), detail.fine, detail.micro, detail.stones, detail.hollow);
 }
 
 Ground GroundAt(ivec2 tile)
@@ -275,6 +275,11 @@ vec3 GrassTone(float shade, bool lush)
 	return mix(dark, light, shade);
 }
 
+float Hollowed(Grain grain, float depth)
+{
+	return clamp(1.0 - depth * grain.hollow, 0.55, 1.15);
+}
+
 float Cover(float density, float clump)
 {
 	return density >= 1.0 ? 1.0 : smoothstep(-0.06, 0.06, density + clump - 1.0);
@@ -285,9 +290,9 @@ vec3 Grass(Ground ground, Grain grain)
 {
 	vec3 green = GrassTone(grain.broad, ground.lush);
 	vec3 straw = green * STRAW_TINT;
-	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7);
-	vec3 blades = mix(green, straw, smoothstep(0.5, 0.85, grain.local)) * shade;
-	vec3 soil = SOIL * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25);
+	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7) * Hollowed(grain, GRASS_HOLLOWS);
+	vec3 blades = mix(green, straw, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro)) * shade;
+	vec3 soil = SOIL * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
 
@@ -296,13 +301,11 @@ vec3 Meadow(Grain grain, bool lush)
 	return Grass(Ground(MAT_GRASS, 1.0, lush, 0u), grain);
 }
 
-/* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it. */
-vec3 Scree(vec2 p, Grain grain)
+/* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
+vec3 Scree(Grain grain)
 {
-	float gravel = 0.6 * Octave(p, GRAVEL_PER_TILE) + 0.4 * Octave(p + 13.1, GRAVEL_PER_TILE * 2.2);
-	float pebble = smoothstep(0.66, 0.76, Octave(p + 5.7, PEBBLES_PER_TILE));
-	vec3 tone = SCREE * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(gravel, 0.45);
-	return tone * mix(1.0, 1.16, pebble);
+	vec3 tone = SCREE * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
+	return tone * mix(1.0, 1.18, grain.stones) * Hollowed(grain, STONY_HOLLOWS);
 }
 
 /* Cracks wander through rock, here and there breaking off. */
@@ -325,12 +328,12 @@ vec3 Rock(vec2 p, Relief relief, Grain grain)
 	vec3 slabs = mix(ROCK, ROCK_WARM, 0.3) * Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
 	vec3 rock = mix(mix(slabs, bed, 0.35), bed * ledge, strata);
 	vec3 weathered = mix(rock, rock * vec3(0.72, 0.74, 0.66), smoothstep(0.55, 0.8, Octave(p + 4.4, 2.7)));
-	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.25) * (1.0 - CRACK_DEPTH * Cracks(p));
+	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
 }
 
 Bare BareAt(vec2 p, Relief relief, Grain grain)
 {
-	return Bare(Scree(p, grain), Rock(p, relief, grain));
+	return Bare(Scree(grain), Rock(p, relief, grain));
 }
 
 /* Ground lies bare where it stands steep or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
@@ -347,7 +350,7 @@ Exposure ExposureAt(Relief relief, Grain grain)
 Patch Exposed(Patch ground, Site site)
 {
 	vec3 tone = mix(mix(ground.tone, site.bare.scree, site.exposure.scree), site.bare.rock, site.exposure.rock);
-	float rugged = mix(mix(ground.rugged, SCREE_RUGGED, site.exposure.scree), ROCK_RUGGED, site.exposure.rock);
+	vec2 rugged = mix(mix(ground.rugged, SCREE_RUGGED, site.exposure.scree), ROCK_RUGGED, site.exposure.rock);
 	return Patch(tone, rugged);
 }
 
@@ -453,7 +456,7 @@ Patch Albedo(Ground ground, Site site)
 		case MAT_PAVED: return Patch(PAVING * (0.94 + 0.08 * grain.local) * Varied(grain.fine, 0.06) * Varied(grain.micro, 0.08), PAVED_RUGGED);
 		case MAT_DIRT: return Patch(YARD * Varied(grain.local, 0.15) * Varied(grain.fine, 0.1) * Varied(grain.micro, 0.2), ROUGH_RUGGED);
 	}
-	return Patch(VOID_TONE, 0.0);
+	return Patch(VOID_TONE, vec2(0.0));
 }
 
 bool IsBuilt(uint material)
@@ -525,7 +528,7 @@ Patch Surface(vec2 p, Grain grain, Relief relief, bool armoured, out Site site)
 		weights[k] += shares[i];
 	}
 
-	Patch blend = Patch(vec3(0.0), 0.0);
+	Patch blend = Patch(vec3(0.0), vec2(0.0));
 	for (int k = 0; k < count; k++) {
 		Patch patch = Eroded(distinct[k], site);
 		blend.tone += patch.tone * weights[k];
@@ -558,17 +561,10 @@ vec4 Hedgerow(vec2 p, Grain grain)
 	return vec4(HEDGE * Varied(grain.micro, 0.6) * Varied(grain.clump, 0.4), 1.0) * hedge * HEDGE_OPACITY;
 }
 
-/* Fine bumps catch the light up close: soft on grass and fields, sharp on scree and rock. */
-vec3 Roughened(vec3 normal, vec2 p, float rugged)
+/* Fine bumps and stones catch the light up close: soft on grass and fields, sharp on scree and rock. */
+vec3 Roughened(vec3 normal, Detail detail, vec2 rugged)
 {
-	float coarse_shown = ResolvedAt(BUMP_PER_TILE, foreshortened_pixels);
-	if (coarse_shown <= 0.0 || rugged <= 0.0) return normal;
-	mat2 coarse_turn = OctaveTurn(BUMP_PER_TILE);
-	mat2 fine_turn = OctaveTurn(BUMP_PER_TILE * FINE_BUMP_SCALE);
-	vec3 coarse = NoiseSlope(coarse_turn * p * BUMP_PER_TILE);
-	vec3 fine = NoiseSlope(fine_turn * p * BUMP_PER_TILE * FINE_BUMP_SCALE + 7.3);
-	vec2 slope = transpose(coarse_turn) * coarse.yz * coarse_shown + transpose(fine_turn) * fine.yz * 0.5 * FINE_BUMP_SCALE * ResolvedAt(BUMP_PER_TILE * FINE_BUMP_SCALE, foreshortened_pixels);
-	return normalize(normal - vec3(slope * BUMP_PER_TILE * BUMP_DEPTH * rugged, 0.0));
+	return normalize(normal - (detail.slope * rugged.x + detail.stone_slope * rugged.y) * RELIEF_DEPTH);
 }
 
 Water WaterAt(vec2 p)
@@ -744,15 +740,15 @@ Network BandsAt(vec2 p, mat2 pixel)
 	return NetworkAt(p, pixel);
 }
 
-vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, float levels_per_pixel, inout vec3 normal, out float occlusion)
+vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, float levels_per_pixel, inout vec3 normal, out float occlusion)
 {
-	Grain grain = GrainAt(p);
+	Grain grain = GrainAt(p, detail);
 	Canopy forest = Forest(p);
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
 	Site site;
 	Patch surface = Surface(p, grain, relief, water.sea > 0.0 && Armoured(p), site);
-	normal = Roughened(normal, p, surface.rugged * (1.0 - water.cover));
+	normal = Roughened(normal, detail, surface.rugged * (1.0 - water.cover));
 	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
 	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p, grain)), Airfield(p)), v_world.z);
 	land = mix(Banks(land, water, beach), Seabed(water, grain), clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0));
@@ -777,16 +773,17 @@ void main()
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);
 	Relief relief = ReliefAt(normal, levels_per_pixel);
+	Detail detail = DetailAt(RenderPoint(v_world), normal);
 	relief.steep *= 1.0 - clamp(v_mark / FILL_MARK, 0.0, 1.0);
 
 	vec3 albedo;
 	float occlusion = 1.0;
 	if (OutsideMap(p)) {
-		albedo = Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p)));
+		albedo = Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail)));
 	} else if (v_mark > WALL_MARK) {
 		albedo = Greyed(WallFace(normal));
 	} else {
-		albedo = GroundTone(p, pixel, water, relief, levels_per_pixel, normal, occlusion);
+		albedo = GroundTone(p, pixel, water, relief, detail, levels_per_pixel, normal, occlusion);
 	}
 	frag_colour = vec4(Lit(albedo, normal, occlusion), 1.0);
 }

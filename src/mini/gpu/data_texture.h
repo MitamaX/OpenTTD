@@ -15,6 +15,7 @@
 enum class TexelFormat : uint8_t {
 	ExactRgba,
 	FilteredRgba,
+	TiledRgba,
 };
 
 class DataTexture {

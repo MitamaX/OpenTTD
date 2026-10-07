@@ -17,6 +17,8 @@ enum FrameUnit : uint8_t {
 	SHADOW_UNIT = 5,
 	SCENE_COLOUR_UNIT,
 	SCENE_DEPTH_UNIT,
+	GRAIN_UNIT,
+	RELIEF_UNIT,
 };
 
 struct FrameSampler {
