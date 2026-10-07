@@ -67,6 +67,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bloom_up.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/caster.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/caster.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/climate.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cloud_field.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/clouds.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.glsl

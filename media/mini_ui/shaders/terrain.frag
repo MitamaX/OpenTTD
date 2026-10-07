@@ -11,11 +11,15 @@ const float STANDARD_SLOPE = 1.0;
 const float STEEPEST_SLOPE = sqrt(2.0);
 const float ALPINE_ALTITUDE = 0.55;
 const float STEEP_BARING = 1.1;
+const float SHED_BARING = 0.9;
 const float ALPINE_BARING = 0.9;
 const float SCREE_EXPOSURE = 0.5;
 const float ROCK_EXPOSURE = 0.9;
 const float EXPOSURE_BLEND = 0.14;
-const float SNOW_SLIP_SLOPE = 1.15;
+const float BLANKET_SLIP_SLOPE = 1.1;
+const float BLANKET_EDGE = 0.07;
+const float CLINGING = 0.75;
+const float SNOW_LINE_RAGGED = 2.5;
 
 const float LINE_HALF_PIXELS = 0.5;
 const float HALF_LEVEL = 0.5;
@@ -28,6 +32,9 @@ const float MIN_RELIEF_SPAN = 6.0;
 const vec3 LOWLAND = vec3(0.90, 0.95, 0.86);
 const vec3 HIGHLAND = vec3(1.12, 1.06, 0.94);
 const float TERRAIN_ROUGHNESS = 0.85;
+const float TOY_ROUGHNESS = 0.72;
+const float SNOW_ROUGHNESS = 0.7;
+const float SAND_ROUGHNESS = 0.9;
 const float WALL_MARK = 0.5;
 const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
@@ -39,20 +46,34 @@ const float BLEND_PIXELS = 0.8;
 const float BLOCKS_BLUR_PIXELS = 4.0;
 const float BLOCKS_SHOWN_PIXELS = 12.0;
 const float NATURAL_WARP = 0.32;
+const float CLIMATE_WARP = 0.6;
+const float CLIMATE_SWAY = 1.1;
+const float CLIMATE_SWAY_FREQUENCY = 0.19;
 const float BUILT_WARP = 0.06;
 const float DEPTH_LOD = 3.0;
 const float SANDED_SEA = 0.26;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
+const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
+const vec3 TOY_TEAL = vec3(0.42, 0.82, 0.6);
+const vec3 TOY_MINT = vec3(0.5, 0.86, 0.48);
+const vec3 TOY_LIME = vec3(0.7, 0.9, 0.42);
+const vec3 LUSH_DARK = vec3(0.2, 0.35, 0.17);
+const vec3 LUSH_LIGHT = vec3(0.31, 0.47, 0.23);
 const vec3 ROUGH_TINT = vec3(0.55, 0.50, 0.30);
 const vec3 STRAW_TINT = vec3(1.14, 1.04, 0.78);
 const vec3 ROCK = vec3(0.50, 0.49, 0.47);
 const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
 const vec3 SCREE = vec3(0.55, 0.52, 0.47);
-const vec3 SNOW = vec3(0.93, 0.95, 0.98);
-const vec3 SAND = vec3(0.86, 0.77, 0.55);
+const vec3 SNOW = vec3(0.87, 0.9, 0.95);
+const vec3 SCOURED_SNOW = vec3(0.76, 0.82, 0.9);
+const vec3 SAND = vec3(0.87, 0.76, 0.54);
+const vec3 RED_SAND = vec3(0.85, 0.64, 0.43);
+const vec3 GRAVEL = vec3(0.74, 0.62, 0.48);
+const vec3 PACKED_EARTH = vec3(0.72, 0.57, 0.43);
 const vec3 DRY_SAND = vec3(0.78, 0.71, 0.55);
 const vec3 PAVING = vec3(0.57, 0.55, 0.51);
+const vec3 SANDSTONE_PAVING = vec3(0.7, 0.62, 0.5);
 const vec3 YARD = vec3(0.49, 0.41, 0.32);
 const vec3 BANK = vec3(0.50, 0.50, 0.48);
 const vec3 WET_SAND = vec3(0.50, 0.46, 0.37);
@@ -88,6 +109,51 @@ const vec2 ROCK_RUGGED = vec2(1.0, 0.15);
 const vec2 FIELD_RUGGED = vec2(0.35, 0.05);
 const vec2 SAND_RUGGED = vec2(0.2, 0.05);
 const vec2 PAVED_RUGGED = vec2(0.1, 0.0);
+const vec2 SNOW_RUGGED = vec2(0.12, 0.0);
+
+const float TAU = 6.2831853;
+const vec2 WIND = vec2(0.8, 0.6);
+const vec2 ACROSS_WIND = vec2(-0.6, 0.8);
+const float DRIFT_ALONG = 0.22;
+const float DRIFT_ACROSS = 0.8;
+const float DRIFT_HEIGHT = 0.3;
+const float RIDGE_ALONG = 0.45;
+const float RIDGE_ACROSS = 1.4;
+const float RIDGE_HEIGHT = 0.07;
+const float SASTRUGI_ALONG = 1.6;
+const float SASTRUGI_ACROSS = 6.0;
+const float SASTRUGI_HEIGHT = 0.012;
+const float GLINT_PIXELS = 3.0;
+const int GLINT_LEVEL_STRIDE = 7919;
+const float GLINT_SHARE = 0.2;
+const float GLINT_SPREAD = 3.0;
+const float GLINT_FOCUS = 80.0;
+const float GLINT_GAIN = 7.0;
+const float GLINT_FROM_PIXELS = 10.0;
+const float GLINT_TO_PIXELS = 40.0;
+const float DUNE_SPACING = 3.4;
+const float DUNE_CREST = 0.65;
+const float DUNE_HEIGHT = 0.18;
+const float DUNE_WARP = 1.3;
+const float DUNE_WARP_FREQUENCY = 0.11;
+const float DUNE_SWELL_FREQUENCY = 0.07;
+const float DUNE_CALM = 0.22;
+const vec2 CROSS_WIND = vec2(0.47, 0.88);
+const float CROSS_SPACING = 1.7;
+const float CROSS_SHARE = 0.6;
+const float RIPPLES_PER_TILE = 9.0;
+const float RIPPLE_WARP = 0.5;
+const float RIPPLE_HEIGHT = 0.0025;
+const float RIPPLE_SHADE = 0.05;
+const float TOY_GRAIN = 0.45;
+
+const int TOY_STRATA_COUNT = 4;
+const vec3 TOY_STRATA[TOY_STRATA_COUNT] = vec3[TOY_STRATA_COUNT](
+	vec3(0.95, 0.66, 0.76),
+	vec3(0.76, 0.69, 0.93),
+	vec3(0.99, 0.82, 0.6),
+	vec3(0.62, 0.86, 0.9)
+);
 
 const int CROP_COUNT = 6;
 const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
@@ -149,7 +215,6 @@ const float HELIPAD_LINE_HALF = 0.02;
 struct Ground {
 	uint material;
 	float density;
-	bool lush;
 	uint variant;
 };
 
@@ -187,7 +252,7 @@ struct Patch {
 	vec2 rugged;
 };
 
-/* What every ground meeting at a point is shaded with: where it is, how it leans, how far it wears bare, the stone it would show and whether its shore is armoured. */
+/* What every ground meeting at a point is shaded with: where it is, how it leans, how far it wears bare, the stone it would show, whether its shore is armoured, its climate and how far a town's feet have trodden it. */
 struct Site {
 	vec2 p;
 	Grain grain;
@@ -195,6 +260,36 @@ struct Site {
 	Exposure exposure;
 	Bare bare;
 	bool armoured;
+	Climate climate;
+	float ragged;
+	float trodden;
+};
+
+struct Blanket {
+	float cover;
+	vec3 tone;
+	vec2 slope;
+	vec2 rugged;
+	float roughness;
+	float glint;
+};
+
+const Blanket NO_BLANKET = Blanket(0.0, vec3(0.0), vec2(0.0), vec2(0.0), 0.0, 0.0);
+
+struct Dune {
+	float height;
+	vec2 slope;
+	float along;
+	vec2 heading;
+	float lee;
+};
+
+struct Shade {
+	vec3 albedo;
+	vec3 normal;
+	float roughness;
+	float occlusion;
+	float glint;
 };
 
 struct Water {
@@ -214,22 +309,43 @@ struct Canopy {
 /* The ground one screen pixel steps over across and down the screen; lines on the ground fade by how far apart it puts them. */
 mat2 footprint;
 
+Grain Moulded(Grain grain)
+{
+	return Grain(grain.broad, mix(0.5, grain.local, TOY_GRAIN), mix(0.5, grain.clump, TOY_GRAIN), mix(0.5, grain.fine, TOY_GRAIN), mix(0.5, grain.micro, TOY_GRAIN), grain.stones, grain.hollow * TOY_GRAIN);
+}
+
 Grain GrainAt(vec2 p, Detail detail)
 {
 	float local = (2.0 * FacingOctave(detail, LOCAL_PER_TILE, 0.0) + FacingOctave(detail, LOCAL_PER_TILE * 2.07, 17.3)) / 3.0;
-	return Grain(Layered(p, 0.15), local, FacingOctave(detail, CLUMPS_PER_TILE, 2.2), detail.fine, detail.micro, detail.stones, detail.hollow);
+	Grain grain = Grain(Layered(p, 0.15), local, FacingOctave(detail, CLUMPS_PER_TILE, 2.2), detail.fine, detail.micro, detail.stones, detail.hollow);
+	return Landscape() == LANDSCAPE_TOYLAND ? Moulded(grain) : grain;
 }
 
 Ground GroundAt(ivec2 tile)
 {
 	uvec4 codes = CodesAt(tile);
-	return Ground(codes.r, float(codes.g & DENSITY_MASK) / float(DENSITY_MASK), (codes.g & LUSH_BIT) != 0u, codes.a);
+	return Ground(codes.r, float(codes.g & DENSITY_MASK) / float(DENSITY_MASK), codes.a);
+}
+
+float GroundRoughness()
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? TOY_ROUGHNESS : TERRAIN_ROUGHNESS;
+}
+
+vec3 Paving()
+{
+	return Landscape() == LANDSCAPE_TROPIC ? SANDSTONE_PAVING : PAVING;
+}
+
+vec3 Soil()
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? TOY_SOIL : SOIL;
 }
 
 /* The ground's colours are picked on screen; they are lit as the light they reflect. */
-vec3 Lit(vec3 albedo, vec3 normal, float occlusion)
+vec3 Lit(Shade shade)
 {
-	return Radiance(Linear(albedo), normal, RenderPoint(v_world), TERRAIN_ROUGHNESS, occlusion);
+	return GlintingRadiance(Linear(shade.albedo), shade.normal, RenderPoint(v_world), shade.roughness, shade.occlusion, shade.glint * GLINT_GAIN);
 }
 
 /* How steeply the ground leans at the fragment, in levels per tile. */
@@ -267,24 +383,24 @@ float Contour(float height, float levels_per_pixel)
 	return line * smoothstep(CROWDED_CONTOUR_PIXELS, SPACED_CONTOUR_PIXELS, 1.0 / levels_per_pixel) * weight;
 }
 
-vec3 GrassTone(float shade, bool lush)
+vec3 ToyLawn(float shade)
 {
+	return mix(mix(TOY_TEAL, TOY_MINT, smoothstep(0.2, 0.45, shade)), TOY_LIME, smoothstep(0.55, 0.85, shade));
+}
+
+vec3 GrassTone(float shade, float lush)
+{
+	if (Landscape() == LANDSCAPE_TOYLAND) return ToyLawn(shade);
 	vec3 dark = vec3(0.33, 0.43, 0.21);
 	vec3 light = vec3(0.50, 0.56, 0.30);
-	if (lush) {
-		dark = vec3(0.20, 0.35, 0.17);
-		light = vec3(0.31, 0.47, 0.23);
-	} else if (Landscape() == LANDSCAPE_ARCTIC) {
+	if (Landscape() == LANDSCAPE_ARCTIC) {
 		dark = vec3(0.38, 0.47, 0.34);
 		light = vec3(0.53, 0.60, 0.44);
 	} else if (Landscape() == LANDSCAPE_TROPIC) {
 		dark = vec3(0.52, 0.55, 0.28);
 		light = vec3(0.68, 0.66, 0.36);
-	} else if (Landscape() == LANDSCAPE_TOYLAND) {
-		dark = vec3(0.42, 0.72, 0.38);
-		light = vec3(0.58, 0.85, 0.48);
 	}
-	return mix(dark, light, shade);
+	return mix(mix(dark, light, shade), mix(LUSH_DARK, LUSH_LIGHT, shade), lush);
 }
 
 float Hollowed(Grain grain, float depth)
@@ -298,25 +414,32 @@ float Cover(float density, float clump)
 }
 
 /* Grass turns to straw here and there, and its blades fleck it light and dark up close. */
-vec3 Grass(Ground ground, Grain grain)
+vec3 Grass(Ground ground, Grain grain, float lush)
 {
-	vec3 green = GrassTone(grain.broad, ground.lush);
+	vec3 green = GrassTone(grain.broad, lush);
 	vec3 straw = green * STRAW_TINT;
 	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7);
 	vec3 blades = mix(green, straw, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro)) * shade;
-	vec3 soil = SOIL * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
+	vec3 soil = Soil() * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
 
-vec3 Meadow(Grain grain, bool lush)
+vec3 Meadow(Grain grain, float lush)
 {
-	return Grass(Ground(MAT_GRASS, 1.0, lush, 0u), grain);
+	return Grass(Ground(MAT_GRASS, 1.0, 0u), grain, lush);
 }
 
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
-vec3 Scree(Grain grain)
+vec3 Stratum(int layer)
 {
-	vec3 tone = SCREE * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
+	if (Landscape() == LANDSCAPE_TOYLAND) return TOY_STRATA[abs(layer) % TOY_STRATA_COUNT];
+	return mix(ROCK, ROCK_WARM, Hash(ivec2(layer, 7))) * Varied(Hash(ivec2(layer, 19)), LAYER_VARIETY);
+}
+
+vec3 Scree(Grain grain, vec2 p)
+{
+	vec3 loose = Landscape() == LANDSCAPE_TOYLAND ? Stratum(int(Noise(p * BOULDERS_PER_TILE) * 8.0)) : SCREE;
+	vec3 tone = loose * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
 	return tone * mix(1.0, 1.18, grain.stones) * Hollowed(grain, STONY_HOLLOWS);
 }
 
@@ -335,9 +458,9 @@ vec3 Rock(vec2 p, Relief relief, Grain grain)
 	float bedding = BeddingAt(p);
 	int layer = int(floor(bedding));
 	float strata = relief.steep * relief.strata;
-	vec3 bed = mix(ROCK, ROCK_WARM, Hash(ivec2(layer, 7))) * Varied(Hash(ivec2(layer, 19)), LAYER_VARIETY);
+	vec3 bed = Stratum(layer);
 	float ledge = mix(LEDGE_SHADE, 1.08, smoothstep(0.0, 0.3, fract(bedding)));
-	vec3 slabs = mix(ROCK, ROCK_WARM, 0.3) * Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
+	vec3 slabs = (Landscape() == LANDSCAPE_TOYLAND ? bed : mix(ROCK, ROCK_WARM, 0.3)) * Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
 	vec3 rock = mix(mix(slabs, bed, 0.35), bed * ledge, strata);
 	vec3 weathered = mix(rock, rock * vec3(0.72, 0.74, 0.66), smoothstep(0.55, 0.8, Octave(p + 4.4, 2.7)));
 	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
@@ -345,15 +468,15 @@ vec3 Rock(vec2 p, Relief relief, Grain grain)
 
 Bare BareAt(vec2 p, Relief relief, Grain grain)
 {
-	return Bare(Scree(grain), Rock(p, relief, grain));
+	return Bare(Scree(grain, p), Rock(p, relief, grain));
 }
 
-/* Ground lies bare where it stands steep or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
-Exposure ExposureAt(Relief relief, Grain grain)
+/* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
+Exposure ExposureAt(Relief relief, Grain grain, float blanket)
 {
 	float altitude = clamp(v_world.z / max(Peak(), MIN_RELIEF_SPAN), 0.0, 1.0);
 	float ragged = (grain.local - 0.5) * 0.7 + (grain.fine - 0.5) * 0.3 + (grain.micro - 0.5) * 0.15;
-	float bare = relief.steep * STEEP_BARING + smoothstep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING + ragged;
+	float bare = relief.steep * (STEEP_BARING + blanket * SHED_BARING) + smoothstep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING + ragged;
 	float scree = smoothstep(SCREE_EXPOSURE - EXPOSURE_BLEND, SCREE_EXPOSURE + EXPOSURE_BLEND, bare);
 	float rock = smoothstep(ROCK_EXPOSURE - EXPOSURE_BLEND, ROCK_EXPOSURE + EXPOSURE_BLEND, bare);
 	return Exposure(scree, rock);
@@ -367,25 +490,25 @@ Patch Exposed(Patch ground, Site site)
 }
 
 /* Rough land: tussocks of dry and green grass in clumps, opening onto patches of stony soil. */
-Patch Rough(Ground ground, Grain grain, vec2 p)
+Patch Rough(Grain grain, vec2 p, float lush)
 {
-	vec3 green = GrassTone(grain.broad, ground.lush) * 0.9;
+	vec3 green = GrassTone(grain.broad, lush) * 0.9;
 	vec3 dry = mix(green, ROUGH_TINT, 0.5);
 	float clumps = smoothstep(0.35, 0.65, Octave(p, 2.3));
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
 	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
 	float open = smoothstep(0.58, 0.8, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
-	vec3 stony = mix(SOIL, SCREE, 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
+	vec3 stony = mix(Soil(), SCREE, 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
 	return Patch(mix(scrub, stony, open * 0.6), ROUGH_RUGGED);
 }
 
 /* Rocky ground: grass with stones gathered in patches over it, and pale rock breaking through here and there. */
-Patch Rocks(Grain grain, vec2 p, Bare bare)
+Patch Rocks(Grain grain, vec2 p, Bare bare, float lush)
 {
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
-	vec3 strewn = mix(Meadow(grain, false), bare.scree * PALE_STONE, stones);
+	vec3 strewn = mix(Meadow(grain, lush), bare.scree * PALE_STONE, stones);
 	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, patches), ROCK_RUGGED, outcrop));
 }
 
@@ -404,7 +527,7 @@ Patch Fields(Ground ground, Grain grain, vec2 p)
 	float track_gap = abs(abs(fract(across * TRAMLINES_PER_TILE) - 0.5) / TRAMLINES_PER_TILE - TRAMLINE_GAUGE);
 	float track = Stroke(track_gap, TRAMLINE_HALF_WIDTH, row_pitch) * level;
 	float plants = Varied(Noise(vec2(across * FURROWS_PER_TILE, along * MICRO_PER_TILE)), 0.3 * ResolvedAt(MICRO_PER_TILE, 1.0 / row_pitch)) * Varied(grain.micro, 0.25);
-	vec3 soil = mix(SOIL, crop, 0.25) * 0.85 * Varied(grain.fine, 0.2);
+	vec3 soil = mix(Soil(), crop, 0.25) * 0.85 * Varied(grain.fine, 0.2);
 	return Patch(mix(mix(crop * plants, soil, furrow * FURROW_DEPTH), soil, track * TRAMLINE_DEPTH), FIELD_RUGGED);
 }
 
@@ -427,7 +550,7 @@ Patch Beach(Grain grain)
 	float lift = v_world.z + (grain.fine - 0.5) * 0.12 + (grain.micro - 0.5) * 0.05;
 	vec3 sand = mix(WET_SAND, DRY_SAND, smoothstep(0.03, 0.22, lift)) * Varied(grain.local, 0.12) * Varied(grain.micro, 0.12);
 	float grassed = smoothstep(0.45, 0.75, lift + (grain.local - 0.5) * 0.4);
-	return Patch(mix(sand, Meadow(grain, false), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
+	return Patch(mix(sand, Meadow(grain, 0.0), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
@@ -444,19 +567,9 @@ Patch Shore(Site site)
 	return site.armoured ? Patch(Riprap(site.p, site.bare), SCREE_RUGGED) : Beach(site.grain);
 }
 
-vec3 Snow(Ground ground, Grain grain, Relief relief, Bare bare)
+vec3 Steppe(Grain grain, float lush)
 {
-	vec3 snow = SNOW * (0.95 + 0.05 * grain.fine);
-	float slip = smoothstep(SNOW_SLIP_SLOPE, STEEPEST_SLOPE, relief.slope + (grain.fine - 0.5) * 0.3);
-	vec3 under = mix(Meadow(grain, false), bare.rock, relief.steep);
-	return mix(under, snow, Cover(ground.density, grain.local) * (1.0 - slip));
-}
-
-vec3 Desert(Ground ground, Grain grain, vec2 p)
-{
-	float ripple = sin(dot(p, vec2(0.8, 0.6)) * 11.0 + Noise(p * 0.7) * 6.0);
-	vec3 sand = SAND * (0.94 + 0.1 * grain.broad) * mix(1.0, 0.96 + 0.04 * ripple, Resolved(3.5)) * Varied(grain.micro, 0.1);
-	return mix(Meadow(grain, ground.lush), sand, Cover(ground.density, grain.local));
+	return mix(Meadow(grain, lush) * STRAW_TINT, DRY_SAND * Varied(grain.micro, 0.15), 0.4);
 }
 
 Patch Albedo(Ground ground, Site site)
@@ -464,14 +577,14 @@ Patch Albedo(Ground ground, Site site)
 	Grain grain = site.grain;
 	vec2 p = site.p;
 	switch (ground.material) {
-		case MAT_GRASS: return Patch(Grass(ground, grain), GRASS_RUGGED);
-		case MAT_ROUGH: return Rough(ground, grain, p);
-		case MAT_ROCKS: return Rocks(grain, p, site.bare);
+		case MAT_GRASS: return Patch(Grass(ground, grain, site.climate.lush), GRASS_RUGGED);
+		case MAT_ROUGH:
+		case MAT_SNOW: return Rough(grain, p, site.climate.lush);
+		case MAT_ROCKS: return Rocks(grain, p, site.bare, site.climate.lush);
 		case MAT_FIELDS: return Fields(ground, grain, p);
-		case MAT_SNOW: return Patch(Snow(ground, grain, site.relief, site.bare), SAND_RUGGED);
-		case MAT_DESERT: return Patch(Desert(ground, grain, p), SAND_RUGGED);
+		case MAT_DESERT: return Patch(Steppe(grain, site.climate.lush), SAND_RUGGED);
 		case MAT_SHORE: return Shore(site);
-		case MAT_PAVED: return Patch(PAVING * (0.94 + 0.08 * grain.local) * Varied(grain.fine, 0.06) * Varied(grain.micro, 0.08), PAVED_RUGGED);
+		case MAT_PAVED: return Patch(Paving() * (0.94 + 0.08 * grain.local) * Varied(grain.fine, 0.06) * Varied(grain.micro, 0.08), PAVED_RUGGED);
 		case MAT_DIRT: return Patch(YARD * Varied(grain.local, 0.15) * Varied(grain.fine, 0.1) * Varied(grain.micro, 0.2), ROUGH_RUGGED);
 	}
 	return Patch(VOID_TONE, vec2(0.0));
@@ -487,22 +600,32 @@ bool IsNatural(uint material)
 	return material == MAT_GRASS || material == MAT_ROUGH || material == MAT_SNOW || material == MAT_DESERT || material == MAT_SHORE;
 }
 
+Patch Trodden(Patch ground, Site site)
+{
+	if (site.trodden <= 0.0) return ground;
+	vec3 earth = PACKED_EARTH * Varied(site.grain.local, 0.14) * Varied(site.grain.fine, 0.08) * Varied(site.grain.micro, 0.12);
+	return Patch(mix(ground.tone, earth, site.trodden), mix(ground.rugged, PAVED_RUGGED, site.trodden));
+}
+
 Patch Eroded(Ground ground, Site site)
 {
 	Patch patch = Albedo(ground, site);
-	return IsNatural(ground.material) ? Exposed(patch, site) : patch;
+	return IsNatural(ground.material) ? Trodden(Exposed(patch, site), site) : patch;
 }
 
-float Builtness(vec2 p)
+vec2 SettledAt(ivec2 tile)
+{
+	uvec4 codes = CodesAt(tile);
+	float built = float(IsBuilt(codes.r));
+	return vec2(built, max(built, float((codes.g & BUILT_BIT) != 0u)));
+}
+
+vec2 Settlement(vec2 p)
 {
 	vec2 q = p - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
 	vec2 f = fract(q);
-	float a = float(IsBuilt(GroundAt(cell).material));
-	float b = float(IsBuilt(GroundAt(cell + ivec2(1, 0)).material));
-	float c = float(IsBuilt(GroundAt(cell + ivec2(0, 1)).material));
-	float d = float(IsBuilt(GroundAt(cell + ivec2(1, 1)).material));
-	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+	return mix(mix(SettledAt(cell), SettledAt(cell + ivec2(1, 0)), f.x), mix(SettledAt(cell + ivec2(0, 1)), SettledAt(cell + ivec2(1, 1)), f.x), f.y);
 }
 
 /* The grounds of the four tiles around blend across their seams; each distinct ground is shaded once, by the share all its corners hold, in a loop the compiler keeps as one copy. */
@@ -511,28 +634,44 @@ bool HasCorner(Ground corners[4], uint material)
 	return corners[0].material == material || corners[1].material == material || corners[2].material == material || corners[3].material == material;
 }
 
-/* The stone is only worked out where some ground at the point shows it. */
-Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4])
+float Ragged(vec2 p, Grain grain)
 {
-	Exposure exposure = ExposureAt(relief, grain);
-	bool bared = exposure.scree > 0.0 || armoured || HasCorner(corners, MAT_ROCKS) || HasCorner(corners, MAT_SNOW);
-	Bare bare = bared ? BareAt(p, relief, grain) : Bare(vec3(0.0), vec3(0.0));
-	return Site(p, grain, relief, exposure, bare, armoured);
+	return (Octave(p, 0.17) - 0.5) * 0.5 + (Octave(p, 0.45) - 0.5) * 0.4 + (grain.local - 0.5) * 0.4 + (grain.fine - 0.5) * 0.2;
 }
 
-Patch Surface(vec2 p, Grain grain, Relief relief, bool armoured, out Site site)
+/* The stone is only worked out where some ground at the point shows it. */
+Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4], vec2 warp, float settled)
 {
-	float built = min(Builtness(p) * 2.0, 1.0) * smoothstep(BLOCKS_BLUR_PIXELS, BLOCKS_SHOWN_PIXELS, tile_pixels);
+	Climate climate = Climate(0.0, 0.0);
+	float ragged = 0.0;
+	float trodden = 0.0;
+	if (Landscape() == LANDSCAPE_ARCTIC || Landscape() == LANDSCAPE_TROPIC) {
+		vec2 sway = (vec2(Noise(p * CLIMATE_SWAY_FREQUENCY + 3.3), Noise(p * CLIMATE_SWAY_FREQUENCY + 9.1)) - 0.5) * 2.0 * CLIMATE_SWAY;
+		climate = ClimateAt(p + warp + sway);
+		ragged = Ragged(p, grain);
+		climate.lush = smoothstep(0.15, 0.85, climate.lush + ragged * 0.6);
+		if (Landscape() == LANDSCAPE_TROPIC) trodden = smoothstep(0.05, 0.4, settled + ragged * 0.4);
+	}
+	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
+	bool bared = exposure.scree > 0.0 || armoured || HasCorner(corners, MAT_ROCKS);
+	Bare bare = bared ? BareAt(p, relief, grain) : Bare(vec3(0.0), vec3(0.0));
+	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden);
+}
+
+Patch Surface(vec2 p, vec2 bend, Grain grain, Relief relief, bool armoured, out Site site)
+{
+	vec2 settlement = Settlement(p);
+	float built = min(settlement.x * 2.0, 1.0) * smoothstep(BLOCKS_BLUR_PIXELS, BLOCKS_SHOWN_PIXELS, tile_pixels);
 	float reach = mix(NATURAL_WARP, BUILT_WARP, built);
 	float width = mix(BLEND_WIDTH, max(BUILT_BLEND_WIDTH, BLEND_PIXELS / tile_pixels), built);
-	vec2 warp = (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0 * reach;
+	vec2 warp = bend * reach;
 	vec2 q = p + warp - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
 	vec2 f = smoothstep(HALF_TILE - width, HALF_TILE + width, fract(q));
 
 	Ground corners[4] = Ground[4](GroundAt(cell), GroundAt(cell + ivec2(1, 0)), GroundAt(cell + ivec2(0, 1)), GroundAt(cell + ivec2(1, 1)));
 	float shares[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-	site = SiteAt(p, grain, relief, armoured, corners);
+	site = SiteAt(p, grain, relief, armoured, corners, bend * CLIMATE_WARP, settlement.y);
 	Ground distinct[4];
 	float weights[4];
 	int count = 0;
@@ -756,6 +895,95 @@ vec3 WallFace(vec3 normal)
 	return Altitude(stone, v_world.z);
 }
 
+vec3 Windblown(vec2 p, float along, float across)
+{
+	vec2 frequency = vec2(along, across);
+	vec3 noise = NoiseSlope(vec2(dot(p, WIND), dot(p, ACROSS_WIND)) * frequency);
+	vec2 slope = noise.yz * frequency;
+	return vec3(noise.x, WIND * slope.x + ACROSS_WIND * slope.y);
+}
+
+float Glint(vec2 p, vec3 normal)
+{
+	float level = floor(log2(max(tile_pixels / GLINT_PIXELS, 1.0)));
+	vec2 q = p * exp2(level);
+	ivec2 cell = ivec2(floor(q)) + ivec2(int(level) * GLINT_LEVEL_STRIDE, 0);
+	vec2 dice = Hash2(cell);
+	if (dice.x > GLINT_SHARE) return 0.0;
+	vec2 spot = Hash2(cell + ivec2(0, GLINT_LEVEL_STRIDE));
+	float point = 1.0 - smoothstep(0.08, 0.3, length(fract(q) - 0.25 - 0.5 * spot));
+	vec3 facet = normalize(normal + vec3((Hash2(cell + ivec2(GLINT_LEVEL_STRIDE, 0)) - 0.5) * GLINT_SPREAD, 0.0));
+	vec3 half_way = normalize(SunDirection() + normalize(Eye() - RenderPoint(v_world)));
+	return point * pow(max(dot(facet, half_way), 0.0), GLINT_FOCUS) * smoothstep(GLINT_FROM_PIXELS, GLINT_TO_PIXELS, tile_pixels);
+}
+
+Blanket Snowfield(Site site, float cover)
+{
+	vec2 p = site.p;
+	vec3 drift = Windblown(p + 3.7, DRIFT_ALONG, DRIFT_ACROSS);
+	vec3 ridge = Windblown(p + 1.3, RIDGE_ALONG, RIDGE_ACROSS);
+	vec3 sastrugi = Windblown(p, SASTRUGI_ALONG, SASTRUGI_ACROSS);
+	vec2 slope = drift.yz * DRIFT_HEIGHT * Resolved(DRIFT_ACROSS) + ridge.yz * RIDGE_HEIGHT * Resolved(RIDGE_ACROSS) + sastrugi.yz * SASTRUGI_HEIGHT * Resolved(SASTRUGI_ACROSS);
+	float scoured = smoothstep(0.55, 0.85, Octave(p + 9.1, 0.7)) * (1.0 - drift.x);
+	vec3 tone = mix(SNOW, SCOURED_SNOW, scoured) * mix(0.95, 1.02, drift.x) * Varied(site.grain.fine, 0.05) * Varied(site.grain.micro, 0.06);
+	return Blanket(cover, tone, slope, SNOW_RUGGED, SNOW_ROUGHNESS, 1.0);
+}
+
+Dune DuneTrain(vec2 p, vec2 wind, float spacing, float seed)
+{
+	vec3 warp_x = NoiseSlope(p * DUNE_WARP_FREQUENCY + seed);
+	vec3 warp_y = NoiseSlope(p * DUNE_WARP_FREQUENCY + seed + 31.7);
+	float reach = 2.0 * DUNE_WARP;
+	vec2 q = p + (vec2(warp_x.x, warp_y.x) - 0.5) * reach;
+	vec2 heading = wind + reach * DUNE_WARP_FREQUENCY * (wind.x * warp_x.yz + wind.y * warp_y.yz);
+	float along = dot(q, wind);
+	float s = fract(along / spacing);
+	bool windward = s < DUNE_CREST;
+	float t = windward ? s / DUNE_CREST : (1.0 - s) / (1.0 - DUNE_CREST);
+	float rate = (windward ? 1.0 / DUNE_CREST : -1.0 / (1.0 - DUNE_CREST)) / spacing;
+	float profile = t * t * (3.0 - 2.0 * t);
+	vec3 swell = NoiseSlope(p * DUNE_SWELL_FREQUENCY + seed + 5.3);
+	float u = clamp((swell.x - DUNE_CALM) / (1.0 - 2.0 * DUNE_CALM), 0.0, 1.0);
+	float amplitude = u * u * (3.0 - 2.0 * u);
+	vec2 swelling = 6.0 * u * (1.0 - u) / (1.0 - 2.0 * DUNE_CALM) * DUNE_SWELL_FREQUENCY * swell.yz;
+	vec2 slope = 6.0 * t * (1.0 - t) * rate * heading * amplitude + profile * swelling;
+	return Dune(profile * amplitude, slope, along, heading, windward ? 0.0 : 1.0);
+}
+
+Dune DuneAt(vec2 p)
+{
+	Dune dune = DuneTrain(p, WIND, DUNE_SPACING, 0.0);
+	Dune cross = DuneTrain(p, CROSS_WIND, DUNE_SPACING * CROSS_SPACING, 13.1);
+	dune.height = (dune.height + cross.height * CROSS_SHARE) / (1.0 + CROSS_SHARE);
+	dune.slope = (dune.slope + cross.slope * CROSS_SHARE) * DUNE_HEIGHT;
+	return dune;
+}
+
+Blanket Sandfield(Site site, float cover)
+{
+	vec2 p = site.p;
+	Dune dune = DuneAt(p);
+	float bent = dot((vec2(Noise(p * 0.9 + 2.1), Noise(p * 1.3 + 7.7)) - 0.5) * RIPPLE_WARP, dune.heading);
+	float phase = (dune.along + bent) * RIPPLES_PER_TILE * TAU;
+	float gravel = smoothstep(0.72, 0.86, (1.0 - dune.height) * 0.3 + Octave(p + 4.1, 0.45) * 0.7 + (site.grain.fine - 0.5) * 0.15);
+	float rippled = Resolved(RIPPLES_PER_TILE) * (1.0 - 0.7 * dune.lee) * (1.0 - gravel);
+	vec2 slope = dune.slope * (1.0 - 0.6 * gravel) + cos(phase) * dune.heading * RIPPLES_PER_TILE * TAU * RIPPLE_HEIGHT * rippled;
+	vec3 sand = mix(SAND, RED_SAND, Layered(p + 8.3, 0.05)) * mix(0.93, 1.04, dune.height) * (1.0 + RIPPLE_SHADE * sin(phase) * rippled) * Varied(site.grain.micro, 0.08);
+	vec3 stones = GRAVEL * Varied(site.grain.local, 0.15) * Varied(site.grain.micro, 0.3) * mix(0.9, 1.12, site.grain.stones);
+	return Blanket(cover, mix(sand, stones, gravel), slope, mix(SAND_RUGGED, SCREE_RUGGED, gravel * 0.6), SAND_ROUGHNESS, 0.0);
+}
+
+Blanket BlanketOver(Site site)
+{
+	if (site.climate.blanket <= 0.0) return NO_BLANKET;
+	float lying = smoothstep(0.5 - BLANKET_EDGE, 0.5 + BLANKET_EDGE, site.climate.blanket + SnowLift(v_world.z + site.ragged * SNOW_LINE_RAGGED) + site.ragged - site.trodden);
+	float slip = smoothstep(BLANKET_SLIP_SLOPE, STEEPEST_SLOPE, site.relief.slope + site.ragged * 0.8);
+	float clinging = smoothstep(0.55, 0.8, site.grain.stones * 0.6 + site.grain.fine * 0.4) * CLINGING;
+	float cover = lying * (1.0 - slip * (1.0 - clinging));
+	if (cover <= 0.0) return NO_BLANKET;
+	return Landscape() == LANDSCAPE_ARCTIC ? Snowfield(site, cover) : Sandfield(site, cover);
+}
+
 /* Where the network's meshes stand opaque they hide its bands, which are then not worked out at all. */
 Network BandsAt(vec2 p, mat2 pixel)
 {
@@ -763,17 +991,23 @@ Network BandsAt(vec2 p, mat2 pixel)
 	return NetworkAt(p, pixel);
 }
 
-vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, float levels_per_pixel, inout vec3 normal, out float occlusion)
+Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, float levels_per_pixel, vec3 normal)
 {
 	Grain grain = GrainAt(p, detail);
+	vec2 bend = (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0;
 	Canopy forest = Forest(p);
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
 	Site site;
-	Patch surface = Surface(p, grain, relief, water.sea > 0.0 && Armoured(p), site);
-	normal = Roughened(normal, detail, surface.rugged * (1.0 - water.cover));
+	Patch surface = Surface(p, bend, grain, relief, water.sea > 0.0 && Armoured(p), site);
+	Blanket blanket = BlanketOver(site);
+	float dry = 1.0 - water.cover;
+	float blanketed = blanket.cover * dry;
+	normal = normalize(normal - vec3(blanket.slope * blanketed, 0.0));
+	normal = Roughened(normal, detail, mix(surface.rugged, blanket.rugged, blanket.cover) * dry);
 	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
 	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p, grain)), Airfield(p)), v_world.z);
+	land = mix(land, blanket.tone, blanket.cover);
 	float drowned = max(clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0), water.sea * smoothstep(0.0, DROWNED_LEVELS, -v_world.z));
 	land = mix(Banks(land, water, beach), Seabed(water, grain), drowned);
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
@@ -781,8 +1015,9 @@ vec3 GroundTone(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, f
 	vec3 colour = Composite(land, network.paint);
 	colour *= 1.0 - grid * u_grid * GRID_DEPTH * GridLine(p, pixel) * (1.0 - water.cover);
 	colour = Composite(colour, forest.paint);
-	occlusion = 1.0 - forest.shade;
-	return Overlay(clamp(colour, 0.0, 1.0), network);
+	float roughness = mix(GroundRoughness(), blanket.roughness, blanket.cover);
+	float glint = blanket.glint > 0.0 ? Glint(p, normal) * blanketed * (1.0 - forest.paint.a) : 0.0;
+	return Shade(Overlay(clamp(colour, 0.0, 1.0), network), normal, roughness, 1.0 - forest.shade, glint);
 }
 
 /* Everything read through screen derivatives is read before the fragment branches, where neighbouring pixels may part ways.
@@ -800,14 +1035,13 @@ void main()
 	Detail detail = DetailAt(RenderPoint(v_world), normal);
 	relief.steep *= 1.0 - clamp(v_mark / FILL_MARK, 0.0, 1.0);
 
-	vec3 albedo;
-	float occlusion = 1.0;
+	Shade shade;
 	if (OutsideMap(p)) {
-		albedo = Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail)));
+		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, 1.0, vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (v_mark > WALL_MARK) {
-		albedo = Greyed(WallFace(normal));
+		shade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else {
-		albedo = GroundTone(p, pixel, water, relief, detail, levels_per_pixel, normal, occlusion);
+		shade = GroundShade(p, pixel, water, relief, detail, levels_per_pixel, normal);
 	}
-	frag_colour = vec4(Lit(albedo, normal, occlusion), 1.0);
+	frag_colour = vec4(Lit(shade), 1.0);
 }

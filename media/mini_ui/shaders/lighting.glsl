@@ -46,14 +46,19 @@ float Highlight(vec3 normal, vec3 view, vec3 light, float roughness)
 	return facets * masking * 0.25 * Fresnel(dot(half_way, view), DIELECTRIC_REFLECTANCE);
 }
 
-/* The light a surface point sends toward the eye: sunlight unless shadowed, sky and ground light dimmed by occlusion, and the sun's highlight.
+/* The light a surface point sends toward the eye: sunlight unless shadowed, sky and ground light dimmed by occlusion, the sun's highlight and its glints off crystals.
  * Every lit world shader shades through this, with albedo in linear light and the point and normal in render space. */
-vec3 Radiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion)
+vec3 GlintingRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint)
 {
 	vec3 light = SunDirection();
 	vec3 view = normalize(Eye() - position);
 	vec3 sun = SunRadiance() * max(dot(normal, light), 0.0) * SunVisibility(position, normal);
-	return Diffuse(albedo, sun, normal, occlusion) + sun * Highlight(normal, view, light, roughness);
+	return Diffuse(albedo, sun, normal, occlusion) + sun * (Highlight(normal, view, light, roughness) + glint);
+}
+
+vec3 Radiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion)
+{
+	return GlintingRadiance(albedo, normal, position, roughness, occlusion, 0.0);
 }
 
 /* Leaves let light through: the sun wraps on past where they turn away from it, and glows through them where they are seen against it. */
