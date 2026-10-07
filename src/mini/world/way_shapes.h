@@ -44,6 +44,15 @@ struct SectionPoint {
 
 using Section = std::span<const SectionPoint>;
 
+/* How far below its footing a way's sides reach, where the ground or an eased way's bank meets them. */
+inline constexpr double WAY_FOOT = -0.012;
+
+/* Whether a direction beyond a stretch's end is given, so the end is cut on the bisector toward it. */
+inline bool Heads(const MapVector &beyond)
+{
+	return beyond.x != 0.0 || beyond.y != 0.0;
+}
+
 /* A box section from one lateral to another and from one height to another, closed underneath; its top takes one paint, its sides and underside another. */
 std::array<SectionPoint, 5> BoxSection(double from, double to, double low, double high, uint32_t top, uint32_t sides, double gloss = 0.0);
 
@@ -59,6 +68,8 @@ struct Stretch {
 	MapVector Right() const { return RightOf(this->Along()); }
 	double Span() const { return std::hypot(this->to.x - this->from.x, this->to.y - this->from.y); }
 	MapVector At(double share, double lateral) const;
+	/* How far along the stretch a point lies, read along the cuts its ends are made on, so pieces meeting in a mitre agree along the joint. */
+	double ShareOf(const MapVector &point) const;
 };
 
 /* The section run along the stretch, split into rows so the footing can bend it. */

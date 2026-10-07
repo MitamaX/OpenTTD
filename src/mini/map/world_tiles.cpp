@@ -468,14 +468,28 @@ NetworkTexel WorldTiles::NetworkAt(TileIndex tile) const
 	return tile.base() < this->network.size() ? this->network[tile.base()] : NetworkTexel{};
 }
 
+bool WorldTiles::WaysEase(TileIndex tile) const
+{
+	return tile.base() < this->eases.size() && this->eases[tile.base()];
+}
+
+static bool PackEases(TileIndex tile)
+{
+	switch (GetTileType(tile)) {
+		case MP_RAILWAY: return IsPlainRail(tile);
+		case MP_ROAD: return IsNormalRoad(tile) && !IsPaved(GetRoadside(tile));
+		default: return false;
+	}
+}
+
 WorldTiles::Texels WorldTiles::Pack(TileIndex tile)
 {
-	return {PackSurface(tile), PackGround(tile), PackWater(tile), PackNetwork(tile)};
+	return {PackSurface(tile), PackGround(tile), PackWater(tile), PackNetwork(tile), PackEases(tile)};
 }
 
 WorldTiles::Texels WorldTiles::At(size_t i) const
 {
-	return {this->surfaces[i], this->ground[i], this->water[i], this->network[i]};
+	return {this->surfaces[i], this->ground[i], this->water[i], this->network[i], this->eases[i]};
 }
 
 void WorldTiles::Store(size_t i, const Texels &texels)
@@ -484,6 +498,7 @@ void WorldTiles::Store(size_t i, const Texels &texels)
 	this->ground[i] = texels.ground;
 	this->water[i] = texels.water;
 	this->network[i] = texels.network;
+	this->eases[i] = texels.eases;
 	this->peak = std::max(this->peak, HighestLevel(texels.surface));
 }
 
@@ -495,7 +510,9 @@ void WorldTiles::Rebuild()
 	this->ground.resize(count);
 	this->water.resize(count);
 	this->network.resize(count);
+	this->eases.resize(count);
 	this->peak = 0;
+	this->revision++;
 	for (uint i = 0; i < count; i++) this->Store(i, Pack(TileIndex{i}));
 
 	this->queued.assign(count, false);
@@ -533,10 +550,12 @@ void WorldTiles::MarkChanged(TileIndex tile, const Texels &packed, const Texels 
 {
 	bool water_changed = packed.water != stored.water;
 	this->changes.water |= water_changed;
+	this->revision++;
 
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->changed_blocks); block.has_value()) this->changes.areas.push_back(*block);
 	bool groundwork_changed = GroundworkOf(packed.ground, packed.network) != GroundworkOf(stored.ground, stored.network);
-	if (!water_changed && !groundwork_changed && packed.surface == stored.surface) return;
+	bool ways_changed = packed.network != stored.network || packed.eases != stored.eases;
+	if (!water_changed && !groundwork_changed && !ways_changed && packed.surface == stored.surface) return;
 	if (std::optional<Rect> block = this->ClaimBlock(tile, this->relief_blocks); block.has_value()) this->changes.reliefs.push_back(*block);
 }
 

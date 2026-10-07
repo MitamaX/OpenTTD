@@ -17,10 +17,15 @@
 #include <vector>
 
 #include "../../map_func.h"
+#include "../../track_func.h"
+#include "../map/network_style.h"
 #include "../map/tile_shapes.h"
+#include "../map/way_profile.h"
 #include "../map/world_tiles.h"
 #include "seabed.h"
 #include "shore_relief.h"
+#include "track_models.h"
+#include "way_shapes.h"
 
 #include "../../safeguards.h"
 
@@ -30,10 +35,13 @@ static constexpr double STEEP_BANK_RUN = 0.35;
 static constexpr double LONGEST_BANK_RUN = 1.0;
 static constexpr double LEAST_BANK_FALL = 0.25;
 static constexpr double BANK_PROBE = 0.25;
-static constexpr double EARTH_BANK_RUN_PER_RISE = 1.0;
-static constexpr double OPEN_EARTH_BANK_RUN = 0.45;
+static constexpr double EARTH_BANK_RUN_PER_RISE = 2.0;
+static constexpr double OPEN_EARTH_BANK_RUN = 1.0;
 static constexpr double WAYSIDE_EARTH_BANK_RUN = 0.12;
 static constexpr int COAST_DIVISIONS = 4;
+static constexpr double FORMATION_DEPTH = 1.0;
+static constexpr double FORMATION_RUN = 2.0;
+static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
 static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
 
 /** A tile's corners as the surface texel names them. */
@@ -369,6 +377,59 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 	CloseBankCorners(mesh, bank_edges);
 }
 
+/* A run of samples along a course's middle line, with the run beyond each end it is mitred toward. */
+static std::vector<MapVector> FormationLine(const WayCourse &course, int rows)
+{
+	std::vector<MapVector> line;
+	if (Heads(course.Before())) line.push_back(course.From() - course.Before());
+	for (int row = 0; row <= rows; row++) line.push_back(course.Centre(static_cast<double>(row) / rows));
+	if (Heads(course.After())) line.push_back(course.To() + course.After());
+	return line;
+}
+
+/* An eased way stands on a bank of the ground's own earth: a top under the way level with its foot, and sides leaning out and down until the ground swallows them. */
+static void AddFormation(TerrainMesh &mesh, const WayCourse &course, double half)
+{
+	int rows = std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE)));
+	std::vector<MapVector> line = FormationLine(course, rows);
+	size_t first = Heads(course.Before()) ? 1 : 0;
+	double rise = LevelRise();
+	double spread = half + FORMATION_DEPTH * rise * FORMATION_RUN;
+
+	struct Rim {
+		double lateral;
+		double drop;
+	};
+	auto strip = [&](Rim inner, Rim outer) {
+		std::vector<MapVector> inside = Offset(line, inner.lateral);
+		std::vector<MapVector> outside = Offset(line, outer.lateral);
+		uint32_t previous = 0;
+		for (int row = 0; row <= rows; row++) {
+			double top = course.Level(static_cast<double>(row) / rows) + WAY_FOOT / rise;
+			MapVector at = inside[first + row];
+			MapVector out = outside[first + row];
+			MapVector side = Unit(out - at);
+			bool flat = inner.drop == outer.drop;
+			Vec3 normal = flat ? UPRIGHT : Normalised(Vec3{side.x, side.y, FORMATION_RUN});
+			uint32_t near = mesh.Add({at.x, at.y, top - inner.drop}, normal, DRY_MARK);
+			mesh.Add({out.x, out.y, top - outer.drop}, normal, DRY_MARK);
+			if (row > 0) mesh.Quad(previous, previous + 1, near + 1, near);
+			previous = near;
+		}
+	};
+	strip({-half, 0.0}, {-spread, FORMATION_DEPTH});
+	strip({-half, 0.0}, {half, 0.0});
+	strip({half, 0.0}, {spread, FORMATION_DEPTH});
+}
+
+static void AddFormations(TerrainMesh &mesh, int tx, int ty)
+{
+	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(tx, ty)).track))) {
+		if (std::optional<WayCourse> course = WayCourse::OfTrack(tx, ty, track); course.has_value() && course->Raised()) AddFormation(mesh, *course, BALLAST_HALF);
+	}
+	if (std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty); course.has_value() && course->Raised()) AddFormation(mesh, *course, ROAD_HALF);
+}
+
 static TerrainMesh BuildTiles(const TileSpan &tiles)
 {
 	Seabed bed(tiles);
@@ -377,6 +438,7 @@ static TerrainMesh BuildTiles(const TileSpan &tiles)
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			AddTile(mesh, bed, tx, ty);
 			AddWalls(mesh, bed, tx, ty);
+			AddFormations(mesh, tx, ty);
 		}
 	}
 	return mesh;

@@ -17,6 +17,7 @@
 #include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../core/seed.h"
+#include "../map/way_profile.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
@@ -25,9 +26,9 @@ static constexpr double FULL_DETAIL_PIXELS = 18.0;
 static constexpr double HEADROOM_LEVELS = 2.0;
 static constexpr uint64_t EVICT_FRAMES = 600;
 static constexpr int BUILDS_PER_FRAME = 8;
-static constexpr int MITRE_MARGIN = 1;
+static constexpr int EASE_MARGIN = WAY_EASE_REACH;
 
-/* A change reaching a block only stales it when the ground or the ways it is built from changed, in it or on the tiles its pieces meet across its edge. */
+/* A change reaching a block only stales it when the ground or the ways it is built from changed, in it or near enough for the runs through it to ease differently. */
 void NetworkField::Sync(const WorldChanges &changes)
 {
 	this->frame++;
@@ -38,7 +39,7 @@ void NetworkField::Sync(const WorldChanges &changes)
 		this->Lay(size);
 		return;
 	}
-	this->grid.ForEachTouched(changes.areas, MITRE_MARGIN, [&](size_t index) {
+	this->grid.ForEachTouched(changes.areas, EASE_MARGIN, [&](size_t index) {
 		NetworkChunk &chunk = this->chunks[index];
 		uint32_t digest = this->Digest(index);
 		if (digest == chunk.digest) return;
@@ -62,11 +63,12 @@ uint32_t NetworkField::Digest(size_t index) const
 	TileSpan tiles = this->grid.TilesOf(index);
 	uint32_t digest = 0;
 	auto mix = [&digest](const auto &texel) { digest = Hash32(digest ^ std::bit_cast<uint32_t>(texel)); };
-	for (int ty = std::max(tiles.ty0 - MITRE_MARGIN, 0); ty <= std::min<int>(tiles.ty1 + MITRE_MARGIN, this->grid.Map().height - 1); ty++) {
-		for (int tx = std::max(tiles.tx0 - MITRE_MARGIN, 0); tx <= std::min<int>(tiles.tx1 + MITRE_MARGIN, this->grid.Map().width - 1); tx++) {
+	for (int ty = std::max(tiles.ty0 - EASE_MARGIN, 0); ty <= std::min<int>(tiles.ty1 + EASE_MARGIN, this->grid.Map().height - 1); ty++) {
+		for (int tx = std::max(tiles.tx0 - EASE_MARGIN, 0); tx <= std::min<int>(tiles.tx1 + EASE_MARGIN, this->grid.Map().width - 1); tx++) {
 			TileIndex tile = TileXY(tx, ty);
 			mix(_world_tiles.SurfaceAt(tile));
 			mix(_world_tiles.NetworkAt(tile));
+			digest = Hash32(digest ^ static_cast<uint32_t>(_world_tiles.WaysEase(tile)));
 		}
 	}
 	return digest;

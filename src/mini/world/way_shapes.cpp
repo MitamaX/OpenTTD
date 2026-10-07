@@ -54,11 +54,17 @@ MapVector Stretch::At(double share, double lateral) const
 {
 	MapVector along = this->Along();
 	MapVector right = RightOf(along);
-	bool mitred_before = this->before.x != 0.0 || this->before.y != 0.0;
-	bool mitred_after = this->after.x != 0.0 || this->after.y != 0.0;
-	MapVector first = OnCut(this->from, right, mitred_before ? this->before : along, along, lateral);
-	MapVector last = OnCut(this->to, right, along, mitred_after ? this->after : along, lateral);
+	MapVector first = OnCut(this->from, right, Heads(this->before) ? this->before : along, along, lateral);
+	MapVector last = OnCut(this->to, right, along, Heads(this->after) ? this->after : along, lateral);
 	return first + (last - first) * share;
+}
+
+double Stretch::ShareOf(const MapVector &point) const
+{
+	double lateral = Dot(point - this->from, this->Right());
+	MapVector first = this->At(0.0, lateral);
+	MapVector run = this->At(1.0, lateral) - first;
+	return Dot(point - first, run) / Dot(run, run);
 }
 
 ModelMesh EndCap(const Stretch &stretch, Section section, bool last)

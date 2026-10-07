@@ -135,7 +135,7 @@ struct NetworkTexel {
 	bool operator==(const NetworkTexel &) const = default;
 };
 
-/* The blocks where any texel changed, and the fewer where the ground's shape or its water did. */
+/* The blocks where any texel changed, and the fewer where the ground's shape, its water or the ways banked up on it did. */
 struct WorldChanges {
 	std::vector<Rect> areas;
 	std::vector<Rect> reliefs;
@@ -162,6 +162,10 @@ public:
 	GroundTexel GroundAt(TileIndex tile) const;
 	WaterTexel WaterAt(TileIndex tile) const;
 	NetworkTexel NetworkAt(TileIndex tile) const;
+	/* Whether a tile's ways may be eased off its ground: plain track and country roads, not stations, depots, crossings, bridges, tunnels or town streets. */
+	bool WaysEase(TileIndex tile) const;
+	/* A count that moves on whenever any texel changes. */
+	uint64_t Revision() const { return this->revision; }
 
 private:
 	struct Texels {
@@ -169,6 +173,7 @@ private:
 		GroundTexel ground;
 		WaterTexel water;
 		NetworkTexel network;
+		bool eases;
 
 		bool operator==(const Texels &) const = default;
 	};
@@ -188,6 +193,7 @@ private:
 	std::vector<GroundTexel> ground;
 	std::vector<WaterTexel> water;
 	std::vector<NetworkTexel> network;
+	std::vector<bool> eases;
 	std::vector<TileIndex> pending;
 	std::vector<TileIndex> touched;
 	std::vector<bool> queued;
@@ -195,6 +201,7 @@ private:
 	std::vector<bool> relief_blocks;
 	WorldChanges changes;
 	uint sweep_next = 0;
+	uint64_t revision = 0;
 	bool stale = true;
 };
 

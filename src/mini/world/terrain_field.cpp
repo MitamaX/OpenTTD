@@ -13,6 +13,7 @@
 #include <algorithm>
 
 #include "../../map_func.h"
+#include "../map/way_profile.h"
 #include "seabed.h"
 #include "terrain_mesh.h"
 #include "water_mesh.h"
@@ -32,7 +33,8 @@ static int StepFor(double tile_pixels)
 	return step;
 }
 
-/* A tile whose shape or water changed reshapes the walls, the shading and the seabed of the tiles beside it, so the blocks around it go stale too. */
+/* A tile whose shape or water changed reshapes the walls, the shading and the seabed of the tiles beside it, and one whose ways changed eases the runs through it afresh,
+ * so the blocks around it go stale too. */
 void TerrainField::Sync(const WorldChanges &changes)
 {
 	this->frame++;
@@ -44,7 +46,7 @@ void TerrainField::Sync(const WorldChanges &changes)
 		return;
 	}
 
-	this->grid.ForEachTouched(changes.reliefs, SHELF_TILES, [&](size_t index) {
+	this->grid.ForEachTouched(changes.reliefs, std::max(SHELF_TILES, WAY_EASE_REACH), [&](size_t index) {
 		Chunk &chunk = this->chunks[index];
 		chunk.stale = true;
 		chunk.surveyed = false;

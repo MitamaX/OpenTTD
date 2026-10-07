@@ -14,8 +14,9 @@
 #include "../map/world_tiles.h"
 #include "way_shapes.h"
 
-/* The top of the rails above whatever the track is laid on, in tiles. */
+/* The top of the rails above whatever the track is laid on, and how far the ballast spreads either side of the middle, in tiles. */
 inline constexpr double RAIL_TOP = 0.068;
+inline constexpr double BALLAST_HALF = 0.27;
 
 /* A tile's track and how it is laid. Track on the ground meets its neighbours' pieces in mitres and ends in a sloped face where none carries on;
  * track on a bridge just runs from edge to edge. */

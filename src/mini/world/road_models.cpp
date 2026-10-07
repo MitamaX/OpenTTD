@@ -30,7 +30,6 @@ static constexpr double FILLET = 0.2;
 static constexpr int FILLET_STEPS = 4;
 static constexpr int BEND_STEPS = 10;
 static constexpr int END_STEPS = 4;
-static constexpr double SHOULDER_FOOT = -0.012;
 static constexpr double KERB_FOOT = ASPHALT_TOP - 0.002;
 
 static constexpr double MARK_TOP = ASPHALT_TOP + 0.0015;
@@ -237,7 +236,7 @@ private:
 		} else {
 			for (auto border : borders) {
 				std::ranges::reverse(border);
-				this->Lay(Wall(border, SHOULDER_FOOT, ASPHALT_TOP), SHOULDER);
+				this->Lay(Wall(border, WAY_FOOT, ASPHALT_TOP), SHOULDER);
 			}
 		}
 		if (!this->Full()) return;

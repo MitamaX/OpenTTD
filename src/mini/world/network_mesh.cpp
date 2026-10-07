@@ -11,6 +11,7 @@
 #include "network_mesh.h"
 
 #include <cmath>
+#include <optional>
 
 #include "../../bridge_map.h"
 #include "../../elrail_func.h"
@@ -23,6 +24,7 @@
 #include "../../track_func.h"
 #include "../../tunnelbridge_map.h"
 #include "../map/tile_shapes.h"
+#include "../map/way_profile.h"
 #include "../map/world_tiles.h"
 #include "bridge_models.h"
 #include "road_models.h"
@@ -47,6 +49,14 @@ static double SignalSide()
 		case SIGNAL_SIDE_RIGHT: return 1.0;
 		default: return _settings_game.vehicle.road_side == ROAD_SIDE_LEFT ? -1.0 : 1.0;
 	}
+}
+
+/* A country road eases along its course; any other keeps to its tile's ground. */
+static Footing RoadFooting(int tx, int ty)
+{
+	std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty);
+	if (!course.has_value()) return GroundFooting(tx, ty);
+	return [course = *course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
 }
 
 static bool Wired(TileIndex tile)
@@ -105,13 +115,13 @@ private:
 
 	void Road(TileIndex tile, int tx, int ty)
 	{
-		Footing ground = GroundFooting(tx, ty);
+		Footing footing = RoadFooting(tx, ty);
 		bool crossing = IsLevelCrossingTile(tile);
-		LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, crossing), ground);
+		LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, crossing), footing);
 		if (!crossing) return;
 		TrackSite site = this->TrackOf(tile, tx, ty);
-		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), site, ground);
-		LayCatenary(this->meshes.Layer(MiniLayer::Rail), site, ground);
+		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), site, footing);
+		LayCatenary(this->meshes.Layer(MiniLayer::Rail), site, footing);
 	}
 
 	void Station(TileIndex tile, int tx, int ty)
@@ -186,7 +196,7 @@ private:
 				WorldPoint entry = TrackdirGroundPoint(tx, ty, trackdir, 0.0, 0.0);
 				WorldPoint exit = TrackdirGroundPoint(tx, ty, trackdir, 1.0, 0.0);
 				double facing = std::atan2(entry.y - exit.y, entry.x - exit.x);
-				this->meshes.signals.push_back({{foot.x, foot.y, foot.level * rise}, facing, tile, trackdir});
+				this->meshes.signals.push_back({{foot.x, foot.y, WayLevel(foot.x, foot.y) * rise}, facing, tile, trackdir});
 			}
 		}
 	}

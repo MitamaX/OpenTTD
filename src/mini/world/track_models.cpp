@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cmath>
+#include <optional>
 #include <utility>
 
 #include "../../map_func.h"
@@ -19,6 +20,7 @@
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
+#include "../map/way_profile.h"
 
 #include "../../safeguards.h"
 
@@ -61,10 +63,10 @@ static constexpr double DROPPER_HALF = 0.002;
 static constexpr std::array<double, 3> DROPPER_SHARES = {0.25, 0.5, 0.75};
 
 static constexpr std::array<SectionPoint, 4> BALLAST_SECTION = {{
-	{-0.27, -0.012, BALLAST}, {-0.19, 0.034, BALLAST}, {0.19, 0.034, BALLAST}, {0.27, -0.012, BALLAST},
+	{-BALLAST_HALF, WAY_FOOT, BALLAST}, {-0.19, 0.034, BALLAST}, {0.19, 0.034, BALLAST}, {BALLAST_HALF, WAY_FOOT, BALLAST},
 }};
 static constexpr std::array<SectionPoint, 4> DISTANT_BALLAST_SECTION = {{
-	{-0.27, -0.012, DISTANT_BALLAST}, {-0.19, 0.034, DISTANT_BALLAST}, {0.19, 0.034, DISTANT_BALLAST}, {0.27, -0.012, DISTANT_BALLAST},
+	{-BALLAST_HALF, WAY_FOOT, DISTANT_BALLAST}, {-0.19, 0.034, DISTANT_BALLAST}, {0.19, 0.034, DISTANT_BALLAST}, {BALLAST_HALF, WAY_FOOT, DISTANT_BALLAST},
 }};
 static constexpr std::array<SectionPoint, 4> RAIL_SECTION = {{
 	{-0.011, 0.046, RAIL_WEB}, {-0.011, RAIL_TOP, RAIL_HEAD, STEEL_GLOSS}, {0.011, RAIL_TOP, RAIL_WEB}, {0.011, 0.046, RAIL_WEB},
@@ -73,11 +75,11 @@ static constexpr std::array<SectionPoint, 4> SET_RAIL_SECTION = {{
 	{-0.011, 0.006, RAIL_WEB}, {-0.011, 0.017, RAIL_HEAD, STEEL_GLOSS}, {0.011, 0.017, RAIL_WEB}, {0.011, 0.006, RAIL_WEB},
 }};
 static constexpr std::array<SectionPoint, 6> MONORAIL_SECTION = {{
-	{-0.075, -0.012, GUIDEWAY}, {-0.075, 0.088, GUIDEWAY}, {-0.06, 0.104, GUIDEWAY}, {0.06, 0.104, GUIDEWAY}, {0.075, 0.088, GUIDEWAY}, {0.075, -0.012, GUIDEWAY},
+	{-0.075, WAY_FOOT, GUIDEWAY}, {-0.075, 0.088, GUIDEWAY}, {-0.06, 0.104, GUIDEWAY}, {0.06, 0.104, GUIDEWAY}, {0.075, 0.088, GUIDEWAY}, {0.075, WAY_FOOT, GUIDEWAY},
 }};
 static constexpr std::array<SectionPoint, 8> MAGLEV_SECTION = {{
-	{-0.22, -0.012, GUIDEWAY}, {-0.22, 0.066, GUIDEWAY}, {-0.185, 0.066, GUIDEWAY}, {-0.185, 0.036, GUIDEWAY},
-	{0.185, 0.036, GUIDEWAY}, {0.185, 0.066, GUIDEWAY}, {0.22, 0.066, GUIDEWAY}, {0.22, -0.012, GUIDEWAY},
+	{-0.22, WAY_FOOT, GUIDEWAY}, {-0.22, 0.066, GUIDEWAY}, {-0.185, 0.066, GUIDEWAY}, {-0.185, 0.036, GUIDEWAY},
+	{0.185, 0.036, GUIDEWAY}, {0.185, 0.066, GUIDEWAY}, {0.22, 0.066, GUIDEWAY}, {0.22, WAY_FOOT, GUIDEWAY},
 }};
 static constexpr std::array<SectionPoint, 4> STRIP_SECTION = {{
 	{-0.03, 0.036, GUIDE_STRIP}, {-0.03, 0.046, GUIDE_STRIP, STRIP_GLOSS}, {0.03, 0.046, GUIDE_STRIP}, {0.03, 0.036, GUIDE_STRIP},
@@ -87,16 +89,6 @@ static constexpr std::array<SectionPoint, 4> WIRE_SECTION = {{
 }};
 static constexpr std::array<SectionPoint, 4> ARM_SECTION = {{
 	{-0.008, ARM_LOW, MAST, MAST_GLOSS}, {-0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_LOW, MAST, MAST_GLOSS},
-}};
-
-/* Each piece's two ends on the tile, in the game's track order. */
-static constexpr std::array<std::pair<MapVector, MapVector>, TRACK_END> PIECE_ENDS = {{
-	{{0.0, 0.5}, {1.0, 0.5}},
-	{{0.5, 0.0}, {0.5, 1.0}},
-	{{0.0, 0.5}, {0.5, 0.0}},
-	{{1.0, 0.5}, {0.5, 1.0}},
-	{{0.5, 0.0}, {1.0, 0.5}},
-	{{0.0, 0.5}, {0.5, 1.0}},
 }};
 
 /* How a piece's end meets the track beyond: the direction that track runs on in when one piece carries it on, and whether none does. */
@@ -117,7 +109,7 @@ static PieceEnd EndAt(int tx, int ty, const MapVector &joint, const MapVector &a
 	int partners = 0;
 	MapVector origin = {static_cast<double>(nx), static_cast<double>(ny)};
 	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(nx, ny)).track))) {
-		auto [from, to] = PIECE_ENDS[track];
+		auto [from, to] = TRACK_ENDS[track];
 		from = origin + from;
 		to = origin + to;
 		bool starts = from.x == joint.x && from.y == joint.y;
@@ -131,19 +123,23 @@ static PieceEnd EndAt(int tx, int ty, const MapVector &joint, const MapVector &a
 	return end;
 }
 
-/* A piece laid on the ground and the pieces beyond it decide how its ends are cut; on a bridge it runs plainly from edge to edge. */
+/* A piece laid on the ground and the pieces beyond it decide how its ends are cut, and an eased run carries it through its joints at one level;
+ * on a bridge it runs plainly from edge to edge. */
 class TrackPiece {
 public:
 	TrackPiece(const TrackSite &site, Track track) : site(site), track(track)
 	{
 		MapVector origin = {static_cast<double>(site.tx), static_cast<double>(site.ty)};
-		auto [from, to] = PIECE_ENDS[track];
+		auto [from, to] = TRACK_ENDS[track];
 		this->stretch = {origin + from, origin + to};
 		if (!site.grounded) return;
 
+		this->course = WayCourse::OfTrack(site.tx, site.ty, track);
 		MapVector along = this->stretch.Along();
 		PieceEnd tail = EndAt(site.tx, site.ty, this->stretch.from, along * -1.0);
 		PieceEnd head = EndAt(site.tx, site.ty, this->stretch.to, along);
+		if (this->course.has_value() && Heads(this->course->Before())) tail = {this->course->Before() * -1.0, false};
+		if (this->course.has_value() && Heads(this->course->After())) head = {this->course->After(), false};
 		this->stretch.before = tail.beyond * -1.0;
 		this->stretch.after = head.beyond;
 		this->open_from = tail.open;
@@ -196,12 +192,20 @@ public:
 
 	const Stretch &Run() const { return this->stretch; }
 
+	/* An eased piece is laid at its course's level, read along its own cuts; any other on what it stands on. */
+	Footing FootingOn(const Footing &ground) const
+	{
+		if (!this->course.has_value()) return ground;
+		return [course = *this->course, stretch = this->stretch](double x, double y) { return course.Level(stretch.ShareOf({x, y})); };
+	}
+
 private:
 	int Rows() const { return std::max(1, static_cast<int>(std::lround(this->stretch.Span() * ROWS_PER_TILE))); }
 
 	const TrackSite &site;
 	Track track;
 	Stretch stretch{};
+	std::optional<WayCourse> course;
 	bool open_from = false;
 	bool open_to = false;
 };
@@ -252,7 +256,7 @@ void LayTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
 	for (Track track : SetTrackBitIterator(site.bits)) {
 		TrackPiece piece(site, track);
 		uint32_t seed = Hash32(TRACK_SALT ^ static_cast<uint32_t>(site.tx * TRACK_END + track) ^ Hash32(site.ty));
-		Lay(mesh, PieceModel(site, piece, seed), piece.Lift(), footing);
+		Lay(mesh, PieceModel(site, piece, seed), piece.Lift(), piece.FootingOn(footing));
 	}
 }
 
@@ -299,6 +303,6 @@ void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
 			parts.Append(Laid(arm, ARM_SECTION, 1));
 			first = false;
 		}
-		Lay(mesh, std::move(parts), piece.Lift(), footing);
+		Lay(mesh, std::move(parts), piece.Lift(), piece.FootingOn(footing));
 	}
 }
