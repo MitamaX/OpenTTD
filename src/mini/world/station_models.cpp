@@ -54,11 +54,13 @@ static constexpr double AWNING_REACH = 0.09;
 static constexpr double AWNING_LOW = 0.255;
 static constexpr double AWNING_HIGH = 0.268;
 
-static constexpr double ROOF_EAVES = 0.43;
-static constexpr double ROOF_RIDGE = 0.5;
-static constexpr double ROOF_HALF = 0.52;
-static constexpr double ROOF_THICKNESS = 0.012;
-static constexpr double PILLAR_LATERAL = 0.37;
+static constexpr double CANOPY_EAVES_LATERAL = 0.29;
+static constexpr double CANOPY_RIDGE_LATERAL = 0.5;
+static constexpr double CANOPY_EAVES = 0.39;
+static constexpr double CANOPY_RIDGE = 0.45;
+static constexpr double CANOPY_THICKNESS = 0.014;
+static constexpr double FASCIA_DEPTH = 0.022;
+static constexpr double PILLAR_LATERAL = 0.465;
 static constexpr double PILLAR_HALF = 0.012;
 static constexpr std::array<double, 2> PILLAR_SHARES = {0.25, 0.75};
 static constexpr double RIB_HALF = 0.007;
@@ -85,7 +87,8 @@ static constexpr uint32_t WALL = 0xD6C8AA;
 static constexpr uint32_t BUILDING_ROOF = 0x5E5853;
 static constexpr uint32_t GLASS = 0x5A7C8E;
 static constexpr uint32_t AWNING = 0x7B2E2A;
-static constexpr uint32_t ROOF_GLASS = 0x7FA2B2;
+static constexpr uint32_t CANOPY = 0x4F5B66;
+static constexpr uint32_t CANOPY_UNDERSIDE = 0x8E9496;
 static constexpr uint32_t FRAME = 0x4E555C;
 static constexpr uint32_t SIGN = 0xE8C440;
 static constexpr double GLASS_GLOSS = 0.8;
@@ -126,8 +129,8 @@ public:
 			this->Furnish(1.0);
 		}
 		if (layout == StopLayout::Building) this->Building();
-		if (layout == StopLayout::RearRoof) this->Roof(this->rear);
-		if (layout == StopLayout::FrontRoof) this->Roof(-this->rear);
+		if (layout == StopLayout::RearRoof) this->Canopy(this->rear);
+		if (layout == StopLayout::FrontRoof) this->Canopy(-this->rear);
 		return std::move(this->parts);
 	}
 
@@ -186,22 +189,30 @@ private:
 		this->Box(side * (PLATFORM_INNER - AWNING_REACH), side * PLATFORM_INNER, AWNING_LOW, AWNING_HIGH, AWNING, AWNING, 0.0, true);
 	}
 
-	/* A glazed gable over the whole tile on pillars along one platform, running on into the roofs of the tiles beside it. */
-	void Roof(double pillar_side)
+	/* Half of an island platform's canopy over one platform: it rises from eaves short of the track to a ridge over the platform's middle, where the half
+	 * from the tile beside meets it, on pillars along that middle; the track between canopies stays open to the sky. */
+	void Canopy(double side)
 	{
-		std::array<SectionPoint, 6> gable = {{
-			{-ROOF_HALF, ROOF_EAVES - ROOF_THICKNESS, FRAME, FRAME_GLOSS}, {-ROOF_HALF, ROOF_EAVES, ROOF_GLASS, GLASS_GLOSS}, {0.0, ROOF_RIDGE, ROOF_GLASS, GLASS_GLOSS},
-			{ROOF_HALF, ROOF_EAVES, FRAME, FRAME_GLOSS}, {ROOF_HALF, ROOF_EAVES - ROOF_THICKNESS, FRAME, FRAME_GLOSS}, {0.0, ROOF_RIDGE - ROOF_THICKNESS, FRAME, FRAME_GLOSS},
-		}};
-		std::array<SectionPoint, 7> closed;
-		std::copy(gable.begin(), gable.end(), closed.begin());
-		closed.back() = gable.front();
-		this->parts.Append(Laid(this->run, closed, 1));
+		double eaves = side * CANOPY_EAVES_LATERAL;
+		double ridge = side * CANOPY_RIDGE_LATERAL;
+		std::array<SectionPoint, 5> slab;
+		if (side < 0.0) {
+			slab = {{{ridge, CANOPY_RIDGE - CANOPY_THICKNESS, CANOPY_UNDERSIDE}, {ridge, CANOPY_RIDGE, CANOPY, FRAME_GLOSS}, {eaves, CANOPY_EAVES, CANOPY_UNDERSIDE},
+				{eaves, CANOPY_EAVES - CANOPY_THICKNESS, CANOPY_UNDERSIDE}, {ridge, CANOPY_RIDGE - CANOPY_THICKNESS, CANOPY_UNDERSIDE}}};
+		} else {
+			slab = {{{eaves, CANOPY_EAVES - CANOPY_THICKNESS, CANOPY_UNDERSIDE}, {eaves, CANOPY_EAVES, CANOPY, FRAME_GLOSS}, {ridge, CANOPY_RIDGE, CANOPY_UNDERSIDE},
+				{ridge, CANOPY_RIDGE - CANOPY_THICKNESS, CANOPY_UNDERSIDE}, {eaves, CANOPY_EAVES - CANOPY_THICKNESS, CANOPY_UNDERSIDE}}};
+		}
+		this->parts.Append(Laid(this->run, slab, 1));
+		for (bool last : {false, true}) {
+			if (this->Ends(last)) this->parts.Append(EndCap(this->run, slab, last));
+		}
+		this->Box(eaves, eaves - side * PILLAR_HALF, CANOPY_EAVES - FASCIA_DEPTH, CANOPY_EAVES, FRAME, FRAME, FRAME_GLOSS);
+		if (this->detail == WayDetail::Simple) return;
 		for (double share : PILLAR_SHARES) {
-			MapVector at = this->run.At(share, pillar_side * PILLAR_LATERAL);
-			this->parts.Append(Block(at, this->run.Along(), {-PILLAR_HALF, -PILLAR_HALF, PLATFORM_TOP}, {PILLAR_HALF, PILLAR_HALF, ROOF_EAVES}).Paint(FRAME).Gloss(FRAME_GLOSS));
-			Vec3 ridge = this->Point(share, 0.0, ROOF_RIDGE);
-			for (double side : {-1.0, 1.0}) this->parts.Append(Strut(this->Point(share, side * ROOF_HALF, ROOF_EAVES), ridge, RIB_HALF).Paint(FRAME).Gloss(FRAME_GLOSS));
+			MapVector at = this->run.At(share, side * PILLAR_LATERAL);
+			this->parts.Append(Block(at, this->run.Along(), {-PILLAR_HALF, -PILLAR_HALF, PLATFORM_TOP}, {PILLAR_HALF, PILLAR_HALF, CANOPY_RIDGE}).Paint(FRAME).Gloss(FRAME_GLOSS));
+			this->parts.Append(Strut(this->Point(share, side * PILLAR_LATERAL, CANOPY_RIDGE - CANOPY_THICKNESS), this->Point(share, eaves, CANOPY_EAVES - CANOPY_THICKNESS), RIB_HALF).Paint(FRAME).Gloss(FRAME_GLOSS));
 		}
 	}
 
