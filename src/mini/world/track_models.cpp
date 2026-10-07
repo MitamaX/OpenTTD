@@ -32,7 +32,7 @@ static constexpr double TIMBER_VARIETY = 0.18;
 static constexpr uint32_t TRACK_SALT = 0x7AC4B0A2U;
 
 static constexpr uint32_t BALLAST = COL_BALLAST;
-static constexpr uint32_t DISTANT_BALLAST = COL_RAIL;
+static constexpr uint32_t DISTANT_BALLAST = Mix(COL_BALLAST, COL_RAIL, 96);
 static constexpr uint32_t TIMBER = 0x5E4B3B;
 static constexpr uint32_t RAIL_HEAD = 0xC9CDD1;
 static constexpr uint32_t RAIL_WEB = 0x6F6055;
