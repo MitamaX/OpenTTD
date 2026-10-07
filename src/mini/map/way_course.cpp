@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
-#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -44,8 +43,8 @@ static constexpr int LONGEST_WALK = 1024;
 static constexpr double RAISED_LIFT = 0.02;
 static constexpr int RAISED_SAMPLES = 8;
 static constexpr int ROAD_ARMS = 4;
-/* A drawn piece reads the eases at the sides of its tile and of the tiles beside it, up to this far from its tile's middle. */
-static constexpr double DRAWN_READ_REACH = 1.5;
+/* A drawn piece reads the eases at the sides of its tile and of the tiles beside it, which ease with the tiles beyond those. */
+static constexpr int DRAWN_READ_REACH = 2;
 
 /* Where each of the game's road bits leads out of its tile, in bit order. */
 static constexpr std::array<MapVector, ROAD_ARMS> ROAD_ENDS = {{{0.5, 0.0}, {1.0, 0.5}, {0.5, 1.0}, {0.0, 0.5}}};
@@ -64,7 +63,6 @@ struct Joint {
 	int hy;
 
 	static Joint At(const MapVector &point) { return {static_cast<int>(std::lround(point.x * 2.0)), static_cast<int>(std::lround(point.y * 2.0))}; }
-	static Joint OfKey(uint64_t key) { return {static_cast<int>(static_cast<uint32_t>(key >> 32)), static_cast<int>(static_cast<uint32_t>(key))}; }
 	MapVector Point() const { return {this->hx * HALF_TILE, this->hy * HALF_TILE}; }
 	bool AlongX() const { return (this->hx & 1) != 0; }
 	/* Which way along its tile side a joint slides. */
@@ -365,12 +363,10 @@ void Run::Ease(Store store)
 	}
 }
 
-/* Whether a point of the map lies within so many tiles of any of the areas. */
-static bool Reaches(std::span<const Rect> areas, const MapVector &point, double reach)
+Rect TilesNear(const Rect &area, int reach)
 {
-	return std::ranges::any_of(areas, [&](const Rect &area) {
-		return point.x >= area.left - reach && point.x <= area.right + 1 + reach && point.y >= area.top - reach && point.y <= area.bottom + 1 + reach;
-	});
+	Rect grown = area.Expand(reach);
+	return {std::max(grown.left, 0), std::max(grown.top, 0), std::min(grown.right, static_cast<int>(Map::MaxX())), std::min(grown.bottom, static_cast<int>(Map::MaxY()))};
 }
 
 /* Eases are worked out a whole run at a time, and kept until the ground's shape or the ways change within their reach. */
@@ -395,8 +391,12 @@ public:
 			this->eases.clear();
 			return;
 		}
-		if (changes.reliefs.empty()) return;
-		std::erase_if(this->eases, [&](const auto &entry) { return Reaches(changes.reliefs, Joint::OfKey(entry.first).Point(), WAY_EASE_REACH); });
+		for (const Rect &relief : changes.reliefs) {
+			Rect tiles = TilesNear(relief, WAY_EASE_REACH);
+			for (int hy = 2 * tiles.top; hy <= 2 * tiles.bottom + 2; hy++) {
+				for (int hx = 2 * tiles.left + 1 - hy % 2; hx <= 2 * tiles.right + 2; hx += 2) this->eases.erase(Joint{hx, hy}.Key());
+			}
+		}
 	}
 
 private:
@@ -598,30 +598,29 @@ class TrackBook {
 public:
 	const DrawnTrack &At(int tx, int ty, Track track)
 	{
-		uint64_t key = static_cast<uint64_t>(TileXY(tx, ty).base()) * TRACK_END + track;
-		auto found = this->tracks.find(key);
-		if (found == this->tracks.end()) {
-			_frame_profile.Count("track_builds");
-			found = this->tracks.emplace(key, DrawnTrack::Build(tx, ty, track)).first;
-		}
-		return found->second;
+		std::vector<std::pair<Track, DrawnTrack>> &drawn = this->tiles[TileXY(tx, ty).base()];
+		auto found = std::ranges::find(drawn, track, &std::pair<Track, DrawnTrack>::first);
+		if (found != drawn.end()) return found->second;
+		_frame_profile.Count("track_builds");
+		return drawn.emplace_back(track, DrawnTrack::Build(tx, ty, track)).second;
 	}
 
 	void Forget(const WorldChanges &changes)
 	{
 		if (changes.whole) {
-			this->tracks.clear();
+			this->tiles.clear();
 			return;
 		}
-		if (changes.reliefs.empty()) return;
-		std::erase_if(this->tracks, [&](const auto &entry) {
-			const DrawnTrack &drawn = entry.second;
-			return Reaches(changes.reliefs, {drawn.tx + HALF_TILE, drawn.ty + HALF_TILE}, WAY_EASE_REACH + DRAWN_READ_REACH);
-		});
+		for (const Rect &relief : changes.reliefs) {
+			Rect tiles = TilesNear(relief, WAY_EASE_REACH + DRAWN_READ_REACH);
+			for (int ty = tiles.top; ty <= tiles.bottom; ty++) {
+				for (int tx = tiles.left; tx <= tiles.right; tx++) this->tiles.erase(TileXY(tx, ty).base());
+			}
+		}
 	}
 
 private:
-	std::unordered_map<uint64_t, DrawnTrack> tracks;
+	std::unordered_map<uint32_t, std::vector<std::pair<Track, DrawnTrack>>> tiles;
 };
 
 static TrackBook _track_book;

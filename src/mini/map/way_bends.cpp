@@ -48,11 +48,7 @@ void WayBends::Sync(const WorldChanges &changes)
 		this->due.assign(1, this->Whole());
 		return;
 	}
-	Rect whole = this->Whole();
-	for (const Rect &relief : changes.reliefs) {
-		Rect reach = relief.Expand(BEND_REACH);
-		this->due.push_back({std::max(reach.left, whole.left), std::max(reach.top, whole.top), std::min(reach.right, whole.right), std::min(reach.bottom, whole.bottom)});
-	}
+	for (const Rect &relief : changes.reliefs) this->due.push_back(TilesNear(relief, BEND_REACH));
 }
 
 void WayBends::Refresh()
