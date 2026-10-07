@@ -103,13 +103,21 @@ TerrainField::Chunk *TerrainField::Prepare(size_t index, const SceneView &camera
 	return &chunk;
 }
 
+/* The nearest ground is drawn first and the seabed beyond the map last, so ground hidden behind hills is rejected before it is shaded. */
 void TerrainField::DrawGround(const SceneView &camera, const Frustum &frustum)
 {
 	if (this->chunks.empty()) return;
-	this->outer_bed.Draw();
+	this->shown.clear();
 	for (size_t index = 0; index < this->chunks.size(); index++) {
-		if (Chunk *chunk = this->Prepare(index, camera, frustum); chunk != nullptr) chunk->ground.Draw();
+		Chunk *chunk = this->Prepare(index, camera, frustum);
+		if (chunk == nullptr) continue;
+		TileSpan tiles = this->grid.TilesOf(index);
+		Vec3 middle = {(tiles.tx0 + tiles.tx1 + 1) * 0.5, (tiles.ty0 + tiles.ty1 + 1) * 0.5, (chunk->low + chunk->high) * 0.5 * LevelRise()};
+		this->shown.push_back({chunk, Length(middle - camera.eye)});
 	}
+	std::ranges::sort(this->shown, {}, &Shown::distance);
+	for (const Shown &entry : this->shown) entry.chunk->ground.Draw();
+	this->outer_bed.Draw();
 }
 
 void TerrainField::DrawWater(const SceneView &camera)

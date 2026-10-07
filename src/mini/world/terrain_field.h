@@ -44,10 +44,17 @@ private:
 	Chunk *Prepare(size_t index, const SceneView &camera, const Frustum &frustum);
 	void Evict();
 
+	/* A block to draw this frame and how far its middle lies from the eye. */
+	struct Shown {
+		const Chunk *chunk;
+		double distance;
+	};
+
 	ChunkGrid grid{CHUNK_TILES};
 	std::vector<Chunk> chunks;
 	MeshBuffer outer_bed;
 	MeshBuffer outer_water;
+	std::vector<Shown> shown;
 	uint64_t frame = 0;
 };
 
