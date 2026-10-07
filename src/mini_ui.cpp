@@ -159,6 +159,7 @@
 #include "vehicle_func.h"
 #include "vehicle_gui.h"
 #include "vehiclelist.h"
+#include "video/video_driver.hpp"
 #include "viewport_func.h"
 #include "water_map.h"
 #include "window_func.h"
@@ -605,6 +606,7 @@ void MiniUiToggle()
 		AutoRestoreBackup dpi_backup(_cur_dpi, &_screen);
 		GfxFillRect(0, 0, _screen.width - 1, _screen.height - 1, PC_BLACK);
 	}
+	VideoDriver::GetInstance()->MakeDirty(0, 0, _screen.width, _screen.height);
 
 	_camera.FaceNorth();
 	if (Window *w = GetMainWindow(); w != nullptr && w->viewport != nullptr) {

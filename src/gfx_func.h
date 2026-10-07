@@ -167,7 +167,7 @@ inline bool FillDrawPixelInfo(DrawPixelInfo *n, const Rect &r)
 }
 
 /* window.cpp */
-void DrawOverlappedWindowForAll(int left, int top, int right, int bottom);
+Rect DrawOverlappedWindowForAll(int left, int top, int right, int bottom);
 
 void SetMouseCursorBusy(bool busy);
 void SetMouseCursor(CursorID cursor, PaletteID pal);

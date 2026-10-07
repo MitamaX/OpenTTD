@@ -1445,9 +1445,11 @@ void RedrawScreenRect(int left, int top, int right, int bottom)
 
 	if (_networking) NetworkUndrawChatMessage();
 
-	DrawOverlappedWindowForAll(left, top, right, bottom);
+	Rect repainted = DrawOverlappedWindowForAll(left, top, right, bottom);
+	/* Behind the mini UI only the native windows reach the screen, so only they go to the GPU. */
+	if (!MiniUiActive()) repainted = {left, top, right, bottom};
 
-	VideoDriver::GetInstance()->MakeDirty(left, top, right - left, bottom - top);
+	if (!IsEmptyRect(repainted)) VideoDriver::GetInstance()->MakeDirty(repainted.left, repainted.top, repainted.right - repainted.left, repainted.bottom - repainted.top);
 }
 
 /**

@@ -39,6 +39,7 @@
 #include "sound_func.h"
 #include "timer/timer.h"
 #include "timer/timer_window.h"
+#include "core/geometry_func.hpp"
 #include "mini_ui.h"
 
 #include "table/strings.h"
@@ -944,12 +945,14 @@ static void DrawOverlappedWindow(Window *w, int left, int top, int right, int bo
  * @param top Top edge of the rectangle that should be repainted
  * @param right Right edge of the rectangle that should be repainted
  * @param bottom Bottom edge of the rectangle that should be repainted
+ * @return Bounds of the repainted windows within the rectangle, right and bottom exclusive; empty when no window was repainted.
  */
-void DrawOverlappedWindowForAll(int left, int top, int right, int bottom)
+Rect DrawOverlappedWindowForAll(int left, int top, int right, int bottom)
 {
 	DrawPixelInfo bk;
 	AutoRestoreBackup dpi_backup(_cur_dpi, &bk);
 
+	Rect repainted{};
 	for (Window *w : Window::IterateFromBack()) {
 		if (MiniUiActive() && MiniUiHidesWindow(w->window_class)) continue;
 		if (MayBeShown(w) &&
@@ -958,9 +961,12 @@ void DrawOverlappedWindowForAll(int left, int top, int right, int bottom)
 				left < w->left + w->width &&
 				top < w->top + w->height) {
 			/* Window w intersects with the rectangle => needs repaint */
-			DrawOverlappedWindow(w, std::max(left, w->left), std::max(top, w->top), std::min(right, w->left + w->width), std::min(bottom, w->top + w->height));
+			Rect overlap{std::max(left, w->left), std::max(top, w->top), std::min(right, w->left + w->width), std::min(bottom, w->top + w->height)};
+			DrawOverlappedWindow(w, overlap.left, overlap.top, overlap.right, overlap.bottom);
+			repainted = BoundingRect(repainted, overlap);
 		}
 	}
+	return repainted;
 }
 
 /**
