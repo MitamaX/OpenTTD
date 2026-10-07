@@ -739,12 +739,18 @@ static Plot Spanning(Plot plot, Axis along, float from, float to)
 	return plot;
 }
 
+static Part GardenBoundary(const Plot &edge, const HouseSite &site)
+{
+	Part boundary = Part::Box(edge).Detailed().Height(HEDGE_HEIGHT);
+	return site.climate == LandscapeType::Tropic ? boundary.Clad(Material::Render, WHITEWASH) : boundary.Clad(Material::Hedge, HEDGE_TINT);
+}
+
 /* A hedge rings the garden behind and beside the house; in front a picket fence opens on a gate, and a path runs from it to the door. */
 static void EncloseGarden(BuildingForm &form, const Solid &dwelling, const HouseSite &site, float front_depth)
 {
 	Plot lot = FootprintOf(form);
 	for (DiagDirection side : LOT_SIDES) {
-		if (side != site.front) Place(form, Part::Box(lot.Edge(side, HEDGE_DEPTH)).Detailed().Height(HEDGE_HEIGHT).Clad(Material::Hedge, HEDGE_TINT));
+		if (side != site.front) Place(form, GardenBoundary(lot.Edge(side, HEDGE_DEPTH), site));
 	}
 
 	Axis along = AlongEdge(site.front);

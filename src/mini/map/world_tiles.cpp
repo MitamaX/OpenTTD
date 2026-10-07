@@ -186,7 +186,11 @@ static Cover AirportCover(TileIndex tile)
 	return {GroundMaterial::Paved, GROUND_DENSITY_MASK, to_underlying(mark)};
 }
 
-/* Trees planted in a park or a plantation grow from grass. */
+static GroundMaterial Planting(TileIndex tile)
+{
+	return Landscape() == LandscapeType::Tropic && GetTropicZone(tile) == TROPICZONE_DESERT ? GroundMaterial::Desert : GroundMaterial::Grass;
+}
+
 static Cover CoverOf(TileIndex tile, bool planted)
 {
 	switch (GetTileType(tile)) {
@@ -196,9 +200,9 @@ static Cover CoverOf(TileIndex tile, bool planted)
 		case MP_RAILWAY: return RailCover(tile);
 		case MP_ROAD: return RoadCover(tile);
 		case MP_WATER: return {GroundMaterial::Shore};
-		case MP_HOUSE: return {planted ? GroundMaterial::Grass : GroundMaterial::Paved};
+		case MP_HOUSE: return {planted ? Planting(tile) : GroundMaterial::Paved};
 		case MP_STATION: return IsAirport(tile) ? AirportCover(tile) : BuiltCover(tile, GroundMaterial::Paved);
-		case MP_INDUSTRY: return planted ? Cover{GroundMaterial::Grass} : BuiltCover(tile, GroundMaterial::Dirt);
+		case MP_INDUSTRY: return planted ? Cover{Planting(tile)} : BuiltCover(tile, GroundMaterial::Dirt);
 		case MP_OBJECT: return BuiltCover(tile, GroundMaterial::Grass);
 		case MP_TUNNELBRIDGE: return {HasTunnelBridgeSnowOrDesert(tile) ? SnowOrDesert() : GroundMaterial::Grass};
 		default: return {GroundMaterial::Grass};
