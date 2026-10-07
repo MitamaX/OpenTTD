@@ -154,13 +154,19 @@ const float DUNE_WARP = 1.3;
 const float DUNE_WARP_FREQUENCY = 0.11;
 const float DUNE_SWELL_FREQUENCY = 0.07;
 const float DUNE_CALM = 0.22;
+const float DUNE_STRETCH = 0.9;
+const float DUNE_STRETCH_FREQUENCY = 0.045;
 const vec2 CROSS_WIND = vec2(0.47, 0.88);
 const float CROSS_SPACING = 1.7;
-const float CROSS_SHARE = 0.6;
+const float CROSS_SHARE_LOW = 0.15;
+const float CROSS_SHARE_HIGH = 1.4;
+const float CROSS_SHARE_FREQUENCY = 0.035;
 const float RIPPLES_PER_TILE = 9.0;
 const float RIPPLE_WARP = 0.5;
 const float RIPPLE_HEIGHT = 0.0025;
 const float RIPPLE_SHADE = 0.05;
+const float CROSS_RIPPLES_PER_TILE = 6.3;
+const float RIPPLE_BLEND_FREQUENCY = 0.08;
 const float TOY_GRAIN = 0.45;
 
 const int TOY_STRATA_COUNT = 4;
@@ -1033,8 +1039,10 @@ Dune DuneTrain(vec2 p, vec2 wind, float spacing, float seed)
 	vec3 warp_y = NoiseSlope(p * DUNE_WARP_FREQUENCY + seed + 31.7);
 	float reach = 2.0 * DUNE_WARP;
 	vec2 q = p + (vec2(warp_x.x, warp_y.x) - 0.5) * reach;
-	vec2 heading = wind + reach * DUNE_WARP_FREQUENCY * (wind.x * warp_x.yz + wind.y * warp_y.yz);
-	float along = dot(q, wind);
+	vec3 stretch = NoiseSlope(OctaveTurn(DUNE_STRETCH_FREQUENCY) * p * DUNE_STRETCH_FREQUENCY + seed + 19.3);
+	float spread = 2.0 * DUNE_STRETCH * spacing;
+	vec2 heading = wind + reach * DUNE_WARP_FREQUENCY * (wind.x * warp_x.yz + wind.y * warp_y.yz) + spread * DUNE_STRETCH_FREQUENCY * (stretch.yz * OctaveTurn(DUNE_STRETCH_FREQUENCY));
+	float along = dot(q, wind) + (stretch.x - 0.5) * spread;
 	float s = fract(along / spacing);
 	bool windward = s < DUNE_CREST;
 	float t = windward ? s / DUNE_CREST : (1.0 - s) / (1.0 - DUNE_CREST);
@@ -1048,25 +1056,38 @@ Dune DuneTrain(vec2 p, vec2 wind, float spacing, float seed)
 	return Dune(profile * amplitude, slope, along, heading, windward ? 0.0 : 1.0);
 }
 
-Dune DuneAt(vec2 p)
+struct Ripples {
+	float shade;
+	vec2 slope;
+};
+
+Ripples RipplesAlong(Dune dune, float bent, float per_tile)
 {
-	Dune dune = DuneTrain(p, WIND, DUNE_SPACING, 0.0);
-	Dune cross = DuneTrain(p, CROSS_WIND, DUNE_SPACING * CROSS_SPACING, 13.1);
-	dune.height = (dune.height + cross.height * CROSS_SHARE) / (1.0 + CROSS_SHARE);
-	dune.slope = (dune.slope + cross.slope * CROSS_SHARE) * DUNE_HEIGHT;
-	return dune;
+	float phase = (dune.along + bent) * per_tile * TAU;
+	return Ripples(sin(phase), cos(phase) * dune.heading * per_tile * TAU * RIPPLE_HEIGHT);
 }
 
+/* The two trains of dunes, and the ripples running across each, take turns to lead from one stretch of desert to the next, so neither repeats unbroken across it. */
 Blanket Sandfield(Site site, float cover)
 {
 	vec2 p = site.p;
-	Dune dune = DuneAt(p);
-	float bent = dot((vec2(Noise(p * 0.9 + 2.1), Noise(p * 1.3 + 7.7)) - 0.5) * RIPPLE_WARP, dune.heading);
-	float phase = (dune.along + bent) * RIPPLES_PER_TILE * TAU;
-	float gravel = smoothstep(0.72, 0.86, (1.0 - dune.height) * 0.3 + Octave(p + 4.1, 0.45) * 0.7 + (site.grain.fine - 0.5) * 0.15);
-	float rippled = Resolved(RIPPLES_PER_TILE) * (1.0 - 0.7 * dune.lee) * (1.0 - gravel);
-	vec2 slope = dune.slope * (1.0 - 0.6 * gravel) + cos(phase) * dune.heading * RIPPLES_PER_TILE * TAU * RIPPLE_HEIGHT * rippled;
-	vec3 sand = mix(SAND, RED_SAND, Layered(p + 8.3, 0.05)) * mix(0.93, 1.04, dune.height) * (1.0 + RIPPLE_SHADE * sin(phase) * rippled) * Varied(site.grain.micro, 0.08);
+	Dune dune = DuneTrain(p, WIND, DUNE_SPACING, 0.0);
+	Dune cross = DuneTrain(p, CROSS_WIND, DUNE_SPACING * CROSS_SPACING, 13.1);
+	float share = mix(CROSS_SHARE_LOW, CROSS_SHARE_HIGH, smoothstep(0.3, 0.7, Noise(OctaveTurn(CROSS_SHARE_FREQUENCY) * p * CROSS_SHARE_FREQUENCY + 5.9)));
+	float height = (dune.height + cross.height * share) / (1.0 + share);
+	vec2 dune_slope = (dune.slope + cross.slope * share) * DUNE_HEIGHT;
+
+	vec2 wobble = vec2(Noise(p * 0.9 + 2.1), Noise(p * 1.3 + 7.7)) - 0.5;
+	float crossing = smoothstep(0.35, 0.65, Noise(OctaveTurn(RIPPLE_BLEND_FREQUENCY) * p * RIPPLE_BLEND_FREQUENCY + 1.7));
+	Ripples along = RipplesAlong(dune, dot(wobble * RIPPLE_WARP, dune.heading), RIPPLES_PER_TILE);
+	Ripples athwart = RipplesAlong(cross, dot(wobble * RIPPLE_WARP, cross.heading), CROSS_RIPPLES_PER_TILE);
+	Ripples ripples = Ripples(mix(along.shade, athwart.shade, crossing), mix(along.slope, athwart.slope, crossing));
+	float lee = mix(dune.lee, cross.lee, crossing);
+
+	float gravel = smoothstep(0.72, 0.86, (1.0 - height) * 0.3 + Octave(p + 4.1, 0.45) * 0.7 + (site.grain.fine - 0.5) * 0.15);
+	float rippled = Resolved(RIPPLES_PER_TILE) * (1.0 - 0.7 * lee) * (1.0 - gravel);
+	vec2 slope = dune_slope * (1.0 - 0.6 * gravel) + ripples.slope * rippled;
+	vec3 sand = mix(SAND, RED_SAND, Layered(p + 8.3, 0.05)) * mix(0.93, 1.04, height) * (1.0 + RIPPLE_SHADE * ripples.shade * rippled) * Varied(site.grain.micro, 0.08);
 	sand = mix(sand, sand * BAKED_SAND_TINT, Broad(p));
 	vec3 stones = GRAVEL * Varied(site.grain.local, 0.15) * Varied(site.grain.micro, 0.3) * mix(0.9, 1.12, site.grain.stones);
 	return Blanket(cover, mix(sand, stones, gravel), slope, mix(SAND_RUGGED, SCREE_RUGGED, gravel * 0.6), SAND_ROUGHNESS, 0.0);
