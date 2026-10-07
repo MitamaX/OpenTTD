@@ -41,7 +41,7 @@ public:
 
 private:
 	void Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels);
-	void DrawBatch(const ShaderProgram &program);
+	void DrawBatch(const ShaderProgram &program, const SceneView &camera);
 
 	std::vector<ModelMesh> meshes;
 	std::array<VehicleBounds, VEHICLE_LOOKS> bounds{};

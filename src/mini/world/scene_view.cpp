@@ -52,6 +52,7 @@ SceneView SceneView::Of(const Camera &camera)
 	view.frustum = FrustumOf(view.view_projection);
 	view.eye = camera.Eye();
 	view.focal = camera.Focal();
+	view.focus_pixels = camera.Ppt();
 	view.near = camera.Near();
 	view.far = camera.Far();
 	view.fog_start = std::min(camera.FocusDistance() * FOG_START_SHARE, view.far);

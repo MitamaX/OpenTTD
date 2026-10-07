@@ -24,6 +24,7 @@ struct SceneView {
 	Frustum frustum;
 	Vec3 eye;
 	double focal;
+	double focus_pixels;
 	double near;
 	double far;
 	double fog_start;

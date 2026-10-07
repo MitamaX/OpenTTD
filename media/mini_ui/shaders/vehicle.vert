@@ -10,6 +10,7 @@ layout(location = 8) in vec4 i_cargo;
 
 uniform vec2 u_most_growth;
 uniform float u_readable_pixels;
+uniform float u_view_pixels;
 
 out vec3 v_position;
 out vec3 v_normal;
@@ -60,10 +61,12 @@ vec3 Painted(vec3 tone)
 	return tone;
 }
 
-/* Far off a vehicle grows, up to its most, so it still reads where a tile spans only a few pixels. */
+/* In a view from far out a vehicle grows, up to its most, so it still reads where a tile spans only a few pixels;
+ * a closer view lets the distance shrink it as it would anything else, so nothing far off looms over the scene. */
 vec3 Growth()
 {
-	float growth = max(u_readable_pixels / TilePixelsAt(distance(Eye(), i_place)), 1.0);
+	float pixels = max(TilePixelsAt(distance(Eye(), i_place)), u_view_pixels);
+	float growth = max(u_readable_pixels / pixels, 1.0);
 	return vec3(min(growth, u_most_growth.x), vec2(min(growth, u_most_growth.y)));
 }
 

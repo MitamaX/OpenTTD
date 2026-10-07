@@ -26,7 +26,7 @@ static constexpr double PICK_SLACK_PIXELS = 5.0;
 /* Solids never fade out, as vehicles have nothing on the ground standing in for them. */
 static constexpr float NEVER_FADES = -1.0f;
 
-/* Far off, vehicles grow until a tile spans this many pixels at their scale: trains and road vehicles only across and up, as they run nose to tail. */
+/* In a view from far out, vehicles grow until a tile spans this many pixels at their scale: trains and road vehicles only across and up, as they run nose to tail. */
 static constexpr float READABLE_TILE_PIXELS = 30.0f;
 
 struct Growth {
@@ -78,7 +78,7 @@ void VehiclePass::Cast(const ShadowView &view)
 	if (!this->caster.Ready()) return;
 	this->Gather(view.camera, view.frustum, CAST_PIXELS);
 	this->caster.Use();
-	this->DrawBatch(this->caster);
+	this->DrawBatch(this->caster, view.camera);
 }
 
 void VehiclePass::Draw(const SceneView &view)
@@ -89,7 +89,7 @@ void VehiclePass::Draw(const SceneView &view)
 	UploadOverlay(this->program);
 	glUniform2f(this->program.Uniform("u_fade"), NEVER_FADES * 2.0f, NEVER_FADES);
 	glUniform1i(this->program.Uniform("u_own_colours"), GL_TRUE);
-	this->DrawBatch(this->program);
+	this->DrawBatch(this->program, view);
 }
 
 void VehiclePass::Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels)
@@ -108,13 +108,14 @@ void VehiclePass::Gather(const SceneView &camera, const Frustum &frustum, double
 }
 
 /* Each model's copies learn which layer of the overlay they belong to. */
-void VehiclePass::DrawBatch(const ShaderProgram &program)
+void VehiclePass::DrawBatch(const ShaderProgram &program, const SceneView &camera)
 {
 	if (this->meshes.empty()) return;
 	if (!this->models.Ready()) this->models.Upload<ModelMesh>(this->meshes, MODEL_LAYOUT, VEHICLE_INSTANCE_LAYOUT, sizeof(VehicleInstance));
 	int way = program.Uniform("u_way");
 	int most_growth = program.Uniform("u_most_growth");
 	glUniform1f(program.Uniform("u_readable_pixels"), READABLE_TILE_PIXELS);
+	glUniform1f(program.Uniform("u_view_pixels"), static_cast<float>(camera.focus_pixels));
 	this->batch.Draw(this->models, [way, most_growth](size_t model) {
 		VehicleLook look = LookOfModel(model);
 		Growth growth = MostGrowthOf(look);
