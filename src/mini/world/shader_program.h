@@ -13,6 +13,7 @@
 #include <span>
 #include <vector>
 
+#include "../../landscape_type.h"
 #include "../gpu/gl_program.h"
 
 /* The sources are read anew after every reload, and a program that fails to build stays missing until the next one.
@@ -35,6 +36,7 @@ private:
 	std::vector<const char *> vertex_sources;
 	std::vector<const char *> fragment_sources;
 	GlProgram program;
+	LandscapeType landscape = LandscapeType::Temperate;
 	bool attempted = false;
 };
 

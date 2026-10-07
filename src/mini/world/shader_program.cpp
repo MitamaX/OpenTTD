@@ -124,6 +124,7 @@ static std::string ShaderHeader()
 	DefineCodes(header, "AIRFIELD_", AIRFIELD_MARK_NAMES);
 	DefineUnsigned(header, "DENSITY_MASK", GROUND_DENSITY_MASK);
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
+	DefineUnsigned(header, "BUILT_BIT", GROUND_BUILT_BIT);
 	DefineUnsigned(header, "NETWORK_KERB_BIT", NETWORK_KERB_BIT);
 	DefineUnsigned(header, "NETWORK_BRIDGE_BIT", NETWORK_BRIDGE_BIT);
 	DefineUnsigned(header, "FLORA_COUNT_MASK", FLORA_COUNT_MASK);
@@ -158,6 +159,7 @@ static std::string ShaderHeader()
 	DefineInt(header, "LANDSCAPE_ARCTIC", to_underlying(LandscapeType::Arctic));
 	DefineInt(header, "LANDSCAPE_TROPIC", to_underlying(LandscapeType::Tropic));
 	DefineInt(header, "LANDSCAPE_TOYLAND", to_underlying(LandscapeType::Toyland));
+	DefineInt(header, "LANDSCAPE", to_underlying(_settings_game.game_creation.landscape));
 	DefineInt(header, "LAYER_NONE", to_underlying(MiniLayer::None));
 	DefineInt(header, "LAYER_RAIL", to_underlying(MiniLayer::Rail));
 	DefineInt(header, "LAYER_ROAD", to_underlying(MiniLayer::Road));
@@ -197,8 +199,13 @@ ShaderProgram::ShaderProgram(std::span<const char *const> vertex_sources, std::s
 {
 }
 
+/* The header names the map's climate, so a program is built anew for a map of another. */
 bool ShaderProgram::Ready()
 {
+	if (this->landscape != _settings_game.game_creation.landscape) {
+		this->landscape = _settings_game.game_creation.landscape;
+		this->attempted = false;
+	}
 	if (!this->attempted) {
 		this->attempted = true;
 		if (this->program.Build(ShaderSource(this->vertex_sources), ShaderSource(this->fragment_sources))) this->BindShared();

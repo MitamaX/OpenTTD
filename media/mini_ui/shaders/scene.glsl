@@ -37,19 +37,17 @@ float LevelRise()
 
 int Landscape()
 {
-	return int(u_climate.x);
+	return LANDSCAPE;
 }
 
-/* The level above which arctic ground lies under snow. */
 float SnowLine()
 {
-	return u_climate.y;
+	return u_climate.x;
 }
 
-/* Whether a tile's ground is the one its climate lays a blanket of snow or sand over. */
 bool Blanketed(uint material)
 {
-	return float(material) == u_climate.z;
+	return (Landscape() == LANDSCAPE_ARCTIC && material == MAT_SNOW) || (Landscape() == LANDSCAPE_TROPIC && material == MAT_DESERT);
 }
 
 float Clock()
