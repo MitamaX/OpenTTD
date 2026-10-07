@@ -17,6 +17,7 @@
 
 #include "../../debug.h"
 #include "../core/sunlight.h"
+#include "../gpu/frame_profile.h"
 #include "../gpu/gl_api.h"
 #include "../map/world_tiles.h"
 #include "frame_units.h"
@@ -183,6 +184,7 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 {
 	if (!this->Build()) return;
 
+	ProfileScope profile("shadows");
 	std::array<Cascade, CASCADES> cascades = this->Fit(camera);
 	this->Upload(cascades, camera);
 
@@ -197,7 +199,10 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 		glClear(GL_DEPTH_BUFFER_BIT);
 		this->Aim(cascades[index].view_projection);
 		ShadowView view = {cascades[index].view_projection, FrustumOf(cascades[index].view_projection), camera};
-		for (const auto &pass : passes) pass->Cast(view);
+		for (const auto &pass : passes) {
+			ProfileScope pass_profile("cast", pass->Name());
+			pass->Cast(view);
+		}
 	}
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	glDisable(GL_DEPTH_CLAMP);

@@ -20,6 +20,7 @@ class ForestPass final : public WorldPass {
 public:
 	explicit ForestPass(const WorldTextures &textures);
 
+	std::string_view Name() const override { return "forest"; }
 	void Reload() override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;

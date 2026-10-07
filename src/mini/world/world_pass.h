@@ -10,6 +10,8 @@
 #ifndef MINI_WORLD_WORLD_PASS_H
 #define MINI_WORLD_WORLD_PASS_H
 
+#include <string_view>
+
 #include "../map/world_tiles.h"
 #include "scene_view.h"
 
@@ -26,6 +28,7 @@ class WorldPass {
 public:
 	virtual ~WorldPass() = default;
 
+	virtual std::string_view Name() const = 0;
 	virtual void Reload() = 0;
 	virtual void Prepare([[maybe_unused]] const SceneView &view) {}
 	virtual void Sync([[maybe_unused]] const WorldChanges &changes) {}

@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "frame_capture.h"
+#include "frame_profile.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
@@ -36,8 +37,12 @@ void GpuFrame::Compose()
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	if (this->layer != nullptr) this->layer->Render(size);
+	if (this->layer != nullptr) {
+		ProfileScope profile("frame");
+		this->layer->Render(size);
+	}
 	_frame_capture.Grab(size);
+	_frame_profile.EndFrame();
 }
 
 /* The back-end is going away with its context; everything made in it goes first. */
@@ -47,6 +52,7 @@ void GpuFrame::Release()
 	if (!GlLoaded()) return;
 
 	if (this->layer != nullptr) std::exchange(this->layer, nullptr)->Detach();
+	_frame_profile.Release();
 	this->target.Release();
 	_textures.Release();
 	UnloadGl();

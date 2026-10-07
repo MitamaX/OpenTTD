@@ -7,6 +7,8 @@ add_files(
     draw_list.h
     frame_capture.cpp
     frame_capture.h
+    frame_profile.cpp
+    frame_profile.h
     gl_api.cpp
     gl_api.h
     gl_program.cpp

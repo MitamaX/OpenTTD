@@ -22,6 +22,7 @@ class StructurePass final : public WorldPass {
 public:
 	StructurePass();
 
+	std::string_view Name() const override { return "structures"; }
 	void Reload() override;
 	void Prepare(const SceneView &view) override;
 	void Sync(const WorldChanges &changes) override;

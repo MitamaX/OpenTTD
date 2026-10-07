@@ -20,6 +20,7 @@ class TerrainPass final : public WorldPass {
 public:
 	TerrainPass(const WorldTextures &textures, TerrainField &field);
 
+	std::string_view Name() const override { return "terrain"; }
 	void Reload() override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;

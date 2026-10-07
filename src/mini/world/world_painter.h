@@ -46,6 +46,7 @@ public:
 private:
 	bool Ready();
 	void Render(const SceneView &view);
+	void SyncChanges();
 	void DrawStage(WorldStage stage, const SceneView &view);
 
 	WorldTarget target;

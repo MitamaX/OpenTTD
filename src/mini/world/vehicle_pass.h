@@ -29,6 +29,7 @@ class VehiclePass final : public WorldPass {
 public:
 	VehiclePass();
 
+	std::string_view Name() const override { return "vehicles"; }
 	void Reload() override;
 	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;

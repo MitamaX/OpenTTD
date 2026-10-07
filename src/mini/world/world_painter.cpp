@@ -15,6 +15,7 @@
 #include "../core/camera.h"
 #include "../core/canvas.h"
 #include "../core/ground_trace.h"
+#include "../gpu/frame_profile.h"
 #include "../gpu/gl_api.h"
 #include "../gpu/gl_state.h"
 #include "../map/way_bends.h"
@@ -37,8 +38,8 @@ static constexpr GLint REQUIRED_MAJOR = 3;
 static constexpr GLint REQUIRED_MINOR = 3;
 
 /* People show where a tile spans enough pixels to make them out and cast shadows only close up; tufts show only closer still, too small to shadow. */
-static constexpr ScatterLook WALKER_LOOK = {BuildFigureModels, FIGURE_POSES, 26.0, 34.0, 48.0};
-static constexpr ScatterLook TUFT_LOOK = {BuildTuftModels, TUFT_SHAPES, 40.0, 56.0, std::numeric_limits<double>::infinity()};
+static constexpr ScatterLook WALKER_LOOK = {"walkers", BuildFigureModels, FIGURE_POSES, 26.0, 34.0, 48.0};
+static constexpr ScatterLook TUFT_LOOK = {"tufts", BuildTuftModels, TUFT_SHAPES, 40.0, 56.0, std::numeric_limits<double>::infinity()};
 
 WorldPainter _world_painter;
 
@@ -80,9 +81,13 @@ void WorldPainter::Reload()
 void WorldPainter::Prepare()
 {
 	if (_world_tiles.Size().width == 0) return;
+	ProfileScope profile("prepare", ProfileClock::Cpu);
 	_way_bends.Refresh();
 	SceneView view = SceneView::Of(_camera);
-	for (const auto &pass : this->passes) pass->Prepare(view);
+	for (const auto &pass : this->passes) {
+		ProfileScope pass_profile("prepare", pass->Name(), ProfileClock::Cpu);
+		pass->Prepare(view);
+	}
 }
 
 /* RmlUi's layer is put back as it was before the world and the shapes on its ground are laid into it, so the map element's clipping still holds. */
@@ -90,11 +95,13 @@ void WorldPainter::Paint(const ShaderArea &area)
 {
 	if (_world_tiles.Size().width == 0 || !this->Ready()) return;
 
+	ProfileScope profile("world");
 	GlStateScope borrowed;
 	this->Render(SceneView::Of(_camera));
 	this->overlay.Upload(_ground_draw);
 	borrowed.Restore();
 	this->post.Present(area, this->target);
+	ProfileScope overlay_profile("overlay");
 	this->overlay.Draw(this->target);
 }
 
@@ -134,10 +141,7 @@ bool WorldPainter::Ready()
 /* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, and the finishing steps work on the whole. */
 void WorldPainter::Render(const SceneView &view)
 {
-	WorldChanges changes = _world_tiles.TakeChanges();
-	this->textures.Sync(changes);
-	this->field.Sync(changes);
-	for (const auto &pass : this->passes) pass->Sync(changes);
+	this->SyncChanges();
 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_STENCIL_TEST);
@@ -161,9 +165,20 @@ void WorldPainter::Render(const SceneView &view)
 	this->post.Finish(this->target, view);
 }
 
+void WorldPainter::SyncChanges()
+{
+	ProfileScope profile("sync");
+	WorldChanges changes = _world_tiles.TakeChanges();
+	this->textures.Sync(changes);
+	this->field.Sync(changes);
+	for (const auto &pass : this->passes) pass->Sync(changes);
+}
+
 void WorldPainter::DrawStage(WorldStage stage, const SceneView &view)
 {
 	for (const auto &pass : this->passes) {
-		if (pass->Stage() == stage) pass->Draw(view);
+		if (pass->Stage() != stage) continue;
+		ProfileScope profile("draw", pass->Name());
+		pass->Draw(view);
 	}
 }

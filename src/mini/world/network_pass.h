@@ -22,6 +22,7 @@ class NetworkPass final : public WorldPass {
 public:
 	NetworkPass();
 
+	std::string_view Name() const override { return "network"; }
 	void Reload() override;
 	void Prepare(const SceneView &view) override;
 	void Sync(const WorldChanges &changes) override;

@@ -48,6 +48,7 @@ class SmokePass final : public WorldPass {
 public:
 	SmokePass(const StructurePass &structures, const VehiclePass &vehicles);
 
+	std::string_view Name() const override { return "smoke"; }
 	void Reload() override;
 	void Draw(const SceneView &view) override;
 	void Release() override;

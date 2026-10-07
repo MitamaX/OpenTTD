@@ -15,6 +15,7 @@
 
 #include "../core/camera.h"
 #include "../core/tuning.h"
+#include "../gpu/frame_profile.h"
 #include "../gpu/gl_api.h"
 
 #include "../../safeguards.h"
@@ -179,6 +180,7 @@ void PostChain::Finish(const WorldTarget &target, const SceneView &view)
 
 void PostChain::Occlude(const WorldTarget &target)
 {
+	ProfileScope profile("post", "occlude");
 	this->ambient.Bind();
 	this->occlusion.Use();
 	this->occlusion.BindSampler("u_depth", DEPTH_UNIT);
@@ -188,6 +190,7 @@ void PostChain::Occlude(const WorldTarget &target)
 
 void PostChain::Shade(const WorldTarget &target)
 {
+	ProfileScope profile("post", "shade");
 	this->lit.Bind();
 	this->shade.Use();
 	this->shade.BindSampler("u_colour", SOURCE_UNIT);
@@ -204,6 +207,7 @@ void PostChain::Shade(const WorldTarget &target)
 /* Temporal antialiasing blends this frame into the last one's picture, so the two history targets take turns; edge antialiasing smooths the lit picture once. */
 const PostTarget &PostChain::Resolve(const WorldTarget &target)
 {
+	ProfileScope profile("post", "resolve");
 	switch (ChosenAntialiasing()) {
 		case Antialiasing::Off:
 			this->history_valid = false;
@@ -243,6 +247,7 @@ const PostTarget &PostChain::Resolve(const WorldTarget &target)
 /* Each level halves the one above, then from the smallest up each level blends a soft tent of the one below into itself. */
 void PostChain::Bloom(const PostTarget &source)
 {
+	ProfileScope profile("post", "bloom");
 	this->bloom_down.Use();
 	this->bloom_down.BindSampler("u_source", SOURCE_UNIT);
 	const PostTarget *above = &source;
@@ -272,6 +277,7 @@ void PostChain::Present(const ShaderArea &area, const WorldTarget &target)
 {
 	if (this->resolved == nullptr) return;
 
+	ProfileScope profile("post", "present");
 	GLint viewport[4];
 	glGetIntegerv(GL_VIEWPORT, viewport);
 	bool bloom = _tuning.bloom != 0;

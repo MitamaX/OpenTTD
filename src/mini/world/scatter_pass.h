@@ -19,6 +19,7 @@
 
 /* How a scatter shows: the models its copies are drawn with, and where a tile spans enough pixels for them to show, to stand solid and to cast shadows. */
 struct ScatterLook {
+	std::string_view name;
 	std::vector<ModelMesh> (*build)();
 	size_t models;
 	double shown_pixels;
@@ -30,6 +31,7 @@ class ScatterPass final : public WorldPass {
 public:
 	ScatterPass(std::unique_ptr<Scatter> scatter, const ScatterLook &look);
 
+	std::string_view Name() const override { return this->look.name; }
 	void Reload() override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;

@@ -20,6 +20,7 @@
 #include "../../openttd.h"
 #include "../../screenshot_type.h"
 #include "../../string_func.h"
+#include "frame_profile.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
@@ -106,6 +107,7 @@ void FrameCapture::Grab(Dimension screen)
 	if (!this->Active() || ++this->frames < this->shots[this->next].wait_frames) return;
 
 	this->Write(this->shots[this->next], screen);
+	_frame_profile.Report(this->shots[this->next].path);
 	this->frames = 0;
 	if (++this->next == this->shots.size()) _exit_game = true;
 }

@@ -27,6 +27,7 @@ class WaterPass final : public WorldPass {
 public:
 	WaterPass(const WorldTextures &textures, TerrainField &field, const VehiclePass &vehicles);
 
+	std::string_view Name() const override { return "water"; }
 	void Reload() override;
 	void Draw(const SceneView &view) override;
 	void Release() override;
