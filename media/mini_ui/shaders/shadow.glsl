@@ -65,8 +65,13 @@ float CascadedLight(vec3 position, vec3 normal)
 	return mix(light, 1.0, smoothstep(u_shadow_fade.x, u_shadow_fade.y, depth));
 }
 
-/* How much of the sun reaches a point past whatever stands in its way and the clouds drifting over. */
+/* How much of the sun reaches a point past whatever stands in its way and the clouds drifting over, given the share the clouds let through. */
+float SunVisibility(vec3 position, vec3 normal, float cloud_light)
+{
+	return CascadedLight(position, normal) * cloud_light;
+}
+
 float SunVisibility(vec3 position, vec3 normal)
 {
-	return CascadedLight(position, normal) * CloudLight(position);
+	return SunVisibility(position, normal, CloudLight(position));
 }

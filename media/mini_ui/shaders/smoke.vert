@@ -10,6 +10,7 @@ out vec2 v_corner;
 out float v_size;
 out float v_age;
 out float v_seed;
+out float v_cloud_light;
 
 const float RISE_SECONDS = 11.0;
 const float RISE_RADII = 18.0;
@@ -45,5 +46,6 @@ void main()
 	v_size = size;
 	v_age = age;
 	v_seed = i_seed;
+	v_cloud_light = CloudLight(centre);
 	gl_Position = ClipPosition(centre + (right * a_position.x + up * a_position.y) * size);
 }

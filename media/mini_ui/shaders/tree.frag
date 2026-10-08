@@ -30,5 +30,5 @@ void main()
 {
 	if (!InWindow(v_window, ScreenNoise(gl_FragCoord.xy))) discard;
 	vec3 normal = normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0);
-	frag_colour = FoliageRadiance(Linear(Albedo(normal)), normal, v_position, v_translucency, v_openness);
+	frag_colour = FoliageRadiance(Linear(Albedo(normal)), normal, v_position, v_translucency, v_openness, SunVisibility(v_position, normal));
 }

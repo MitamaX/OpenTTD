@@ -77,13 +77,12 @@ vec4 Radiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float oc
 }
 
 /* Leaves let light through: the sun wraps on past where they turn away from it, and glows through them where they are seen against it. */
-vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 position, float translucency, float occlusion)
+vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 position, float translucency, float occlusion, float sunlit)
 {
 	vec3 light = SunDirection();
 	vec3 view = normalize(Eye() - position);
 	float wrapped = max(dot(normal, light) + translucency, 0.0) / (1.0 + translucency);
 	float glow = translucency * pow(max(dot(-view, light), 0.0), GLOW_FOCUS_POWER);
-	float sunlit = SunVisibility(position, normal);
 	vec3 sun = SunRadiance() * (wrapped + glow) * sunlit;
 	return vec4(Diffuse(albedo, sun, normal, occlusion), AmbientShare(normal, sunlit));
 }
