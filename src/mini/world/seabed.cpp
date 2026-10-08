@@ -14,6 +14,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 #include "../../map_func.h"
 #include "../map/tile_shapes.h"
@@ -61,21 +62,24 @@ double SurfaceLevelOf(int tx, int ty)
 	return OnMap(tx, ty) ? LowestCorner(_world_tiles.SurfaceAt(TileXY(tx, ty))) : 0.0;
 }
 
-/* How far a point lies from the nearest tile that is not open water, searched out to the edge of the shelf. */
+/* How far a point lies from the nearest tile that is not open water, searched out to the edge of the shelf; tiles are weighed by their squared distance, so only the nearest is measured. */
 static double ShoreDistance(double x, double y)
 {
 	int cx = static_cast<int>(std::floor(x));
 	int cy = static_cast<int>(std::floor(y));
-	double nearest = SHELF_TILES;
+	double nearest_squared = SHELF_TILES * SHELF_TILES;
+	std::optional<MapVector> nearest;
 	for (int ty = cy - SHELF_TILES; ty <= cy + SHELF_TILES; ty++) {
 		for (int tx = cx - SHELF_TILES; tx <= cx + SHELF_TILES; tx++) {
 			double dx = std::max({tx - x, 0.0, x - (tx + 1)});
 			double dy = std::max({ty - y, 0.0, y - (ty + 1)});
-			double distance = std::hypot(dx, dy);
-			if (distance < nearest && WaterFormOf(tx, ty) != WaterForm::Open) nearest = distance;
+			double squared = dx * dx + dy * dy;
+			if (squared >= nearest_squared || WaterFormOf(tx, ty) == WaterForm::Open) continue;
+			nearest_squared = squared;
+			nearest = MapVector{dx, dy};
 		}
 	}
-	return nearest;
+	return nearest.has_value() ? std::hypot(nearest->x, nearest->y) : SHELF_TILES;
 }
 
 /* The ground slopes gently away from the shore and levels out toward the shelf's edge. */
