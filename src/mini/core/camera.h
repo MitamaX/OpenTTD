@@ -64,10 +64,21 @@ constexpr MapVector RightOf(const MapVector &v)
 	return {v.y, -v.x};
 }
 
+inline double Length(const MapVector &v)
+{
+	return std::hypot(v.x, v.y);
+}
+
 inline MapVector Unit(const MapVector &v)
 {
-	double length = std::hypot(v.x, v.y);
+	double length = Length(v);
 	return length > 0.0 ? v * (1.0 / length) : v;
+}
+
+/* Where a point lies on the map, whatever its level. */
+constexpr MapVector Flat(const WorldPoint &point)
+{
+	return {point.x, point.y};
 }
 
 struct ExactPoint {

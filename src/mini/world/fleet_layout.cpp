@@ -69,20 +69,11 @@ std::optional<double> PlacedUnit::Meets(const Vec3 &origin, const Vec3 &directio
 	return BoxEntry(IntoFrame(this->turn, origin - this->centre), IntoFrame(this->turn, direction), Vec3{0.0, 0.0, 0.0} - grown, grown);
 }
 
-static double FlatDistance(const WorldPoint &a, const WorldPoint &b)
-{
-	return std::hypot(b.x - a.x, b.y - a.y);
-}
-
-/* Where the game has the point an arc length along a path as it is drawn, carried on past its last point along its last stretch. */
+/* Where the game has the point an arc length along a path as it is drawn. */
 static WorldPoint Along(std::span<const PathPoint> path, double arc)
 {
-	for (size_t point = 1; point < path.size(); point++) {
-		double span = FlatDistance(path[point - 1].drawn, path[point].drawn);
-		if (arc <= span || point + 1 == path.size()) return Between(path[point - 1].game, path[point].game, span > 0.0 ? arc / span : 0.0);
-		arc -= span;
-	}
-	return path.front().game;
+	ArcPlace place = PlaceAlong(path, arc, [](const PathPoint &point) { return Flat(point.drawn); });
+	return Between(path[place.from].game, path[place.to].game, place.share);
 }
 
 /* Units the game shows sideways round, such as the rear of a pair of engines, wear their model the other way about. */
@@ -184,7 +175,7 @@ void FleetLayout::LayConsist(const Vehicle *head)
 		WorldPoint front = VehicleMotion::Grounded(link.unit, Along(this->path, arc));
 		WorldPoint back = VehicleMotion::Grounded(link.unit, Along(this->path, arc + link.length));
 		arc += link.length;
-		double run = FlatDistance(back, front);
+		double run = Length(Flat(front) - Flat(back));
 		double heading = std::atan2(front.y - back.y, front.x - back.x);
 		double yaw = heading + (IsReversed(link.unit) ? std::numbers::pi : 0.0);
 		double pitch = std::atan2((front.level - back.level) * LevelRise(), std::max(run, 1e-6)) * (IsReversed(link.unit) ? -1.0 : 1.0);

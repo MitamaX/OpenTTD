@@ -11,7 +11,9 @@
 #define MINI_MAP_TILE_SHAPES_H
 
 #include <array>
+#include <functional>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "../../core/geometry_type.hpp"
@@ -56,6 +58,25 @@ MapVector Outward(DiagDirection side);
 std::optional<StepFace> StepFaceOf(int tx, int ty, DiagDirection side);
 
 WorldPoint Between(const WorldPoint &from, const WorldPoint &to, double share);
+
+/* Where an arc length along a path falls: between two of its points, a share of the way from the first, carried on past the last along the last stretch. */
+struct ArcPlace {
+	size_t from;
+	size_t to;
+	double share;
+};
+
+template <typename Point, typename Flatten = std::identity>
+ArcPlace PlaceAlong(std::span<const Point> path, double arc, Flatten flat = {})
+{
+	for (size_t point = 1; point < path.size(); point++) {
+		double stretch = Length(flat(path[point]) - flat(path[point - 1]));
+		if (arc <= stretch || point + 1 == path.size()) return {point - 1, point, stretch > 0.0 ? arc / stretch : 0.0};
+		arc -= stretch;
+	}
+	return {0, 0, 0.0};
+}
+
 TilePoint TileCentre(int tx, int ty);
 TilePoint Shifted(TilePoint from, DiagDirection side, double tiles);
 

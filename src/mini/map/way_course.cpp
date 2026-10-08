@@ -113,11 +113,6 @@ static TileCoord TileOf(const MapVector &point)
 	return {static_cast<int>(std::floor(point.x)), static_cast<int>(std::floor(point.y))};
 }
 
-static double Distance(const MapVector &from, const MapVector &to)
-{
-	return std::hypot(to.x - from.x, to.y - from.y);
-}
-
 /* How far along a segment a point lies, kept within the segment. */
 static double ShareAlong(const MapVector &point, const MapVector &from, const MapVector &to)
 {
@@ -127,7 +122,7 @@ static double ShareAlong(const MapVector &point, const MapVector &from, const Ma
 
 static double SegmentDistance(const MapVector &point, const MapVector &from, const MapVector &to)
 {
-	return Distance(point, from + (to - from) * ShareAlong(point, from, to));
+	return Length(from + (to - from) * ShareAlong(point, from, to) - point);
 }
 
 static Piece PieceOf(int tx, int ty, Track track)
@@ -792,7 +787,7 @@ bool TrackRoute::Cross(const MapVector &from, const MapVector &to)
 	std::optional<Track> under = TrackUnder(tile, from);
 	if (!under.has_value()) return false;
 
-	auto nearness = [&to](const Joint &joint) { return -Distance(joint.Point(), to); };
+	auto nearness = [&to](const Joint &joint) { return -Length(to - joint.Point()); };
 	Piece piece = PieceOf(tile.first, tile.second, *under);
 	Joint exit = nearness(piece.from) >= nearness(piece.to) ? piece.from : piece.to;
 	for (size_t side = 0; side < MOST_SIDES; side++) {
@@ -815,14 +810,9 @@ MapVector TrackRoute::At(double share) const
 {
 	std::span<const MapVector> path = std::span(this->points).first(this->count);
 	double length = 0.0;
-	for (size_t point = 1; point < path.size(); point++) length += Distance(path[point - 1], path[point]);
-	double left = share * length;
-	for (size_t point = 1; point < path.size(); point++) {
-		double stretch = Distance(path[point - 1], path[point]);
-		if (left <= stretch || point + 1 == path.size()) return path[point - 1] + (path[point] - path[point - 1]) * (stretch > 0.0 ? left / stretch : 0.0);
-		left -= stretch;
-	}
-	return path.front();
+	for (size_t point = 1; point < path.size(); point++) length += Length(path[point] - path[point - 1]);
+	ArcPlace place = PlaceAlong(path, share * length);
+	return path[place.from] + (path[place.to] - path[place.from]) * place.share;
 }
 
 WorldPoint RoadPoint(double x, double y)
