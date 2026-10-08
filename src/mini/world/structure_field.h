@@ -98,7 +98,7 @@ private:
 	void Notice(TileIndex tile);
 	void Survey(StructureChunk &chunk, size_t index) const;
 	void Refine();
-	void Finish(StructureChunk &chunk);
+	void Finish(size_t index);
 	void Evict();
 
 	ChunkGrid grid{CHUNK_TILES};
@@ -107,6 +107,7 @@ private:
 	std::vector<StructureChunk> chunks;
 	std::vector<uint32_t> digests;
 	std::vector<Due> due;
+	std::vector<size_t> arrived;
 	double rise = 0.0;
 	uint64_t frame = 0;
 };

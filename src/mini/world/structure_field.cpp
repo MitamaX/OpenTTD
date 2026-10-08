@@ -30,6 +30,8 @@ static constexpr double FOOTING_LEVELS = 1.0;
 static constexpr uint64_t ABANDON_FRAMES = 600;
 static constexpr int NEIGHBOUR_REACH = 1;
 static constexpr int FOOTPRINT_REACH = MAX_FOOTPRINT_TILES - 1;
+/* A block's buildings may stand out over the tiles they reach by less than a tile. */
+static constexpr int BOX_MARGIN = FOOTPRINT_REACH + 1;
 
 static MiniLayer LayerOf(TileIndex tile)
 {
@@ -162,12 +164,12 @@ void StructureField::Prepare(const SceneView &camera)
 
 	double casting_pixels = camera.TilePixelsAt(camera.shadow_reach);
 	this->due.clear();
-	for (size_t index = 0; index < this->chunks.size(); index++) {
+	this->grid.ForEachWithin(camera, std::min(STRUCTURE_FADE_START, casting_pixels), BOX_MARGIN, [&](size_t index) {
 		StructureChunk &chunk = this->chunks[index];
 		if (!chunk.surveyed) this->Survey(chunk, index);
 		bool in_sight = BoxMeets(camera.frustum, chunk.low, chunk.high);
 		double nearest_pixels = camera.NearestTilePixels(chunk.low, chunk.high);
-		if (nearest_pixels < (in_sight ? STRUCTURE_FADE_START : casting_pixels)) continue;
+		if (nearest_pixels < (in_sight ? STRUCTURE_FADE_START : casting_pixels)) return true;
 		chunk.wanted = this->frame;
 		StructureDetail detail = nearest_pixels >= FULL_DETAIL_PIXELS ? StructureDetail::Full : StructureDetail::Simple;
 		if (chunk.Outdated(detail)) {
@@ -177,7 +179,8 @@ void StructureField::Prepare(const SceneView &camera)
 			chunk.rebuild.reset();
 			chunk.due_since = 0;
 		}
-	}
+		return true;
+	});
 	this->Refine();
 }
 
@@ -200,13 +203,14 @@ void StructureField::Refine()
 			this->building.Begin(entry.index);
 		}
 		if (!slice.Carry(chunk.rebuild->build)) return;
-		this->Finish(chunk);
+		this->Finish(entry.index);
 	}
 }
 
 /* The block's box shrinks to the mesh once it is built, so culling and detail go by what really stands there. */
-void StructureField::Finish(StructureChunk &chunk)
+void StructureField::Finish(size_t index)
 {
+	StructureChunk &chunk = this->chunks[index];
 	_frame_profile.Count("structure_builds");
 	StructureParts parts = chunk.rebuild->build.Finish();
 	StructureMesh &mesh = parts.mesh;
@@ -225,26 +229,31 @@ void StructureField::Finish(StructureChunk &chunk)
 	chunk.stale = chunk.rebuild->outdated;
 	chunk.due_since = 0;
 	chunk.rebuild.reset();
+	this->arrived.push_back(index);
 }
 
 /* Blocks built since the last frame are handed to the GPU before any view draws them. */
 void StructureField::Gather(const SceneView &camera, const Frustum &frustum, std::vector<const StructureChunk *> &shown)
 {
-	shown.clear();
-	for (size_t index = 0; index < this->chunks.size(); index++) {
+	for (size_t index : this->arrived) {
 		StructureChunk &chunk = this->chunks[index];
-		if (chunk.waiting.has_value()) {
-			if (chunk.waiting->indices.empty()) {
-				chunk.mesh.Release();
-			} else {
-				chunk.mesh.Upload(*chunk.waiting, STRUCTURE_LAYOUT);
-				this->keep.Hold(index);
-			}
-			chunk.waiting.reset();
+		if (!chunk.waiting.has_value()) continue;
+		if (chunk.waiting->indices.empty()) {
+			chunk.mesh.Release();
+		} else {
+			chunk.mesh.Upload(*chunk.waiting, STRUCTURE_LAYOUT);
+			this->keep.Hold(index);
 		}
-		if (!chunk.built || chunk.mesh.Empty()) continue;
-		if (BoxMeets(frustum, chunk.low, chunk.high) && camera.NearestTilePixels(chunk.low, chunk.high) >= STRUCTURE_FADE_START) shown.push_back(&chunk);
+		chunk.waiting.reset();
 	}
+	this->arrived.clear();
+
+	shown.clear();
+	this->grid.ForEachWithin(camera, STRUCTURE_FADE_START, BOX_MARGIN, [&](size_t index) {
+		const StructureChunk &chunk = this->chunks[index];
+		if (chunk.built && !chunk.mesh.Empty() && BoxMeets(frustum, chunk.low, chunk.high) && camera.NearestTilePixels(chunk.low, chunk.high) >= STRUCTURE_FADE_START) shown.push_back(&chunk);
+		return true;
+	});
 }
 
 std::optional<StructureHit> StructureField::Pick(const Vec3 &origin, const Vec3 &direction) const
@@ -289,6 +298,7 @@ void StructureField::Release()
 	this->chunks.clear();
 	this->digests.clear();
 	this->due.clear();
+	this->arrived.clear();
 	this->keep.Clear();
 	this->building.Clear();
 	this->grid.Clear();

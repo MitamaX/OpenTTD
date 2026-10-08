@@ -78,7 +78,7 @@ private:
 	void Survey(NetworkChunk &chunk, const TileSpan &tiles) const;
 	void Build(size_t index, WayDetail detail);
 	void Refine();
-	void Finish(NetworkChunk &chunk);
+	void Finish(size_t index);
 	std::pair<Vec3, Vec3> Bounds(const NetworkChunk &chunk, size_t index) const;
 	void Evict();
 
@@ -87,6 +87,7 @@ private:
 	BuildsUnderWay building;
 	std::vector<NetworkChunk> chunks;
 	std::vector<Due> due;
+	std::vector<size_t> arrived;
 	double rise = 0.0;
 	uint64_t frame = 0;
 };

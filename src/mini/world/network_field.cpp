@@ -100,7 +100,7 @@ void NetworkField::Build(size_t index, WayDetail detail)
 	ProfileScope profile("build", "network", ProfileClock::Cpu);
 	NetworkBuild &build = chunk.rebuild.emplace(NetworkBuild(this->grid.TilesOf(index), detail)).build;
 	while (!build.Done()) build.Advance();
-	this->Finish(chunk);
+	this->Finish(index);
 }
 
 /* The blocks in sight go first, then those still showing none of their ways, then those that have waited longest and the nearest of them,
@@ -122,12 +122,13 @@ void NetworkField::Refine()
 			this->building.Begin(entry.index);
 		}
 		if (!slice.Carry(chunk.rebuild->build)) return;
-		this->Finish(chunk);
+		this->Finish(entry.index);
 	}
 }
 
-void NetworkField::Finish(NetworkChunk &chunk)
+void NetworkField::Finish(size_t index)
 {
+	NetworkChunk &chunk = this->chunks[index];
 	_frame_profile.Count("network_builds");
 	chunk.waiting = chunk.rebuild->build.Finish();
 	chunk.signals = std::move(chunk.waiting->signals);
@@ -136,6 +137,7 @@ void NetworkField::Finish(NetworkChunk &chunk)
 	chunk.stale = chunk.rebuild->outdated;
 	chunk.due_since = 0;
 	chunk.rebuild.reset();
+	this->arrived.push_back(index);
 }
 
 std::pair<Vec3, Vec3> NetworkField::Bounds(const NetworkChunk &chunk, size_t index) const
@@ -155,13 +157,12 @@ void NetworkField::Prepare(const SceneView &camera, std::vector<const NetworkChu
 	seen.clear();
 	this->due.clear();
 	bool blank = true;
-	for (size_t index = 0; index < this->chunks.size(); index++) {
+	this->grid.ForEachWithin(camera, NETWORK_FADE_START, 0, [&](size_t index) {
 		NetworkChunk &chunk = this->chunks[index];
-		TileSpan tiles = this->grid.TilesOf(index);
-		if (!chunk.surveyed) this->Survey(chunk, tiles);
+		if (!chunk.surveyed) this->Survey(chunk, this->grid.TilesOf(index));
 		auto [low, high] = this->Bounds(chunk, index);
 		chunk.nearest_pixels = camera.NearestTilePixels(low, high);
-		if (chunk.nearest_pixels < NETWORK_FADE_START) continue;
+		if (chunk.nearest_pixels < NETWORK_FADE_START) return true;
 		chunk.wanted = this->frame;
 		bool in_sight = BoxMeets(camera.frustum, low, high);
 		if (in_sight) {
@@ -176,7 +177,8 @@ void NetworkField::Prepare(const SceneView &camera, std::vector<const NetworkChu
 			chunk.rebuild.reset();
 			chunk.due_since = 0;
 		}
-	}
+		return true;
+	});
 
 	if (blank) {
 		for (const Due &entry : this->due) {
@@ -201,21 +203,26 @@ static void Hand(MeshBuffer &buffer, const TriangleList<Vertex> &mesh, std::span
 /* Blocks built since the last frame are handed to the GPU before any view draws them. */
 void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::vector<const NetworkChunk *> &shown)
 {
-	shown.clear();
-	for (size_t index = 0; index < this->chunks.size(); index++) {
+	for (size_t index : this->arrived) {
 		NetworkChunk &chunk = this->chunks[index];
-		if (chunk.waiting.has_value()) {
-			for (size_t layer = 0; layer < NETWORK_LAYERS; layer++) {
-				Hand(chunk.layers[layer], chunk.waiting->layers[layer], MODEL_LAYOUT);
-				Hand(chunk.spans[layer], chunk.waiting->spans[layer], SPAN_LAYOUT);
-			}
-			chunk.waiting.reset();
-			this->keep.Hold(index);
+		if (!chunk.waiting.has_value()) continue;
+		for (size_t layer = 0; layer < NETWORK_LAYERS; layer++) {
+			Hand(chunk.layers[layer], chunk.waiting->layers[layer], MODEL_LAYOUT);
+			Hand(chunk.spans[layer], chunk.waiting->spans[layer], SPAN_LAYOUT);
 		}
-		if (!chunk.built) continue;
+		chunk.waiting.reset();
+		this->keep.Hold(index);
+	}
+	this->arrived.clear();
+
+	shown.clear();
+	this->grid.ForEachWithin(camera, NETWORK_FADE_START, 0, [&](size_t index) {
+		const NetworkChunk &chunk = this->chunks[index];
+		if (!chunk.built) return true;
 		auto [low, high] = this->Bounds(chunk, index);
 		if (BoxMeets(frustum, low, high) && camera.NearestTilePixels(low, high) >= NETWORK_FADE_START) shown.push_back(&chunk);
-	}
+		return true;
+	});
 }
 
 /* A block the camera has long been too far from drops any build of its meshes left unfinished; past what the field may keep, the blocks longest out of every view give their meshes back,
@@ -250,6 +257,7 @@ void NetworkField::Release()
 	for (NetworkChunk &chunk : this->chunks) chunk.Release();
 	this->chunks.clear();
 	this->due.clear();
+	this->arrived.clear();
 	this->keep.Clear();
 	this->building.Clear();
 	this->grid.Clear();
