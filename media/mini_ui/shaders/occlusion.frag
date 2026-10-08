@@ -20,6 +20,12 @@ float Interleaved(ivec2 texel)
 	return (SPREAD[(texel.y & 3) * 4 + (texel.x & 3)] + 0.5) / 16.0;
 }
 
+/* Steps stand at least a pixel apart, so no more of them than the reach has pixels land within it. */
+int StepsWithin(float reach)
+{
+	return min(STEPS, int(reach));
+}
+
 /* How much of the sky above a point's surface the ground and solids within the radius around it leave open, horizon by horizon along a few slices through the view. */
 float Openness(vec3 centre, vec3 normal, vec2 uv, vec2 half_size, float radius)
 {
@@ -27,6 +33,7 @@ float Openness(vec3 centre, vec3 normal, vec2 uv, vec2 half_size, float radius)
 	float reach = radius * u_projection[1][1] * 0.5 * half_size.y / -centre.z;
 	if (reach < SMALLEST_PIXELS) return 1.0;
 	reach = min(reach, LARGEST_PIXELS);
+	int steps = StepsWithin(reach);
 
 	ivec2 full_size = textureSize(u_depth, 0);
 	float falloff_range = FALLOFF_SHARE * radius;
@@ -51,7 +58,7 @@ float Openness(vec3 centre, vec3 normal, vec2 uv, vec2 half_size, float radius)
 		float horizon0 = low0;
 		float horizon1 = low1;
 
-		for (int step = 0; step < STEPS; step++) {
+		for (int step = 0; step < steps; step++) {
 			float share = (float(step) + fract(noise * 7.0 + 0.5 * float(slice))) / float(STEPS);
 			vec2 offset = omega * max(share * share * reach, float(step) + 1.0) / half_size;
 			ivec2 tap0 = clamp(ivec2((uv + offset) * vec2(full_size)), ivec2(0), full_size - 1);
