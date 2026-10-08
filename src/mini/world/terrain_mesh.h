@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
@@ -45,6 +46,25 @@ struct TerrainMesh : TriangleList<TerrainVertex> {
 
 double SunkMark(double sink);
 
+/* The ground's smooth normals at the corners of a block's tiles, each worked out once for the height the first tile meeting there stands at, as every tile about a corner asks for it. */
+class CornerNormals {
+public:
+	explicit CornerNormals(const TileSpan &tiles);
+
+	Vec3 At(int cx, int cy, uint8_t level);
+
+private:
+	struct Known {
+		Vec3 normal;
+		uint8_t level = 0;
+		bool known = false;
+	};
+
+	TileSpan tiles;
+	int columns;
+	std::vector<Known> corners;
+};
+
 /* A block's ground, built a row of tiles at a time so the work may be spread over frames. At step one every tile keeps its own facets and walls;
  * a longer step lays a lattice over every step-th corner in one go, skirted down so nothing shows through beside a finer neighbour.
  * Under water the ground sinks toward the seabed; along the map's edge it is cut down in a face of earth over the shelf of seabed falling away beyond. */
@@ -62,6 +82,7 @@ private:
 	int step;
 	int next_row;
 	Seabed bed;
+	CornerNormals normals;
 	TerrainMesh mesh;
 };
 

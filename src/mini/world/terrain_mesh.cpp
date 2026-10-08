@@ -160,6 +160,18 @@ static Vec3 SmoothNormal(int cx, int cy, uint8_t level)
 	return Length(sum) > 0.0 ? Normalised(sum) : UPRIGHT;
 }
 
+CornerNormals::CornerNormals(const TileSpan &tiles) : tiles(tiles), columns(tiles.tx1 - tiles.tx0 + 2)
+{
+	this->corners.resize(static_cast<size_t>(this->columns) * (tiles.ty1 - tiles.ty0 + 2));
+}
+
+Vec3 CornerNormals::At(int cx, int cy, uint8_t level)
+{
+	Known &corner = this->corners[static_cast<size_t>(cy - this->tiles.ty0) * this->columns + (cx - this->tiles.tx0)];
+	if (!corner.known) corner = {SmoothNormal(cx, cy, level), level, true};
+	return corner.level == level ? corner.normal : SmoothNormal(cx, cy, level);
+}
+
 /* One side of a tile going round from its first corner: where its middle lies on the half tile lattice and which tile lies across it. */
 struct BasinSide {
 	TileCorner from;
@@ -235,7 +247,7 @@ static std::array<double, CORNER_COUNT> CornerLevels(const TerrainMesh &mesh, co
 	return levels;
 }
 
-static void AddTile(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
+static void AddTile(TerrainMesh &mesh, const Seabed &bed, CornerNormals &normals, int tx, int ty)
 {
 	TileSurface tile(tx, ty);
 	std::array<uint32_t, CORNER_COUNT> corners;
@@ -244,7 +256,7 @@ static void AddTile(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 		int cx = static_cast<int>(at.x);
 		int cy = static_cast<int>(at.y);
 		double sink = bed.Sink(cx, cy);
-		Vec3 normal = sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : SmoothNormal(cx, cy, tile.Level(corner));
+		Vec3 normal = sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : normals.At(cx, cy, tile.Level(corner));
 		corners[corner] = mesh.Add({at.x, at.y, at.level - sink}, normal, SunkMark(sink));
 	}
 	if (IsRiverside(tx, ty)) {
@@ -730,7 +742,7 @@ static void AddShelves(TerrainMesh &mesh, const Seabed &bed, std::span<const Map
 	}
 }
 
-TerrainBuild::TerrainBuild(const TileSpan &tiles, int step) : tiles(tiles), step(step), next_row(tiles.ty0), bed(tiles)
+TerrainBuild::TerrainBuild(const TileSpan &tiles, int step) : tiles(tiles), step(step), next_row(tiles.ty0), bed(tiles), normals(tiles)
 {
 }
 
@@ -743,7 +755,7 @@ void TerrainBuild::Advance()
 	}
 	int ty = this->next_row++;
 	for (int tx = this->tiles.tx0; tx <= this->tiles.tx1; tx++) {
-		AddTile(this->mesh, this->bed, tx, ty);
+		AddTile(this->mesh, this->bed, this->normals, tx, ty);
 		AddWalls(this->mesh, this->bed, tx, ty);
 		AddFormations(this->mesh, tx, ty);
 		AddRampBank(this->mesh, tx, ty);
