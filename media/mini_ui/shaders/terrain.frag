@@ -65,6 +65,8 @@ const float CLIMATE_SWAY_FREQUENCY = 0.19;
 const float CLIMATE_FRAY = 1.0;
 const float CLIMATE_FRAY_FREQUENCY = 0.33;
 const float BUILT_WARP = 0.06;
+const float FIELD_WARP = 0.18;
+const float FIELD_BLEND_WIDTH = 0.05;
 const float DEPTH_LOD = 3.0;
 const int DRY_LEVEL = 3;
 const int DRY_REACH = 2;
@@ -225,6 +227,12 @@ const float HEDGE_FRINGE = 2.5;
 const float HEDGE_FRINGE_SHADE = 0.25;
 const float HEDGE_GAPS_PER_TILE = 1.9;
 const float HEDGE_OPACITY = 0.85;
+const vec3 VERGE = vec3(0.40, 0.44, 0.22);
+const float VERGE_WIDTH = 0.08;
+const float VERGE_OPACITY = 0.8;
+const float CROP_FLOW = 0.32;
+const float RIPENING_PER_TILE = 0.9;
+const vec3 UNRIPE = vec3(0.84, 1.02, 0.74);
 
 const float FOREST_COVER = 0.9;
 const float CANOPY_OCCLUSION = 0.45;
@@ -339,6 +347,14 @@ struct Site {
 	Climate climate;
 	float ragged;
 	float trodden;
+};
+
+/* How the tiles' grounds meet about a point: the noise bending their seams and the climate's edges, how far the seams bend off the tiles' sides and how wide they blend, and how far the point lies among a town's or an industry's tiles. */
+struct Seams {
+	vec2 bend;
+	vec2 warp;
+	float width;
+	float settled;
 };
 
 struct Blanket {
@@ -627,7 +643,8 @@ Patch Rocks(Site site)
  * rows stay sharp seen end on and fade only as they crowd closer than the pixels. On a hillside it grows rough without rows, so no lattice is drawn over the slope. */
 Patch Fields(Ground ground, Grain grain, vec2 p)
 {
-	vec3 crop = CROPS[int(ground.variant % uint(CROP_COUNT))] * Varied(Octave(p + 1.9, 0.6), 0.22) * Varied(Octave(p + 7.4, 2.1), 0.1) * Varied(grain.local, 0.1);
+	vec3 crop = CROPS[int(ground.variant % uint(CROP_COUNT))] * Varied(Octave(p + 1.9, 0.6), CROP_FLOW) * Varied(Octave(p + 7.4, 2.1), 0.1) * Varied(grain.local, 0.1);
+	crop *= mix(vec3(1.0), UNRIPE, smoothstep(0.5, 0.75, Octave(p + 3.7, RIPENING_PER_TILE)));
 	bool rows_along_y = (ground.variant & 1u) == 0u;
 	float across = rows_along_y ? p.x : p.y;
 	float along = rows_along_y ? p.y : p.x;
@@ -704,7 +721,7 @@ Patch Albedo(Ground ground, Site site)
 
 bool IsBuilt(uint material)
 {
-	return material == MAT_FIELDS || material == MAT_PAVED || material == MAT_DIRT;
+	return material == MAT_PAVED || material == MAT_DIRT;
 }
 
 bool IsNatural(uint material)
@@ -725,19 +742,40 @@ Patch Eroded(Ground ground, Site site)
 	return IsNatural(ground.material) ? Trodden(Exposed(patch, site), site) : patch;
 }
 
-vec2 SettledAt(ivec2 tile)
+/* Whether a tile's ground is built on, whether it is tilled, and whether it lies among a town's or an industry's tiles. */
+vec3 SettledAt(ivec2 tile)
 {
 	uvec4 codes = CodesAt(tile);
 	float built = float(IsBuilt(codes.r));
-	return vec2(built, max(built, float((codes.g & BUILT_BIT) != 0u)));
+	float tilled = float(codes.r == MAT_FIELDS);
+	return vec3(built, tilled, max(max(built, tilled), float((codes.g & BUILT_BIT) != 0u)));
 }
 
-vec2 Settlement(vec2 p)
+vec3 Settlement(vec2 p)
 {
 	vec2 q = p - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
 	vec2 f = fract(q);
 	return mix(mix(SettledAt(cell), SettledAt(cell + ivec2(1, 0)), f.x), mix(SettledAt(cell + ivec2(0, 1)), SettledAt(cell + ivec2(1, 1)), f.x), f.y);
+}
+
+vec2 Bend(vec2 p)
+{
+	return (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0;
+}
+
+/* Open land blends broadly across well bent seams, fields across narrower seams bent a little, and built ground across sharp seams hardly bent; from too far to make out its blocks it all blends as open land. */
+Seams SeamsAt(vec2 p)
+{
+	vec2 bend = Bend(p);
+	vec3 settlement = Settlement(p);
+	float shown = smoothstep(BLOCKS_BLUR_PIXELS, BLOCKS_SHOWN_PIXELS, tile_pixels);
+	float built = min(settlement.x * 2.0, 1.0) * shown;
+	float tilled = min(settlement.y * 2.0, 1.0) * shown;
+	float sharpest = BLEND_PIXELS / tile_pixels;
+	float reach = mix(mix(NATURAL_WARP, FIELD_WARP, tilled), BUILT_WARP, built);
+	float width = mix(mix(BLEND_WIDTH, max(FIELD_BLEND_WIDTH, sharpest), tilled), max(BUILT_BLEND_WIDTH, sharpest), built);
+	return Seams(bend, bend * reach, width, settlement.z);
 }
 
 /* The grounds of the four tiles around blend across their seams; each distinct ground is shaded once, by the share all its corners hold, in a loop the compiler keeps as one copy. */
@@ -789,20 +827,15 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden);
 }
 
-Patch Surface(vec2 p, vec2 bend, Grain grain, Relief relief, bool armoured, out Site site)
+Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, bool armoured, out Site site)
 {
-	vec2 settlement = Settlement(p);
-	float built = min(settlement.x * 2.0, 1.0) * smoothstep(BLOCKS_BLUR_PIXELS, BLOCKS_SHOWN_PIXELS, tile_pixels);
-	float reach = mix(NATURAL_WARP, BUILT_WARP, built);
-	float width = mix(BLEND_WIDTH, max(BUILT_BLEND_WIDTH, BLEND_PIXELS / tile_pixels), built);
-	vec2 warp = bend * reach;
-	vec2 q = p + warp - TILE_CENTRE;
+	vec2 q = p + seams.warp - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
-	vec2 f = smoothstep(HALF_TILE - width, HALF_TILE + width, fract(q));
+	vec2 f = smoothstep(HALF_TILE - seams.width, HALF_TILE + seams.width, fract(q));
 
 	Ground corners[4] = Ground[4](GroundAt(cell), GroundAt(cell + ivec2(1, 0)), GroundAt(cell + ivec2(0, 1)), GroundAt(cell + ivec2(1, 1)));
 	float shares[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-	site = SiteAt(p, grain, relief, armoured, corners, bend * CLIMATE_WARP, settlement.y);
+	site = SiteAt(p, grain, relief, armoured, corners, seams.bend * CLIMATE_WARP, seams.settled);
 	Ground distinct[4];
 	float weights[4];
 	int count = 0;
@@ -833,7 +866,7 @@ bool SameField(ivec2 tile, Ground field)
 	return ground.material == MAT_FIELDS && ground.variant == field.variant;
 }
 
-/* A hedge with gaps here and there runs along every side of a field where the next tile is not the same field. */
+/* A hedge with gaps here and there runs along every side of a field where the next tile is not the same field, on a ragged verge of rough grass left unploughed. */
 vec4 Hedgerow(vec2 p, Grain grain)
 {
 	ivec2 tile = ivec2(floor(p));
@@ -850,8 +883,10 @@ vec4 Hedgerow(vec2 p, Grain grain)
 	float pixel = 1.0 / tile_pixels;
 	float hedge = Stroke(near, width, pixel) * gaps;
 	float fringe = Stroke(near, width * HEDGE_FRINGE, pixel) * gaps * (1.0 - hedge);
+	float verge = Stroke(near, VERGE_WIDTH * Varied(grain.local, 0.8), pixel);
+	vec4 grass = vec4(VERGE * Varied(grain.micro, 0.5) * Varied(grain.clump, 0.3), 1.0) * verge * VERGE_OPACITY;
 	vec4 leaves = vec4(HEDGE * Varied(grain.micro, 0.6) * Varied(grain.clump, 0.4), 1.0) * hedge * HEDGE_OPACITY;
-	return leaves + vec4(0.0, 0.0, 0.0, fringe * HEDGE_FRINGE_SHADE);
+	return Over(Over(grass, vec4(0.0, 0.0, 0.0, fringe * HEDGE_FRINGE_SHADE)), leaves);
 }
 
 /* Fine bumps and stones catch the light up close: soft on grass and fields, sharp on scree and rock. */
@@ -1215,18 +1250,13 @@ Blanket BlanketOver(Site site)
 	return Landscape() == LANDSCAPE_ARCTIC ? Snowfield(site, cover) : Sandfield(site, cover);
 }
 
-vec2 Bend(vec2 p)
-{
-	return (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0;
-}
-
 /* The ground's own colour where it meets the map's edge, as it would lie level there. */
 vec3 EdgeTurf(Detail detail, float levels_per_pixel)
 {
 	vec2 p = v_world.xy;
 	Grain grain = GrainAt(p, detail);
 	Site site;
-	Patch ground = Surface(p, Bend(p), grain, ReliefAt(UPRIGHT, levels_per_pixel), false, site);
+	Patch ground = Surface(p, SeamsAt(p), grain, ReliefAt(UPRIGHT, levels_per_pixel), false, site);
 	Blanket blanket = BlanketOver(site);
 	return mix(Altitude(ground.tone, v_world.z), blanket.tone, blanket.cover);
 }
@@ -1241,19 +1271,19 @@ Network BandsAt(vec2 p, mat2 pixel)
 Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, float levels_per_pixel, vec3 normal)
 {
 	Grain grain = GrainAt(p, detail);
-	vec2 bend = Bend(p);
+	Seams seams = SeamsAt(p);
 	Canopy forest = Forest(p);
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
 	Site site;
-	Patch surface = Surface(p, bend, grain, relief, water.sea > 0.0 && Armoured(p), site);
+	Patch surface = Surface(p, seams, grain, relief, water.sea > 0.0 && Armoured(p), site);
 	Blanket blanket = BlanketOver(site);
 	float dry = 1.0 - water.cover;
 	float blanketed = blanket.cover * dry;
 	normal = normalize(normal - vec3(blanket.slope * blanketed, 0.0));
 	normal = Roughened(normal, detail, mix(surface.rugged, blanket.rugged, blanket.cover) * dry);
 	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
-	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p, grain)), Airfield(p)), v_world.z);
+	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p)), v_world.z);
 	land = mix(land, blanket.tone, blanket.cover);
 	float drowned = max(clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0), water.sea * smoothstep(0.0, DROWNED_LEVELS, -v_world.z));
 	float sunk = smoothstep(0.0, RIVERBED_DEEP_MARK, -v_mark);
