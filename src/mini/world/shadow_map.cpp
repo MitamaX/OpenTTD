@@ -17,7 +17,6 @@
 
 #include "../../core/math_func.hpp"
 #include "../../debug.h"
-#include "../core/sunlight.h"
 #include "../gpu/frame_profile.h"
 #include "../gpu/gl_api.h"
 #include "../map/world_tiles.h"
@@ -67,23 +66,15 @@ ShaderProgram DepthProgram(std::span<const char *const> vertex_sources)
 	return ShaderProgram(vertex_sources, CASTER_FRAGMENT_SOURCES);
 }
 
-static Vec3 SunWay()
+MapVector ShadowFall(const Vec3 &sun)
 {
-	SunVector sun = Sun();
-	return Normalised({sun.x, sun.y, sun.z});
-}
-
-MapVector ShadowFall()
-{
-	Vec3 sun = SunWay();
 	double rise = std::max(sun.z, LOWEST_SUN_RISE);
 	return {-sun.x / rise, -sun.y / rise};
 }
 
 /* The sun looks down its own rays, with the map's up kept upward on its picture. */
-static Mat4 SunView()
+static Mat4 SunView(const Vec3 &back)
 {
-	Vec3 back = SunWay();
 	Vec3 right = Normalised(Cross(SKY, back));
 	return Mat4::View({0.0, 0.0, 0.0}, right, Cross(back, right), back);
 }
@@ -155,14 +146,14 @@ ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, double near, dou
 	double ahead = std::min((near + far) * (1.0 + spread) * 0.5, far);
 	double radius = std::sqrt((far - ahead) * (far - ahead) + far * far * spread);
 
-	Mat4 view = SunView();
+	Mat4 view = SunView(camera.sun);
 	Vec3 middle = Transformed(view, camera.eye - camera.Back() * ahead);
 	double half = radius * (1.0 + margin);
 	double texel = 2.0 * half / RESOLUTION;
 	Vec3 centre = {std::floor(middle.x / texel) * texel, std::floor(middle.y / texel) * texel, middle.z};
 
 	double tallest = (_world_tiles.Peak() + CASTER_HEADROOM_LEVELS + DEEPEST_SINK) * LevelRise();
-	double toward_sun = tallest / std::max(SunWay().z, LOWEST_SUN_RISE);
+	double toward_sun = tallest / std::max(camera.sun.z, LOWEST_SUN_RISE);
 	Vec3 low = {centre.x - half, centre.y - half, centre.z - half - DEPTH_MARGIN};
 	Vec3 high = {centre.x + half, centre.y + half, centre.z + half + toward_sun};
 	return {Mat4::Orthographic(low, high) * view, far, texel, low, high, middle, radius};
@@ -189,9 +180,9 @@ std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneVi
 }
 
 /* A further cascade is drawn on its turn, and between turns as well once its slice of the view has moved out of the box it was last drawn over or the sun has moved. */
-bool ShadowMap::Due(int cascade, const Cascade &fitted) const
+bool ShadowMap::Due(int cascade, const Cascade &fitted, const Vec3 &sun) const
 {
-	if (cascade < FRESH_CASCADES || this->drawn_sun != SunWay()) return true;
+	if (cascade < FRESH_CASCADES || this->drawn_sun != sun) return true;
 	if (static_cast<int>(this->frame % TURNS) == cascade - FRESH_CASCADES) return true;
 	return !this->drawn[cascade].Holds(fitted);
 }
@@ -250,14 +241,14 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 	std::array<bool, CASCADES> due;
 	this->frame++;
 	for (int index = 0; index < CASCADES; index++) {
-		due[index] = this->Due(index, fitted[index]);
+		due[index] = this->Due(index, fitted[index], camera.sun);
 		if (due[index]) {
 			this->drawn[index] = fitted[index];
 		} else {
 			this->drawn[index].far = fitted[index].far;
 		}
 	}
-	this->drawn_sun = SunWay();
+	this->drawn_sun = camera.sun;
 	this->Upload(camera);
 
 	this->BeginCasting();

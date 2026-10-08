@@ -23,6 +23,7 @@ struct SceneView {
 	Mat4 view_projection;
 	Frustum frustum;
 	Vec3 eye;
+	Vec3 sun;
 	double focal;
 	double focus_pixels;
 	double near;

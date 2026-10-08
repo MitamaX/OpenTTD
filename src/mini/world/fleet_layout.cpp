@@ -129,7 +129,7 @@ bool FleetLayout::MayShow(const SceneView &view, const Vehicle *head, double rea
 	Vec3 high = TickPoint(head) + spread;
 
 	double floor = -DEEPEST_SINK * LevelRise();
-	MapVector fall = ShadowFall();
+	MapVector fall = ShadowFall(view.sun);
 	double drop = high.z - floor;
 	low = {low.x + std::min(fall.x * drop, 0.0), low.y + std::min(fall.y * drop, 0.0), std::min(low.z, floor)};
 	high = {high.x + std::max(fall.x * drop, 0.0), high.y + std::max(fall.y * drop, 0.0), high.z};

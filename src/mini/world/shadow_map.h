@@ -26,7 +26,7 @@ ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::sp
 /* A depth only program for a pass's meshes as the eye sees them. */
 ShaderProgram DepthProgram(std::span<const char *const> vertex_sources);
 /* How far across the map a shadow lands from beneath what casts it, for each unit of height the caster stands above where it lands. */
-MapVector ShadowFall();
+MapVector ShadowFall(const Vec3 &sun);
 
 class ShadowMap {
 public:
@@ -58,7 +58,7 @@ private:
 	bool Build();
 	std::array<Cascade, CASCADES> Fit(const SceneView &camera) const;
 	Cascade FitSlice(const SceneView &camera, double near, double far, double margin) const;
-	bool Due(int cascade, const Cascade &fitted) const;
+	bool Due(int cascade, const Cascade &fitted, const Vec3 &sun) const;
 	void Upload(const SceneView &camera);
 	void Aim(int cascade) const;
 	void BeginCasting() const;

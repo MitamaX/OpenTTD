@@ -63,6 +63,7 @@ SceneView SceneView::Of(const Camera &camera)
 	view.view_projection = view.projection * view.view;
 	view.frustum = FrustumOf(view.view_projection);
 	view.eye = camera.Eye();
+	view.sun = Sun(camera.Yaw());
 	view.focal = camera.Focal();
 	view.focus_pixels = camera.Ppt();
 	view.near = camera.Near();
@@ -111,14 +112,13 @@ double SceneView::Reach() const
 void SceneUniforms::Upload(const SceneView &view)
 {
 	auto floats = [](double x, double y, double z, double w) { return std::array<float, 4>{static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), static_cast<float>(w)}; };
-	SunVector sun = Sun();
 	Dimension map = _world_tiles.Size();
 	SceneBlock block = {
 		view.view.Floats(),
 		view.projection.Floats(),
 		view.view_projection.Floats(),
 		floats(view.eye.x, view.eye.y, view.eye.z, 1.0),
-		floats(sun.x, sun.y, sun.z, 0.0),
+		floats(view.sun.x, view.sun.y, view.sun.z, 0.0),
 		floats(view.near, view.far, view.fog_start, view.focus),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
 		floats(view.viewport.width, view.viewport.height, view.clock, view.phase),

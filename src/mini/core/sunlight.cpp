@@ -18,9 +18,9 @@
 
 #include "../../safeguards.h"
 
-SunVector Sun()
+Vec3 Sun(double view_yaw)
 {
 	double elevation = _tuning.sun_elevation * std::numbers::pi / 180.0;
-	Vec3 level = Bearing(_camera.Yaw() + _tuning.sun_bearing) * std::cos(elevation);
+	Vec3 level = Bearing(view_yaw + _tuning.sun_bearing) * std::cos(elevation);
 	return {level.x, level.y, std::sin(elevation)};
 }

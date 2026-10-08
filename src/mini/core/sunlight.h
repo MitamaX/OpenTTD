@@ -10,13 +10,9 @@
 #ifndef MINI_CORE_SUNLIGHT_H
 #define MINI_CORE_SUNLIGHT_H
 
-struct SunVector {
-	double x;
-	double y;
-	double z;
-};
+#include "space.h"
 
-/* The unit way to the sun along map X, map Y and straight up, from the elevation and the bearing off the view the tuning names. */
-SunVector Sun();
+/* The unit way to the sun along map X, map Y and straight up over a view facing this yaw, from the elevation and the bearing off the view the tuning names. */
+Vec3 Sun(double view_yaw);
 
 #endif /* MINI_CORE_SUNLIGHT_H */
