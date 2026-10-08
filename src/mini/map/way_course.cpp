@@ -145,22 +145,31 @@ static TrackBits TrackBitsOf(int tx, int ty)
 	return static_cast<TrackBits>(_world_tiles.NetworkAt(tile).track);
 }
 
-/* The piece of a tile's track meeting a joint that rates highest, unless none meets it. */
+/* The piece of a tile's track rated highest, passing over any the rating gives no value. */
 template <typename Rating>
-static std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rating rating)
+static std::optional<Track> BestTrackAt(const TileCoord &tile, Rating rating)
 {
-	std::optional<Piece> best;
+	std::optional<Track> best;
 	if (!OnMap(tile.first, tile.second)) return best;
 	double best_rating = 0.0;
 	for (Track track : SetTrackBitIterator(TrackBitsOf(tile.first, tile.second))) {
-		Piece piece = PieceOf(tile.first, tile.second, track);
-		if (!piece.Meets(joint)) continue;
-		double piece_rating = rating(piece);
-		if (best.has_value() && piece_rating <= best_rating) continue;
-		best = piece;
-		best_rating = piece_rating;
+		std::optional<double> piece_rating = rating(PieceOf(tile.first, tile.second, track));
+		if (!piece_rating.has_value() || (best.has_value() && *piece_rating <= best_rating)) continue;
+		best = track;
+		best_rating = *piece_rating;
 	}
 	return best;
+}
+
+template <typename Rating>
+static std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rating rating)
+{
+	std::optional<Track> best = BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> {
+		if (!piece.Meets(joint)) return std::nullopt;
+		return rating(piece);
+	});
+	if (!best.has_value()) return std::nullopt;
+	return PieceOf(tile.first, tile.second, *best);
 }
 
 /* The piece of a tile meeting a joint that runs on from it most nearly along a heading, unless none meets it. */
@@ -169,20 +178,9 @@ static std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &jo
 	return BestPieceAt(tile, joint, [&](const Piece &piece) { return Dot(Unit(piece.Other(joint).Point() - joint.Point()), heading); });
 }
 
-/* The piece of a tile's track a point of the game's track lies on, the nearest to it, unless the tile has no track. */
 static std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point)
 {
-	if (!OnMap(tile.first, tile.second)) return std::nullopt;
-	std::optional<Track> nearest;
-	double nearest_distance = 0.0;
-	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(tile.first, tile.second)).track))) {
-		Piece piece = PieceOf(tile.first, tile.second, track);
-		double distance = SegmentDistance(point, piece.from.Point(), piece.to.Point());
-		if (nearest.has_value() && distance >= nearest_distance) continue;
-		nearest = track;
-		nearest_distance = distance;
-	}
-	return nearest;
+	return BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> { return -SegmentDistance(point, piece.from.Point(), piece.to.Point()); });
 }
 
 /* A tile's way pieces as far as easing goes: the tile eases only with one rail piece or a parallel pair, or one road running in at two ends. */

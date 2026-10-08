@@ -14,6 +14,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "../../bridge_map.h"
 #include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../../timer/timer_game_tick.h"
@@ -40,6 +41,12 @@ VehicleMotion _vehicle_motion;
 static bool RidesDrawnGround(const Vehicle *v)
 {
 	return v->IsGroundVehicle() && !IsTileType(v->tile, MP_TUNNELBRIDGE);
+}
+
+/* A unit is shown a little short of where the game has it, so it may still stand on the ramp of a bridge's head the game has it past. */
+static bool OnBridgeHead(const WorldPoint &point)
+{
+	return IsBridgeTile(TileXY(static_cast<uint>(point.x), static_cast<uint>(point.y)));
 }
 
 static MapVector FacingOf(Direction direction)
@@ -161,7 +168,7 @@ bool VehicleMotion::FollowsTrack(const Vehicle *v)
 
 WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)
 {
-	if (!RidesDrawnGround(v)) return point;
+	if (!RidesDrawnGround(v) || OnBridgeHead(point)) return point;
 	return v->type == VEH_TRAIN ? TrainPoint(point.x, point.y) : RoadPoint(point.x, point.y);
 }
 
