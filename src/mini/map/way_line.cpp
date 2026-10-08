@@ -32,7 +32,7 @@ Bend::Bend(const MapVector &from, const MapVector &to, const MapVector &leaving,
 {
 	MapVector out = Unit(leaving);
 	MapVector in = Unit(arriving);
-	double length = TangentLength(std::hypot(to.x - from.x, to.y - from.y), out, in);
+	double length = TangentLength(Length(to - from), out, in);
 	this->leaving = out * length;
 	this->arriving = in * length;
 	this->cubic = (from - to) * 2.0 + this->leaving + this->arriving;
@@ -70,7 +70,7 @@ double Bend::Span() const
 	MapVector previous = this->from;
 	for (int step = 1; step <= SPAN_STEPS; step++) {
 		MapVector next = this->Centre(static_cast<double>(step) / SPAN_STEPS);
-		span += std::hypot(next.x - previous.x, next.y - previous.y);
+		span += Length(next - previous);
 		previous = next;
 	}
 	return span;

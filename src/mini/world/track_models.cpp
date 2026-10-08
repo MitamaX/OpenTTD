@@ -328,7 +328,7 @@ static ModelMesh Mast(const WayLine &line, double share)
 
 static bool InMouth(const MapVector &at, const std::optional<MapVector> &mouth)
 {
-	return mouth.has_value() && std::hypot(at.x - mouth->x, at.y - mouth->y) < HALF_TILE;
+	return mouth.has_value() && Length(at - *mouth) < HALF_TILE;
 }
 
 /* Masts stand evenly along an eased run; on any other tile one stands at the start of its first piece. */

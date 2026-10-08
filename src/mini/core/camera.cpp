@@ -181,7 +181,7 @@ Mat4 Camera::ProjectionMatrix() const
 MapVector Camera::Toward(TilePoint at) const
 {
 	MapVector toward = {this->eye.x - at.first, this->eye.y - at.second};
-	double length = std::hypot(toward.x, toward.y);
+	double length = Length(toward);
 	if (length > NEGLIGIBLE) return {toward.x / length, toward.y / length};
 	Vec3 forward = this->Forward();
 	return {-forward.x, -forward.y};

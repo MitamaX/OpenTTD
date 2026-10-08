@@ -443,7 +443,7 @@ MapVector WayCourse::OnwardFrom(const MapVector &end) const
 
 double WayCourse::Length() const
 {
-	return std::hypot(this->to.x - this->from.x, this->to.y - this->from.y);
+	return ::Length(this->to - this->from);
 }
 
 double WayCourse::Level(double share) const

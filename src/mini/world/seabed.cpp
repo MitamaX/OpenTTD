@@ -79,7 +79,7 @@ static double ShoreDistance(double x, double y)
 			nearest = MapVector{dx, dy};
 		}
 	}
-	return nearest.has_value() ? std::hypot(nearest->x, nearest->y) : SHELF_TILES;
+	return nearest.has_value() ? Length(*nearest) : SHELF_TILES;
 }
 
 /* The ground slopes gently away from the shore and levels out toward the shelf's edge. */

@@ -124,7 +124,7 @@ WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 	WorldPoint from = InTiles(bracket.from);
 	WorldPoint to = InTiles(bracket.to);
 	if (!FollowsTrack(v)) return Between(from, to, bracket.share);
-	MapVector at = TrackRoute({from.x, from.y}, {to.x, to.y}).At(bracket.share);
+	MapVector at = TrackRoute(Flat(from), Flat(to)).At(bracket.share);
 	return {at.x, at.y, std::lerp(from.level, to.level, bracket.share)};
 }
 
@@ -140,7 +140,7 @@ WorldPoint VehicleMotion::Onward(const Vehicle *v, const WorldPoint &from, doubl
 		return {from.x + std::cos(bearing) * reach, from.y + std::sin(bearing) * reach, from.level};
 	}
 	MapVector facing = FacingOf(v->direction);
-	MapVector at = TrainAhead({from.x, from.y}, reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), [v](TileIndex tile) { return TrackTakenBy(v, tile); });
+	MapVector at = TrainAhead(Flat(from), reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), [v](TileIndex tile) { return TrackTakenBy(v, tile); });
 	return {at.x, at.y, from.level};
 }
 

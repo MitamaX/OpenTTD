@@ -122,7 +122,7 @@ void StreetWalkers::Build(const TileSpan &tiles, Pavement &pavement)
 						MapVector start = from + across * (side * (PAVEMENT_LINE + dice.Between(-LINE_JITTER, LINE_JITTER)));
 						Walker placed = {
 							static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(along.x), static_cast<float>(along.y),
-							static_cast<float>(std::hypot(to.x - from.x, to.y - from.y)), static_cast<float>(dice.Share()), static_cast<float>(dice.Between(PACE)),
+							static_cast<float>(Length(to - from)), static_cast<float>(dice.Share()), static_cast<float>(dice.Between(PACE)),
 							InstanceColour(SHIRTS[dice.Below(SHIRTS.size())]), InstanceColour(TROUSERS[dice.Below(TROUSERS.size())]),
 						};
 						if (dice.Share() < STANDING_SHARE) placed.pace = 0.0f;

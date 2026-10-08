@@ -62,7 +62,7 @@ struct Stretch final : WayLine {
 	MapVector Along() const { return Unit(this->to - this->from); }
 	MapVector Along(double) const override { return this->Along(); }
 	MapVector Right() const { return RightOf(this->Along()); }
-	double Span() const override { return std::hypot(this->to.x - this->from.x, this->to.y - this->from.y); }
+	double Span() const override { return Length(this->to - this->from); }
 	MapVector At(double share, double lateral) const override;
 	double ShareOf(const MapVector &point) const override;
 };

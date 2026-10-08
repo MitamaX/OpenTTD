@@ -184,7 +184,7 @@ static double PixelsAcross(MapVector along)
 {
 	ExactPoint ahead = _camera.ScreenStep(along);
 	ExactPoint aside = _camera.ScreenStep({along.y, -along.x});
-	return std::abs(ahead.x * aside.y - ahead.y * aside.x) / (std::hypot(ahead.x, ahead.y) * std::hypot(along.x, along.y));
+	return std::abs(ahead.x * aside.y - ahead.y * aside.x) / (std::hypot(ahead.x, ahead.y) * Length(along));
 }
 
 static VisibleStroke Widened(MapVector along, double half_width, uint alpha)
@@ -268,7 +268,7 @@ void FillGroundStroke(const TileGround &ground, TilePoint from, TilePoint to, do
 	auto [from_x, from_y] = from;
 	auto [to_x, to_y] = to;
 	MapVector along = {to_x - from_x, to_y - from_y};
-	double length = std::hypot(along.x, along.y);
+	double length = Length(along);
 	if (length == 0.0) return;
 
 	VisibleStroke stroke = Widened(along, half_width, alpha);
