@@ -17,7 +17,9 @@
 #include "../../map_func.h"
 #include "../../tile_map.h"
 #include "../../timer/timer_game_tick.h"
+#include "../../train.h"
 #include "../../vehicle_base.h"
+#include "tile_shapes.h"
 #include "way_course.h"
 
 #include "../../safeguards.h"
@@ -40,11 +42,28 @@ static bool RidesDrawnGround(const Vehicle *v)
 	return v->IsGroundVehicle() && !IsTileType(v->tile, MP_TUNNELBRIDGE);
 }
 
+static MapVector FacingOf(Direction direction)
+{
+	TileIndexDiffC step = TileIndexDiffCByDir(direction);
+	return Unit({static_cast<double>(step.x), static_cast<double>(step.y)});
+}
+
 /* The bearing a direction points along, from map X toward map Y. */
 static double BearingOf(Direction direction)
 {
-	TileIndexDiffC step = TileIndexDiffCByDir(direction);
-	return std::atan2(step.y, step.x);
+	MapVector facing = FacingOf(direction);
+	return std::atan2(facing.y, facing.x);
+}
+
+/* The game turns a train about by swapping its units' places end for end, and marks each turn on its front. */
+static bool TurnedAbout(const Vehicle *v)
+{
+	return v->type == VEH_TRAIN && Train::From(v->First())->flags.Test(VehicleRailFlag::Reversed);
+}
+
+static WorldPoint InTiles(const TickTrail::Spot &spot)
+{
+	return {spot.x / TILE_SIZE, spot.y / TILE_SIZE, spot.z / TILE_HEIGHT};
 }
 
 /* The game moves a unit a whole step at a time once its front has gathered the progress a step takes; the share gathered toward the next step. */
@@ -70,16 +89,40 @@ void VehicleMotion::Advance(double delta_ms)
 	}
 }
 
-/* Returns the display position in tiles and height levels. A unit not seen the frame before, new or out of sight until
- * now, or one that jumped further than it could have moved, starts its trail over where it stands instead of streaking. */
-WorldPoint VehicleMotion::Position(const Vehicle *v)
+/* A unit stands at the point of the tick count the tick clock shows, a train gliding along its track between the ticks it was seen at.
+ * A unit not seen the frame before, new or out of sight until now, one that jumped further than it could have moved, or a train turned about,
+ * starts its trail over where it stands instead of streaking. */
+WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 {
 	Snapshot &e = this->snapshots[v->index.base()];
 	TickTrail::Spot spot = SpotOf(v, this->tick);
-	e.trail.Note(spot, e.seen + 1 >= this->frames && !e.trail.Empty() && Glides(e.trail.Latest(), spot));
+	bool turned_about = TurnedAbout(v);
+	e.trail.Note(spot, e.seen + 1 >= this->frames && !e.trail.Empty() && e.turned_about == turned_about && Glides(e.trail.Latest(), spot));
 	e.seen = this->frames;
-	TickTrail::Point at = e.trail.At(_tick_clock.Shown());
-	return Grounded(v, {at.x / TILE_SIZE, at.y / TILE_SIZE, at.z / TILE_HEIGHT});
+	e.turned_about = turned_about;
+
+	TickTrail::Bracket bracket = e.trail.About(_tick_clock.Shown());
+	WorldPoint from = InTiles(bracket.from);
+	WorldPoint to = InTiles(bracket.to);
+	if (!FollowsTrack(v)) return Between(from, to, bracket.share);
+	MapVector at = TrackRoute({from.x, from.y}, {to.x, to.y}).At(bracket.share);
+	return {at.x, at.y, std::lerp(from.level, to.level, bracket.share)};
+}
+
+WorldPoint VehicleMotion::Position(const Vehicle *v)
+{
+	return Grounded(v, this->Gliding(v));
+}
+
+WorldPoint VehicleMotion::Onward(const Vehicle *v, const WorldPoint &from, double reach)
+{
+	if (!FollowsTrack(v)) {
+		double bearing = this->Bearing(v);
+		return {from.x + std::cos(bearing) * reach, from.y + std::sin(bearing) * reach, from.level};
+	}
+	MapVector facing = FacingOf(v->direction);
+	MapVector at = TrainAhead({from.x, from.y}, reach < 0.0 ? facing * -1.0 : facing, std::abs(reach));
+	return {at.x, at.y, from.level};
 }
 
 /* A unit eases toward the way it faces once a frame; a turn of more than three quarters of a half turn is a reversal and snaps,
@@ -111,10 +154,15 @@ double VehicleMotion::TurnRate(const Vehicle *v)
 	return this->Turned(v).turn_rate;
 }
 
+bool VehicleMotion::FollowsTrack(const Vehicle *v)
+{
+	return v->type == VEH_TRAIN && RidesDrawnGround(v);
+}
+
 WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)
 {
 	if (!RidesDrawnGround(v)) return point;
-	return v->type == VEH_TRAIN ? TrackPoint(point.x, point.y) : RoadPoint(point.x, point.y);
+	return v->type == VEH_TRAIN ? TrainPoint(point.x, point.y) : RoadPoint(point.x, point.y);
 }
 
 /* A unit stands that share of its next step further along the way it faces. */

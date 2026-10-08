@@ -56,16 +56,17 @@ public:
 		double z;
 	};
 
-	struct Point {
-		double x;
-		double y;
-		double z;
+	/* The spots either side of a point of the tick count, and the share of the way from the first to the second it lies at. */
+	struct Bracket {
+		Spot from;
+		Spot to;
+		double share;
 	};
 
 	void Note(const Spot &spot, bool continues);
 	bool Empty() const { return this->count == 0; }
 	const Spot &Latest() const { return this->spots[this->count - 1]; }
-	Point At(double tick) const;
+	Bracket About(double tick) const;
 
 private:
 	static constexpr size_t LENGTH = 8;

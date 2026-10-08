@@ -92,13 +92,13 @@ void TickTrail::Note(const Spot &spot, bool continues)
 	this->spots[this->count++] = spot;
 }
 
-/* Between two spots a unit moves straight from one to the other; before the first or after the last it stands there. */
-TickTrail::Point TickTrail::At(double tick) const
+/* Between two spots a unit moves from one to the other; before the first or after the last it stands there. */
+TickTrail::Bracket TickTrail::About(double tick) const
 {
 	auto noted = std::span(this->spots).first(this->count);
 	auto later = std::ranges::find_if(noted, [tick](const Spot &spot) { return spot.tick > tick; });
 	const Spot &to = later == noted.end() ? noted.back() : *later;
 	const Spot &from = later == noted.begin() ? to : *std::prev(later);
 	double share = from.tick == to.tick ? 0.0 : (tick - from.tick) / (to.tick - from.tick);
-	return {from.x + (to.x - from.x) * share, from.y + (to.y - from.y) * share, from.z + (to.z - from.z) * share};
+	return {from, to, share};
 }

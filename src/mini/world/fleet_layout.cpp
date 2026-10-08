@@ -22,6 +22,7 @@
 #include "../gpu/draw_list.h"
 #include "../map/tile_shapes.h"
 #include "../map/vehicle_motion.h"
+#include "../map/way_course.h"
 #include "seabed.h"
 #include "shadow_map.h"
 #include "vehicle_looks.h"
@@ -72,20 +73,15 @@ static double FlatDistance(const WorldPoint &a, const WorldPoint &b)
 	return std::hypot(b.x - a.x, b.y - a.y);
 }
 
-/* The point an arc length along a path, carried on past its last point along its last stretch. */
-static WorldPoint Along(std::span<const WorldPoint> path, double arc)
+/* Where the game has the point an arc length along a path as it is drawn, carried on past its last point along its last stretch. */
+static WorldPoint Along(std::span<const PathPoint> path, double arc)
 {
 	for (size_t point = 1; point < path.size(); point++) {
-		double span = FlatDistance(path[point - 1], path[point]);
-		if (arc <= span || point + 1 == path.size()) return Between(path[point - 1], path[point], span > 0.0 ? arc / span : 0.0);
+		double span = FlatDistance(path[point - 1].drawn, path[point].drawn);
+		if (arc <= span || point + 1 == path.size()) return Between(path[point - 1].game, path[point].game, span > 0.0 ? arc / span : 0.0);
 		arc -= span;
 	}
-	return path.front();
-}
-
-static WorldPoint Ahead(const WorldPoint &from, double bearing, double reach)
-{
-	return {from.x + std::cos(bearing) * reach, from.y + std::sin(bearing) * reach, from.level};
+	return path.front().game;
 }
 
 /* Units the game shows sideways round, such as the rear of a pair of engines, wear their model the other way about. */
@@ -155,21 +151,22 @@ void FleetLayout::Lay(const SceneView &view, double reach)
 }
 
 /* The game spaces units in path steps, which on a diagonal lie further apart than the units are long, so the units are laid
- * nose to tail at their true length along the path through their centres, from a nose half a unit ahead of the first. */
+ * nose to tail at their true length along the path through their centres as it is drawn, from a nose half a unit ahead of the first;
+ * every point is drawn from where the game has it, so a train keeps to its track. */
 void FleetLayout::LayConsist(const Vehicle *head)
 {
 	this->links.clear();
 	for (const Vehicle *unit = head; unit != nullptr; unit = unit->Next()) {
-		if (!unit->vehstatus.Test(VehState::Hidden)) this->links.push_back({unit, _vehicle_motion.Position(unit), UnitTiles(unit)});
+		if (!unit->vehstatus.Test(VehState::Hidden)) this->links.push_back({unit, _vehicle_motion.Gliding(unit), UnitTiles(unit)});
 	}
 	if (this->links.empty()) return;
 
 	const Link &first = this->links.front();
 	const Link &last = this->links.back();
 	this->path.clear();
-	this->path.push_back(Ahead(first.centre, _vehicle_motion.Bearing(first.unit), first.length * 0.5));
-	for (const Link &link : this->links) this->path.push_back(link.centre);
-	this->path.push_back(Ahead(last.centre, _vehicle_motion.Bearing(last.unit), -last.length * 0.5));
+	this->Reach(first.unit, _vehicle_motion.Onward(first.unit, first.centre, first.length * 0.5));
+	for (const Link &link : this->links) this->Reach(link.unit, link.centre);
+	this->Reach(last.unit, _vehicle_motion.Onward(last.unit, last.centre, -last.length * 0.5));
 
 	double arc = 0.0;
 	for (const Link &link : this->links) {
@@ -184,6 +181,18 @@ void FleetLayout::LayConsist(const Vehicle *head)
 		this->Add(link.unit, look, Between(back, front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH));
 		if (look == VehicleLook::SteamEngine) this->AddFunnel(link.unit, heading);
 	}
+}
+
+/* The path runs on to a point as a unit there runs, a train along its track through the middles of the tile sides between. */
+void FleetLayout::Reach(const Vehicle *unit, const WorldPoint &to)
+{
+	auto pass = [&](const WorldPoint &at) { this->path.push_back({at, VehicleMotion::Grounded(unit, at)}); };
+	if (!this->path.empty() && VehicleMotion::FollowsTrack(unit)) {
+		const WorldPoint &from = this->path.back().game;
+		TrackRoute route({from.x, from.y}, {to.x, to.y});
+		for (const MapVector &side : route.Sides()) pass({side.x, side.y, to.level});
+	}
+	pass(to);
 }
 
 /* A ship rocks and heaves gently on the swell, each in its own time. */

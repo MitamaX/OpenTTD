@@ -55,6 +55,12 @@ struct ShipWake {
 	double pace;
 };
 
+/* A point of a vehicle's path where the game has it and where it is drawn. */
+struct PathPoint {
+	WorldPoint game;
+	WorldPoint drawn;
+};
+
 class FleetLayout {
 public:
 	explicit FleetLayout(std::span<const VehicleBounds, VEHICLE_LOOKS> bounds) : bounds(bounds) {}
@@ -75,6 +81,7 @@ private:
 
 	bool MayShow(const SceneView &view, const Vehicle *head, double reach) const;
 	void LayConsist(const Vehicle *head);
+	void Reach(const Vehicle *unit, const WorldPoint &to);
 	void LayShip(const Vehicle *ship);
 	void LayAircraft(const Vehicle *aircraft);
 	void Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length);
@@ -85,7 +92,7 @@ private:
 	std::vector<ShipWake> wakes;
 	std::vector<SmokeVent> funnels;
 	std::vector<Link> links;
-	std::vector<WorldPoint> path;
+	std::vector<PathPoint> path;
 	double clock = 0.0;
 };
 

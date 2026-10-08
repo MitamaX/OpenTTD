@@ -23,10 +23,17 @@ struct Vehicle;
 class VehicleMotion {
 public:
 	void Advance(double delta_ms);
+	/* Where a unit stands on the game's own map, in tiles and height levels, and where it is drawn. */
+	WorldPoint Gliding(const Vehicle *v);
 	WorldPoint Position(const Vehicle *v);
+	/* Where a unit's path over the game's map runs to a reach ahead of a point, or behind it for a negative reach:
+	 * along its track for a train on the ground, else straight on the way it faces. */
+	WorldPoint Onward(const Vehicle *v, const WorldPoint &from, double reach);
 	/* The way a unit faces in radians from map X toward map Y, eased through its turns, and how fast it is turning. */
 	double Bearing(const Vehicle *v);
 	double TurnRate(const Vehicle *v);
+	/* Whether a unit runs along the track as it is drawn: a train out of tunnels and off bridges. */
+	static bool FollowsTrack(const Vehicle *v);
 	static WorldPoint Grounded(const Vehicle *v, const WorldPoint &point);
 	void Clear();
 
@@ -34,6 +41,7 @@ private:
 	struct Snapshot {
 		TickTrail trail;
 		uint64_t seen;
+		bool turned_about;
 		double bearing;
 		double turn_rate;
 		uint64_t turned;

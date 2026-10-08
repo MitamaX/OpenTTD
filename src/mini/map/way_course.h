@@ -13,6 +13,7 @@
 
 #include <array>
 #include <optional>
+#include <span>
 #include <utility>
 
 #include "../../track_type.h"
@@ -109,11 +110,35 @@ struct DrawnTrack {
 	static DrawnTrack Of(int tx, int ty, Track track);
 	/* Where a point on the game's own piece is drawn: as far along the line and as far to its side, at the course's level or on the ground. */
 	WorldPoint Placed(const MapVector &point) const;
+	/* Where a point on the game's own piece is drawn on the line itself, as far along it. */
+	WorldPoint Centred(const MapVector &point) const;
 
 private:
 	static DrawnTrack Build(int tx, int ty, Track track);
+	double ShareOf(const MapVector &point) const;
+	WorldPoint At(double share, double lateral) const;
 
 	friend class TrackBook;
+};
+
+/* A train's way over the game's map from one point to another a few tile sides on: through the middles of the tile sides its track crosses between them,
+ * or straight where no track leads there. */
+class TrackRoute {
+public:
+	TrackRoute(const MapVector &from, const MapVector &to);
+
+	/* The middles of the tile sides crossed, in order. */
+	std::span<const MapVector> Sides() const;
+	/* The point a share of the way along. */
+	MapVector At(double share) const;
+
+private:
+	static constexpr size_t MOST_SIDES = 4;
+
+	bool Cross(const MapVector &from, const MapVector &to);
+
+	std::array<MapVector, MOST_SIDES + 2> points{};
+	size_t count = 0;
 };
 
 /* How far the eased rail line slides along a tile's west side and along its north side, from the middle of each. */
@@ -122,8 +147,13 @@ std::pair<double, double> SideSlides(int tx, int ty);
 /* The eases and drawn pieces kept within reach of where the ground's shape or the ways changed are worked out afresh when next asked for. */
 void ForgetCourses(const WorldChanges &changes);
 
-/* Where a train or a road vehicle at a point of the map is drawn: a train on the line of the piece it is on, either at its way's eased level or on the ground. */
+/* Where a point of the game's track is drawn, as far to the side of its piece's drawn line as it lies to the side of the game's piece. */
 WorldPoint TrackPoint(double x, double y);
+/* Where a train or a road vehicle at a point of the map is drawn: a train on the line of the piece it is on, either at its way's eased level or on the ground. */
+WorldPoint TrainPoint(double x, double y);
 WorldPoint RoadPoint(double x, double y);
+/* Where a train's path over the game's map runs to a reach on from a point the way it heads, along the game's pieces of track,
+ * keeping at each junction to the piece that runs on most nearly straight. */
+MapVector TrainAhead(const MapVector &from, MapVector heading, double reach);
 
 #endif /* MINI_MAP_WAY_COURSE_H */
