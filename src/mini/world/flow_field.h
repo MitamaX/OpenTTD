@@ -33,7 +33,7 @@ class Drainage;
 class FlowField {
 public:
 	void Survey(Dimension map);
-	std::optional<Rect> Resurvey(std::span<const Rect> changed);
+	std::vector<Rect> Resurvey(std::span<const Rect> changed);
 	const void *Texels() const { return this->texels.data(); }
 
 private:

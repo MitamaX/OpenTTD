@@ -120,9 +120,7 @@ void WorldTextures::ResurveyShore(std::span<const Rect> water_moves)
 void WorldTextures::ResurveyFlow(std::span<const Rect> water_moves)
 {
 	ProfileScope profile("build", "flow", ProfileClock::Cpu);
-	this->spans.clear();
-	std::optional<Rect> moved = this->flow.Resurvey(water_moves);
-	if (moved.has_value()) this->spans.push_back(*moved);
+	this->spans = this->flow.Resurvey(water_moves);
 	this->SendSpans(FLOW_UNIT, this->flow.Texels());
 }
 

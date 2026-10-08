@@ -115,22 +115,34 @@ static double PaceOf(int tx, int ty, bool sloping)
 	return sloping ? RAPIDS_PACE : RIVER_PACE * Narrowing(tx, ty);
 }
 
-/* The running water joined to any near the changes, in map order. */
-static std::vector<TileIndex> RunningAbout(std::span<const Rect> changed)
+/* The running water joined to a tile of it, in map order. */
+static std::vector<TileIndex> BodyFrom(TileIndex first, std::unordered_set<TileIndex> &seen)
 {
-	std::vector<TileIndex> joined;
-	std::unordered_set<TileIndex> seen;
-	auto join = [&](int tx, int ty) {
-		if (StreamOf(tx, ty) == Stream::None) return;
-		TileIndex tile = TileXY(tx, ty);
-		if (seen.insert(tile).second) joined.push_back(tile);
-	};
-	for (const Rect &span : changed) EachTile(TilesNear(span, 1), join);
-	for (size_t next = 0; next < joined.size(); next++) {
-		for (DiagDirection step : STEPS) std::apply(join, Beside(joined[next], step));
+	std::vector<TileIndex> body = {first};
+	seen.insert(first);
+	for (size_t next = 0; next < body.size(); next++) {
+		for (DiagDirection step : STEPS) {
+			auto [nx, ny] = Beside(body[next], step);
+			if (StreamOf(nx, ny) == Stream::None) continue;
+			TileIndex tile = TileXY(nx, ny);
+			if (seen.insert(tile).second) body.push_back(tile);
+		}
 	}
-	std::ranges::sort(joined);
-	return joined;
+	std::ranges::sort(body);
+	return body;
+}
+
+/* Each body of running water joined to any near the changes, which drains alone as it would among them all, as no water runs from one into another. */
+static std::vector<std::vector<TileIndex>> BodiesAbout(std::span<const Rect> changed)
+{
+	std::vector<std::vector<TileIndex>> bodies;
+	std::unordered_set<TileIndex> seen;
+	for (const Rect &span : changed) {
+		EachTile(TilesNear(span, 1), [&](int tx, int ty) {
+			if (StreamOf(tx, ty) != Stream::None && !seen.contains(TileXY(tx, ty))) bodies.push_back(BodyFrom(TileXY(tx, ty), seen));
+		});
+	}
+	return bodies;
 }
 
 /* Which neighbour each tile of running water runs on into, or that it pools, learnt by flooding up from where the water leaves, the lowest water first and the nearest the way out first. */
@@ -295,11 +307,11 @@ void FlowField::Survey(Dimension map)
 	this->Resurvey(std::array{Rect{0, 0, static_cast<int>(map.width) - 1, static_cast<int>(map.height) - 1}});
 }
 
-/* The span of texels the change moved, if it moved any. */
-std::optional<Rect> FlowField::Resurvey(std::span<const Rect> changed)
+/* The spans of texels the change moved, one about each body of water drained again and each stretch of sea fanned again. */
+std::vector<Rect> FlowField::Resurvey(std::span<const Rect> changed)
 {
 	Drainage drainage(this->downstream);
-	std::vector<TileIndex> running = RunningAbout(changed);
+	std::vector<std::vector<TileIndex>> bodies = BodiesAbout(changed);
 	std::vector<Rect> windows;
 	auto note_mouth = [&](TileIndex tile) {
 		if (std::optional<TileIndex> mouth = drainage.MouthOf(tile); mouth.has_value()) windows.push_back(FanWindow(*mouth));
@@ -312,15 +324,26 @@ std::optional<Rect> FlowField::Resurvey(std::span<const Rect> changed)
 		windows.push_back(TilesNear(span, MOUTH_REACH));
 		EachTile(span, [&](int tx, int ty) { forget(TileXY(tx, ty)); });
 	}
-	std::ranges::for_each(running, forget);
+	for (const std::vector<TileIndex> &body : bodies) std::ranges::for_each(body, forget);
 
-	drainage.Drain(running);
-	std::optional<Rect> moved;
-	for (TileIndex tile : running) {
-		note_mouth(tile);
-		this->Put(tile, TexelOf(drainage.Flow(tile)), moved);
+	std::vector<Rect> moved;
+	auto gather = [&moved](const std::optional<Rect> &span) {
+		if (span.has_value()) moved.push_back(*span);
+	};
+	for (const std::vector<TileIndex> &body : bodies) {
+		drainage.Drain(body);
+		std::optional<Rect> span;
+		for (TileIndex tile : body) {
+			note_mouth(tile);
+			this->Put(tile, TexelOf(drainage.Flow(tile)), span);
+		}
+		gather(span);
 	}
-	for (const Rect &window : windows) this->Refan(drainage, window, moved);
+	for (const Rect &window : windows) {
+		std::optional<Rect> span;
+		this->Refan(drainage, window, span);
+		gather(span);
+	}
 	return moved;
 }
 
