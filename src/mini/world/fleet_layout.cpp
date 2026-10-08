@@ -101,6 +101,12 @@ static double UnitTiles(const Vehicle *unit)
 	return unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(TILE_SIZE);
 }
 
+/* How long a vehicle is from the nose of its first unit to the tail of its last; a ship or an aircraft is as long as nothing. */
+static double ConsistTiles(const Vehicle *head)
+{
+	return head->IsGroundVehicle() ? head->GetGroundVehicleCache()->cached_total_length / static_cast<double>(TILE_SIZE) : 0.0;
+}
+
 /* How near its top speed a vehicle runs. */
 static double PaceOf(const Vehicle *head)
 {
@@ -113,22 +119,16 @@ static Vec3 TickPoint(const Vehicle *unit)
 	return RenderPoint({unit->x_pos / static_cast<double>(TILE_SIZE), unit->y_pos / static_cast<double>(TILE_SIZE), unit->z_pos / static_cast<double>(TILE_HEIGHT)});
 }
 
-/* The box about a vehicle's units, grown by how far they reach and by the trail it leaves, stretched down the sun's rays to the lowest ground its shadow may fall on, meets the view. */
+/* The box about a vehicle's first unit, grown by its length to hold every unit behind it on slopes as steep as a tile's, by how far they reach and by the trail it leaves,
+ * stretched down the sun's rays to the lowest ground its shadow may fall on, meets the view. */
 bool FleetLayout::MayShow(const SceneView &view, const Vehicle *head, double reach) const
 {
-	Vec3 low = TickPoint(head);
-	Vec3 high = low;
-	if (head->IsGroundVehicle()) {
-		for (const Vehicle *unit = head->Next(); unit != nullptr; unit = unit->Next()) {
-			Vec3 at = TickPoint(unit);
-			low = {std::min(low.x, at.x), std::min(low.y, at.y), std::min(low.z, at.z)};
-			high = {std::max(high.x, at.x), std::max(high.y, at.y), std::max(high.z, at.z)};
-		}
-	}
 	bool trails = head->type == VEH_TRAIN || head->type == VEH_SHIP;
 	double grown = reach + PLACING_SLACK_TILES + (trails ? PaceOf(head) * TRAIL_TILES_PER_SECOND * PLUME_SECONDS : 0.0);
-	low = low - Vec3{grown, grown, grown};
-	high = high + Vec3{grown, grown, grown};
+	double length = ConsistTiles(head);
+	Vec3 spread = {grown + length, grown + length, grown + length * LevelRise()};
+	Vec3 low = TickPoint(head) - spread;
+	Vec3 high = TickPoint(head) + spread;
 
 	double floor = -DEEPEST_SINK * LevelRise();
 	MapVector fall = ShadowFall();
