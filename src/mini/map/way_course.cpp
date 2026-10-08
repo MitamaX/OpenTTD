@@ -759,17 +759,20 @@ MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, con
 	std::optional<Track> under = TrackUnder(tile, from);
 	if (!under.has_value()) return from + heading * reach;
 
-	std::optional<Piece> piece = PieceOf(tile.first, tile.second, *under);
+	Piece piece = PieceOf(tile.first, tile.second, *under);
+	Joint exit = Dot(piece.to.Point() - piece.from.Point(), heading) >= 0.0 ? piece.to : piece.from;
 	MapVector at = from;
-	for (int step = 0; step < LONGEST_WALK && piece.has_value(); step++) {
-		Joint exit = Dot(piece->to.Point() - piece->from.Point(), heading) >= 0.0 ? piece->to : piece->from;
-		heading = Unit(exit.Point() - piece->Other(exit).Point());
+	for (;;) {
+		heading = Unit(exit.Point() - piece.Other(exit).Point());
 		double left = std::max(Dot(exit.Point() - at, heading), 0.0);
-		if (reach <= left) return at + heading * reach;
+		if (reach <= left) break;
 		reach -= left;
 		at = exit.Point();
 		tile = exit.Beyond(tile);
-		piece = OnwardAt(tile, exit, heading, taken);
+		std::optional<Piece> onward = OnwardAt(tile, exit, heading, taken);
+		if (!onward.has_value()) break;
+		piece = *onward;
+		exit = piece.Other(exit);
 	}
 	return at + heading * reach;
 }
