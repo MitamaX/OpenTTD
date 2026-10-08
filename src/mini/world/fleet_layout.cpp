@@ -188,7 +188,7 @@ void FleetLayout::ExtendPath(const Vehicle *unit, const WorldPoint &to)
 {
 	auto pass = [&](const WorldPoint &at) { this->path.push_back({at, VehicleMotion::Grounded(unit, at)}); };
 	if (!this->path.empty() && VehicleMotion::FollowsTrack(unit)) {
-		TrackRoute route(Flat(this->path.back().game), Flat(to), TakenBy(unit));
+		TrackRoute route(Flat(this->path.back().game), Flat(to), _vehicle_motion.TakenBy(unit));
 		for (const MapVector &side : route.Sides()) pass({side.x, side.y, to.level});
 	}
 	pass(to);

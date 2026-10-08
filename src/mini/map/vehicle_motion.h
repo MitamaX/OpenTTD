@@ -36,9 +36,17 @@ public:
 	/* Whether a unit runs along the track as it is drawn: a train out of tunnels and off bridges. */
 	static bool FollowsTrack(const Vehicle *v);
 	static WorldPoint Grounded(const Vehicle *v, const WorldPoint &point);
+	/* The pieces of a tile's track a train's units stand on or stood on last before, and any the game has reserved there for a train's way ahead. */
+	TrackTaken TakenBy(const Vehicle *v) const;
 	void Clear();
 
 private:
+	/* A tile a train's unit stood on and the pieces it took there. */
+	struct Passage {
+		TileIndex tile = INVALID_TILE;
+		TrackBits track = TRACK_BIT_NONE;
+	};
+
 	struct Snapshot {
 		TickTrail trail;
 		uint64_t seen;
@@ -46,6 +54,10 @@ private:
 		double bearing;
 		double turn_rate;
 		uint64_t turned;
+		Passage on;
+		Passage left;
+
+		void Pass(const Passage &now, bool continues);
 	};
 
 	static TickTrail::Spot SpotOf(const Vehicle *v, uint64_t tick);
@@ -59,7 +71,5 @@ private:
 };
 
 extern VehicleMotion _vehicle_motion;
-
-TrackTaken TakenBy(const Vehicle *v);
 
 #endif /* MINI_MAP_VEHICLE_MOTION_H */

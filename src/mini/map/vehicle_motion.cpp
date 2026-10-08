@@ -72,18 +72,6 @@ static bool TurnedAbout(const Vehicle *v)
 	return v->type == VEH_TRAIN && Train::From(v->First())->flags.Test(VehicleRailFlag::Reversed);
 }
 
-/* The pieces of a tile's track a train's units stand on, and any the game has reserved there for a train's way ahead. */
-TrackTaken TakenBy(const Vehicle *v)
-{
-	return [v](TileIndex tile) {
-		TrackBits taken = GetReservedTrackbits(tile);
-		for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
-			if (unit->tile == tile) taken |= unit->track & TRACK_BIT_MASK;
-		}
-		return taken;
-	};
-}
-
 static WorldPoint InTiles(const TickTrail::Spot &spot)
 {
 	return {spot.x / TILE_SIZE, spot.y / TILE_SIZE, spot.z / TILE_HEIGHT};
@@ -118,7 +106,9 @@ WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 	Snapshot &e = this->snapshots[v->index.base()];
 	TickTrail::Spot spot = SpotOf(v, this->tick);
 	bool turned_about = TurnedAbout(v);
-	e.trail.Note(spot, e.seen + 1 >= this->frames && !e.trail.Empty() && e.turned_about == turned_about && Glides(e.trail.Latest(), spot));
+	bool continues = e.seen + 1 >= this->frames && !e.trail.Empty() && e.turned_about == turned_about && Glides(e.trail.Latest(), spot);
+	e.trail.Note(spot, continues);
+	if (v->type == VEH_TRAIN) e.Pass({v->tile, Train::From(v)->track & TRACK_BIT_MASK}, continues);
 	e.seen = this->frames;
 	e.turned_about = turned_about;
 
@@ -126,7 +116,7 @@ WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 	WorldPoint from = InTiles(bracket.from);
 	WorldPoint to = InTiles(bracket.to);
 	if (!FollowsTrack(v)) return Between(from, to, bracket.share);
-	MapVector at = TrackRoute(Flat(from), Flat(to), TakenBy(v)).At(bracket.share);
+	MapVector at = TrackRoute(Flat(from), Flat(to), this->TakenBy(v)).At(bracket.share);
 	return {at.x, at.y, std::lerp(from.level, to.level, bracket.share)};
 }
 
@@ -142,7 +132,7 @@ WorldPoint VehicleMotion::Onward(const Vehicle *v, const WorldPoint &from, doubl
 		return {from.x + std::cos(bearing) * reach, from.y + std::sin(bearing) * reach, from.level};
 	}
 	MapVector facing = FacingOf(v->direction);
-	MapVector at = TrainAhead(Flat(from), reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), TakenBy(v));
+	MapVector at = TrainAhead(Flat(from), reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), this->TakenBy(v));
 	return {at.x, at.y, from.level};
 }
 
@@ -175,6 +165,19 @@ double VehicleMotion::TurnRate(const Vehicle *v)
 	return this->Turned(v).turn_rate;
 }
 
+TrackTaken VehicleMotion::TakenBy(const Vehicle *v) const
+{
+	return [this, v](TileIndex tile) {
+		TrackBits taken = GetReservedTrackbits(tile);
+		for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
+			if (unit->tile == tile) taken |= unit->track & TRACK_BIT_MASK;
+			auto known = this->snapshots.find(unit->index.base());
+			if (known != this->snapshots.end() && known->second.left.tile == tile) taken |= known->second.left.track;
+		}
+		return taken;
+	};
+}
+
 bool VehicleMotion::FollowsTrack(const Vehicle *v)
 {
 	return v->type == VEH_TRAIN && RidesDrawnGround(v);
@@ -199,6 +202,17 @@ bool VehicleMotion::Glides(const TickTrail::Spot &from, const TickTrail::Spot &t
 	if (to.tick < from.tick) return false;
 	double reach = std::max(MAX_GLIDE_DISTANCE, (to.tick - from.tick) * MAX_STRIDE_PER_TICK);
 	return std::abs(to.x - from.x) <= reach && std::abs(to.y - from.y) <= reach;
+}
+
+/* A unit keeps the tile it stood on before the one it stands on, as the game forgets which pieces a train took there once it is gone. */
+void VehicleMotion::Snapshot::Pass(const Passage &now, bool continues)
+{
+	if (!continues) {
+		this->left = {};
+	} else if (now.tile != this->on.tile) {
+		this->left = this->on;
+	}
+	this->on = now;
 }
 
 void VehicleMotion::Clear()
