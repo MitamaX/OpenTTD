@@ -105,7 +105,7 @@ static bool IsShown(const Vehicle *unit)
 	if (!IsTunnelTile(unit->tile)) return false;
 	TileIndexDiffC step = TileIndexDiffCByDir(unit->direction);
 	int reach = unit->GetGroundVehicleCache()->cached_veh_length / 2;
-	return std::ranges::any_of(std::array{-reach, reach}, [&](int end) { return IsTunnelTile(TileVirtXY(unit->x_pos + step.x * end, unit->y_pos + step.y * end)); });
+	return std::ranges::any_of(std::array{-reach, reach}, [&](int end) { return IsTunnelTile(TileVirtXYClampedToMap(unit->x_pos + step.x * end, unit->y_pos + step.y * end)); });
 }
 
 /* How long a vehicle is from the nose of its first unit to the tail of its last; a ship or an aircraft is as long as nothing. */
