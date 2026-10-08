@@ -102,7 +102,7 @@ static constexpr std::array<SectionPoint, 4> ARM_SECTION = {{
  * on a bridge it runs plainly from edge to edge. */
 class TrackPiece {
 public:
-	TrackPiece(const TrackSite &site, Track track) : site(site), track(track), drawn(Drawn(site, track)) {}
+	TrackPiece(const TrackSite &site, Track track) : site(site), track(track), drawn(Drawn(site, track)), rows(RowsAlong(this->drawn.line)) {}
 
 	const WayLine &Line() const { return this->drawn.line; }
 
@@ -116,7 +116,7 @@ public:
 
 	ModelMesh Body(Section section, bool capped) const
 	{
-		ModelMesh body = Laid(this->Line(), section, this->Rows());
+		ModelMesh body = Laid(this->Line(), section, this->rows);
 		if (capped && this->drawn.open_first) body.Append(EndCap(this->Line(), section, false));
 		if (capped && this->drawn.open_last) body.Append(EndCap(this->Line(), section, true));
 		return body;
@@ -131,7 +131,7 @@ public:
 				shifted[point] = section[point];
 				shifted[point].lateral += side * gap_half;
 			}
-			pair.Append(Laid(this->Line(), shifted, this->Rows()));
+			pair.Append(Laid(this->Line(), shifted, this->rows));
 		}
 		return pair;
 	}
@@ -174,10 +174,9 @@ private:
 		return {site.tx, site.ty, origin + from, origin + to, Bend(origin + from, origin + to, along, along), std::nullopt, false, false};
 	}
 
-	/* How far the line turns along the piece, turns either way both counted. */
-	double Turn() const
+	/* How far a line turns along its length, turns either way both counted. */
+	static double Turn(const WayLine &line)
 	{
-		const WayLine &line = this->Line();
 		double turn = 0.0;
 		MapVector previous = line.Along(0.0);
 		for (int sample = 1; sample <= TURN_SAMPLES; sample++) {
@@ -188,16 +187,17 @@ private:
 		return turn;
 	}
 
-	int Rows() const
+	static int RowsAlong(const WayLine &line)
 	{
-		int along = static_cast<int>(std::lround(this->Line().Span() * ROWS_PER_TILE));
-		int turning = static_cast<int>(std::ceil(this->Turn() / ROW_TURN_LIMIT));
+		int along = static_cast<int>(std::lround(line.Span() * ROWS_PER_TILE));
+		int turning = static_cast<int>(std::ceil(Turn(line) / ROW_TURN_LIMIT));
 		return std::max({1, along, turning});
 	}
 
 	const TrackSite &site;
 	Track track;
 	DrawnTrack drawn;
+	int rows;
 };
 
 static ModelMesh RailPiece(const TrackPiece &piece, WayDetail detail, uint32_t seed)
