@@ -54,8 +54,8 @@ const float RAPIDS_ALONG = 2.6;
 const float RAPIDS_ACROSS = 9.0;
 const float RAPIDS_PATH = 0.4;
 const float RAPIDS_RUFFLE = 0.8;
-const float LIP_BEND = 0.5;
-const float PLUNGE_BEND = 0.4;
+const float LIP_BEND = 0.25;
+const float PLUNGE_BEND = 0.2;
 const float PLUNGE_FROTH = 0.2;
 const float CREST_GLOW = 0.35;
 
@@ -477,7 +477,7 @@ Drop Descent(vec2 p)
 	vec4 around = vec4(WaterLevelNear(p - dx, home), WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home), WaterLevelNear(p + dy, home));
 	vec2 fall = vec2(around.x - around.y, around.z - around.w) * LevelRise() / (2.0 * RAPIDS_REACH);
 	float slope = length(fall);
-	float bend = (dot(around, vec4(1.0)) - 4.0 * WaterLevelNear(p, home)) / RAPIDS_REACH;
+	float bend = (dot(around, vec4(1.0)) - 4.0 * WaterLevelNear(p, home)) * LevelRise() / RAPIDS_REACH;
 	return Drop(slope > 0.0 ? fall / slope : vec2(0.0), slope, smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, slope), bend);
 }
 
