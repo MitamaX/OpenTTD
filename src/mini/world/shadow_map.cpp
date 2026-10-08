@@ -70,6 +70,13 @@ static Vec3 SunWay()
 	return Normalised({sun.x, sun.y, sun.z});
 }
 
+MapVector ShadowFall()
+{
+	Vec3 sun = SunWay();
+	double rise = std::max(sun.z, LOWEST_SUN_RISE);
+	return {-sun.x / rise, -sun.y / rise};
+}
+
 /* The sun looks down its own rays, with the map's up kept upward on its picture. */
 static Mat4 SunView()
 {

@@ -47,6 +47,7 @@ private:
 
 	std::vector<ModelMesh> meshes;
 	std::array<VehicleBounds, VEHICLE_LOOKS> bounds{};
+	double reach = 0.0;
 	FleetLayout fleet{bounds};
 	SceneView seen{};
 	InstancedMeshes models;

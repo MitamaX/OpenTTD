@@ -88,12 +88,13 @@ WorldPoint VehicleMotion::Position(const Vehicle *v)
 	return Grounded(v, {x, y, this->Interpolated(e.previous.z, e.current.z) / TILE_HEIGHT});
 }
 
-/* A unit eases toward the way it faces once a frame; a turn of more than three quarters of a half turn is a reversal and snaps. */
+/* A unit eases toward the way it faces once a frame; a turn of more than three quarters of a half turn is a reversal and snaps,
+ * and a unit not turned in the frame before, new or out of sight until now, faces its way at once. */
 VehicleMotion::Snapshot &VehicleMotion::Turned(const Vehicle *v)
 {
 	Snapshot &e = this->snapshots[v->index.base()];
 	double target = BearingOf(v->direction);
-	if (e.turned == 0) {
+	if (e.turned == 0 || e.turned + 1 < this->frames) {
 		e.bearing = target;
 		e.turn_rate = 0.0;
 	} else if (e.turned != this->frames) {

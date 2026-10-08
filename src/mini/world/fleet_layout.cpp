@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file fleet_layout.cpp Where every vehicle on the map stands this frame: units laid nose to tail along their path, ships riding the swell, aircraft banking. */
+/** @file fleet_layout.cpp Where every vehicle in view stands this frame: units laid nose to tail along their path, ships riding the swell, aircraft banking. */
 
 #include "../../stdafx.h"
 #include "fleet_layout.h"
@@ -22,6 +22,8 @@
 #include "../gpu/draw_list.h"
 #include "../map/tile_shapes.h"
 #include "../map/vehicle_motion.h"
+#include "seabed.h"
+#include "shadow_map.h"
 #include "vehicle_looks.h"
 
 #include "../../safeguards.h"
@@ -37,6 +39,10 @@ static constexpr double MAX_BANK = 0.55;
 static constexpr double AIRBORNE_LEVELS = 1.0;
 static constexpr double ROTOR_TURNS_PER_SECOND = 3.3;
 static constexpr double TRAIL_TILES_PER_SECOND = 1.6;
+/* A steam engine's plume, the longest of what a vehicle leaves behind, trails it for as long as smoke.vert has a puff rise. */
+static constexpr double PLUME_SECONDS = 11.0;
+/* A unit stands up to a glide of two tiles from where the game last put it, raised onto its ride and settled nose to tail along its path. */
+static constexpr double PLACING_SLACK_TILES = 3.0;
 /* The game keeps a stopped rotor's animation state at zero. */
 static constexpr uint8_t ROTOR_STOPPED = 0;
 
@@ -95,14 +101,51 @@ static double UnitTiles(const Vehicle *unit)
 	return unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(TILE_SIZE);
 }
 
-void FleetLayout::Lay(double clock)
+/* How near its top speed a vehicle runs. */
+static double PaceOf(const Vehicle *head)
 {
-	this->clock = clock;
+	return head->cur_speed / static_cast<double>(std::max<uint16_t>(head->vcache.cached_max_speed, 1));
+}
+
+/* Where the game put a unit at its last tick. */
+static Vec3 TickPoint(const Vehicle *unit)
+{
+	return RenderPoint({unit->x_pos / static_cast<double>(TILE_SIZE), unit->y_pos / static_cast<double>(TILE_SIZE), unit->z_pos / static_cast<double>(TILE_HEIGHT)});
+}
+
+/* The box about a vehicle's units, grown by how far they reach and by the trail it leaves, stretched down the sun's rays to the lowest ground its shadow may fall on, meets the view. */
+bool FleetLayout::MayShow(const SceneView &view, const Vehicle *head, double reach) const
+{
+	Vec3 low = TickPoint(head);
+	Vec3 high = low;
+	if (head->IsGroundVehicle()) {
+		for (const Vehicle *unit = head->Next(); unit != nullptr; unit = unit->Next()) {
+			Vec3 at = TickPoint(unit);
+			low = {std::min(low.x, at.x), std::min(low.y, at.y), std::min(low.z, at.z)};
+			high = {std::max(high.x, at.x), std::max(high.y, at.y), std::max(high.z, at.z)};
+		}
+	}
+	bool trails = head->type == VEH_TRAIN || head->type == VEH_SHIP;
+	double grown = reach + PLACING_SLACK_TILES + (trails ? PaceOf(head) * TRAIL_TILES_PER_SECOND * PLUME_SECONDS : 0.0);
+	low = low - Vec3{grown, grown, grown};
+	high = high + Vec3{grown, grown, grown};
+
+	double floor = -DEEPEST_SINK * LevelRise();
+	MapVector fall = ShadowFall();
+	double drop = high.z - floor;
+	low = {low.x + std::min(fall.x * drop, 0.0), low.y + std::min(fall.y * drop, 0.0), std::min(low.z, floor)};
+	high = {high.x + std::max(fall.x * drop, 0.0), high.y + std::max(fall.y * drop, 0.0), high.z};
+	return BoxMeets(view.frustum, low, high);
+}
+
+void FleetLayout::Lay(const SceneView &view, double reach)
+{
+	this->clock = view.clock;
 	this->units.clear();
 	this->wakes.clear();
 	this->funnels.clear();
 	for (const Vehicle *v : Vehicle::Iterate()) {
-		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle()) continue;
+		if (v->type > VEH_AIRCRAFT || !v->IsPrimaryVehicle() || !this->MayShow(view, v, reach)) continue;
 		switch (v->type) {
 			case VEH_SHIP: this->LayShip(v); break;
 			case VEH_AIRCRAFT: this->LayAircraft(v); break;
@@ -152,7 +195,7 @@ void FleetLayout::LayShip(const Vehicle *ship)
 	at.level += SWELL_LEVELS * std::sin(phase * 1.3);
 	double bearing = _vehicle_motion.Bearing(ship);
 	this->Add(ship, LookOf(ship), at, {bearing, SWELL_PITCH * std::sin(phase * 0.9), SWELL_ROLL * std::sin(phase * 0.7 + 1.0)}, 1.0);
-	double pace = ship->cur_speed / static_cast<double>(std::max<uint16_t>(ship->vcache.cached_max_speed, 1));
+	double pace = PaceOf(ship);
 	if (pace <= 0.0) return;
 	const PlacedUnit &hull = this->units.back();
 	this->wakes.push_back({hull.centre, {std::cos(bearing), std::sin(bearing)}, hull.half.x, hull.half.y, std::min(pace, 1.0)});
@@ -165,9 +208,7 @@ void FleetLayout::AddFunnel(const Vehicle *engine, double heading)
 	const VehicleInstance &instance = placed.instance;
 	Vec3 mouth = {STEAM_CHIMNEY_FOOT.x * instance.length, STEAM_CHIMNEY_FOOT.y, STEAM_CHIMNEY_FOOT.z + STEAM_CHIMNEY_HEIGHT};
 	Vec3 at = Vec3{instance.x, instance.y, instance.z} + Transformed(placed.turn, mouth);
-	const Vehicle *head = engine->First();
-	double pace = head->cur_speed / static_cast<double>(std::max<uint16_t>(head->vcache.cached_max_speed, 1));
-	Vec3 motion = Vec3{std::cos(heading), std::sin(heading), 0.0} * (pace * TRAIL_TILES_PER_SECOND);
+	Vec3 motion = Vec3{std::cos(heading), std::sin(heading), 0.0} * (PaceOf(engine->First()) * TRAIL_TILES_PER_SECOND);
 	this->funnels.push_back({at, STEAM_CHIMNEY_MOUTH, motion, Hash32(engine->index.base())});
 }
 

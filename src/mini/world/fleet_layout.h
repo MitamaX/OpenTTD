@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file fleet_layout.h Where every vehicle on the map stands this frame: units laid nose to tail along their path, ships riding the swell, aircraft banking. */
+/** @file fleet_layout.h Where every vehicle in view stands this frame: units laid nose to tail along their path, ships riding the swell, aircraft banking. */
 
 #ifndef MINI_WORLD_FLEET_LAYOUT_H
 #define MINI_WORLD_FLEET_LAYOUT_H
@@ -17,6 +17,7 @@
 
 #include "../../vehicle_type.h"
 #include "../core/camera.h"
+#include "scene_view.h"
 #include "smoke_vent.h"
 #include "vehicle_models.h"
 
@@ -58,8 +59,9 @@ class FleetLayout {
 public:
 	explicit FleetLayout(std::span<const VehicleBounds, VEHICLE_LOOKS> bounds) : bounds(bounds) {}
 
-	/* Reads the game's vehicles, so it runs only while the game's state holds still. */
-	void Lay(double clock);
+	/* Reads the game's vehicles, so it runs only while the game's state holds still. Only the vehicles the view may show, or show the shadows or trails of, are laid out;
+	 * the reach is how far a unit's model may stand out from where it is placed. */
+	void Lay(const SceneView &view, double reach);
 	std::span<const PlacedUnit> Units() const { return this->units; }
 	std::span<const ShipWake> Wakes() const { return this->wakes; }
 	std::span<const SmokeVent> Funnels() const { return this->funnels; }
@@ -71,6 +73,7 @@ private:
 		double length;
 	};
 
+	bool MayShow(const SceneView &view, const Vehicle *head, double reach) const;
 	void LayConsist(const Vehicle *head);
 	void LayShip(const Vehicle *ship);
 	void LayAircraft(const Vehicle *aircraft);

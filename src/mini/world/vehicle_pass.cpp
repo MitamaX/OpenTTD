@@ -39,6 +39,17 @@ static constexpr Growth GROUND_GROWTH = {1.0f, 1.8f};
 static constexpr Growth SHIP_GROWTH = {1.6f, 1.6f};
 static constexpr Growth AIRCRAFT_GROWTH = {2.0f, 2.0f};
 
+/* How far any model, grown its most, stands out from where its unit is placed. */
+static double FurthestReach(std::span<const VehicleBounds> bounds)
+{
+	double most_growth = std::max({GROUND_GROWTH.along, GROUND_GROWTH.across, SHIP_GROWTH.along, SHIP_GROWTH.across, AIRCRAFT_GROWTH.along, AIRCRAFT_GROWTH.across});
+	double furthest = 0.0;
+	for (const VehicleBounds &box : bounds) {
+		furthest = std::max(furthest, Length({std::max(-box.low.x, box.high.x), std::max(-box.low.y, box.high.y), std::max(-box.low.z, box.high.z)}));
+	}
+	return furthest * most_growth;
+}
+
 static Growth MostGrowthOf(VehicleLook look)
 {
 	if (look < VehicleLook::Ferry) return GROUND_GROWTH;
@@ -69,9 +80,10 @@ void VehiclePass::Prepare(const SceneView &view)
 	if (this->meshes.empty()) {
 		this->meshes = BuildVehicleModels();
 		this->bounds = MeasureVehicleModels(this->meshes);
+		this->reach = FurthestReach(this->bounds);
 	}
 	this->seen = view;
-	this->fleet.Lay(view.clock);
+	this->fleet.Lay(view, this->reach);
 }
 
 void VehiclePass::Cast(const ShadowView &view)
