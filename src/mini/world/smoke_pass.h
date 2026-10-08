@@ -55,10 +55,18 @@ public:
 	WorldStage Stage() const override { return WorldStage::Surface; }
 
 private:
-	void Add(const SceneView &view, std::span<const SmokeVent> vents);
+	/* A vent near enough for its smoke to show and how far it lies from the eye. */
+	struct Plume {
+		const SmokeVent *vent;
+		double distance;
+	};
+
+	void Gather(const SceneView &view, std::span<const SmokeVent> vents);
+	void Add(const SmokeVent &vent);
 
 	const StructurePass &structures;
 	const VehiclePass &vehicles;
+	std::vector<Plume> plumes;
 	std::vector<PuffInstance> puffs;
 	InstancedMeshes card;
 	InstanceBatch<PuffInstance> batch;

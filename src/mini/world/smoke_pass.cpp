@@ -60,19 +60,24 @@ std::vector<ShaderProgram *> SmokePass::Programs()
 	return {&this->program};
 }
 
-/* Each plume's puffs start evenly through their rise, the whole plume shifted by its vent's seed. */
-void SmokePass::Add(const SceneView &view, std::span<const SmokeVent> vents)
+void SmokePass::Gather(const SceneView &view, std::span<const SmokeVent> vents)
 {
 	for (const SmokeVent &vent : vents) {
-		if (view.TilePixelsAt(Length(view.eye - vent.at)) < PLUME_PIXELS) continue;
-		float offset = SeedShare(vent.seed, 0, SeedDice::SHARE_BITS);
-		for (int puff = 0; puff < PUFFS_PER_PLUME; puff++) {
-			this->puffs.push_back({
-				static_cast<float>(vent.at.x), static_cast<float>(vent.at.y), static_cast<float>(vent.at.z), static_cast<float>(vent.radius),
-				(puff + offset) / PUFFS_PER_PLUME, static_cast<float>(vent.motion.x), static_cast<float>(vent.motion.y),
-				SeedShare(SubSeed(vent.seed, puff), 0, SeedDice::SHARE_BITS),
-			});
-		}
+		double distance = Length(view.eye - vent.at);
+		if (view.TilePixelsAt(distance) >= PLUME_PIXELS) this->plumes.push_back({&vent, distance});
+	}
+}
+
+/* Each plume's puffs start evenly through their rise, the whole plume shifted by its vent's seed. */
+void SmokePass::Add(const SmokeVent &vent)
+{
+	float offset = SeedShare(vent.seed, 0, SeedDice::SHARE_BITS);
+	for (int puff = 0; puff < PUFFS_PER_PLUME; puff++) {
+		this->puffs.push_back({
+			static_cast<float>(vent.at.x), static_cast<float>(vent.at.y), static_cast<float>(vent.at.z), static_cast<float>(vent.radius),
+			(puff + offset) / PUFFS_PER_PLUME, static_cast<float>(vent.motion.x), static_cast<float>(vent.motion.y),
+			SeedShare(SubSeed(vent.seed, puff), 0, SeedDice::SHARE_BITS),
+		});
 	}
 }
 
@@ -80,13 +85,14 @@ void SmokePass::Add(const SceneView &view, std::span<const SmokeVent> vents)
 void SmokePass::Draw(const SceneView &view)
 {
 	if (!this->program.Ready()) return;
-	this->puffs.clear();
-	for (const StructureChunk *chunk : this->structures.Shown()) this->Add(view, chunk->vents);
-	this->Add(view, this->vehicles.Funnels());
-	if (this->puffs.empty()) return;
+	this->plumes.clear();
+	for (const StructureChunk *chunk : this->structures.Shown()) this->Gather(view, chunk->vents);
+	this->Gather(view, this->vehicles.Funnels());
+	if (this->plumes.empty()) return;
 
-	auto distance = [&](const PuffInstance &puff) { return Length(view.eye - Vec3{puff.x, puff.y, puff.z}); };
-	std::ranges::sort(this->puffs, std::greater{}, distance);
+	std::ranges::sort(this->plumes, std::greater{}, &Plume::distance);
+	this->puffs.clear();
+	for (const Plume &plume : this->plumes) this->Add(*plume.vent);
 	this->batch.Clear(1);
 	this->batch.Add(0, this->puffs);
 	if (!this->card.Ready()) {
