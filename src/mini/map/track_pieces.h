@@ -118,6 +118,6 @@ std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rati
 }
 
 std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, TrackBits among = TRACK_BIT_ALL);
-std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point);
+std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point, TrackBits among = TRACK_BIT_ALL);
 
 #endif /* MINI_MAP_TRACK_PIECES_H */

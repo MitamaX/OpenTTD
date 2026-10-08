@@ -54,7 +54,7 @@ std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, co
 	return BestPieceAt(tile, joint, [&](const Piece &piece) { return Dot(Unit(piece.Other(joint).Point() - joint.Point()), heading); }, among);
 }
 
-std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point)
+std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point, TrackBits among)
 {
-	return BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> { return -SegmentDistance(point, piece.from.Point(), piece.to.Point()); });
+	return BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> { return -SegmentDistance(point, piece.from.Point(), piece.to.Point()); }, among);
 }

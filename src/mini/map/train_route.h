@@ -18,10 +18,13 @@
 #include "../../track_type.h"
 #include "../core/camera.h"
 
+/* Which of a tile's pieces of track a train is known to take. */
+using TrackTaken = std::function<TrackBits(TileIndex tile)>;
+
 /* A train's way over the game's map from one point to another a few tile sides on, through the middles of the tile sides its track crosses, or straight where none leads there. */
 class TrackRoute {
 public:
-	TrackRoute(const MapVector &from, const MapVector &to);
+	TrackRoute(const MapVector &from, const MapVector &to, const TrackTaken &taken);
 
 	/* The middles of the tile sides crossed, in order. */
 	std::span<const MapVector> Sides() const;
@@ -31,14 +34,12 @@ public:
 private:
 	static constexpr size_t MOST_SIDES = 4;
 
-	bool Cross(const MapVector &from, const MapVector &to);
+	bool Cross(const MapVector &from, const MapVector &to, const TrackTaken &taken);
 
 	std::array<MapVector, MOST_SIDES + 2> points{};
 	size_t count = 0;
 };
 
-/* Which of a tile's pieces of track a train is known to take. */
-using TrackTaken = std::function<TrackBits(TileIndex tile)>;
 /* Where a train's path over the game's map runs to a reach on from a point the way it heads, along the game's pieces of track. */
 MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken);
 

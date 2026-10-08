@@ -14,6 +14,7 @@
 
 #include "../core/camera.h"
 #include "../core/tick_clock.h"
+#include "train_route.h"
 
 struct Vehicle;
 
@@ -58,5 +59,7 @@ private:
 };
 
 extern VehicleMotion _vehicle_motion;
+
+TrackTaken TakenBy(const Vehicle *v);
 
 #endif /* MINI_MAP_VEHICLE_MOTION_H */

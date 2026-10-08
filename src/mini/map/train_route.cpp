@@ -18,18 +18,32 @@
 
 #include "../../safeguards.h"
 
-/* A train runs on into a tile along the straightest piece it is known to take there, or else along the straightest of all. */
+/* A train takes in a tile the piece picked from among those it is known to take there, or else from among all. */
+template <typename Pick>
+static auto Taking(const TileCoord &tile, const TrackTaken &taken, Pick pick)
+{
+	using Picked = decltype(pick(TRACK_BIT_ALL));
+	if (!OnMap(tile.first, tile.second)) return Picked{};
+	Picked known = pick(taken(TileXY(tile.first, tile.second)));
+	return known.has_value() ? known : pick(TRACK_BIT_ALL);
+}
+
+/* A train stands on the nearest piece under a point. */
+static std::optional<Track> StandingOn(const TileCoord &tile, const MapVector &point, const TrackTaken &taken)
+{
+	return Taking(tile, taken, [&](TrackBits among) { return TrackUnder(tile, point, among); });
+}
+
+/* A train runs on into a tile along the straightest piece. */
 static std::optional<Piece> OnwardAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, const TrackTaken &taken)
 {
-	if (!OnMap(tile.first, tile.second)) return std::nullopt;
-	std::optional<Piece> known = StraightestAt(tile, joint, heading, taken(TileXY(tile.first, tile.second)));
-	return known.has_value() ? known : StraightestAt(tile, joint, heading);
+	return Taking(tile, taken, [&](TrackBits among) { return StraightestAt(tile, joint, heading, among); });
 }
 
 MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken)
 {
 	TileCoord tile = TileOf(from);
-	std::optional<Track> under = TrackUnder(tile, from);
+	std::optional<Track> under = StandingOn(tile, from, taken);
 	if (!under.has_value()) return from + heading * reach;
 
 	Piece piece = PieceOf(tile.first, tile.second, *under);
@@ -50,20 +64,20 @@ MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, con
 	return at + heading * reach;
 }
 
-TrackRoute::TrackRoute(const MapVector &from, const MapVector &to)
+TrackRoute::TrackRoute(const MapVector &from, const MapVector &to, const TrackTaken &taken)
 {
 	this->points[this->count++] = from;
-	if (!this->Cross(from, to)) this->count = 1;
+	if (!this->Cross(from, to, taken)) this->count = 1;
 	this->points[this->count++] = to;
 }
 
 /* From the piece a train starts on it leaves by the end nearer where it is bound, and on through each tile by the piece leading nearest there. */
-bool TrackRoute::Cross(const MapVector &from, const MapVector &to)
+bool TrackRoute::Cross(const MapVector &from, const MapVector &to, const TrackTaken &taken)
 {
 	TileCoord tile = TileOf(from);
 	TileCoord bound = TileOf(to);
 	if (tile == bound) return true;
-	std::optional<Track> under = TrackUnder(tile, from);
+	std::optional<Track> under = StandingOn(tile, from, taken);
 	if (!under.has_value()) return false;
 
 	auto nearness = [&to](const Joint &joint) { return -Length(to - joint.Point()); };

@@ -73,13 +73,15 @@ static bool TurnedAbout(const Vehicle *v)
 }
 
 /* The pieces of a tile's track a train's units stand on, and any the game has reserved there for a train's way ahead. */
-static TrackBits TrackTakenBy(const Vehicle *v, TileIndex tile)
+TrackTaken TakenBy(const Vehicle *v)
 {
-	TrackBits taken = GetReservedTrackbits(tile);
-	for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
-		if (unit->tile == tile) taken |= unit->track & TRACK_BIT_MASK;
-	}
-	return taken;
+	return [v](TileIndex tile) {
+		TrackBits taken = GetReservedTrackbits(tile);
+		for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
+			if (unit->tile == tile) taken |= unit->track & TRACK_BIT_MASK;
+		}
+		return taken;
+	};
 }
 
 static WorldPoint InTiles(const TickTrail::Spot &spot)
@@ -124,7 +126,7 @@ WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 	WorldPoint from = InTiles(bracket.from);
 	WorldPoint to = InTiles(bracket.to);
 	if (!FollowsTrack(v)) return Between(from, to, bracket.share);
-	MapVector at = TrackRoute(Flat(from), Flat(to)).At(bracket.share);
+	MapVector at = TrackRoute(Flat(from), Flat(to), TakenBy(v)).At(bracket.share);
 	return {at.x, at.y, std::lerp(from.level, to.level, bracket.share)};
 }
 
@@ -140,7 +142,7 @@ WorldPoint VehicleMotion::Onward(const Vehicle *v, const WorldPoint &from, doubl
 		return {from.x + std::cos(bearing) * reach, from.y + std::sin(bearing) * reach, from.level};
 	}
 	MapVector facing = FacingOf(v->direction);
-	MapVector at = TrainAhead(Flat(from), reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), [v](TileIndex tile) { return TrackTakenBy(v, tile); });
+	MapVector at = TrainAhead(Flat(from), reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), TakenBy(v));
 	return {at.x, at.y, from.level};
 }
 
