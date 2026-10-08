@@ -27,6 +27,9 @@
 #include "../../safeguards.h"
 
 static constexpr double ROWS_PER_TILE = 4.0;
+/* A piece's line turns no further than this from one row of its faces to the next, in radians, so its bends read as curves. */
+static constexpr double ROW_TURN_LIMIT = 0.08;
+static constexpr int TURN_SAMPLES = 8;
 static constexpr double MAGLEV_HOVER = 0.024;
 static constexpr double LIFT_STEP = 0.0012;
 static constexpr double BALLAST_VARIETY = 0.08;
@@ -171,7 +174,26 @@ private:
 		return {site.tx, site.ty, origin + from, origin + to, Bend(origin + from, origin + to, along, along), std::nullopt, false, false};
 	}
 
-	int Rows() const { return std::max(1, static_cast<int>(std::lround(this->Line().Span() * ROWS_PER_TILE))); }
+	/* How far the line turns along the piece, turns either way both counted. */
+	double Turn() const
+	{
+		const WayLine &line = this->Line();
+		double turn = 0.0;
+		MapVector previous = line.Along(0.0);
+		for (int sample = 1; sample <= TURN_SAMPLES; sample++) {
+			MapVector next = line.Along(static_cast<double>(sample) / TURN_SAMPLES);
+			turn += std::acos(std::clamp(Dot(previous, next), -1.0, 1.0));
+			previous = next;
+		}
+		return turn;
+	}
+
+	int Rows() const
+	{
+		int along = static_cast<int>(std::lround(this->Line().Span() * ROWS_PER_TILE));
+		int turning = static_cast<int>(std::ceil(this->Turn() / ROW_TURN_LIMIT));
+		return std::max({1, along, turning});
+	}
 
 	const TrackSite &site;
 	Track track;
