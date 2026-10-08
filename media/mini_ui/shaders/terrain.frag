@@ -131,7 +131,7 @@ const float LOCAL_PER_TILE = 1.3;
 const float RELIEF_DEPTH = 0.035;
 const float STONY_HOLLOWS = 1.0;
 
-const vec2 GRASS_RUGGED = vec2(0.6, 0.0);
+const vec2 GRASS_RUGGED = vec2(0.45, 0.0);
 const vec2 ROUGH_RUGGED = vec2(0.7, 0.25);
 const vec2 SCREE_RUGGED = vec2(0.6, 1.0);
 const vec2 ROCK_RUGGED = vec2(1.0, 0.15);
@@ -486,7 +486,7 @@ vec3 Grass(Ground ground, Grain grain, float lush)
 {
 	vec3 green = GrassTone(grain.broad, lush);
 	vec3 straw = green * STRAW_TINT;
-	float shade = Varied(grain.local, 0.16) * Varied(grain.clump, 0.4) * Varied(grain.fine, 0.35) * Varied(grain.micro, 0.7);
+	float shade = Varied(grain.local, 0.3) * Varied(grain.clump, 0.35) * Varied(grain.fine, 0.25) * Varied(grain.micro, 0.45);
 	float strawed = mix(STRAW_MEAN, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro), Resolved(STRAW_PATCHES_PER_TILE));
 	vec3 blades = mix(green, straw, strawed) * shade;
 	vec3 soil = Soil() * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
