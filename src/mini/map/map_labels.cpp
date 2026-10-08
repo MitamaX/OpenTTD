@@ -55,6 +55,7 @@ static constexpr double OPACITY_STEP = 0.2;
 static constexpr double CLICKABLE_OPACITY = 0.5;
 static constexpr double HIDDEN_OPACITY = 0.01;
 static constexpr double OCCLUSION_MARGIN = 0.5;
+static constexpr uint LABEL_SLICES = 16;
 
 MapLabels _map_labels;
 
@@ -91,32 +92,69 @@ static bool Overlaps(const Rect &area, const std::vector<Rect> &taken)
 	});
 }
 
-std::vector<MapLabels::Label> MapLabels::Gather() const
+static uint SliceOf(LabelTarget target)
 {
-	std::vector<Label> labels;
+	return std::visit([](auto id) { return static_cast<uint>(id.base() % LABEL_SLICES); }, target);
+}
+
+static int TextWidth(const std::string &text)
+{
+	return static_cast<int>(GetStringBoundingBox(text).width);
+}
+
+struct LabelExists {
+	bool operator()(SignID sign) const { return Sign::IsValidID(sign); }
+	bool operator()(StationID station) const { return Station::IsValidID(station); }
+	bool operator()(IndustryID industry) const { return Industry::IsValidID(industry); }
+	bool operator()(TownID town) const { return Town::IsValidID(town); }
+};
+
+void MapLabels::Gather(std::optional<uint> slice)
+{
+	auto wanted = [slice](LabelTarget target) { return !slice.has_value() || SliceOf(target) == *slice; };
 	for (const Sign *si : Sign::Iterate()) {
-		if (si->name.empty()) continue;
+		if (si->name.empty() || !wanted(si->index)) continue;
 		WorldPoint anchor = {si->x / (double)TILE_SIZE, si->y / (double)TILE_SIZE, si->z / (double)TILE_HEIGHT + SIGN_LIFT_LEVELS};
-		labels.push_back({anchor, si->name, COL_ST_BUOY, false, si->index, 0.0, SIGN_SHOWN_UNTIL_PIXELS, {LabelBand::Sign, DistanceTo(anchor)}});
+		this->labels.push_back({anchor, si->name, TextWidth(si->name), COL_ST_BUOY, false, si->index, 0.0, SIGN_SHOWN_UNTIL_PIXELS, LabelBand::Sign, 0});
 	}
 	for (const Town *t : Town::Iterate()) {
+		if (!wanted(t->index)) continue;
 		std::string text = GetString(t->larger_town ? STR_VIEWPORT_TOWN_CITY_POP : STR_VIEWPORT_TOWN_POP, t->index, t->cache.population);
+		int width = TextWidth(text);
 		double shown_from = t->larger_town ? CITY_SHOWN_FROM_PIXELS : TOWN_SHOWN_FROM_PIXELS;
-		labels.push_back({LiftedOver(t->xy, TOWN_LIFT_LEVELS), std::move(text), MINI_CH_PANEL, true, t->index, shown_from, TOWN_SHOWN_UNTIL_PIXELS, {LabelBand::Town, -static_cast<double>(t->cache.population)}});
+		this->labels.push_back({LiftedOver(t->xy, TOWN_LIFT_LEVELS), std::move(text), width, MINI_CH_PANEL, true, t->index, shown_from, TOWN_SHOWN_UNTIL_PIXELS, LabelBand::Town, t->cache.population});
 	}
 	for (const Station *st : Station::Iterate()) {
-		WorldPoint anchor = LiftedOver(st->xy, PLACE_LIFT_LEVELS);
+		if (!wanted(st->index)) continue;
 		uint32_t plate = (st->owner == OWNER_NONE || !st->IsInUse()) ? COL_OBJ : _company_rgb[_company_colours[st->owner]];
-		labels.push_back({anchor, GetString(STR_VIEWPORT_STATION, st->index, st->facilities), plate, false, st->index, STATION_SHOWN_FROM_PIXELS, PLACE_SHOWN_UNTIL_PIXELS, {LabelBand::Station, DistanceTo(anchor)}});
+		std::string text = GetString(STR_VIEWPORT_STATION, st->index, st->facilities);
+		int width = TextWidth(text);
+		this->labels.push_back({LiftedOver(st->xy, PLACE_LIFT_LEVELS), std::move(text), width, plate, false, st->index, STATION_SHOWN_FROM_PIXELS, PLACE_SHOWN_UNTIL_PIXELS, LabelBand::Station, 0});
 	}
 	/* Oil rigs already carry the plate of their neutral station. */
 	for (const Industry *ind : Industry::Iterate()) {
-		if (ind->neutral_station != nullptr) continue;
-		WorldPoint anchor = LiftedOver(ind->location.GetCenterTile(), PLACE_LIFT_LEVELS);
-		labels.push_back({anchor, GetString(STR_INDUSTRY_NAME, ind->index), COL_IND, false, ind->index, INDUSTRY_SHOWN_FROM_PIXELS, PLACE_SHOWN_UNTIL_PIXELS, {LabelBand::Industry, DistanceTo(anchor)}});
+		if (ind->neutral_station != nullptr || !wanted(ind->index)) continue;
+		std::string text = GetString(STR_INDUSTRY_NAME, ind->index);
+		int width = TextWidth(text);
+		this->labels.push_back({LiftedOver(ind->location.GetCenterTile(), PLACE_LIFT_LEVELS), std::move(text), width, COL_IND, false, ind->index, INDUSTRY_SHOWN_FROM_PIXELS, PLACE_SHOWN_UNTIL_PIXELS, LabelBand::Industry, 0});
 	}
-	std::ranges::sort(labels, {}, &Label::rank);
-	return labels;
+}
+
+void MapLabels::Regather()
+{
+	if (this->labels.empty()) {
+		this->Gather(std::nullopt);
+		return;
+	}
+	uint slice = this->next_slice;
+	this->next_slice = (slice + 1) % LABEL_SLICES;
+	std::erase_if(this->labels, [slice](const Label &label) { return SliceOf(label.target) == slice; });
+	this->Gather(slice);
+}
+
+void MapLabels::Clear()
+{
+	this->labels.clear();
 }
 
 /* Plates shrink with distance, so the far ones crowd less. */
@@ -133,15 +171,28 @@ static int Scaled(int length, double scale)
 /* The plate stands centred over its anchor; nothing when the anchor is off screen. */
 std::optional<Rect> MapLabels::Area(const Label &label, double scale) const
 {
-	const CanvasText *text = _canvas.Text(label.text);
-	int text_width = text != nullptr ? text->w : static_cast<int>(GetStringBoundingBox(label.text).width);
 	int pad = Scaled(PLATE_PAD, scale);
-	int w = Scaled(text_width, scale) + 2 * pad;
+	int w = Scaled(label.text_width, scale) + 2 * pad;
 	int h = Scaled(GetCharacterHeight(FS_NORMAL), scale) + 2 * pad;
 	Point at = _camera.ScreenOf(label.anchor);
 	Rect area = {at.x - w / 2, at.y - h - PLATE_GAP, at.x - w / 2 + w - 1, at.y - PLATE_GAP - 1};
 	if (area.right < 0 || area.bottom < 0 || area.left >= _camera.Width() || area.top >= _camera.Height()) return std::nullopt;
 	return area;
+}
+
+std::vector<MapLabels::Placed> MapLabels::Place() const
+{
+	std::vector<Placed> placed;
+	for (const Label &label : this->labels) {
+		double distance = DistanceTo(label.anchor);
+		double pixels = _camera.Focal() / std::max(distance, _camera.Near());
+		double scale = PlateScale(pixels);
+		std::optional<Rect> area = this->Area(label, scale);
+		if (!area.has_value()) continue;
+		placed.push_back({&label, *area, pixels, scale, {label.band, label.band == LabelBand::Town ? -static_cast<double>(label.population) : distance}});
+	}
+	std::ranges::sort(placed, {}, &Placed::rank);
+	return placed;
 }
 
 /* A plate is wanted where its anchor is near enough, though not so near that its place shows for itself, in sight and clear of every plate ranked above it;
@@ -150,19 +201,15 @@ void MapLabels::Paint()
 {
 	this->plates.clear();
 	if (_frame_capture.HidesLabels()) return;
+	this->Regather();
 	std::vector<Rect> taken;
 	std::vector<Shown> drawn;
 	std::map<LabelTarget, double> eased;
-	std::vector<Label> labels = this->Gather();
-	for (const Label &label : labels) {
-		double pixels = _camera.Focal() / std::max(DistanceTo(label.anchor), _camera.Near());
-		double scale = PlateScale(pixels);
-		std::optional<Rect> area = this->Area(label, scale);
-		if (!area.has_value()) continue;
-
-		bool near_enough = pixels >= label.shown_from_pixels && pixels < label.shown_until_pixels;
-		bool wanted = near_enough && !Overlaps(*area, taken) && !HiddenByGround(label.anchor);
-		if (wanted) taken.push_back(*area);
+	for (const Placed &placed : this->Place()) {
+		const Label &label = *placed.label;
+		bool near_enough = placed.pixels >= label.shown_from_pixels && placed.pixels < label.shown_until_pixels;
+		bool wanted = near_enough && !Overlaps(placed.area, taken) && !HiddenByGround(label.anchor);
+		if (wanted) taken.push_back(placed.area);
 
 		auto previous = this->opacities.find(label.target);
 		double from = previous != this->opacities.end() ? previous->second : 0.0;
@@ -170,8 +217,8 @@ void MapLabels::Paint()
 		if (opacity <= HIDDEN_OPACITY) continue;
 
 		eased[label.target] = opacity;
-		drawn.push_back({&label, *area, scale, opacity});
-		if (opacity >= CLICKABLE_OPACITY) this->plates.push_back({*area, label.target});
+		drawn.push_back({&label, placed.area, placed.scale, opacity});
+		if (opacity >= CLICKABLE_OPACITY) this->plates.push_back({placed.area, label.target});
 	}
 	this->opacities = std::move(eased);
 	for (auto it = drawn.rbegin(); it != drawn.rend(); ++it) this->Draw(*it);
@@ -181,7 +228,7 @@ std::optional<LabelTarget> MapLabels::HitAt(int x, int y) const
 {
 	const Plate *hit = nullptr;
 	for (const Plate &plate : this->plates) {
-		if (!plate.area.Contains({x, y})) continue;
+		if (!plate.area.Contains({x, y}) || !std::visit(LabelExists{}, plate.target)) continue;
 		if (hit == nullptr || plate.target.index() < hit->target.index()) hit = &plate;
 	}
 	if (hit == nullptr) return std::nullopt;

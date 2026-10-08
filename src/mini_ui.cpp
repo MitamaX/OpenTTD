@@ -561,6 +561,7 @@ static void Deactivate()
 	_tool.Abort();
 	_camera.Halt();
 	_vehicle_motion.Clear();
+	_map_labels.Clear();
 	MarkWholeScreenDirty();
 }
 
@@ -571,6 +572,7 @@ void MiniUiResetGameState()
 	_mode.Idle();
 	_tool.Abort();
 	_vehicle_motion.Clear();
+	_map_labels.Clear();
 	_status_board.Clear();
 	ClearFleetDrafts();
 	_deploy.Reset();

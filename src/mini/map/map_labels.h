@@ -33,6 +33,7 @@ using LabelTarget = std::variant<SignID, StationID, IndustryID, TownID>;
 class MapLabels {
 public:
 	void Paint();
+	void Clear();
 	std::optional<LabelTarget> HitAt(int x, int y) const;
 
 private:
@@ -51,11 +52,21 @@ private:
 	struct Label {
 		WorldPoint anchor;
 		std::string text;
+		int text_width;
 		uint32_t fill;
 		bool transparent;
 		LabelTarget target;
 		double shown_from_pixels;
 		double shown_until_pixels;
+		LabelBand band;
+		uint32_t population;
+	};
+
+	struct Placed {
+		const Label *label;
+		Rect area;
+		double pixels;
+		double scale;
 		LabelRank rank;
 	};
 
@@ -72,10 +83,14 @@ private:
 		LabelTarget target;
 	};
 
-	std::vector<Label> Gather() const;
+	void Gather(std::optional<uint> slice);
+	void Regather();
+	std::vector<Placed> Place() const;
 	std::optional<Rect> Area(const Label &label, double scale) const;
 	void Draw(const Shown &shown);
 
+	std::vector<Label> labels;
+	uint next_slice = 0;
 	std::map<LabelTarget, double> opacities;
 	std::vector<Plate> plates;
 };
