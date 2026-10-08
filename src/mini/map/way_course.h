@@ -96,7 +96,7 @@ private:
 };
 
 /* A rail piece as it is drawn: along its course's eased line where it eases, or else along the game's straight piece leaning at either end halfway toward
- * the track beyond, so pieces meet without a seam; and whether either end stands open, no track carrying on beyond it at its level. */
+ * the track beyond, or wholly where it branches off at a junction, so pieces meet without a seam; and whether either end stands open, no track carrying on beyond it at its level. */
 struct DrawnTrack {
 	int tx;
 	int ty;

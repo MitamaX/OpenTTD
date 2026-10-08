@@ -607,22 +607,31 @@ bool WayCourse::Raised() const
 }
 
 /* How a rail piece's end meets the track beyond: the way that track runs there, along the piece, where one piece alone carries it on at the piece's level;
- * and whether none does. The track beyond runs on along an eased course as that course heads, or else along its own piece. */
+ * whether none does; and whether the piece is a branch of a junction, one of several of its tile's meeting there.
+ * The track beyond runs on along an eased course as that course heads, or else along its own piece. */
 struct PieceEnd {
 	std::optional<MapVector> run;
 	bool open;
+	bool branch;
 };
+
+static int PiecesMeeting(int tx, int ty, const Joint &joint)
+{
+	int meeting = 0;
+	for (Track track : SetTrackBitIterator(TrackBitsOf(tx, ty))) meeting += PieceOf(tx, ty, track).Meets(joint) ? 1 : 0;
+	return meeting;
+}
 
 static PieceEnd PieceEndAt(int tx, int ty, const MapVector &joint, const MapVector &outward)
 {
 	MapVector probe = joint + outward * HALF_TILE;
 	int nx = static_cast<int>(std::floor(probe.x));
 	int ny = static_cast<int>(std::floor(probe.y));
-	if (!OnMap(nx, ny) || TileGround(tx, ty).Level(joint.x, joint.y) != TileGround(nx, ny).Level(joint.x, joint.y)) return {std::nullopt, true};
+	if (!OnMap(nx, ny) || TileGround(tx, ty).Level(joint.x, joint.y) != TileGround(nx, ny).Level(joint.x, joint.y)) return {std::nullopt, true, false};
 
-	PieceEnd end{std::nullopt, true};
-	int partners = 0;
 	Joint at = Joint::At(joint);
+	PieceEnd end{std::nullopt, true, PiecesMeeting(tx, ty, at) > 1};
+	int partners = 0;
 	for (Track track : SetTrackBitIterator(TrackBitsOf(nx, ny))) {
 		Piece piece = PieceOf(nx, ny, track);
 		if (!piece.Meets(at)) continue;
@@ -636,11 +645,13 @@ static PieceEnd PieceEndAt(int tx, int ty, const MapVector &joint, const MapVect
 }
 
 /* A piece off any course leans at an end halfway toward the way the track runs on beyond, which leans as far toward it, so the two meet on one heading;
- * the track beyond the first end runs on away from the piece, so it is turned about to lean along it. */
+ * a branch of a junction leaves along the way the track beyond runs, as that track keeps its heading toward the branches, so every branch meets it on one heading.
+ * The track beyond the first end runs on away from the piece, so it is turned about to lean along it. */
 static MapVector Leaning(const MapVector &own, const PieceEnd &end, bool first)
 {
 	if (!end.run.has_value()) return own;
-	return Unit(own + *end.run * (first ? -1.0 : 1.0));
+	MapVector beyond = *end.run * (first ? -1.0 : 1.0);
+	return end.branch ? beyond : Unit(own + beyond);
 }
 
 DrawnTrack DrawnTrack::Build(int tx, int ty, Track track)
