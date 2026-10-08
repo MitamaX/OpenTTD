@@ -10,6 +10,7 @@
 #ifndef MINI_HUD_COLONY_PANEL_H
 #define MINI_HUD_COLONY_PANEL_H
 
+#include "../core/beat.h"
 #include "../ui/hud_part.h"
 
 struct Company;
@@ -36,7 +37,7 @@ public:
 private:
 	void Bind(Rml::DataModelConstructor &model) override;
 	void Collect() override;
-	void CollectFunds(const Company &company);
+	void CollectFunds(const Company *company);
 	void CollectGauge();
 	void CollectSpeeds();
 	void HoldWidth();
@@ -51,6 +52,7 @@ private:
 	Rml::Vector<GaugeSegment> gauge;
 	Rml::Vector<SpeedButton> speeds;
 	float held_width = 0.0f;
+	Beat funds_beat;
 };
 
 #endif /* MINI_HUD_COLONY_PANEL_H */

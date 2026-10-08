@@ -42,8 +42,9 @@ static constexpr double DAYS_PER_MONTH = 31.0;
 static constexpr double MONTHS_PER_YEAR = 12.0;
 static constexpr uint16_t NORMAL_GAME_SPEED = 100;
 static constexpr float WIDTH_STEP_DP = 8.0f;
+static constexpr std::chrono::milliseconds FUNDS_INTERVAL{250};
 
-ColonyPanel::ColonyPanel() : HudPart("colony")
+ColonyPanel::ColonyPanel() : HudPart("colony"), funds_beat(FUNDS_INTERVAL)
 {
 	for (int i = 0; i < GAUGE_SEGMENTS; i++) {
 		this->gauge.push_back({fmt::format("rotate({:.2f}deg)", DEGREES_PER_TURN * (i + 0.5) / GAUGE_SEGMENTS)});
@@ -81,11 +82,7 @@ void ColonyPanel::Collect()
 	const Company *company = Company::GetIfValid(_local_company);
 	this->name = company != nullptr ? GameText(STR_COMPANY_NAME, company->index) : Rml::String();
 	this->date = GameText(STR_JUST_DATE_LONG, TimerGameCalendar::date);
-	this->money.clear();
-	this->vehicles.clear();
-	this->warning.clear();
-	this->funds_tone = ToneName(Tone::Plain);
-	if (company != nullptr) this->CollectFunds(*company);
+	if (this->funds_beat.Due()) this->CollectFunds(company);
 
 	this->CollectGauge();
 	this->CollectSpeeds();
@@ -94,15 +91,21 @@ void ColonyPanel::Collect()
 
 /* Running out of money ends the game, so the panel says so rather than
  * leaving the balance to be read as just another number. */
-void ColonyPanel::CollectFunds(const Company &company)
+void ColonyPanel::CollectFunds(const Company *company)
 {
-	uint count = 0;
-	for (int t = 0; t < VEH_COMPANY_END; t++) count += company.group_all[t].num_vehicle;
+	this->money.clear();
+	this->vehicles.clear();
+	this->warning.clear();
+	this->funds_tone = ToneName(Tone::Plain);
+	if (company == nullptr) return;
 
-	this->money = GameText(STR_JUST_CURRENCY_LONG, company.money);
+	uint count = 0;
+	for (int t = 0; t < VEH_COMPANY_END; t++) count += company->group_all[t].num_vehicle;
+
+	this->money = GameText(STR_JUST_CURRENCY_LONG, company->money);
 	this->vehicles = fmt::format("VEH {}", count);
-	if (company.months_of_bankruptcy > 0) this->warning = fmt::format("경고 {}", company.months_of_bankruptcy);
-	this->funds_tone = ToneName(company.money < 0 ? Tone::Loss : (company.months_of_bankruptcy > 0 ? Tone::Warn : Tone::Plain));
+	if (company->months_of_bankruptcy > 0) this->warning = fmt::format("경고 {}", company->months_of_bankruptcy);
+	this->funds_tone = ToneName(company->money < 0 ? Tone::Loss : (company->months_of_bankruptcy > 0 ? Tone::Warn : Tone::Plain));
 }
 
 /* The ring fills clockwise from the top as the calendar year runs. */
