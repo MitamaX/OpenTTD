@@ -216,6 +216,7 @@ public:
 
 protected:
 	const uint ALLOWED_DRIFT = 5; ///< How many times videodriver can miss deadlines without it being overly compensated.
+	const uint UNWAITED_VSYNC_HEADROOM = 2; ///< How many times faster than the refresh rate setting the mini UI may draw when the driver does not wait on the display's refresh it presents on.
 
 	bool presents_on_vsync = false; ///< Whether presenting a frame waits for the display's refresh.
 
@@ -331,9 +332,10 @@ protected:
 	{
 		TicToc::Tick("DrawTick");
 
+		auto interval = std::chrono::microseconds(1000000 / _settings_client.gui.refresh_rate);
 		/* If vsync, draw interval is decided by the display driver */
-		if (this->presents_on_vsync) return std::chrono::microseconds(0);
-		return std::chrono::microseconds(1000000 / _settings_client.gui.refresh_rate);
+		if (this->presents_on_vsync) return _video_vsync ? std::chrono::microseconds(0) : interval / UNWAITED_VSYNC_HEADROOM;
+		return interval;
 	}
 
 	/** Execute all queued commands. */
