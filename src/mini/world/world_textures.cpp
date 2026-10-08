@@ -20,14 +20,12 @@
 
 #include "../../safeguards.h"
 
-static_assert(static_cast<uint>(WorldTextures::UNIT_COUNT) <= static_cast<uint>(SHADOW_UNIT));
-
 static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_shore", "u_flow"};
 /* Two spans go up as one where the area bounding both is at most this many times what they cover, or at most this many texels. */
 static constexpr int64_t MOST_JOINED_SPREAD = 2;
 static constexpr int64_t FREELY_JOINED_TEXELS = 128 * 128;
 /* The kinds of change that move where water lies. */
-static constexpr std::array<ChangeKind, 2> WATER_MOVES = {ChangeKind::Water, ChangeKind::Shape};
+static constexpr ChangeKinds WATER_MOVES = {ChangeKind::Water, ChangeKind::Shape};
 
 static int64_t Area(const Rect &span)
 {
@@ -96,36 +94,34 @@ void WorldTextures::Sync(const WorldChanges &changes)
 			for (ChangeKind kind : source.kinds) std::ranges::copy(changes.Of(kind), std::back_inserter(this->spans));
 			this->SendSpans(unit, source.texels);
 		}
-		if (std::ranges::any_of(WATER_MOVES, [&changes](ChangeKind kind) { return changes.Has(kind); })) {
-			this->ResurveyShore(changes);
-			this->ResurveyFlow(changes);
+		std::vector<Rect> water_moves;
+		for (ChangeKind kind : WATER_MOVES) std::ranges::copy(changes.Of(kind), std::back_inserter(water_moves));
+		if (!water_moves.empty()) {
+			this->ResurveyShore(water_moves);
+			this->ResurveyFlow(water_moves);
 		}
 	}
 	if (std::optional<Rect> bent = _way_bends.TakeUpdate(); bent.has_value()) this->textures[BENDS_UNIT].Update(*bent, _way_bends.Texels());
 }
 
 /* The shore's distances move only out to the shelf's edge about a tile whose water or shape changed, so only there are they measured again and sent up. */
-void WorldTextures::ResurveyShore(const WorldChanges &changes)
+void WorldTextures::ResurveyShore(std::span<const Rect> water_moves)
 {
 	ProfileScope profile("build", "shore", ProfileClock::Cpu);
 	this->spans.clear();
-	for (ChangeKind kind : WATER_MOVES) {
-		for (const Rect &span : changes.Of(kind)) {
-			_frame_profile.Count("shore_surveys");
-			std::optional<Rect> shifted = this->shore.Resurvey(span);
-			if (shifted.has_value()) this->spans.push_back(*shifted);
-		}
+	for (const Rect &span : water_moves) {
+		_frame_profile.Count("shore_surveys");
+		std::optional<Rect> shifted = this->shore.Resurvey(span);
+		if (shifted.has_value()) this->spans.push_back(*shifted);
 	}
 	this->SendSpans(SHORE_UNIT, this->shore.Texels());
 }
 
-void WorldTextures::ResurveyFlow(const WorldChanges &changes)
+void WorldTextures::ResurveyFlow(std::span<const Rect> water_moves)
 {
 	ProfileScope profile("build", "flow", ProfileClock::Cpu);
 	this->spans.clear();
-	for (ChangeKind kind : WATER_MOVES) std::ranges::copy(changes.Of(kind), std::back_inserter(this->spans));
-	std::optional<Rect> moved = this->flow.Resurvey(this->spans);
-	this->spans.clear();
+	std::optional<Rect> moved = this->flow.Resurvey(water_moves);
 	if (moved.has_value()) this->spans.push_back(*moved);
 	this->SendSpans(FLOW_UNIT, this->flow.Texels());
 }

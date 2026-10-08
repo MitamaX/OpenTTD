@@ -11,6 +11,7 @@
 #define MINI_WORLD_WORLD_TEXTURES_H
 
 #include <array>
+#include <span>
 #include <vector>
 
 #include "../gpu/data_texture.h"
@@ -50,8 +51,8 @@ private:
 	Source SourceOf(uint unit) const;
 	void Allocate(uint unit);
 	void SendSpans(uint unit, const void *texels);
-	void ResurveyShore(const WorldChanges &changes);
-	void ResurveyFlow(const WorldChanges &changes);
+	void ResurveyShore(std::span<const Rect> water_moves);
+	void ResurveyFlow(std::span<const Rect> water_moves);
 
 	std::array<DataTexture, UNIT_COUNT> textures;
 	ShoreField shore;
