@@ -17,6 +17,8 @@ add_files(
     figure_models.h
     fleet_layout.cpp
     fleet_layout.h
+    flow_field.cpp
+    flow_field.h
     forest_field.cpp
     forest_field.h
     forest_pass.cpp

@@ -14,7 +14,7 @@
 
 /** Units above the world's tile textures; every world shader finds these samplers there. */
 enum FrameUnit : uint8_t {
-	SHADOW_UNIT = 6,
+	SHADOW_UNIT = 7,
 	SCENE_COLOUR_UNIT,
 	SCENE_DEPTH_UNIT,
 	GRAIN_UNIT,

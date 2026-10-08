@@ -32,14 +32,22 @@ const float SWELL_SPEED = 0.25;
 const float SWELL_STEEPNESS = 0.06;
 const float RUFFLED_SPREAD = 0.35;
 const float RUFFLED_DIMMING = 0.45;
-const float STREAKS_ALONG = 0.9;
-const float STREAKS_ACROSS = 5.0;
-const float FLOW_SPEED = 0.6;
-const float FLOW_STEEPNESS = 0.006;
+const vec2 STREAK_STRETCH = vec2(0.9, 5.0);
+const vec2 STREAK_SEED = vec2(31.7, 11.3);
+const float MIN_STREAK_SHARE = 0.02;
+const float FLOW_PACE = 1.2;
+const float FLOW_CYCLE = 1.5;
+const float FLOW_PHASE_SPREAD = 0.37;
+const vec2 FLOW_PHASE_SEED = vec2(5.2, 1.3);
+const float FLOW_STEEPNESS = 0.02;
+const float FLOW_STILLING = 0.6;
+const float MIN_PACE = 0.01;
+const vec2 FLECK_EDGES = vec2(0.66, 0.8);
+const float FLECK_FOAM = 0.5;
 const float RAPIDS_TILT = 0.12;
 const float RAPIDS_REACH = 0.35;
 const float RAPIDS_SPEED = 1.3;
-const float RAPIDS_STEEPNESS = 0.03;
+const float RAPIDS_STEEPNESS = 0.045;
 const float RAPIDS_FOAM = 0.8;
 const float RAPIDS_ALONG = 2.6;
 const float RAPIDS_ACROSS = 9.0;
@@ -151,17 +159,43 @@ float SwellTrain(vec2 p, vec2 heading, float frequency, float speed)
 	return cos(phase) * frequency;
 }
 
-/* Water running one way is streaked along its run, the streaks carried downstream at its pace. */
-vec2 Streaks(vec2 p, vec2 run, float speed)
+vec3 Stretched(vec2 q, vec2 stretch)
 {
-	vec2 across = vec2(-run.y, run.x);
-	vec3 noise = NoiseSlope(vec2(dot(p, run) * STREAKS_ALONG - Clock() * speed, dot(p, across) * STREAKS_ACROSS));
-	return (run * noise.y * STREAKS_ALONG + across * noise.z * STREAKS_ACROSS) * Resolved(STREAKS_ACROSS);
+	vec3 noise = NoiseSlope(q * stretch);
+	return vec3(noise.x, noise.yz * stretch);
+}
+
+/* Noise and its slope drawn out along a run: stretched along each of the map's axes and weighed by how far the run lies along it, so a bend shows no swirl. */
+vec3 Streaked(vec2 q, vec2 run)
+{
+	vec2 share = run * run;
+	vec3 streaks = vec3(0.0);
+	if (share.x > MIN_STREAK_SHARE) streaks += Stretched(q, STREAK_STRETCH) * share.x;
+	if (share.y > MIN_STREAK_SHARE) streaks += Stretched(q + STREAK_SEED, STREAK_STRETCH.yx) * share.y;
+	return streaks;
+}
+
+/* Streaks carried downstream: two phases half a cycle apart, each drifting with the flow for a cycle and then starting afresh, blended so neither restart shows. */
+vec3 Current(vec2 p, vec2 flow)
+{
+	vec2 run = normalize(flow);
+	float cycle = Clock() / FLOW_CYCLE + Noise(p * FLOW_PHASE_SPREAD);
+	float lead = fract(cycle);
+	vec2 drift = flow * FLOW_PACE * FLOW_CYCLE;
+	vec3 leading = Streaked(p - drift * lead, run);
+	vec3 trailing = Streaked(p - drift * fract(cycle + 0.5) + FLOW_PHASE_SEED, run);
+	return mix(leading, trailing, abs(1.0 - 2.0 * lead));
 }
 
 Surface Stirred(Surface surface, vec2 slope)
 {
 	surface.normal = normalize(surface.normal - vec3(slope, 0.0));
+	return surface;
+}
+
+Surface Stilled(Surface surface, float stilling)
+{
+	surface.normal = normalize(mix(surface.normal, vec3(0.0, 0.0, 1.0), stilling));
 	return surface;
 }
 
@@ -270,17 +304,12 @@ float Outline(vec4 field, Body body)
 	return mix(smoothstep(WATERLINE - edge, WATERLINE + edge, field.r), 1.0, body.canal);
 }
 
-/* Which way a river runs at a point: along its channel, square to the slope of its field, turned to the side the wind blows toward;
- * nothing where the field lies level, out in wide water. */
-vec2 ChannelFlow(vec2 p, float level)
+/* Which way and how fast the water runs, a share of full pace; still past the map's edge. */
+vec2 FlowAt(vec2 p)
 {
-	mat2 pixel = mat2(dFdx(p), dFdy(p));
-	float span = determinant(pixel);
-	if (abs(span) < MIN_SQUARED_SPAN * MIN_SQUARED_SPAN) return vec2(0.0);
-	vec2 slope = inverse(transpose(pixel)) * vec2(dFdx(level), dFdy(level));
-	vec2 along = vec2(-slope.y, slope.x);
-	float steadiness = smoothstep(0.05, 0.3, length(slope));
-	return length(along) > 0.0 ? normalize(along) * sign(dot(along, WIND) + 1e-4) * steadiness : vec2(0.0);
+	bool inside = all(greaterThanEqual(p, vec2(0.0))) && all(lessThanEqual(p, MapSize()));
+	vec2 flow = (textureLod(u_flow, p / MapSize(), 0.0).rg * 255.0 - FLOW_TEXEL_STILL) / FLOW_TEXEL_SPAN;
+	return inside ? flow : vec2(0.0);
 }
 
 /* Foam gathers in a band along the shore, thickest at the water's edge, broken into lace and drifting with the swell. */
@@ -496,13 +525,19 @@ void main()
 	Body body = BodyOf(field);
 	float outline = Outline(field, body);
 	float river = body.calm * (1.0 - body.canal);
-	vec2 flow = ChannelFlow(p, field.r) * river;
+	vec2 flow = FlowAt(p);
+	float pace = length(flow);
 	vec3 descent = Descent(p);
 
 	float enclosed = Enclosed(p);
 	Surface waves = Waves(p, max(body.calm, enclosed));
-	if (length(flow) > 0.0) waves = Stirred(waves, Streaks(p, flow, FLOW_SPEED) * FLOW_STEEPNESS * length(flow));
-	if (descent.z > 0.0) waves = Stirred(waves, Streaks(p, descent.xy, RAPIDS_SPEED) * RAPIDS_STEEPNESS * descent.z);
+	float flecks = 0.0;
+	if (pace > MIN_PACE) {
+		vec3 current = Current(p, flow);
+		float streaked = Resolved(STREAK_STRETCH.y) * pace;
+		waves = Stirred(Stilled(waves, pace * FLOW_STILLING), current.yz * mix(FLOW_STEEPNESS, RAPIDS_STEEPNESS, descent.z) * streaked);
+		flecks = smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, current.x) * FLECK_FOAM * streaked;
+	}
 	waves.ruffled = max(waves.ruffled, descent.z * RAPIDS_RUFFLE);
 	vec3 normal = waves.normal;
 
@@ -540,7 +575,7 @@ void main()
 	float shore = Foam(p, max(ShoreBand(field.r), contact), body);
 	float floes;
 	float ice = ShoreIce(p, field.r, floes);
-	float foam = max(max(shore, Breakers(p, field.r, body) * (1.0 - enclosed)), max(Whitewater(p, descent) * river, Wake(p))) * (1.0 - ice);
+	float foam = max(max(shore, Breakers(p, field.r, body) * (1.0 - enclosed)), max(max(Whitewater(p, descent) * river, flecks), Wake(p))) * (1.0 - ice);
 	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
 	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
 

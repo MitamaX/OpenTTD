@@ -19,6 +19,7 @@ enum class TexelFormat : uint8_t {
 	ExactRgba,
 	FilteredRgba,
 	FilteredRed,
+	FilteredRg,
 	TiledRgba,
 };
 

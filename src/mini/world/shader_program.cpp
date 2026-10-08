@@ -33,6 +33,7 @@
 #include "../map/way_bends.h"
 #include "../map/world_tiles.h"
 #include "../map/zoom_detail.h"
+#include "flow_field.h"
 #include "forest_field.h"
 #include "frame_units.h"
 #include "network_field.h"
@@ -145,6 +146,8 @@ static std::string ShaderHeader()
 	DefineFloat(header, "GRID_FADE_PPT", GRID_FADE_PPT);
 	DefineFloat(header, "NETWORK_OPAQUE_PPT", NETWORK_FADE_END);
 	DefineFloat(header, "SHELF_TILES", SHELF_TILES);
+	DefineFloat(header, "FLOW_TEXEL_STILL", FLOW_TEXEL_STILL);
+	DefineFloat(header, "FLOW_TEXEL_SPAN", FLOW_TEXEL_SPAN);
 	DefineFloat(header, "WATERLINE", WATERLINE);
 	DefineFloat(header, "SHORE_WARP", SHORE_WARP);
 	DefineFloat(header, "SHORE_WARP_FREQUENCY", SHORE_WARP_FREQUENCY);

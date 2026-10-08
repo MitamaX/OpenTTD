@@ -15,6 +15,7 @@
 
 #include "../gpu/data_texture.h"
 #include "../map/world_tiles.h"
+#include "flow_field.h"
 #include "shader_program.h"
 #include "shore_field.h"
 
@@ -28,6 +29,7 @@ public:
 		NETWORK_UNIT,
 		BENDS_UNIT,
 		SHORE_UNIT,
+		FLOW_UNIT,
 		UNIT_COUNT,
 	};
 
@@ -38,7 +40,7 @@ public:
 	static void BindSamplers(const ShaderProgram &program);
 
 private:
-	/* A texture's texels, and the kinds of change they follow; the bends and the shore keep track of their own changes. */
+	/* A texture's texels, and the kinds of change they follow; the bends, the shore and the flow keep track of their own changes. */
 	struct Source {
 		TexelFormat format;
 		const void *texels;
@@ -49,9 +51,11 @@ private:
 	void Allocate(uint unit);
 	void SendSpans(uint unit, const void *texels);
 	void ResurveyShore(const WorldChanges &changes);
+	void ResurveyFlow(const WorldChanges &changes);
 
 	std::array<DataTexture, UNIT_COUNT> textures;
 	ShoreField shore;
+	FlowField flow;
 	std::vector<Rect> spans;
 };
 
