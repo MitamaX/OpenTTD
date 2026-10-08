@@ -12,6 +12,7 @@
 #define MINI_MAP_WAY_COURSE_H
 
 #include <array>
+#include <functional>
 #include <optional>
 #include <span>
 #include <utility>
@@ -152,8 +153,9 @@ WorldPoint TrackPoint(double x, double y);
 /* Where a train or a road vehicle at a point of the map is drawn: a train on the line of the piece it is on, either at its way's eased level or on the ground. */
 WorldPoint TrainPoint(double x, double y);
 WorldPoint RoadPoint(double x, double y);
-/* Where a train's path over the game's map runs to a reach on from a point the way it heads, along the game's pieces of track,
- * keeping at each junction to the piece that runs on most nearly straight. */
-MapVector TrainAhead(const MapVector &from, MapVector heading, double reach);
+/* Which of a tile's pieces of track a train is known to take. */
+using TrackTaken = std::function<TrackBits(TileIndex tile)>;
+/* Where a train's path over the game's map runs to a reach on from a point the way it heads, along the game's pieces of track. */
+MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken);
 
 #endif /* MINI_MAP_WAY_COURSE_H */

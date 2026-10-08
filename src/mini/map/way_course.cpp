@@ -145,14 +145,14 @@ static TrackBits TrackBitsOf(int tx, int ty)
 	return static_cast<TrackBits>(_world_tiles.NetworkAt(tile).track);
 }
 
-/* The piece of a tile's track rated highest, passing over any the rating gives no value. */
+/* The piece of a tile's track rated highest among some of its pieces, passing over any the rating gives no value. */
 template <typename Rating>
-static std::optional<Track> BestTrackAt(const TileCoord &tile, Rating rating)
+static std::optional<Track> BestTrackAt(const TileCoord &tile, Rating rating, TrackBits among = TRACK_BIT_ALL)
 {
 	std::optional<Track> best;
 	if (!OnMap(tile.first, tile.second)) return best;
 	double best_rating = 0.0;
-	for (Track track : SetTrackBitIterator(TrackBitsOf(tile.first, tile.second))) {
+	for (Track track : SetTrackBitIterator(TrackBitsOf(tile.first, tile.second) & among)) {
 		std::optional<double> piece_rating = rating(PieceOf(tile.first, tile.second, track));
 		if (!piece_rating.has_value() || (best.has_value() && *piece_rating <= best_rating)) continue;
 		best = track;
@@ -162,20 +162,20 @@ static std::optional<Track> BestTrackAt(const TileCoord &tile, Rating rating)
 }
 
 template <typename Rating>
-static std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rating rating)
+static std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rating rating, TrackBits among = TRACK_BIT_ALL)
 {
 	std::optional<Track> best = BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> {
 		if (!piece.Meets(joint)) return std::nullopt;
 		return rating(piece);
-	});
+	}, among);
 	if (!best.has_value()) return std::nullopt;
 	return PieceOf(tile.first, tile.second, *best);
 }
 
 /* The piece of a tile meeting a joint that runs on from it most nearly along a heading, unless none meets it. */
-static std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, const MapVector &heading)
+static std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, TrackBits among = TRACK_BIT_ALL)
 {
-	return BestPieceAt(tile, joint, [&](const Piece &piece) { return Dot(Unit(piece.Other(joint).Point() - joint.Point()), heading); });
+	return BestPieceAt(tile, joint, [&](const Piece &piece) { return Dot(Unit(piece.Other(joint).Point() - joint.Point()), heading); }, among);
 }
 
 static std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point)
@@ -747,7 +747,15 @@ WorldPoint TrainPoint(double x, double y)
 	return drawn.has_value() ? drawn->Centred({x, y}) : WorldPoint{x, y, GroundLevel(x, y)};
 }
 
-MapVector TrainAhead(const MapVector &from, MapVector heading, double reach)
+/* A train runs on into a tile along the straightest piece it is known to take there, or else along the straightest of all. */
+static std::optional<Piece> OnwardAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, const TrackTaken &taken)
+{
+	if (!OnMap(tile.first, tile.second)) return std::nullopt;
+	std::optional<Piece> known = StraightestAt(tile, joint, heading, taken(TileXY(tile.first, tile.second)));
+	return known.has_value() ? known : StraightestAt(tile, joint, heading);
+}
+
+MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken)
 {
 	TileCoord tile = TileOf(from);
 	std::optional<Track> under = TrackUnder(tile, from);
@@ -763,7 +771,7 @@ MapVector TrainAhead(const MapVector &from, MapVector heading, double reach)
 		reach -= left;
 		at = exit.Point();
 		tile = exit.Beyond(tile);
-		piece = StraightestAt(tile, exit, heading);
+		piece = OnwardAt(tile, exit, heading, taken);
 	}
 	return at + heading * reach;
 }

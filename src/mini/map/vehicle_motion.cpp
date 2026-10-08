@@ -16,6 +16,7 @@
 
 #include "../../bridge_map.h"
 #include "../../map_func.h"
+#include "../../pbs.h"
 #include "../../tile_map.h"
 #include "../../timer/timer_game_tick.h"
 #include "../../train.h"
@@ -66,6 +67,16 @@ static double BearingOf(Direction direction)
 static bool TurnedAbout(const Vehicle *v)
 {
 	return v->type == VEH_TRAIN && Train::From(v->First())->flags.Test(VehicleRailFlag::Reversed);
+}
+
+/* The pieces of a tile's track a train's units stand on, and any the game has reserved there for a train's way ahead. */
+static TrackBits TrackTakenBy(const Vehicle *v, TileIndex tile)
+{
+	TrackBits taken = GetReservedTrackbits(tile);
+	for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
+		if (unit->tile == tile) taken |= unit->track & TRACK_BIT_MASK;
+	}
+	return taken;
 }
 
 static WorldPoint InTiles(const TickTrail::Spot &spot)
@@ -128,7 +139,7 @@ WorldPoint VehicleMotion::Onward(const Vehicle *v, const WorldPoint &from, doubl
 		return {from.x + std::cos(bearing) * reach, from.y + std::sin(bearing) * reach, from.level};
 	}
 	MapVector facing = FacingOf(v->direction);
-	MapVector at = TrainAhead({from.x, from.y}, reach < 0.0 ? facing * -1.0 : facing, std::abs(reach));
+	MapVector at = TrainAhead({from.x, from.y}, reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), [v](TileIndex tile) { return TrackTakenBy(v, tile); });
 	return {at.x, at.y, from.level};
 }
 
