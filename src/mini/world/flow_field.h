@@ -10,30 +10,38 @@
 #ifndef MINI_WORLD_FLOW_FIELD_H
 #define MINI_WORLD_FLOW_FIELD_H
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <vector>
 
 #include "../../core/geometry_type.hpp"
+#include "../../direction_type.h"
+#include "../../tile_type.h"
 
 /* A texel channel holds still water at this value, and full pace this far above or below it. */
 inline constexpr double FLOW_TEXEL_STILL = 128.0;
 inline constexpr double FLOW_TEXEL_SPAN = 127.0;
 
-/* Two texels a tile, the water's run along the map's X and Y as a share of full pace; a change near running water traces every river again. */
+/* A tile's texel: the water's run along the map's X and along its Y, each a share of full pace. */
+using FlowTexel = std::array<uint8_t, 2>;
+
+class Drainage;
+
+/* A change near running water drains again only the water joined to it, and fans the sea out again only past the mouths that water ran out at or runs out at now. */
 class FlowField {
 public:
 	void Survey(Dimension map);
 	std::optional<Rect> Resurvey(std::span<const Rect> changed);
-	const uint8_t *Texels() const { return this->texels.data(); }
+	const void *Texels() const { return this->texels.data(); }
 
 private:
-	std::optional<Rect> Trace();
-	bool Touches(const Rect &changed) const;
+	void Refan(const Drainage &drainage, const Rect &window, std::optional<Rect> &moved);
+	void Put(TileIndex tile, const FlowTexel &texel, std::optional<Rect> &moved);
 
-	Dimension map{};
-	std::vector<uint8_t> texels;
+	std::vector<FlowTexel> texels;
+	std::vector<DiagDirection> downstream;
 };
 
 #endif /* MINI_WORLD_FLOW_FIELD_H */

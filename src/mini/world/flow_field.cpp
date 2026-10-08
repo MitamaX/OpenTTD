@@ -11,13 +11,14 @@
 #include "flow_field.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <functional>
 #include <iterator>
 #include <queue>
 #include <tuple>
+#include <unordered_set>
 
+#include "../../direction_func.h"
 #include "../../map_func.h"
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
@@ -33,13 +34,16 @@ static constexpr int NARROW_WATER = 4;
 static constexpr int ALL_ROUND = 9;
 static constexpr double WIDE_WATER_PACE = 0.3;
 static constexpr int MOUTH_REACH = 4;
+/* A river's fan reaches this far from the last tile of its running water, which its mouth lies beside. */
+static constexpr int FAN_REACH = MOUTH_REACH + 1;
 
-static constexpr size_t CHANNELS = 2;
-static constexpr uint8_t STILL_TEXEL = static_cast<uint8_t>(FLOW_TEXEL_STILL);
-static constexpr int8_t UNREACHED = -1;
-static constexpr int8_t POOLED = 4;
-static constexpr std::array<std::array<int, 2>, 4> STEPS = {{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}};
-static constexpr int8_t STEP_COUNT = static_cast<int8_t>(STEPS.size());
+static constexpr uint8_t STILL_CHANNEL = static_cast<uint8_t>(FLOW_TEXEL_STILL);
+static constexpr FlowTexel STILL = {STILL_CHANNEL, STILL_CHANNEL};
+static constexpr std::array<DiagDirection, DIAGDIR_END> STEPS = {DIAGDIR_SW, DIAGDIR_SE, DIAGDIR_NE, DIAGDIR_NW};
+static constexpr DiagDirection UNREACHED = INVALID_DIAGDIR;
+static constexpr DiagDirection POOLED = DIAGDIR_END;
+
+static_assert(sizeof(FlowTexel) == std::tuple_size_v<FlowTexel> * sizeof(uint8_t));
 
 enum class Stream : uint8_t {
 	None,
@@ -47,19 +51,18 @@ enum class Stream : uint8_t {
 	Canal,
 };
 
-static int8_t Opposite(int8_t step)
+template <typename Visit>
+static void EachTile(const Rect &span, Visit visit)
 {
-	return static_cast<int8_t>((step + STEP_COUNT / 2) % STEP_COUNT);
+	for (int ty = span.top; ty <= span.bottom; ty++) {
+		for (int tx = span.left; tx <= span.right; tx++) visit(tx, ty);
+	}
 }
 
-static MapVector StepVector(int8_t step)
+static std::pair<int, int> Beside(TileIndex tile, DiagDirection step)
 {
-	return {static_cast<double>(STEPS[step][0]), static_cast<double>(STEPS[step][1])};
-}
-
-static std::pair<int, int> Beside(TileIndex tile, int8_t step)
-{
-	return {static_cast<int>(TileX(tile)) + STEPS[step][0], static_cast<int>(TileY(tile)) + STEPS[step][1]};
+	TileIndexDiffC offset = TileIndexDiffCByDiagDir(step);
+	return {static_cast<int>(TileX(tile)) + offset.x, static_cast<int>(TileY(tile)) + offset.y};
 }
 
 static Stream StreamOf(int tx, int ty)
@@ -112,12 +115,32 @@ static double PaceOf(int tx, int ty, bool sloping)
 	return sloping ? RAPIDS_PACE : RIVER_PACE * Narrowing(tx, ty);
 }
 
-/* Floods up from where running water leaves, the lowest water first and the nearest the way out first, so each tile learns the neighbour it runs on into. */
+/* The running water joined to any near the changes, in map order. */
+static std::vector<TileIndex> RunningAbout(std::span<const Rect> changed)
+{
+	std::vector<TileIndex> joined;
+	std::unordered_set<TileIndex> seen;
+	auto join = [&](int tx, int ty) {
+		if (StreamOf(tx, ty) == Stream::None) return;
+		TileIndex tile = TileXY(tx, ty);
+		if (seen.insert(tile).second) joined.push_back(tile);
+	};
+	for (const Rect &span : changed) EachTile(TilesNear(span, 1), join);
+	for (size_t next = 0; next < joined.size(); next++) {
+		for (DiagDirection step : STEPS) std::apply(join, Beside(joined[next], step));
+	}
+	std::ranges::sort(joined);
+	return joined;
+}
+
+/* Which neighbour each tile of running water runs on into, or that it pools, learnt by flooding up from where the water leaves, the lowest water first and the nearest the way out first. */
 class Drainage {
 public:
-	explicit Drainage(Dimension map);
+	explicit Drainage(std::vector<DiagDirection> &downstream) : downstream(downstream) {}
 
-	std::span<const TileIndex> Running() const { return this->running; }
+	/* Ties fall to the tile first in map order, so the water must come in map order to drain as it does over the whole map. */
+	void Drain(std::span<const TileIndex> running);
+	void Forget(TileIndex tile) { this->downstream[tile.base()] = UNREACHED; }
 	MapVector Flow(TileIndex tile) const;
 	std::optional<TileIndex> MouthOf(TileIndex tile) const;
 
@@ -130,35 +153,25 @@ private:
 		bool operator>(const Front &other) const { return std::tie(this->level, this->order) > std::tie(other.level, other.order); }
 	};
 
-	void Reach(TileIndex tile, double level, int8_t toward);
+	void Reach(TileIndex tile, double level, DiagDirection toward);
 	void Flood();
 	MapVector Course(TileIndex tile) const;
 
-	std::vector<int8_t> downstream;
-	std::vector<TileIndex> running;
+	std::vector<DiagDirection> &downstream;
 	std::priority_queue<Front, std::vector<Front>, std::greater<>> front;
 	uint32_t order = 0;
 };
 
-Drainage::Drainage(Dimension map) : downstream(static_cast<size_t>(map.width) * map.height, UNREACHED)
+void Drainage::Drain(std::span<const TileIndex> running)
 {
-	for (int ty = 0; ty < static_cast<int>(map.height); ty++) {
-		for (int tx = 0; tx < static_cast<int>(map.width); tx++) {
-			if (StreamOf(tx, ty) != Stream::None) this->running.push_back(TileXY(tx, ty));
-		}
-	}
-	for (TileIndex tile : this->running) {
-		for (int8_t step = 0; step < STEP_COUNT; step++) {
-			auto [nx, ny] = Beside(tile, step);
-			if (!IsOutlet(nx, ny)) continue;
-			this->Reach(tile, LevelOf(tile), step);
-			break;
-		}
+	for (TileIndex tile : running) {
+		auto outlet = std::ranges::find_if(STEPS, [tile](DiagDirection step) { return std::apply(IsOutlet, Beside(tile, step)); });
+		if (outlet != STEPS.end()) this->Reach(tile, LevelOf(tile), *outlet);
 	}
 	this->Flood();
 
 	std::vector<TileIndex> stranded;
-	std::ranges::copy_if(this->running, std::back_inserter(stranded), [this](TileIndex tile) { return this->downstream[tile.base()] == UNREACHED; });
+	std::ranges::copy_if(running, std::back_inserter(stranded), [this](TileIndex tile) { return this->downstream[tile.base()] == UNREACHED; });
 	std::ranges::stable_sort(stranded, {}, LevelOf);
 	for (TileIndex tile : stranded) {
 		if (this->downstream[tile.base()] != UNREACHED) continue;
@@ -167,7 +180,7 @@ Drainage::Drainage(Dimension map) : downstream(static_cast<size_t>(map.width) * 
 	}
 }
 
-void Drainage::Reach(TileIndex tile, double level, int8_t toward)
+void Drainage::Reach(TileIndex tile, double level, DiagDirection toward)
 {
 	this->downstream[tile.base()] = toward;
 	this->front.push({level, this->order++, tile});
@@ -178,12 +191,12 @@ void Drainage::Flood()
 	while (!this->front.empty()) {
 		Front at = this->front.top();
 		this->front.pop();
-		for (int8_t step = 0; step < STEP_COUNT; step++) {
+		for (DiagDirection step : STEPS) {
 			auto [nx, ny] = Beside(at.tile, step);
 			if (StreamOf(nx, ny) == Stream::None) continue;
 			TileIndex next = TileXY(nx, ny);
 			if (this->downstream[next.base()] != UNREACHED) continue;
-			this->Reach(next, std::max(at.level, LevelOf(next)), Opposite(step));
+			this->Reach(next, std::max(at.level, LevelOf(next)), ReverseDiagDir(step));
 		}
 	}
 }
@@ -191,12 +204,13 @@ void Drainage::Flood()
 /* Between the way the water comes in and the way it goes on, so a bend turns through its tile instead of at the tile's side. */
 MapVector Drainage::Course(TileIndex tile) const
 {
-	int8_t toward = this->downstream[tile.base()];
-	MapVector out = toward == POOLED ? MapVector{} : StepVector(toward);
+	DiagDirection toward = this->downstream[tile.base()];
+	MapVector out = toward == POOLED ? MapVector{} : Outward(toward);
 	MapVector in{};
-	for (int8_t step = 0; step < STEP_COUNT; step++) {
+	for (DiagDirection step : STEPS) {
 		auto [nx, ny] = Beside(tile, step);
-		if (OnMap(nx, ny) && this->downstream[TileXY(nx, ny).base()] == Opposite(step)) in = in + StepVector(Opposite(step));
+		DiagDirection back = ReverseDiagDir(step);
+		if (OnMap(nx, ny) && this->downstream[TileXY(nx, ny).base()] == back) in = in + Outward(back);
 	}
 	return Unit(out + Unit(in));
 }
@@ -210,8 +224,8 @@ MapVector Drainage::Flow(TileIndex tile) const
 
 std::optional<TileIndex> Drainage::MouthOf(TileIndex tile) const
 {
-	int8_t toward = this->downstream[tile.base()];
-	if (toward == POOLED) return std::nullopt;
+	DiagDirection toward = this->downstream[tile.base()];
+	if (!IsValidDiagDirection(toward)) return std::nullopt;
 	auto [nx, ny] = Beside(tile, toward);
 	return IsSea(nx, ny) ? std::optional<TileIndex>(TileXY(nx, ny)) : std::nullopt;
 }
@@ -221,22 +235,34 @@ static uint8_t Channel(double run)
 	return static_cast<uint8_t>(std::lround(FLOW_TEXEL_STILL + std::clamp(run, -1.0, 1.0) * FLOW_TEXEL_SPAN));
 }
 
-static void Store(std::vector<uint8_t> &texels, TileIndex tile, MapVector flow)
+static FlowTexel TexelOf(MapVector flow)
 {
-	size_t at = tile.base() * CHANNELS;
-	texels[at] = Channel(flow.x);
-	texels[at + 1] = Channel(flow.y);
+	return {Channel(flow.x), Channel(flow.y)};
 }
 
-static double SquaredPace(const std::vector<uint8_t> &texels, TileIndex tile)
+static double SquaredPace(const FlowTexel &texel)
 {
-	size_t at = tile.base() * CHANNELS;
-	MapVector flow = MapVector{texels[at] - FLOW_TEXEL_STILL, texels[at + 1] - FLOW_TEXEL_STILL} * (1.0 / FLOW_TEXEL_SPAN);
+	MapVector flow = MapVector{texel[0] - FLOW_TEXEL_STILL, texel[1] - FLOW_TEXEL_STILL} * (1.0 / FLOW_TEXEL_SPAN);
 	return Dot(flow, flow);
 }
 
-/* A river runs on into the sea past its mouth, fanning out and slowing until it is lost a few tiles out. */
-static void Fan(std::vector<uint8_t> &texels, TileIndex mouth, MapVector flow)
+/* The texels over a window of the map, still until fanned out past a mouth. */
+class FanPatch {
+public:
+	explicit FanPatch(const Rect &window) : window(window), texels(static_cast<size_t>(window.Width()) * window.Height(), STILL) {}
+
+	const FlowTexel &At(int tx, int ty) const { return this->texels[this->IndexOf(tx, ty)]; }
+	void Fan(TileIndex mouth, MapVector flow);
+
+private:
+	size_t IndexOf(int tx, int ty) const { return static_cast<size_t>(ty - this->window.top) * this->window.Width() + (tx - this->window.left); }
+
+	Rect window;
+	std::vector<FlowTexel> texels;
+};
+
+/* A river runs on into the sea past its mouth, fanning out and slowing until it is lost a few tiles out; where fans meet, the faster holds. */
+void FanPatch::Fan(TileIndex mouth, MapVector flow)
 {
 	MapVector course = Unit(flow);
 	double pace = std::sqrt(Dot(flow, flow));
@@ -246,58 +272,77 @@ static void Fan(std::vector<uint8_t> &texels, TileIndex mouth, MapVector flow)
 			int ty = static_cast<int>(TileY(mouth)) + dy;
 			int reach = std::abs(dx) + std::abs(dy);
 			MapVector offset = {static_cast<double>(dx), static_cast<double>(dy)};
-			if (reach > MOUTH_REACH || Dot(offset, course) < 0.0 || !IsSea(tx, ty)) continue;
+			if (reach > MOUTH_REACH || Dot(offset, course) < 0.0 || !this->window.Contains({tx, ty}) || !IsSea(tx, ty)) continue;
 			MapVector fanned = Unit(offset + course) * (pace * (1.0 - reach / (MOUTH_REACH + 1.0)));
-			TileIndex tile = TileXY(tx, ty);
-			if (Dot(fanned, fanned) > SquaredPace(texels, tile)) Store(texels, tile, fanned);
+			FlowTexel &texel = this->texels[this->IndexOf(tx, ty)];
+			if (Dot(fanned, fanned) > SquaredPace(texel)) texel = TexelOf(fanned);
 		}
 	}
+}
+
+static Rect FanWindow(TileIndex mouth)
+{
+	int tx = TileX(mouth);
+	int ty = TileY(mouth);
+	return TilesNear({tx, ty, tx, ty}, MOUTH_REACH);
 }
 
 void FlowField::Survey(Dimension map)
 {
-	this->map = map;
-	this->texels.assign(static_cast<size_t>(map.width) * map.height * CHANNELS, STILL_TEXEL);
-	this->Trace();
+	size_t tiles = static_cast<size_t>(map.width) * map.height;
+	this->texels.assign(tiles, STILL);
+	this->downstream.assign(tiles, UNREACHED);
+	this->Resurvey(std::array{Rect{0, 0, static_cast<int>(map.width) - 1, static_cast<int>(map.height) - 1}});
 }
 
+/* The span of texels the change moved, if it moved any. */
 std::optional<Rect> FlowField::Resurvey(std::span<const Rect> changed)
 {
-	if (std::ranges::none_of(changed, [this](const Rect &span) { return this->Touches(span); })) return std::nullopt;
-	return this->Trace();
-}
-
-bool FlowField::Touches(const Rect &changed) const
-{
-	Rect near = TilesNear(changed, 1);
-	for (int ty = near.top; ty <= near.bottom; ty++) {
-		for (int tx = near.left; tx <= near.right; tx++) {
-			size_t at = TileXY(tx, ty).base() * CHANNELS;
-			if (StreamOf(tx, ty) != Stream::None || this->texels[at] != STILL_TEXEL || this->texels[at + 1] != STILL_TEXEL) return true;
-		}
+	Drainage drainage(this->downstream);
+	std::vector<TileIndex> running = RunningAbout(changed);
+	std::vector<Rect> windows;
+	auto note_mouth = [&](TileIndex tile) {
+		if (std::optional<TileIndex> mouth = drainage.MouthOf(tile); mouth.has_value()) windows.push_back(FanWindow(*mouth));
+	};
+	auto forget = [&](TileIndex tile) {
+		note_mouth(tile);
+		drainage.Forget(tile);
+	};
+	for (const Rect &span : changed) {
+		windows.push_back(TilesNear(span, MOUTH_REACH));
+		EachTile(span, [&](int tx, int ty) { forget(TileXY(tx, ty)); });
 	}
-	return false;
-}
+	std::ranges::for_each(running, forget);
 
-/* The span of texels the tracing moved, if it moved any. */
-std::optional<Rect> FlowField::Trace()
-{
-	std::vector<uint8_t> traced(this->texels.size(), STILL_TEXEL);
-	Drainage drainage(this->map);
-	for (TileIndex tile : drainage.Running()) {
-		MapVector flow = drainage.Flow(tile);
-		Store(traced, tile, flow);
-		if (std::optional<TileIndex> mouth = drainage.MouthOf(tile); mouth.has_value()) Fan(traced, *mouth, flow);
-	}
-
+	drainage.Drain(running);
 	std::optional<Rect> moved;
-	for (int ty = 0; ty < static_cast<int>(this->map.height); ty++) {
-		for (int tx = 0; tx < static_cast<int>(this->map.width); tx++) {
-			size_t at = TileXY(tx, ty).base() * CHANNELS;
-			if (traced[at] == this->texels[at] && traced[at + 1] == this->texels[at + 1]) continue;
-			moved = TakingIn(moved.value_or(Rect{tx, ty, tx, ty}), tx, ty);
-		}
+	for (TileIndex tile : running) {
+		note_mouth(tile);
+		this->Put(tile, TexelOf(drainage.Flow(tile)), moved);
 	}
-	this->texels = std::move(traced);
+	for (const Rect &window : windows) this->Refan(drainage, window, moved);
 	return moved;
+}
+
+/* Every texel of a window off the running water afresh, fanned out past each mouth within reach in map order, as a whole survey fans them. */
+void FlowField::Refan(const Drainage &drainage, const Rect &window, std::optional<Rect> &moved)
+{
+	FanPatch patch(window);
+	EachTile(TilesNear(window, FAN_REACH), [&](int tx, int ty) {
+		TileIndex tile = TileXY(tx, ty);
+		if (std::optional<TileIndex> mouth = drainage.MouthOf(tile); mouth.has_value()) patch.Fan(*mouth, drainage.Flow(tile));
+	});
+	EachTile(window, [&](int tx, int ty) {
+		if (StreamOf(tx, ty) == Stream::None) this->Put(TileXY(tx, ty), patch.At(tx, ty), moved);
+	});
+}
+
+void FlowField::Put(TileIndex tile, const FlowTexel &texel, std::optional<Rect> &moved)
+{
+	FlowTexel &stored = this->texels[tile.base()];
+	if (stored == texel) return;
+	stored = texel;
+	int tx = TileX(tile);
+	int ty = TileY(tile);
+	moved = TakingIn(moved.value_or(Rect{tx, ty, tx, ty}), tx, ty);
 }
