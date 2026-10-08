@@ -40,7 +40,7 @@
 #include "../../safeguards.h"
 
 static constexpr uint BLOCK_TILES = 32;
-static constexpr uint SWEEP_TILES_PER_SYNC = 2048;
+static constexpr uint SWEEP_TILES_PER_SYNC = 512;
 static constexpr uint TEMPERATE_CONIFER_EVERY = 3;
 static constexpr uint ARCTIC_BROADLEAF_EVERY = 4;
 static constexpr uint8_t NO_STYLE = 0;
