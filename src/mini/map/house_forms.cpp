@@ -1172,7 +1172,7 @@ static void ParkCars(BuildingForm &form, const HouseSite &site)
 			lot.Band(side, YARD_EDGE, YARD_EDGE + CAR_WIDTH).Band(site.front, YARD_EDGE, YARD_EDGE + CAR_LENGTH),
 		};
 		for (const Plot &spot : spots) {
-			if (parked == MOST_PARKED || form.count + 2 > MAX_SOLIDS || !IsClear(form, spot)) continue;
+			if (parked == MOST_PARKED || static_cast<size_t>(form.count) + 2 > MAX_SOLIDS || !IsClear(form, spot)) continue;
 			ParkCar(form, spot, CAR_TINTS[dice.Below(static_cast<uint32_t>(CAR_TINTS.size()))]);
 			parked++;
 		}

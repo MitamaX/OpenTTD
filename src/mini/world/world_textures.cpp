@@ -20,7 +20,7 @@
 
 #include "../../safeguards.h"
 
-static_assert(WorldTextures::UNIT_COUNT <= SHADOW_UNIT);
+static_assert(static_cast<uint>(WorldTextures::UNIT_COUNT) <= static_cast<uint>(SHADOW_UNIT));
 
 static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_shore"};
 /* Two spans go up as one where the area bounding both is at most this many times what they cover, or at most this many texels. */

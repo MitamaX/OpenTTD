@@ -281,7 +281,7 @@ static GroundTexel PackGround(TileIndex tile);
 static GroundTexel BorderGround(TileIndex tile)
 {
 	TileIndex inner = InnerNeighbour(tile);
-	if (IsTileType(inner, MP_VOID)) return {GroundMaterial::Void};
+	if (IsTileType(inner, MP_VOID)) return {GroundMaterial::Void, 0, 0, 0};
 	GroundTexel ground = PackGround(inner);
 	return {ground.material, static_cast<uint8_t>(ground.detail & ~GROUND_BUILT_BIT), 0, ground.variant};
 }
