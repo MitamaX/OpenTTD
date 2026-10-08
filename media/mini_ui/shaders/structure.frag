@@ -54,8 +54,8 @@ void main()
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
-	vec3 colour = Radiance(albedo, normal, v_position, roughness, v_colour.a * clad.occlusion);
+	vec4 lit = Radiance(albedo, normal, v_position, roughness, v_colour.a * clad.occlusion);
 	vec3 view = normalize(Eye() - v_position);
-	colour += clad.glass * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * CloudedSky(reflect(-view, normal));
-	frag_colour = vec4(colour, 1.0);
+	lit.rgb += clad.glass * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * CloudedSky(reflect(-view, normal));
+	frag_colour = lit;
 }

@@ -11,6 +11,7 @@ layout(std140) uniform Scene {
 };
 
 const int CASCADES = 4;
+const vec3 LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
 
 layout(std140) uniform Shadows {
 	mat4 u_cascades[CASCADES];
@@ -19,6 +20,11 @@ layout(std140) uniform Shadows {
 	vec4 u_cascade_texel;
 	vec4 u_shadow_fade;
 };
+
+float Luminance(vec3 colour)
+{
+	return dot(colour, LUMINANCE);
+}
 
 vec2 MapSize()
 {

@@ -50,6 +50,6 @@ void main()
 	vec2 bulge = v_corner * 0.8;
 	vec3 normal = normalize(right * bulge.x + up * bulge.y + back * sqrt(max(1.0 - dot(bulge, bulge), 0.0)));
 	vec3 albedo = Linear(mix(SOOT, SMOKE, smoothstep(0.0, SOOT_CLEARS, v_age)));
-	vec3 lit = FoliageRadiance(albedo, normal, v_centre, TRANSLUCENCY, 1.0);
+	vec3 lit = FoliageRadiance(albedo, normal, v_centre, TRANSLUCENCY, 1.0).rgb;
 	frag_colour = vec4(lit * density, density);
 }

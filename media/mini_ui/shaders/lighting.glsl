@@ -46,34 +46,44 @@ float Highlight(vec3 normal, vec3 view, vec3 light, float roughness)
 	return facets * masking * 0.25 * Fresnel(dot(half_way, view), DIELECTRIC_REFLECTANCE);
 }
 
+/* The share of the light falling on a surface that comes from the sky and the ground around, which is all the occlusion found over the screen dims;
+ * the world's shaders leave it in the alpha of what they draw. */
+float AmbientShare(vec3 normal, float sunlit)
+{
+	float ambient = Luminance(AmbientLight(normal));
+	float sun = Luminance(SunRadiance()) * max(dot(normal, SunDirection()), 0.0) * sunlit;
+	return ambient / (ambient + sun);
+}
+
 /* The light a surface point sends toward the eye with the share of the sun that reaches it given: sunlight, sky and ground light dimmed by occlusion, the sun's highlight and its glints off crystals. */
-vec3 SunlitRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint, float sunlit)
+vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint, float sunlit)
 {
 	vec3 light = SunDirection();
 	vec3 view = normalize(Eye() - position);
 	vec3 sun = SunRadiance() * max(dot(normal, light), 0.0) * sunlit;
-	return Diffuse(albedo, sun, normal, occlusion) + sun * (Highlight(normal, view, light, roughness) + glint);
+	return vec4(Diffuse(albedo, sun, normal, occlusion) + sun * (Highlight(normal, view, light, roughness) + glint), AmbientShare(normal, sunlit));
 }
 
-/* The light a surface point sends toward the eye, the sun's shut out where it is shadowed.
+/* The light a surface point sends toward the eye, the sun's shut out where it is shadowed, with its ambient share.
  * Every lit world shader shades through this, with albedo in linear light and the point and normal in render space. */
-vec3 GlintingRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint)
+vec4 GlintingRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion, float glint)
 {
 	return SunlitRadiance(albedo, normal, position, roughness, occlusion, glint, SunVisibility(position, normal));
 }
 
-vec3 Radiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion)
+vec4 Radiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float occlusion)
 {
 	return GlintingRadiance(albedo, normal, position, roughness, occlusion, 0.0);
 }
 
 /* Leaves let light through: the sun wraps on past where they turn away from it, and glows through them where they are seen against it. */
-vec3 FoliageRadiance(vec3 albedo, vec3 normal, vec3 position, float translucency, float occlusion)
+vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 position, float translucency, float occlusion)
 {
 	vec3 light = SunDirection();
 	vec3 view = normalize(Eye() - position);
 	float wrapped = max(dot(normal, light) + translucency, 0.0) / (1.0 + translucency);
 	float glow = translucency * pow(max(dot(-view, light), 0.0), GLOW_FOCUS_POWER);
-	vec3 sun = SunRadiance() * (wrapped + glow) * SunVisibility(position, normal);
-	return Diffuse(albedo, sun, normal, occlusion);
+	float sunlit = SunVisibility(position, normal);
+	vec3 sun = SunRadiance() * (wrapped + glow) * sunlit;
+	return vec4(Diffuse(albedo, sun, normal, occlusion), AmbientShare(normal, sunlit));
 }

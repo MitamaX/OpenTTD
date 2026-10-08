@@ -35,15 +35,12 @@ float Occlusion(ivec2 texel, float ahead)
 	return weights > 1e-3 ? sum / weights : 1.0;
 }
 
-/* Occlusion only dims the light of the sky and the ground around, so it bites less where the sun falls full on a surface. */
-vec3 Occluded(vec3 colour, ivec2 texel, float ahead, vec3 point)
+/* Occlusion only dims the light of the sky and the ground around, the share of a surface's light its shader left in the alpha, so it bites less where the sun falls full on it. */
+vec3 Occluded(vec4 surface, ivec2 texel, float ahead)
 {
-	if (u_occlusion_strength <= 0.0) return colour;
-	vec3 normal = WorldDirection(ViewNormal(u_depth, texel));
-	float ambient = Luminance(AmbientLight(normal));
-	float sun = Luminance(SunRadiance()) * max(dot(normal, SunDirection()), 0.0) * SunVisibility(point, normal);
+	if (u_occlusion_strength <= 0.0) return surface.rgb;
 	float open = mix(1.0, pow(Occlusion(texel, ahead), OCCLUSION_POWER), u_occlusion_strength);
-	return colour * (1.0 - ambient / (ambient + sun) * (1.0 - open));
+	return surface.rgb * (1.0 - surface.a * (1.0 - open));
 }
 
 void main()
@@ -58,6 +55,6 @@ void main()
 
 	float distance = SightDistance(depth, sight);
 	vec3 point = Eye() + sight * distance;
-	vec3 surface = Occluded(texelFetch(u_colour, texel, 0).rgb, texel, AheadOf(depth), point);
+	vec3 surface = Occluded(texelFetch(u_colour, texel, 0), texel, AheadOf(depth));
 	frag_colour = vec4(mix(Hazed(surface, Eye(), point), Haze(sight), FarFade(distance)), 1.0);
 }

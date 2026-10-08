@@ -526,5 +526,5 @@ void main()
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
 	float shown = max(smoothstep(0.0, CONTACT_DEPTH, straight.y), body.calm) * outline;
-	frag_colour = vec4(mix(ground, colour, shown), 1.0);
+	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(up, sunlit));
 }

@@ -22,15 +22,13 @@
 
 static constexpr std::array<const char *, 1> POST_VERTEX = {"mini_ui/shaders/post.vert"};
 static constexpr std::array<const char *, 3> OCCLUSION_SOURCES = {"mini_ui/shaders/scene.glsl", "mini_ui/shaders/post.glsl", "mini_ui/shaders/occlusion.frag"};
-static constexpr std::array<const char *, 10> SHADE_SOURCES = {
+static constexpr std::array<const char *, 8> SHADE_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
 	"mini_ui/shaders/sky.glsl",
 	"mini_ui/shaders/cloud_field.glsl",
 	"mini_ui/shaders/clouds.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/post.glsl",
 	"mini_ui/shaders/shade.frag",
 };

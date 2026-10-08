@@ -44,8 +44,9 @@ void main()
 	vec3 grained = v_colour.rgb * Grain(v_position, gloss);
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, MIN_SPREAD)));
-	vec3 colour = Radiance(albedo, normal, v_position, mix(MATTE, POLISHED, gloss), v_colour.a);
+	vec4 lit = Radiance(albedo, normal, v_position, mix(MATTE, POLISHED, gloss), v_colour.a);
 	vec3 view = normalize(Eye() - v_position);
-	colour += smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss) * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * SkyRadiance(reflect(-view, normal));
-	frag_colour = vec4(colour + albedo * max(-v_trait, 0.0) * GLOW_RADIANCE, 1.0);
+	lit.rgb += smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss) * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * SkyRadiance(reflect(-view, normal));
+	lit.rgb += albedo * max(-v_trait, 0.0) * GLOW_RADIANCE;
+	frag_colour = lit;
 }

@@ -1,10 +1,4 @@
-const vec3 LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
 const float SKY_DEPTH = 1.0;
-
-float Luminance(vec3 colour)
-{
-	return dot(colour, LUMINANCE);
-}
 
 /* Brightness as the eye ranks it, squeezed so bright highlights do not swamp the edges between darker tones. */
 float PerceivedLuma(vec3 colour)
@@ -43,9 +37,4 @@ vec3 ViewNormal(sampler2D depths, ivec2 texel)
 	vec3 up = SurfaceStep(centre, FetchViewPoint(depths, texel - ivec2(0, 1)), FetchViewPoint(depths, texel + ivec2(0, 1)));
 	vec3 normal = normalize(cross(across, up));
 	return dot(normal, centre) > 0.0 ? -normal : normal;
-}
-
-vec3 WorldDirection(vec3 view_direction)
-{
-	return (vec4(view_direction, 0.0) * u_view).xyz;
 }

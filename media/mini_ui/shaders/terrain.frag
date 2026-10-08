@@ -397,7 +397,7 @@ vec3 Soil()
 
 /* The ground's colours are picked on screen; they are lit as the light they reflect.
  * Below the sea the waves scatter the sunlight, so the shadows falling on the bed lighten with the depth of the water over it. */
-vec3 Lit(Shade shade)
+vec4 Lit(Shade shade)
 {
 	vec3 position = RenderPoint(v_world);
 	float scattered = SCATTERED_SHADOW * smoothstep(0.0, SCATTERING_LEVELS, -v_world.z);
@@ -1231,5 +1231,5 @@ void main()
 	} else {
 		shade = GroundShade(p, pixel, water, relief, detail, levels_per_pixel, normal);
 	}
-	frag_colour = vec4(Lit(shade), 1.0);
+	frag_colour = Lit(shade);
 }
