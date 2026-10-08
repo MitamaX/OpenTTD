@@ -65,6 +65,8 @@ const float CLIMATE_FRAY = 1.0;
 const float CLIMATE_FRAY_FREQUENCY = 0.33;
 const float BUILT_WARP = 0.06;
 const float DEPTH_LOD = 3.0;
+const int DRY_LEVEL = 3;
+const int DRY_REACH = 2;
 const float SANDED_SEA = 0.26;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
@@ -612,7 +614,8 @@ Patch Fields(Ground ground, Grain grain, vec2 p)
 	float furrow = smoothstep(0.45, 0.95, gap) * level * ResolvedAt(FURROWS_PER_TILE, 1.0 / row_pitch);
 	float track_gap = abs(abs(fract(across * TRAMLINES_PER_TILE) - 0.5) / TRAMLINES_PER_TILE - TRAMLINE_GAUGE);
 	float track = Stroke(track_gap, TRAMLINE_HALF_WIDTH, row_pitch) * level;
-	float plants = Varied(Noise(vec2(across * FURROWS_PER_TILE, along * MICRO_PER_TILE)), 0.3 * ResolvedAt(MICRO_PER_TILE, 1.0 / row_pitch)) * Varied(grain.micro, 0.25);
+	float stalks = ResolvedAt(MICRO_PER_TILE, 1.0 / row_pitch);
+	float plants = (stalks > 0.0 ? Varied(Noise(vec2(across * FURROWS_PER_TILE, along * MICRO_PER_TILE)), 0.3 * stalks) : 1.0) * Varied(grain.micro, 0.25);
 	vec3 soil = mix(Soil(), crop, 0.25) * 0.85 * Varied(grain.fine, 0.2);
 	return Patch(mix(mix(crop * plants, soil, furrow * FURROW_DEPTH), soil, track * TRAMLINE_DEPTH), FIELD_RUGGED);
 }
@@ -820,9 +823,19 @@ vec3 Roughened(vec3 normal, Detail detail, vec2 rugged)
 	return normalize(normal - (detail.slope * rugged.x + detail.stone_slope * rugged.y) * RELIEF_DEPTH);
 }
 
+/* Whether no tile within the reach the water's field weighs about a tile holds any water, from the water's texels eight tiles to a texel, each of which keeps any water under it however little. */
+bool DryAbout(ivec2 tile)
+{
+	ivec2 low = Clamped(tile - DRY_REACH) >> DRY_LEVEL;
+	ivec2 high = Clamped(tile + DRY_REACH) >> DRY_LEVEL;
+	float water = texelFetch(u_water, low, DRY_LEVEL).r + texelFetch(u_water, ivec2(high.x, low.y), DRY_LEVEL).r;
+	water += texelFetch(u_water, ivec2(low.x, high.y), DRY_LEVEL).r + texelFetch(u_water, high, DRY_LEVEL).r;
+	return water <= 0.0;
+}
+
 Water WaterAt(vec2 p)
 {
-	vec4 near = WaterField(p);
+	vec4 near = DryAbout(ivec2(floor(p))) ? vec4(0.0) : WaterField(p);
 	float wide = textureLod(u_water, p / MapSize(), DEPTH_LOD).r;
 	float edge = max(fwidth(near.r), 1e-3);
 
@@ -1049,6 +1062,7 @@ vec3 Windblown(vec2 p, float along, float across)
 
 float Glint(vec2 p, vec3 normal)
 {
+	if (tile_pixels <= GLINT_FROM_PIXELS) return 0.0;
 	float level = floor(log2(max(tile_pixels / GLINT_PIXELS, 1.0)));
 	vec2 q = p * exp2(level);
 	ivec2 cell = ivec2(floor(q)) + ivec2(int(level) * GLINT_LEVEL_STRIDE, 0);
@@ -1071,9 +1085,11 @@ Blanket Snowfield(Site site, float cover)
 {
 	vec2 p = site.p;
 	vec3 drift = Windblown(p + 3.7, DRIFT_ALONG, DRIFT_ACROSS);
-	vec3 ridge = Windblown(p + 1.3, RIDGE_ALONG, RIDGE_ACROSS);
-	vec3 sastrugi = Windblown(p, SASTRUGI_ALONG, SASTRUGI_ACROSS);
-	vec2 slope = drift.yz * DRIFT_HEIGHT * Resolved(DRIFT_ACROSS) + ridge.yz * RIDGE_HEIGHT * Resolved(RIDGE_ACROSS) + sastrugi.yz * SASTRUGI_HEIGHT * Resolved(SASTRUGI_ACROSS);
+	vec2 slope = drift.yz * DRIFT_HEIGHT * Resolved(DRIFT_ACROSS);
+	float ridges = Resolved(RIDGE_ACROSS);
+	if (ridges > 0.0) slope += Windblown(p + 1.3, RIDGE_ALONG, RIDGE_ACROSS).yz * RIDGE_HEIGHT * ridges;
+	float sastrugi = Resolved(SASTRUGI_ACROSS);
+	if (sastrugi > 0.0) slope += Windblown(p, SASTRUGI_ALONG, SASTRUGI_ACROSS).yz * SASTRUGI_HEIGHT * sastrugi;
 	float scoured = smoothstep(0.55, 0.85, Octave(p + 9.1, 0.7)) * (1.0 - drift.x);
 	vec3 tone = mix(SNOW, SCOURED_SNOW, scoured) * mix(0.95, 1.02, drift.x) * Varied(site.grain.fine, 0.05) * Varied(site.grain.micro, 0.06);
 	tone = mix(tone, tone * PACKED_SNOW_TINT, Broad(p));
