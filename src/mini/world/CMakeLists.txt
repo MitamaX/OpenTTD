@@ -7,6 +7,7 @@ add_files(
     build_slice.h
     chunk_grid.cpp
     chunk_grid.h
+    chunk_keep.h
     farm_models.cpp
     farm_models.h
     farmsteads.cpp

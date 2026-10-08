@@ -23,7 +23,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr uint64_t EVICT_FRAMES = 600;
 static constexpr double CROWN_REACH = 0.3;
 static constexpr int CROWN_MARGIN = 1;
 static_assert(CROWN_REACH <= CROWN_MARGIN);
@@ -196,13 +195,11 @@ void ForestField::Gather(const SceneView &camera, const Frustum &frustum, TreeDe
 	});
 }
 
-/* A block long out of every view lets its trees go, so a big map only holds the forests near the view. */
+/* Past what the field may keep, the blocks longest out of every view let their trees go, so a big map only holds the forests about the view. */
 void ForestField::Evict()
 {
-	for (Cell &cell : this->cells) {
-		if (!cell.planted || this->frame - cell.drawn < EVICT_FRAMES) continue;
-		cell = Cell{};
-	}
+	auto bytes = [](const Cell &cell) { return cell.trees.size() * sizeof(TreeInstance) + cell.runs.size() * sizeof(Run); };
+	this->keep.Trim(this->cells, this->frame, bytes, &Cell::drawn, [](Cell &cell) { cell = Cell{}; });
 }
 
 void ForestField::Release()

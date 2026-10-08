@@ -18,6 +18,7 @@
 #include "../gpu/mesh_buffer.h"
 #include "build_slice.h"
 #include "chunk_grid.h"
+#include "chunk_keep.h"
 #include "network_mesh.h"
 #include "scene_view.h"
 
@@ -50,6 +51,7 @@ struct NetworkChunk {
 	bool Outdated(WayDetail wanted_detail) const { return this->stale || !this->built || this->detail != wanted_detail; }
 	/* Ways wanted in full where none show yet are first drafted simply, which costs little. */
 	WayDetail NextDetail(WayDetail wanted_detail) const { return this->built ? wanted_detail : WayDetail::Simple; }
+	size_t Bytes() const;
 	void Release();
 };
 
@@ -81,6 +83,7 @@ private:
 	void Evict();
 
 	ChunkGrid grid{CHUNK_TILES};
+	ChunkKeep keep;
 	std::vector<NetworkChunk> chunks;
 	std::vector<Due> due;
 	double rise = 0.0;

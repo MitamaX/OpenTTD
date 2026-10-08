@@ -27,7 +27,7 @@
 
 static constexpr double FULL_DETAIL_PIXELS = 20.0;
 static constexpr double FOOTING_LEVELS = 1.0;
-static constexpr uint64_t EVICT_FRAMES = 600;
+static constexpr uint64_t ABANDON_FRAMES = 600;
 static constexpr int NEIGHBOUR_REACH = 1;
 static constexpr int FOOTPRINT_REACH = MAX_FOOTPRINT_TILES - 1;
 
@@ -262,21 +262,24 @@ std::optional<StructureHit> StructureField::Pick(const Vec3 &origin, const Vec3 
 	return nearest;
 }
 
-/* A block the camera has long been too far from gives its mesh back and drops any build of it left unfinished, so a big map only holds the buildings near the view. */
+/* A block the camera has long been too far from drops any build of its mesh left unfinished; past what the field may keep, the blocks longest out of every view give their meshes back,
+ * so a big map only holds the buildings about the view. */
 void StructureField::Evict()
 {
 	for (StructureChunk &chunk : this->chunks) {
-		if (this->frame - chunk.wanted < EVICT_FRAMES) continue;
+		if (this->frame - chunk.wanted < ABANDON_FRAMES) continue;
 		chunk.rebuild.reset();
 		chunk.due_since = 0;
-		if (!chunk.built) continue;
+	}
+	auto bytes = [](const StructureChunk &chunk) { return chunk.mesh.Bytes(); };
+	this->keep.Trim(this->chunks, this->frame, bytes, &StructureChunk::wanted, [](StructureChunk &chunk) {
 		chunk.mesh.Release();
 		chunk.waiting.reset();
 		chunk.picks.clear();
 		chunk.vents.clear();
 		chunk.built = false;
 		chunk.surveyed = false;
-	}
+	});
 }
 
 void StructureField::Release()

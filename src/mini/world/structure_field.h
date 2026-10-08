@@ -17,6 +17,7 @@
 #include "../gpu/mesh_buffer.h"
 #include "build_slice.h"
 #include "chunk_grid.h"
+#include "chunk_keep.h"
 #include "scene_view.h"
 #include "structure_mesh.h"
 
@@ -101,6 +102,7 @@ private:
 	void Evict();
 
 	ChunkGrid grid{CHUNK_TILES};
+	ChunkKeep keep;
 	std::vector<StructureChunk> chunks;
 	std::vector<uint32_t> digests;
 	std::vector<Due> due;

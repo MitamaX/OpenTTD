@@ -73,12 +73,14 @@ public:
 	void Release();
 
 	bool Empty() const { return this->index_count == 0; }
+	size_t Bytes() const { return this->bytes; }
 
 private:
 	uint32_t vertex_array = 0;
 	uint32_t vertex_buffer = 0;
 	uint32_t index_buffer = 0;
 	int index_count = 0;
+	size_t bytes = 0;
 };
 
 #endif /* MINI_GPU_MESH_BUFFER_H */

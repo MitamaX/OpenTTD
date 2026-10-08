@@ -16,6 +16,7 @@
 
 #include "../gpu/instanced_meshes.h"
 #include "chunk_grid.h"
+#include "chunk_keep.h"
 #include "scene_view.h"
 #include "tree_models.h"
 
@@ -68,6 +69,7 @@ private:
 	void Evict();
 
 	ChunkGrid grid{CELL_TILES};
+	ChunkKeep keep;
 	std::vector<Cell> cells;
 	uint64_t frame = 0;
 };

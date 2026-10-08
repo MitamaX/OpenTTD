@@ -18,6 +18,7 @@
 #include "../map/world_tiles.h"
 #include "build_slice.h"
 #include "chunk_grid.h"
+#include "chunk_keep.h"
 #include "scene_view.h"
 #include "terrain_mesh.h"
 
@@ -76,6 +77,7 @@ private:
 	void Evict();
 
 	ChunkGrid grid{CHUNK_TILES};
+	ChunkKeep keep;
 	std::vector<Chunk> chunks;
 	MeshBuffer outer_bed;
 	MeshBuffer outer_water;

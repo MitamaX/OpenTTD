@@ -51,6 +51,7 @@ void MeshBuffer::Upload(std::span<const std::byte> vertices, size_t stride, std:
 	PointAttributes(layout, stride);
 	glBindVertexArray(0);
 	this->index_count = static_cast<int>(indices.size());
+	this->bytes = vertices.size() + indices.size_bytes();
 }
 
 void MeshBuffer::Draw() const

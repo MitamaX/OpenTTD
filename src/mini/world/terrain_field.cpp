@@ -25,7 +25,6 @@ static constexpr double OUTER_SEA_REACH = 8192.0;
 /* The ground keeps every tile's own facets and banks wherever the network's meshes may stand on it. */
 static constexpr double FINEST_CELL_PIXELS = NETWORK_FADE_START;
 static constexpr int COARSEST_STEP = 8;
-static constexpr uint64_t EVICT_FRAMES = 600;
 
 /* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles. */
 static int StepFor(double tile_pixels)
@@ -207,16 +206,16 @@ void TerrainField::DrawWater(const SceneView &camera)
 	}
 }
 
-/* A block long out of every view gives its meshes back, so a big map only holds the ground near the view. */
+/* Past what the field may keep, the blocks longest out of every view give their meshes back, so a big map only holds the ground about the view. */
 void TerrainField::Evict()
 {
-	for (Chunk &chunk : this->chunks) {
-		if (chunk.ground.Empty() || this->frame - chunk.drawn < EVICT_FRAMES) continue;
+	auto bytes = [](const Chunk &chunk) { return chunk.ground.Bytes() + chunk.water.Bytes(); };
+	this->keep.Trim(this->chunks, this->frame, bytes, &Chunk::drawn, [](Chunk &chunk) {
 		chunk.ground.Release();
 		chunk.water.Release();
 		chunk.rebuild.reset();
 		chunk.stale = true;
-	}
+	});
 }
 
 void TerrainField::Release()

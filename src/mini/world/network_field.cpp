@@ -26,7 +26,7 @@
 
 static constexpr double FULL_DETAIL_PIXELS = 18.0;
 static constexpr double HEADROOM_LEVELS = 2.0;
-static constexpr uint64_t EVICT_FRAMES = 600;
+static constexpr uint64_t ABANDON_FRAMES = 600;
 static constexpr int EASE_MARGIN = WAY_EASE_REACH;
 
 /* Only a change of the ground's shape or the ways can reach a block, and only stales it when the ground or the ways it is built from changed,
@@ -214,19 +214,29 @@ void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::
 	}
 }
 
-/* A block the camera has long been too far from gives its meshes back and drops any build of them left unfinished, so a big map only holds the ways near the view. */
+/* A block the camera has long been too far from drops any build of its meshes left unfinished; past what the field may keep, the blocks longest out of every view give their meshes back,
+ * so a big map only holds the ways about the view. */
 void NetworkField::Evict()
 {
 	for (NetworkChunk &chunk : this->chunks) {
-		if (this->frame - chunk.wanted < EVICT_FRAMES) continue;
+		if (this->frame - chunk.wanted < ABANDON_FRAMES) continue;
 		chunk.rebuild.reset();
 		chunk.due_since = 0;
-		if (!chunk.built) continue;
+	}
+	this->keep.Trim(this->chunks, this->frame, &NetworkChunk::Bytes, &NetworkChunk::wanted, [](NetworkChunk &chunk) {
 		chunk.Release();
 		chunk.waiting.reset();
 		chunk.signals.clear();
 		chunk.built = false;
-	}
+	});
+}
+
+size_t NetworkChunk::Bytes() const
+{
+	size_t bytes = 0;
+	for (const MeshBuffer &layer : this->layers) bytes += layer.Bytes();
+	for (const MeshBuffer &span : this->spans) bytes += span.Bytes();
+	return bytes;
 }
 
 void NetworkChunk::Release()
