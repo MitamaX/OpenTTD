@@ -2,15 +2,27 @@ uniform sampler2DArrayShadow u_shadow_map;
 
 const float NORMAL_OFFSET_TEXELS = 1.2;
 const float CASCADE_BLEND = 0.12;
-const int FILTER_SPAN = 4;
+const float FILTER_SPAN = 4.0;
 
 float ViewDepth(vec3 position)
 {
 	return -(u_view * vec4(position, 1.0)).z;
 }
 
+/* A box of filtered lookups FILTER_SPAN texels wide weighs the five texels along each axis by 1 - f, 1, 1, 1 and f, f being how far the point lies into its texel;
+ * three filtered lookups weigh them just so, the first and last each blending a pair of texels, as offsets from the first texel's centre and weights. */
+vec3 FilterOffsets(float f)
+{
+	return vec3(1.0 / (2.0 - f), 2.0, 3.0 + f / (1.0 + f));
+}
+
+vec3 FilterWeights(float f)
+{
+	return vec3(2.0 - f, 1.0, 1.0 + f);
+}
+
 /* The point is pushed off its surface by about a texel, more where the sun grazes it, so the surface never shadows itself;
- * a grid of filtered lookups softens the edge over a few texels. */
+ * a box of filtered lookups softens the edge over a few texels. */
 float CascadeLight(int cascade, vec3 position, vec3 normal)
 {
 	float grazing = 1.0 - max(dot(normal, SunDirection()), 0.0);
@@ -18,15 +30,22 @@ float CascadeLight(int cascade, vec3 position, vec3 normal)
 	vec3 at = (u_cascades[cascade] * vec4(lifted, 1.0)).xyz;
 	if (at.z >= 1.0) return 1.0;
 
-	vec2 texel = 1.0 / vec2(textureSize(u_shadow_map, 0).xy);
+	vec2 size = vec2(textureSize(u_shadow_map, 0).xy);
+	vec2 texels = at.xy * size;
+	vec2 first = floor(texels) - 0.5 * FILTER_SPAN + 0.5;
+	vec2 f = texels - floor(texels);
+	vec3 x_offsets = FilterOffsets(f.x);
+	vec3 y_offsets = FilterOffsets(f.y);
+	vec3 x_weights = FilterWeights(f.x);
+	vec3 y_weights = FilterWeights(f.y);
 	float lit = 0.0;
-	for (int y = 0; y < FILTER_SPAN; y++) {
-		for (int x = 0; x < FILTER_SPAN; x++) {
-			vec2 tap = (vec2(x, y) - 0.5 * float(FILTER_SPAN - 1)) * texel;
-			lit += texture(u_shadow_map, vec4(at.xy + tap, float(cascade), at.z));
+	for (int y = 0; y < 3; y++) {
+		for (int x = 0; x < 3; x++) {
+			vec2 tap = (first + vec2(x_offsets[x], y_offsets[y])) / size;
+			lit += x_weights[x] * y_weights[y] * texture(u_shadow_map, vec4(tap, float(cascade), at.z));
 		}
 	}
-	return lit / float(FILTER_SPAN * FILTER_SPAN);
+	return lit / (FILTER_SPAN * FILTER_SPAN);
 }
 
 /* How much of the sun the world lets reach a point: the nearest cascade holding it decides, handing over to the next across a band, and shadows fade out where the cascades end. */
