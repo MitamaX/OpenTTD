@@ -10,8 +10,11 @@
 #ifndef MINI_GPU_GL_PROGRAM_H
 #define MINI_GPU_GL_PROGRAM_H
 
+#include <map>
+#include <string>
 #include <string_view>
 
+/* Every uniform's location is looked up once, as the program is linked, so drawing never waits on the driver to answer. */
 class GlProgram {
 public:
 	bool Build(std::string_view vertex_source, std::string_view fragment_source);
@@ -23,7 +26,10 @@ public:
 	void BindBlock(const char *block, uint32_t binding) const;
 
 private:
+	void LearnUniforms();
+
 	uint32_t name = 0;
+	std::map<std::string, int, std::less<>> uniforms;
 };
 
 #endif /* MINI_GPU_GL_PROGRAM_H */

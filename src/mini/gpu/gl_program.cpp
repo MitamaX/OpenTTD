@@ -71,13 +71,36 @@ bool GlProgram::Build(std::string_view vertex_source, std::string_view fragment_
 	if (vertex != 0 && fragment != 0) this->name = Link(vertex, fragment);
 	glDeleteShader(vertex);
 	glDeleteShader(fragment);
+	if (this->name != 0) this->LearnUniforms();
 	return this->name != 0;
+}
+
+/* An array is named by its first element, which also answers to the array's bare name. */
+void GlProgram::LearnUniforms()
+{
+	static constexpr std::string_view FIRST_ELEMENT = "[0]";
+	GLint count = 0;
+	GLint longest = 0;
+	glGetProgramiv(this->name, GL_ACTIVE_UNIFORMS, &count);
+	glGetProgramiv(this->name, GL_ACTIVE_UNIFORM_MAX_LENGTH, &longest);
+	std::string buffer(static_cast<size_t>(std::max(longest, 1)), '\0');
+	for (GLint index = 0; index < count; index++) {
+		GLsizei length = 0;
+		GLint size = 0;
+		GLenum type = 0;
+		glGetActiveUniform(this->name, static_cast<GLuint>(index), static_cast<GLsizei>(buffer.size()), &length, &size, &type, buffer.data());
+		std::string uniform(buffer.data(), static_cast<size_t>(length));
+		int location = glGetUniformLocation(this->name, uniform.c_str());
+		if (uniform.ends_with(FIRST_ELEMENT)) uniform.resize(uniform.size() - FIRST_ELEMENT.size());
+		this->uniforms.emplace(std::move(uniform), location);
+	}
 }
 
 void GlProgram::Release()
 {
 	if (this->name != 0) glDeleteProgram(this->name);
 	this->name = 0;
+	this->uniforms.clear();
 }
 
 void GlProgram::Use() const
@@ -85,9 +108,11 @@ void GlProgram::Use() const
 	glUseProgram(this->name);
 }
 
+/* A uniform the program does not use has no location, which GL quietly ignores. */
 int GlProgram::Uniform(const char *uniform) const
 {
-	return glGetUniformLocation(this->name, uniform);
+	auto found = this->uniforms.find(std::string_view(uniform));
+	return found == this->uniforms.end() ? -1 : found->second;
 }
 
 /* A program that declares no such block keeps what it has. */
