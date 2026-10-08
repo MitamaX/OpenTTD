@@ -22,6 +22,7 @@
 #include "../../train.h"
 #include "../../vehicle_base.h"
 #include "tile_shapes.h"
+#include "track_pieces.h"
 #include "train_route.h"
 #include "way_course.h"
 
@@ -48,7 +49,8 @@ static bool RidesDrawnGround(const Vehicle *v)
 /* A unit is shown a little short of where the game has it, so it may still stand on the ramp of a bridge's head the game has it past. */
 static bool OnBridgeHead(const WorldPoint &point)
 {
-	return IsBridgeTile(TileXY(static_cast<uint>(point.x), static_cast<uint>(point.y)));
+	auto [tx, ty] = TileOf(Flat(point));
+	return OnMap(tx, ty) && IsBridgeTile(TileXY(tx, ty));
 }
 
 static MapVector FacingOf(Direction direction)
