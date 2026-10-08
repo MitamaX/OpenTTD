@@ -114,6 +114,16 @@ void VehiclePass::Draw(const SceneView &view)
 	this->DrawBatch(this->program, view);
 }
 
+void VehiclePass::WarmCast()
+{
+	if (this->caster.Ready()) this->DrawBlank(this->caster);
+}
+
+void VehiclePass::Warm()
+{
+	if (this->program.Ready()) this->DrawBlank(this->program);
+}
+
 void VehiclePass::Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels)
 {
 	this->batch.Clear(VEHICLE_MODELS);
@@ -143,6 +153,14 @@ void VehiclePass::DrawBatch(const ShaderProgram &program, const SceneView &camer
 		glUniform2f(most_growth, growth.along, growth.across);
 		return model;
 	});
+}
+
+void VehiclePass::DrawBlank(const ShaderProgram &program)
+{
+	this->batch.Clear(VEHICLE_MODELS);
+	this->batch.Add(0, VehicleInstance{});
+	program.Use();
+	this->DrawBatch(program, this->seen);
 }
 
 std::optional<VehicleHit> VehiclePass::Pick(const Vec3 &origin, const Vec3 &direction) const

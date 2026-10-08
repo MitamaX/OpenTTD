@@ -202,6 +202,23 @@ void ShadowMap::Aim(int cascade) const
 	glBindBufferRange(GL_UNIFORM_BUFFER, SHADOWS_BINDING, this->buffer, static_cast<GLintptr>(this->stride * cascade), sizeof(ShadowsBlock));
 }
 
+void ShadowMap::BeginCasting() const
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
+	glViewport(0, 0, RESOLUTION, RESOLUTION);
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glEnable(GL_DEPTH_CLAMP);
+	glEnable(GL_POLYGON_OFFSET_FILL);
+	glPolygonOffset(SLOPE_OFFSET, CONSTANT_OFFSET);
+}
+
+static void EndCasting()
+{
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_CLAMP);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
 /* Casters nearer the sun than a cascade's box are pressed onto its near side instead of being cut away. */
 void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes)
 {
@@ -211,12 +228,7 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 	std::array<Cascade, CASCADES> cascades = this->Fit(camera);
 	this->Upload(cascades, camera);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
-	glViewport(0, 0, RESOLUTION, RESOLUTION);
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	glEnable(GL_DEPTH_CLAMP);
-	glEnable(GL_POLYGON_OFFSET_FILL);
-	glPolygonOffset(SLOPE_OFFSET, CONSTANT_OFFSET);
+	this->BeginCasting();
 	for (int index = 0; index < CASCADES; index++) {
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, this->texture, 0, index);
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -227,9 +239,16 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 			pass->Cast(view);
 		}
 	}
-	glDisable(GL_POLYGON_OFFSET_FILL);
-	glDisable(GL_DEPTH_CLAMP);
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	EndCasting();
+}
+
+/* Into the cascade last drawn, which the next frame clears before casting into it. */
+void ShadowMap::Warm(std::span<const std::unique_ptr<WorldPass>> passes) const
+{
+	if (this->framebuffer == 0) return;
+	this->BeginCasting();
+	for (const auto &pass : passes) pass->WarmCast();
+	EndCasting();
 }
 
 void ShadowMap::Bind() const

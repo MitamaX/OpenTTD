@@ -33,6 +33,7 @@ public:
 	static constexpr int RESOLUTION = 2048;
 
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
+	void Warm(std::span<const std::unique_ptr<WorldPass>> passes) const;
 	void Bind() const;
 	void Release();
 
@@ -49,6 +50,7 @@ private:
 	Cascade FitSlice(const SceneView &camera, double near, double far) const;
 	void Upload(const std::array<Cascade, CASCADES> &cascades, const SceneView &camera);
 	void Aim(int cascade) const;
+	void BeginCasting() const;
 
 	uint32_t texture = 0;
 	uint32_t framebuffer = 0;

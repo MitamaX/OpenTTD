@@ -40,6 +40,11 @@ static constexpr double TREE_CASTER_WIDTH = 0.2;
 static constexpr TreeDetail COARSEST_CAST = TreeDetail::Simple;
 static constexpr TreeDetail COARSEST_SHOWN = TreeDetail::Crude;
 
+static size_t DrawnMesh(size_t mesh)
+{
+	return mesh;
+}
+
 ForestPass::ForestPass(const WorldTextures &textures) : textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
 {
 }
@@ -77,16 +82,40 @@ void ForestPass::Draw(const SceneView &view)
 	if (!this->program.Ready()) return;
 	WorldTextures::BindSamplers(this->program);
 	this->textures.Bind();
-	this->DrawTrees(this->program, view, view.frustum, COARSEST_SHOWN, [](size_t mesh) { return mesh; });
+	this->DrawTrees(this->program, view, view.frustum, COARSEST_SHOWN, DrawnMesh);
+}
+
+void ForestPass::WarmCast()
+{
+	if (!this->caster.Ready()) return;
+	this->batch.Clear(TREE_DRAWN_MESHES);
+	this->batch.Add(0, TreeInstance{});
+	this->DrawBatch(this->caster, TreeCasterMesh);
+}
+
+void ForestPass::Warm()
+{
+	if (!this->program.Ready()) return;
+	WorldTextures::BindSamplers(this->program);
+	this->textures.Bind();
+	this->batch.Clear(TREE_DRAWN_MESHES);
+	this->batch.Add(0, TreeInstance{});
+	this->DrawBatch(this->program, DrawnMesh);
+}
+
+template <class ChooseMesh>
+void ForestPass::DrawTrees(const ShaderProgram &program, const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, ChooseMesh choose_mesh)
+{
+	this->batch.Clear(TREE_DRAWN_MESHES);
+	this->forest.Gather(camera, frustum, coarsest, this->batch);
+	this->DrawBatch(program, choose_mesh);
 }
 
 /* Each mesh's copies learn which detail they were gathered for. */
 template <class ChooseMesh>
-void ForestPass::DrawTrees(const ShaderProgram &program, const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, ChooseMesh choose_mesh)
+void ForestPass::DrawBatch(const ShaderProgram &program, ChooseMesh choose_mesh)
 {
 	program.Use();
-	this->batch.Clear(TREE_DRAWN_MESHES);
-	this->forest.Gather(camera, frustum, coarsest, this->batch);
 	int detail_uniform = program.Uniform("u_detail");
 	this->batch.Draw(this->models, [&](size_t mesh) {
 		glUniform1i(detail_uniform, static_cast<GLint>(TreeDetailOf(mesh)));

@@ -29,11 +29,14 @@ public:
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
+	void WarmCast() override;
+	void Warm() override;
 	void Release() override;
 
 private:
 	void DrawLayers(const ShaderProgram &program, NetworkBuffers NetworkChunk::*buffers) const;
 	void DrawSignals();
+	void DrawBlankSignal();
 
 	NetworkField field;
 	std::vector<const NetworkChunk *> seen;

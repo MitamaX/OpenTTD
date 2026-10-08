@@ -14,6 +14,7 @@
 #include <optional>
 #include <vector>
 
+#include "../../landscape_type.h"
 #include "../../vehicle_type.h"
 #include "../ui/shader_painter.h"
 #include "ground_overlay.h"
@@ -46,6 +47,7 @@ public:
 private:
 	bool Ready();
 	void Render(const SceneView &view);
+	void Warm(const SceneView &view, Dimension layer);
 	void SyncChanges();
 	void LayDepth(const SceneView &view);
 	void DrawStage(WorldStage stage, const SceneView &view);
@@ -60,6 +62,8 @@ private:
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	std::vector<ShaderProgram *> programs;
 	std::optional<bool> supported;
+	/* The climate the programs were last warmed for, as they are built anew for another. */
+	std::optional<LandscapeType> warmed;
 	const StructurePass *structures = nullptr;
 	const VehiclePass *vehicles = nullptr;
 };

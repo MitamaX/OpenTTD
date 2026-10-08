@@ -88,7 +88,6 @@ void SmokePass::Add(const SmokeVent &vent)
 	}
 }
 
-/* Puffs neither hide one another nor what lies behind them from the depth test; they only darken and light what they cover, in their own alpha. */
 void SmokePass::Draw(const SceneView &view)
 {
 	if (!this->program.Ready()) return;
@@ -102,7 +101,20 @@ void SmokePass::Draw(const SceneView &view)
 	for (const Plume &plume : this->plumes) this->Add(*plume.vent);
 	this->batch.Clear(1);
 	this->batch.Add(0, this->puffs);
+	this->DrawBatch();
+}
 
+void SmokePass::Warm()
+{
+	if (!this->program.Ready()) return;
+	this->batch.Clear(1);
+	this->batch.Add(0, PuffInstance{});
+	this->DrawBatch();
+}
+
+/* Puffs neither hide one another nor what lies behind them from the depth test; they only darken and light what they cover, in their own alpha. */
+void SmokePass::DrawBatch()
+{
 	this->program.Use();
 	glEnable(GL_BLEND);
 	glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);

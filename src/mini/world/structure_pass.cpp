@@ -80,6 +80,20 @@ void StructurePass::Draw(const SceneView &view)
 	this->DrawChunks();
 }
 
+void StructurePass::WarmCast()
+{
+	if (!this->caster.Ready()) return;
+	this->caster.Use();
+	DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
+}
+
+void StructurePass::Warm()
+{
+	if (!this->program.Ready()) return;
+	this->program.Use();
+	DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
+}
+
 void StructurePass::DrawChunks() const
 {
 	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw();

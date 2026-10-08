@@ -10,10 +10,14 @@
 #include "../../stdafx.h"
 #include "mesh_buffer.h"
 
+#include <array>
+
 #include "frame_profile.h"
 #include "gl_api.h"
 
 #include "../../safeguards.h"
+
+static constexpr std::array<uint32_t, 3> ONE_CORNER = {0, 0, 0};
 
 static GLenum ComponentType(AttributeType type)
 {
@@ -31,6 +35,15 @@ void PointAttributes(std::span<const VertexAttribute> layout, size_t stride, siz
 		GLboolean normalised = attribute.type == AttributeType::Float ? GL_FALSE : GL_TRUE;
 		glVertexAttribPointer(attribute.location, attribute.components, ComponentType(attribute.type), normalised, static_cast<GLsizei>(stride), reinterpret_cast<const void *>(offset + attribute.offset));
 	}
+}
+
+void DrawBlankTriangle(std::span<const VertexAttribute> layout, size_t stride)
+{
+	std::vector<std::byte> vertex(stride);
+	MeshBuffer triangle;
+	triangle.Upload(vertex, stride, layout, ONE_CORNER);
+	triangle.Draw();
+	triangle.Release();
 }
 
 void MeshBuffer::Upload(std::span<const std::byte> vertices, size_t stride, std::span<const VertexAttribute> layout, std::span<const uint32_t> indices)

@@ -52,6 +52,7 @@ public:
 	std::vector<ShaderProgram *> Programs() override;
 	void Load() override;
 	void Draw(const SceneView &view) override;
+	void Warm() override;
 	void Release() override;
 	WorldStage Stage() const override { return WorldStage::Surface; }
 
@@ -64,6 +65,7 @@ private:
 
 	void Gather(const SceneView &view, std::span<const SmokeVent> vents);
 	void Add(const SmokeVent &vent);
+	void DrawBatch();
 
 	const StructurePass &structures;
 	const VehiclePass &vehicles;

@@ -167,15 +167,34 @@ void PostChain::Finish(const WorldTarget &target, const SceneView &view)
 		return;
 	}
 
-	glDisable(GL_DEPTH_TEST);
-	glDepthMask(GL_FALSE);
-	glDisable(GL_BLEND);
-	glBindVertexArray(this->quad);
+	this->BeginSteps();
 	if (_tuning.ambient_occlusion != 0) this->Occlude(target);
 	this->Shade(target);
 	this->resolved = &this->Resolve(target);
 	if (_tuning.bloom != 0) this->Bloom(*this->resolved);
 	this->previous_view_projection = view.view_projection;
+}
+
+/* Every step is drawn once, those the tuning leaves out as well, and what this leaves in the history is not blended into the next frame. */
+void PostChain::Warm(const WorldTarget &target)
+{
+	if (!this->Fit(target.Size())) return;
+
+	this->BeginSteps();
+	this->Occlude(target);
+	this->Shade(target);
+	this->SmoothEdges();
+	this->BlendHistory(target);
+	this->Bloom(this->lit);
+	this->history_valid = false;
+}
+
+void PostChain::BeginSteps() const
+{
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+	glDisable(GL_BLEND);
+	glBindVertexArray(this->quad);
 }
 
 void PostChain::Occlude(const WorldTarget &target)
@@ -215,17 +234,26 @@ const PostTarget &PostChain::Resolve(const WorldTarget &target)
 
 		case Antialiasing::Edges:
 			this->history_valid = false;
-			this->history[0].Bind();
-			this->edges.Use();
-			this->edges.BindSampler("u_current", SOURCE_UNIT);
-			this->lit.BindTexture(SOURCE_UNIT);
-			this->DrawQuad();
-			return this->history[0];
+			return this->SmoothEdges();
 
 		case Antialiasing::Temporal:
 			break;
 	}
+	return this->BlendHistory(target);
+}
 
+const PostTarget &PostChain::SmoothEdges()
+{
+	this->history[0].Bind();
+	this->edges.Use();
+	this->edges.BindSampler("u_current", SOURCE_UNIT);
+	this->lit.BindTexture(SOURCE_UNIT);
+	this->DrawQuad();
+	return this->history[0];
+}
+
+const PostTarget &PostChain::BlendHistory(const WorldTarget &target)
+{
 	const PostTarget &previous = this->history[this->current];
 	this->current ^= 1;
 	const PostTarget &next = this->history[this->current];

@@ -38,10 +38,13 @@ public:
 	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
+	void WarmCast() override;
+	void Warm() override;
 	void Release() override;
 
 private:
 	void DrawBatch(const ShaderProgram &program);
+	void DrawBlank(const ShaderProgram &program);
 
 	std::unique_ptr<Scatter> scatter;
 	ScatterLook look;

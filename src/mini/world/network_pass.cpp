@@ -127,6 +127,27 @@ void NetworkPass::Draw(const SceneView &view)
 	glDisable(GL_POLYGON_OFFSET_FILL);
 }
 
+void NetworkPass::WarmCast()
+{
+	if (!this->caster.Ready() || !this->signal_caster.Ready()) return;
+	this->caster.Use();
+	DrawBlankTriangle(MODEL_LAYOUT, sizeof(ModelVertex));
+	DrawBlankTriangle(SPAN_LAYOUT, sizeof(SpanVertex));
+	this->signal_caster.Use();
+	this->DrawBlankSignal();
+}
+
+void NetworkPass::Warm()
+{
+	if (!this->program.Ready() || !this->span_program.Ready() || !this->signal_program.Ready()) return;
+	this->program.Use();
+	DrawBlankTriangle(MODEL_LAYOUT, sizeof(ModelVertex));
+	this->span_program.Use();
+	DrawBlankTriangle(SPAN_LAYOUT, sizeof(SpanVertex));
+	this->signal_program.Use();
+	this->DrawBlankSignal();
+}
+
 void NetworkPass::DrawLayers(const ShaderProgram &program, NetworkBuffers NetworkChunk::*buffers) const
 {
 	int way = program.Uniform("u_way");
@@ -139,6 +160,13 @@ void NetworkPass::DrawLayers(const ShaderProgram &program, NetworkBuffers Networ
 void NetworkPass::DrawSignals()
 {
 	this->signals.Draw(this->signal_models, [](size_t mesh) { return mesh; });
+}
+
+void NetworkPass::DrawBlankSignal()
+{
+	this->signals.Clear(SIGNAL_MODELS);
+	this->signals.Add(0, SignalInstance{});
+	this->DrawSignals();
 }
 
 void NetworkPass::Release()

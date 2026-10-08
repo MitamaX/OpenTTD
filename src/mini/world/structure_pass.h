@@ -28,6 +28,8 @@ public:
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
+	void WarmCast() override;
+	void Warm() override;
 	void Release() override;
 
 	std::optional<StructureHit> Pick(const Vec3 &origin, const Vec3 &direction) const { return this->field.Pick(origin, direction); }

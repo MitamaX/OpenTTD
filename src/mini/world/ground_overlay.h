@@ -25,8 +25,11 @@ public:
 
 	void Upload(const DrawList &list);
 	void Draw(Dimension layer, const WorldTarget &target) const;
+	void Warm(Dimension layer, const WorldTarget &target) const;
 
 private:
+	void Use(Dimension layer, const WorldTarget &target) const;
+
 	ShaderProgram program;
 	MeshBuffer mesh;
 };

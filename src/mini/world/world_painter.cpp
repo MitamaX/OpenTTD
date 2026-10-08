@@ -14,6 +14,7 @@
 #include <iterator>
 #include <limits>
 
+#include "../../settings_type.h"
 #include "../core/camera.h"
 #include "../core/canvas.h"
 #include "../core/ground_trace.h"
@@ -86,6 +87,7 @@ void WorldPainter::Reload()
 	this->post.Reload();
 	this->overlay.Reload();
 	for (ShaderProgram *program : this->programs) program->Reload();
+	this->warmed.reset();
 }
 
 /* Called from the mini UI's frame while the game's state holds still, so passes may read the game's map. */
@@ -110,12 +112,16 @@ void WorldPainter::Paint(const ShaderArea &area, ShaderLayer &layer)
 	if (_world_tiles.Size().width == 0 || !this->Ready()) return;
 
 	ProfileScope profile("world");
-	this->Render(SceneView::Of(_camera));
+	SceneView view = SceneView::Of(_camera);
+	this->Render(view);
 	this->overlay.Upload(_ground_draw);
 	layer.Restore();
 	this->post.Present(area, layer.Size(), this->target);
-	ProfileScope overlay_profile("overlay");
-	this->overlay.Draw(layer.Size(), this->target);
+	{
+		ProfileScope overlay_profile("overlay");
+		this->overlay.Draw(layer.Size(), this->target);
+	}
+	if (this->warmed != _settings_game.game_creation.landscape) this->Warm(view, layer.Size());
 }
 
 std::optional<TileIndex> WorldPainter::BuildingAt(const Vec3 &origin, const Vec3 &direction) const
@@ -145,6 +151,7 @@ void WorldPainter::Release()
 	this->overlay.Release();
 	for (const auto &pass : this->passes) pass->Release();
 	this->supported.reset();
+	this->warmed.reset();
 }
 
 /* Every pass's program is built with the painter's own, though a pass whose program fails only goes undrawn. The context's version is asked once, as it holds while the context lasts. */
@@ -157,12 +164,8 @@ bool WorldPainter::Ready()
 	return this->post.Ready() && this->overlay.Ready();
 }
 
-/* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, and the finishing steps work on the whole. */
-void WorldPainter::Render(const SceneView &view)
+static void BeginWorldState()
 {
-	this->SyncChanges();
-	this->field.Refresh(view);
-
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_STENCIL_TEST);
 	glDisable(GL_BLEND);
@@ -171,6 +174,15 @@ void WorldPainter::Render(const SceneView &view)
 	glDepthFunc(GL_LESS);
 	glDepthMask(GL_TRUE);
 	glClearDepth(1.0);
+}
+
+/* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, and the finishing steps work on the whole. */
+void WorldPainter::Render(const SceneView &view)
+{
+	this->SyncChanges();
+	this->field.Refresh(view);
+
+	BeginWorldState();
 	this->scene.Upload(this->post.Jitter(view));
 	this->shadows.Render(view, this->passes);
 	if (!this->target.Bind(view.viewport)) return;
@@ -184,6 +196,24 @@ void WorldPainter::Render(const SceneView &view)
 	this->target.Snapshot();
 	this->DrawStage(WorldStage::Surface, view);
 	this->post.Finish(this->target, view);
+}
+
+/* After the first frame every program draws once more into a single pixel of what it draws into, with the scene, shadows and snapshot that frame left bound;
+ * the next frame clears or overwrites that pixel before anything reads it. */
+void WorldPainter::Warm(const SceneView &view, Dimension layer)
+{
+	ProfileScope profile("warm");
+	this->overlay.Warm(layer, this->target);
+	BeginWorldState();
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(0, 0, 1, 1);
+	this->shadows.Warm(this->passes);
+	if (this->target.Bind(view.viewport)) {
+		for (const auto &pass : this->passes) pass->Warm();
+		this->post.Warm(this->target);
+	}
+	glDisable(GL_SCISSOR_TEST);
+	this->warmed = _settings_game.game_creation.landscape;
 }
 
 void WorldPainter::SyncChanges()

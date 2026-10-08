@@ -27,7 +27,8 @@ enum class WorldStage : uint8_t {
  * A pass whose shading is dear may lay its depth in Lay, before any pass draws, so it shades only what stays in sight; it then draws its colour with depth tested equal or nearer.
  * A pass that casts shadows draws its meshes depth only in Cast, through a program made by CasterProgram from its own vertex sources.
  * Prepare runs while the game's state holds still, before the frame is drawn; a pass that reads the game's map does so there and nowhere else.
- * Every program a pass draws with is built before the first frame, so none is built in the frame it first comes into view; Load likewise builds the models and textures it draws with. */
+ * Every program a pass draws with is built before the first frame, so none is built in the frame it first comes into view; Load likewise builds the models and textures it draws with.
+ * Once built, a program that draws only what is in sight is drawn with once all the same, nothing in sight, in WarmCast into the shadow map or in Warm into the target, so the driver readies it for what it draws into before it first shows anything. */
 class WorldPass {
 public:
 	virtual ~WorldPass() = default;
@@ -40,6 +41,8 @@ public:
 	virtual void Cast([[maybe_unused]] const ShadowView &view) {}
 	virtual void Lay([[maybe_unused]] const SceneView &view) {}
 	virtual void Draw(const SceneView &view) = 0;
+	virtual void WarmCast() {}
+	virtual void Warm() {}
 	virtual void Release() = 0;
 	virtual WorldStage Stage() const { return WorldStage::Solid; }
 };

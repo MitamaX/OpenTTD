@@ -49,15 +49,25 @@ void GroundOverlay::Upload(const DrawList &list)
 	this->mesh.Upload(list.Vertices(), OVERLAY_LAYOUT, indices);
 }
 
-/* Drawn in RmlUi's layer with its blending, in the same pixels as the world laid there under it. */
 void GroundOverlay::Draw(Dimension layer, const WorldTarget &target) const
 {
 	if (this->mesh.Empty()) return;
+	this->Use(layer, target);
+	this->mesh.Draw();
+}
 
+void GroundOverlay::Warm(Dimension layer, const WorldTarget &target) const
+{
+	this->Use(layer, target);
+	DrawBlankTriangle(OVERLAY_LAYOUT, sizeof(DrawVertex));
+}
+
+/* Drawn in RmlUi's layer with its blending, in the same pixels as the world laid there under it. */
+void GroundOverlay::Use(Dimension layer, const WorldTarget &target) const
+{
 	this->program.Use();
 	glUniform2f(this->program.Uniform("u_viewport"), static_cast<float>(layer.width), static_cast<float>(layer.height));
 	this->program.BindSampler("u_depth", DEPTH_UNIT);
 	glActiveTexture(GL_TEXTURE0 + DEPTH_UNIT);
 	glBindTexture(GL_TEXTURE_2D, target.Depth());
-	this->mesh.Draw();
 }

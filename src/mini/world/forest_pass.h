@@ -29,11 +29,15 @@ public:
 	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
+	void WarmCast() override;
+	void Warm() override;
 	void Release() override;
 
 private:
 	template <class ChooseMesh>
 	void DrawTrees(const ShaderProgram &program, const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, ChooseMesh choose_mesh);
+	template <class ChooseMesh>
+	void DrawBatch(const ShaderProgram &program, ChooseMesh choose_mesh);
 
 	const WorldTextures &textures;
 	ForestField forest;

@@ -67,11 +67,29 @@ void ScatterPass::Draw(const SceneView &view)
 	this->DrawBatch(this->program);
 }
 
+void ScatterPass::WarmCast()
+{
+	if (this->caster.Ready()) this->DrawBlank(this->caster);
+}
+
+void ScatterPass::Warm()
+{
+	if (this->program.Ready()) this->DrawBlank(this->program);
+}
+
 /* The copies keep their true size however far off, as they fade out before they would need to grow. */
 void ScatterPass::DrawBatch(const ShaderProgram &program)
 {
 	glUniform2f(program.Uniform("u_most_growth"), NO_GROWTH, NO_GROWTH);
 	this->batch.Draw(this->models, [](size_t mesh) { return mesh; });
+}
+
+void ScatterPass::DrawBlank(const ShaderProgram &program)
+{
+	this->batch.Clear(this->look.models);
+	this->batch.Add(0, VehicleInstance{});
+	program.Use();
+	this->DrawBatch(program);
 }
 
 void ScatterPass::Release()

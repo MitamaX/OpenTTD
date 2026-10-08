@@ -35,6 +35,8 @@ public:
 	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
+	void WarmCast() override;
+	void Warm() override;
 	void Release() override;
 
 	/* The vehicle a sight line from the eye meets first, as the last frame laid them out. */
@@ -46,6 +48,7 @@ private:
 	void BuildModels();
 	void Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels);
 	void DrawBatch(const ShaderProgram &program, const SceneView &camera);
+	void DrawBlank(const ShaderProgram &program);
 
 	std::vector<ModelMesh> meshes;
 	std::array<VehicleBounds, VEHICLE_LOOKS> bounds{};

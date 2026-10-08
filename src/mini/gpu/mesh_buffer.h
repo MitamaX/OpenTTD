@@ -30,6 +30,9 @@ struct VertexAttribute {
 /* Points the bound vertex array's attributes into the bound array buffer, from a byte offset on. */
 void PointAttributes(std::span<const VertexAttribute> layout, size_t stride, size_t offset = 0);
 
+/* A triangle with all three corners on one zeroed vertex covers no pixel, yet the driver readies the program in use for the layout as for any draw. */
+void DrawBlankTriangle(std::span<const VertexAttribute> layout, size_t stride);
+
 /* Triangles over a list of vertices, as built on the CPU before upload. */
 template <class Vertex>
 struct TriangleList {
