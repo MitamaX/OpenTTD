@@ -12,8 +12,8 @@ const float HORIZON_GLOW = 0.6;
 const float HORIZON_GLOW_FOCUS = 5.0;
 const float HAZE_LIFT = 0.015;
 
-const vec3 SUN_COLOUR = vec3(1.0, 0.87, 0.70);
-const float SUN_ILLUMINANCE = 3.6;
+const vec3 SUN_COLOUR = vec3(1.0, 0.89, 0.75);
+const float SUN_ILLUMINANCE = 6.0;
 const float SUN_DISC_COSINE = 0.99993;
 const float SUN_DISC_EDGE = 0.99985;
 const float SUN_DISC_BRIGHTNESS = 12.0;
