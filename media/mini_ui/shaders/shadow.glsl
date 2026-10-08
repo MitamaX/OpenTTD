@@ -3,14 +3,15 @@ uniform sampler2DArrayShadow u_shadow_map;
 const float NORMAL_OFFSET_TEXELS = 1.2;
 const float CASCADE_BLEND = 0.12;
 const float FILTER_SPAN = 4.0;
+const int FILTER_LOOKUPS = 3;
 
 float ViewDepth(vec3 position)
 {
 	return -(u_view * vec4(position, 1.0)).z;
 }
 
-/* A box of filtered lookups FILTER_SPAN texels wide weighs the five texels along each axis by 1 - f, 1, 1, 1 and f, f being how far the point lies into its texel;
- * three filtered lookups weigh them just so, the first and last each blending a pair of texels, as offsets from the first texel's centre and weights. */
+/* A box of filtered lookups FILTER_SPAN texels wide weighs the five texels it covers along each axis by 1 - f, 1, 1, 1 and f, f being how far the point lies into its texel;
+ * FILTER_LOOKUPS filtered lookups along the axis weigh them just so, the outer two each blending a pair: where each reads, counted from the first texel's centre, and how much it counts. */
 vec3 FilterOffsets(float f)
 {
 	return vec3(1.0 / (2.0 - f), 2.0, 3.0 + f / (1.0 + f));
@@ -39,8 +40,8 @@ float CascadeLight(int cascade, vec3 position, vec3 normal)
 	vec3 x_weights = FilterWeights(f.x);
 	vec3 y_weights = FilterWeights(f.y);
 	float lit = 0.0;
-	for (int y = 0; y < 3; y++) {
-		for (int x = 0; x < 3; x++) {
+	for (int y = 0; y < FILTER_LOOKUPS; y++) {
+		for (int x = 0; x < FILTER_LOOKUPS; x++) {
 			vec2 tap = (first + vec2(x_offsets[x], y_offsets[y])) / size;
 			lit += x_weights[x] * y_weights[y] * texture(u_shadow_map, vec4(tap, float(cascade), at.z));
 		}
