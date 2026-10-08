@@ -72,7 +72,8 @@ const vec3 RIVER_ABSORPTION = vec3(3.0, 1.8, 1.6);
 const vec3 RIVER_SCATTER = vec3(0.026, 0.066, 0.068);
 const vec3 CANAL_ABSORPTION = vec3(2.6, 1.6, 1.4);
 const vec3 CANAL_SCATTER = vec3(0.022, 0.060, 0.074);
-const float INLAND_MURK = 0.85;
+const float INLAND_MURK = 0.45;
+const float MURK_DEPTH = 0.5;
 const vec3 TOY_ABSORPTION = vec3(2.4, 0.6, 0.3);
 const vec3 TOY_SCATTER = vec3(0.012, 0.075, 0.2);
 const float TOY_REFLECTANCE_CEILING = 0.3;
@@ -525,7 +526,7 @@ void main()
 	vec3 light = sun * max(SunDirection().z, 0.0) + AmbientLight(up) * sheltered;
 
 	float path = max(bent.x, max(ShelfPath(p, sight) * body.sea, RAPIDS_PATH * descent.z));
-	vec3 transmittance = exp(-body.absorption * path) * (1.0 - body.murk);
+	vec3 transmittance = exp(-body.absorption * path) * (1.0 - body.murk * smoothstep(0.0, MURK_DEPTH, path));
 	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(normal.xy));
 	vec3 below = texture(u_scene_colour, bent_uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
 

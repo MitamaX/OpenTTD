@@ -48,6 +48,7 @@ const float WALL_MARK = 0.75;
 const float EDGE_MARK = 0.375;
 const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
+const float RIVERBED_DEEP_MARK = 0.2;
 const float DROWNED_LEVELS = 0.6;
 const float SCATTERED_SHADOW = 0.7;
 const float SCATTERING_LEVELS = 0.8;
@@ -99,7 +100,10 @@ const vec3 YARD = vec3(0.49, 0.41, 0.32);
 const vec3 BANK = vec3(0.50, 0.50, 0.48);
 const vec3 WET_SAND = vec3(0.50, 0.46, 0.37);
 const vec3 SILT = vec3(0.38, 0.40, 0.33);
-const vec3 MUD = vec3(0.40, 0.36, 0.27);
+const vec3 MUD = vec3(0.31, 0.29, 0.22);
+const vec3 RIVER_GRAVEL = vec3(0.52, 0.47, 0.37);
+const vec3 PEBBLES = vec3(0.64, 0.60, 0.52);
+const vec2 PEBBLE_EDGES = vec2(0.55, 0.8);
 const vec3 CANAL_FLOOR = vec3(0.45, 0.45, 0.42);
 const vec3 HEDGE = vec3(0.24, 0.33, 0.16);
 
@@ -856,13 +860,20 @@ vec3 Banks(vec3 land, Water water, vec3 beach)
 	return mix(walled, beach, smoothstep(SANDED_SEA, 0.44, water.sea));
 }
 
-/* The ground under water: wet sand along sea shores giving way to silt in the deep, mud under rivers and dressed stone in canals. */
-vec3 Seabed(Water water, Grain grain)
+/* A river runs over pebbled gravel in its shallows and over mud down its deep middle. */
+vec3 Riverbed(Grain grain, float sunk)
+{
+	vec3 gravel = mix(RIVER_GRAVEL, PEBBLES, smoothstep(PEBBLE_EDGES.x, PEBBLE_EDGES.y, grain.stones));
+	return mix(gravel, MUD, sunk);
+}
+
+/* The ground under water: wet sand along sea shores giving way to silt in the deep, a riverbed under rivers and dressed stone in canals. */
+vec3 Seabed(Water water, Grain grain, float sunk)
 {
 	float sea = clamp(water.share.x, 0.0, 1.0);
 	float canal = clamp(water.share.y, 0.0, 1.0 - sea);
 	float river = 1.0 - sea - canal;
-	vec3 bed = mix(WET_SAND, SILT, water.depth) * sea + CANAL_FLOOR * canal + MUD * river;
+	vec3 bed = mix(WET_SAND, SILT, water.depth) * sea + CANAL_FLOOR * canal + Riverbed(grain, sunk) * river;
 	return bed * (0.92 + 0.16 * grain.local) * Varied(grain.micro, 0.12);
 }
 
@@ -1210,7 +1221,8 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p, grain)), Airfield(p)), v_world.z);
 	land = mix(land, blanket.tone, blanket.cover);
 	float drowned = max(clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0), water.sea * smoothstep(0.0, DROWNED_LEVELS, -v_world.z));
-	land = mix(Banks(land, water, beach), Seabed(water, grain), drowned);
+	float sunk = smoothstep(0.0, RIVERBED_DEEP_MARK, -v_mark);
+	land = mix(Banks(land, water, beach), Seabed(water, grain, sunk), drowned);
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 
 	vec3 colour = Composite(land, network.paint);
@@ -1241,7 +1253,7 @@ void main()
 	if (v_mark > EDGE_MARK && v_mark <= WALL_MARK) {
 		shade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(detail, levels_per_pixel))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (OutsideMap(p)) {
-		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
+		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail), 1.0)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (v_mark > WALL_MARK) {
 		shade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else {
