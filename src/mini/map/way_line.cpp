@@ -27,6 +27,7 @@ static double TangentLength(double chord, const MapVector &leaving, const MapVec
 	return chord / (quarter * quarter);
 }
 
+/* The curve is kept as a cubic in its share, so a point, a heading or a turn along it costs a few products. */
 Bend::Bend(const MapVector &from, const MapVector &to, const MapVector &leaving, const MapVector &arriving) : from(from), to(to)
 {
 	MapVector out = Unit(leaving);
@@ -34,27 +35,23 @@ Bend::Bend(const MapVector &from, const MapVector &to, const MapVector &leaving,
 	double length = TangentLength(std::hypot(to.x - from.x, to.y - from.y), out, in);
 	this->leaving = out * length;
 	this->arriving = in * length;
+	this->cubic = (from - to) * 2.0 + this->leaving + this->arriving;
+	this->square = (to - from) * 3.0 - this->leaving * 2.0 - this->arriving;
 }
 
 MapVector Bend::Centre(double share) const
 {
-	double t = share;
-	double t2 = t * t;
-	double t3 = t2 * t;
-	return this->from * (2.0 * t3 - 3.0 * t2 + 1.0) + this->leaving * (t3 - 2.0 * t2 + t) + this->to * (3.0 * t2 - 2.0 * t3) + this->arriving * (t3 - t2);
+	return ((this->cubic * share + this->square) * share + this->leaving) * share + this->from;
 }
 
 MapVector Bend::Velocity(double share) const
 {
-	double t = share;
-	double t2 = t * t;
-	return (this->from - this->to) * (6.0 * t2 - 6.0 * t) + this->leaving * (3.0 * t2 - 4.0 * t + 1.0) + this->arriving * (3.0 * t2 - 2.0 * t);
+	return (this->cubic * (3.0 * share) + this->square * 2.0) * share + this->leaving;
 }
 
 MapVector Bend::Acceleration(double share) const
 {
-	double t = share;
-	return (this->from - this->to) * (12.0 * t - 6.0) + this->leaving * (6.0 * t - 4.0) + this->arriving * (6.0 * t - 2.0);
+	return this->cubic * (6.0 * share) + this->square * 2.0;
 }
 
 MapVector Bend::Along(double share) const
@@ -87,9 +84,13 @@ double Bend::ShareOf(const MapVector &point) const
 		return Dot(off, off);
 	};
 	double share = 0.0;
+	double nearest = distance(share);
 	for (int probe = 1; probe <= SHARE_PROBES; probe++) {
 		double candidate = static_cast<double>(probe) / SHARE_PROBES;
-		if (distance(candidate) < distance(share)) share = candidate;
+		double reach = distance(candidate);
+		if (reach >= nearest) continue;
+		share = candidate;
+		nearest = reach;
 	}
 	for (int refine = 0; refine < SHARE_REFINES; refine++) {
 		MapVector off = this->Centre(share) - point;

@@ -47,6 +47,8 @@ private:
 	MapVector to;
 	MapVector leaving;
 	MapVector arriving;
+	MapVector cubic;
+	MapVector square;
 };
 
 #endif /* MINI_MAP_WAY_LINE_H */
