@@ -803,6 +803,8 @@ RenderInterface_GL3::~RenderInterface_GL3()
 
 void RenderInterface_GL3::SetViewport(int width, int height, int offset_x, int offset_y)
 {
+	if (Rml::Math::Max(width, 1) != viewport_width || Rml::Math::Max(height, 1) != viewport_height || offset_x != viewport_offset_x || offset_y != viewport_offset_y)
+		glstate_backed_up = false;
 	viewport_width = Rml::Math::Max(width, 1);
 	viewport_height = Rml::Math::Max(height, 1);
 	viewport_offset_x = offset_x;
@@ -814,44 +816,49 @@ void RenderInterface_GL3::BeginFrame()
 {
 	RMLUI_ASSERT(viewport_width >= 1 && viewport_height >= 1);
 
-	// Backup GL state.
-	glstate_backup.enable_cull_face = glIsEnabled(GL_CULL_FACE);
-	glstate_backup.enable_blend = glIsEnabled(GL_BLEND);
-	glstate_backup.enable_stencil_test = glIsEnabled(GL_STENCIL_TEST);
-	glstate_backup.enable_scissor_test = glIsEnabled(GL_SCISSOR_TEST);
-	glstate_backup.enable_depth_test = glIsEnabled(GL_DEPTH_TEST);
+	// Backup GL state. Querying it makes a threaded driver catch up with every command queued before, so it is backed up only on the first frame and when the
+	// viewport changes: the client is taken to set the state it renders with only as it starts and as its window resizes.
+	if (!glstate_backed_up)
+	{
+		glstate_backed_up = true;
+		glstate_backup.enable_cull_face = glIsEnabled(GL_CULL_FACE);
+		glstate_backup.enable_blend = glIsEnabled(GL_BLEND);
+		glstate_backup.enable_stencil_test = glIsEnabled(GL_STENCIL_TEST);
+		glstate_backup.enable_scissor_test = glIsEnabled(GL_SCISSOR_TEST);
+		glstate_backup.enable_depth_test = glIsEnabled(GL_DEPTH_TEST);
 
-	glGetIntegerv(GL_VIEWPORT, glstate_backup.viewport);
-	glGetIntegerv(GL_SCISSOR_BOX, glstate_backup.scissor);
+		glGetIntegerv(GL_VIEWPORT, glstate_backup.viewport);
+		glGetIntegerv(GL_SCISSOR_BOX, glstate_backup.scissor);
 
-	glGetIntegerv(GL_ACTIVE_TEXTURE, &glstate_backup.active_texture);
+		glGetIntegerv(GL_ACTIVE_TEXTURE, &glstate_backup.active_texture);
 
-	glGetIntegerv(GL_STENCIL_CLEAR_VALUE, &glstate_backup.stencil_clear_value);
-	glGetFloatv(GL_COLOR_CLEAR_VALUE, glstate_backup.color_clear_value);
-	glGetBooleanv(GL_COLOR_WRITEMASK, glstate_backup.color_writemask);
+		glGetIntegerv(GL_STENCIL_CLEAR_VALUE, &glstate_backup.stencil_clear_value);
+		glGetFloatv(GL_COLOR_CLEAR_VALUE, glstate_backup.color_clear_value);
+		glGetBooleanv(GL_COLOR_WRITEMASK, glstate_backup.color_writemask);
 
-	glGetIntegerv(GL_BLEND_EQUATION_RGB, &glstate_backup.blend_equation_rgb);
-	glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &glstate_backup.blend_equation_alpha);
-	glGetIntegerv(GL_BLEND_SRC_RGB, &glstate_backup.blend_src_rgb);
-	glGetIntegerv(GL_BLEND_DST_RGB, &glstate_backup.blend_dst_rgb);
-	glGetIntegerv(GL_BLEND_SRC_ALPHA, &glstate_backup.blend_src_alpha);
-	glGetIntegerv(GL_BLEND_DST_ALPHA, &glstate_backup.blend_dst_alpha);
+		glGetIntegerv(GL_BLEND_EQUATION_RGB, &glstate_backup.blend_equation_rgb);
+		glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &glstate_backup.blend_equation_alpha);
+		glGetIntegerv(GL_BLEND_SRC_RGB, &glstate_backup.blend_src_rgb);
+		glGetIntegerv(GL_BLEND_DST_RGB, &glstate_backup.blend_dst_rgb);
+		glGetIntegerv(GL_BLEND_SRC_ALPHA, &glstate_backup.blend_src_alpha);
+		glGetIntegerv(GL_BLEND_DST_ALPHA, &glstate_backup.blend_dst_alpha);
 
-	glGetIntegerv(GL_STENCIL_FUNC, &glstate_backup.stencil_front.func);
-	glGetIntegerv(GL_STENCIL_REF, &glstate_backup.stencil_front.ref);
-	glGetIntegerv(GL_STENCIL_VALUE_MASK, &glstate_backup.stencil_front.value_mask);
-	glGetIntegerv(GL_STENCIL_WRITEMASK, &glstate_backup.stencil_front.writemask);
-	glGetIntegerv(GL_STENCIL_FAIL, &glstate_backup.stencil_front.fail);
-	glGetIntegerv(GL_STENCIL_PASS_DEPTH_FAIL, &glstate_backup.stencil_front.pass_depth_fail);
-	glGetIntegerv(GL_STENCIL_PASS_DEPTH_PASS, &glstate_backup.stencil_front.pass_depth_pass);
+		glGetIntegerv(GL_STENCIL_FUNC, &glstate_backup.stencil_front.func);
+		glGetIntegerv(GL_STENCIL_REF, &glstate_backup.stencil_front.ref);
+		glGetIntegerv(GL_STENCIL_VALUE_MASK, &glstate_backup.stencil_front.value_mask);
+		glGetIntegerv(GL_STENCIL_WRITEMASK, &glstate_backup.stencil_front.writemask);
+		glGetIntegerv(GL_STENCIL_FAIL, &glstate_backup.stencil_front.fail);
+		glGetIntegerv(GL_STENCIL_PASS_DEPTH_FAIL, &glstate_backup.stencil_front.pass_depth_fail);
+		glGetIntegerv(GL_STENCIL_PASS_DEPTH_PASS, &glstate_backup.stencil_front.pass_depth_pass);
 
-	glGetIntegerv(GL_STENCIL_BACK_FUNC, &glstate_backup.stencil_back.func);
-	glGetIntegerv(GL_STENCIL_BACK_REF, &glstate_backup.stencil_back.ref);
-	glGetIntegerv(GL_STENCIL_BACK_VALUE_MASK, &glstate_backup.stencil_back.value_mask);
-	glGetIntegerv(GL_STENCIL_BACK_WRITEMASK, &glstate_backup.stencil_back.writemask);
-	glGetIntegerv(GL_STENCIL_BACK_FAIL, &glstate_backup.stencil_back.fail);
-	glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_FAIL, &glstate_backup.stencil_back.pass_depth_fail);
-	glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_PASS, &glstate_backup.stencil_back.pass_depth_pass);
+		glGetIntegerv(GL_STENCIL_BACK_FUNC, &glstate_backup.stencil_back.func);
+		glGetIntegerv(GL_STENCIL_BACK_REF, &glstate_backup.stencil_back.ref);
+		glGetIntegerv(GL_STENCIL_BACK_VALUE_MASK, &glstate_backup.stencil_back.value_mask);
+		glGetIntegerv(GL_STENCIL_BACK_WRITEMASK, &glstate_backup.stencil_back.writemask);
+		glGetIntegerv(GL_STENCIL_BACK_FAIL, &glstate_backup.stencil_back.fail);
+		glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_FAIL, &glstate_backup.stencil_back.pass_depth_fail);
+		glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_PASS, &glstate_backup.stencil_back.pass_depth_pass);
+	}
 
 	// Setup expected GL state.
 	glViewport(0, 0, viewport_width, viewport_height);
@@ -878,6 +885,8 @@ void RenderInterface_GL3::BeginFrame()
 	glStencilFunc(GL_ALWAYS, 1, GLuint(-1));
 	glStencilMask(GLuint(-1));
 	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+	clip_mask_enabled = true;
+	stencil_test_value = 1;
 
 	glDisable(GL_DEPTH_TEST);
 
@@ -1116,6 +1125,7 @@ void RenderInterface_GL3::SetScissorRegion(Rml::Rectanglei region)
 
 void RenderInterface_GL3::EnableClipMask(bool enable)
 {
+	clip_mask_enabled = enable;
 	if (enable)
 		glEnable(GL_STENCIL_TEST);
 	else
@@ -1128,7 +1138,7 @@ void RenderInterface_GL3::RenderToClipMask(Rml::ClipMaskOperation operation, Rml
 	using Rml::ClipMaskOperation;
 
 	GLint stencil_write_value = 1;
-	GLint stencil_test_value = 1;
+	GLint next_test_value = 1;
 	switch (operation)
 	{
 	case ClipMaskOperation::Set:
@@ -1150,8 +1160,7 @@ void RenderInterface_GL3::RenderToClipMask(Rml::ClipMaskOperation operation, Rml
 	case ClipMaskOperation::Intersect:
 	{
 		glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-		glGetIntegerv(GL_STENCIL_REF, &stencil_test_value);
-		stencil_test_value += 1;
+		next_test_value = stencil_test_value + 1;
 	}
 	break;
 	}
@@ -1165,6 +1174,7 @@ void RenderInterface_GL3::RenderToClipMask(Rml::ClipMaskOperation operation, Rml
 	// @performance Cache state so we don't toggle it unnecessarily.
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+	stencil_test_value = next_test_value;
 	glStencilFunc(GL_EQUAL, stencil_test_value, GLuint(-1));
 }
 
@@ -2136,6 +2146,38 @@ const Rml::Matrix4f& RenderInterface_GL3::GetTransform() const
 
 void RenderInterface_GL3::ResetProgram()
 {
+	UseProgram(ProgramId::None);
+}
+
+void RenderInterface_GL3::RestoreFrameState()
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, render_layers.GetTopLayer().framebuffer);
+	glViewport(0, 0, viewport_width, viewport_height);
+
+	glClearStencil(0);
+	glClearColor(0, 0, 0, 0);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(0);
+
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
+
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+	if (clip_mask_enabled)
+		glEnable(GL_STENCIL_TEST);
+	else
+		glDisable(GL_STENCIL_TEST);
+
+	const Rml::Rectanglei scissor = scissor_state;
+	scissor_state = Rml::Rectanglei::MakeInvalid();
+	glDisable(GL_SCISSOR_TEST);
+	SetScissor(scissor);
+
 	UseProgram(ProgramId::None);
 }
 

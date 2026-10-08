@@ -80,7 +80,7 @@ Rml::CompiledShaderHandle RmlRenderer::CompileShader(const Rml::String &name, co
 	return handle;
 }
 
-/* A painter draws with its own program, so the program upstream believes is bound no longer is. */
+/* A painter draws with its own state, so upstream's is put back after it. */
 void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shader_handle, Rml::CompiledGeometryHandle geometry_handle, Rml::Vector2f translation, Rml::TextureHandle texture)
 {
 	auto it = this->painted.find(shader_handle);
@@ -90,8 +90,14 @@ void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shader_handle, Rml::Com
 	}
 
 	const PaintedShader &shader = *it->second;
-	shader.painter->Paint({translation.x, translation.y, translation.x + shader.size.x, translation.y + shader.size.y});
-	this->ResetProgram();
+	shader.painter->Paint({translation.x, translation.y, translation.x + shader.size.x, translation.y + shader.size.y}, *this);
+	this->RestoreFrameState();
+}
+
+Dimension RmlRenderer::Size() const
+{
+	Rml::Vector2i size = this->GetViewportSize();
+	return {static_cast<uint>(size.x), static_cast<uint>(size.y)};
 }
 
 void RmlRenderer::ReleaseShader(Rml::CompiledShaderHandle shader_handle)

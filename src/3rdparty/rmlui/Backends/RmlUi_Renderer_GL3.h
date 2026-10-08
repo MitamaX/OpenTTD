@@ -75,6 +75,9 @@ public:
 
 	const Rml::Matrix4f& GetTransform() const;
 	void ResetProgram();
+	// Puts back the state RmlUi renders with, after the client drew with its own state in the middle of a frame.
+	void RestoreFrameState();
+	Rml::Vector2i GetViewportSize() const { return {viewport_width, viewport_height}; }
 
 private:
 	void UseProgram(ProgramId program_id);
@@ -99,6 +102,8 @@ private:
 
 	ProgramId active_program = {};
 	Rml::Rectanglei scissor_state;
+	bool clip_mask_enabled = false;
+	int stencil_test_value = 1;
 
 	int viewport_width = 0;
 	int viewport_height = 0;
@@ -194,6 +199,7 @@ private:
 		Stencil stencil_back;
 	};
 	GLStateBackup glstate_backup = {};
+	bool glstate_backed_up = false;
 };
 
 /**

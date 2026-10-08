@@ -19,7 +19,6 @@
 #include "../core/ground_trace.h"
 #include "../gpu/frame_profile.h"
 #include "../gpu/gl_api.h"
-#include "../gpu/gl_state.h"
 #include "../map/way_bends.h"
 #include "../map/way_course.h"
 #include "farm_models.h"
@@ -106,18 +105,17 @@ void WorldPainter::Prepare()
 }
 
 /* RmlUi's layer is put back as it was before the world and the shapes on its ground are laid into it, so the map element's clipping still holds. */
-void WorldPainter::Paint(const ShaderArea &area)
+void WorldPainter::Paint(const ShaderArea &area, ShaderLayer &layer)
 {
 	if (_world_tiles.Size().width == 0 || !this->Ready()) return;
 
 	ProfileScope profile("world");
-	GlStateScope borrowed;
 	this->Render(SceneView::Of(_camera));
 	this->overlay.Upload(_ground_draw);
-	borrowed.Restore();
-	this->post.Present(area, this->target);
+	layer.Restore();
+	this->post.Present(area, layer.Size(), this->target);
 	ProfileScope overlay_profile("overlay");
-	this->overlay.Draw(this->target);
+	this->overlay.Draw(layer.Size(), this->target);
 }
 
 std::optional<TileIndex> WorldPainter::BuildingAt(const Vec3 &origin, const Vec3 &direction) const
@@ -146,12 +144,14 @@ void WorldPainter::Release()
 	this->post.Release();
 	this->overlay.Release();
 	for (const auto &pass : this->passes) pass->Release();
+	this->supported.reset();
 }
 
-/* Every pass's program is built with the painter's own, though a pass whose program fails only goes undrawn. */
+/* Every pass's program is built with the painter's own, though a pass whose program fails only goes undrawn. The context's version is asked once, as it holds while the context lasts. */
 bool WorldPainter::Ready()
 {
-	if (!GlSupportsWorld()) return false;
+	if (!this->supported.has_value()) this->supported = GlSupportsWorld();
+	if (!*this->supported) return false;
 	for (ShaderProgram *program : this->programs) program->Ready();
 	return this->post.Ready() && this->overlay.Ready();
 }

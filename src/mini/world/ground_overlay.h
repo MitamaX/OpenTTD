@@ -24,7 +24,7 @@ public:
 	void Release();
 
 	void Upload(const DrawList &list);
-	void Draw(const WorldTarget &target) const;
+	void Draw(Dimension layer, const WorldTarget &target) const;
 
 private:
 	ShaderProgram program;

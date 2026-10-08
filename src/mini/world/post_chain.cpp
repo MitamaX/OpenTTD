@@ -272,19 +272,17 @@ void PostChain::Bloom(const PostTarget &source)
 	glDisable(GL_BLEND);
 }
 
-/* The quad covers the element in RmlUi's pixels; the viewport is whichever layer RmlUi is drawing into. */
-void PostChain::Present(const ShaderArea &area, const WorldTarget &target)
+/* The quad covers the element in RmlUi's pixels over the whole of the layer RmlUi is drawing into. */
+void PostChain::Present(const ShaderArea &area, Dimension layer, const WorldTarget &target)
 {
 	if (this->resolved == nullptr) return;
 
 	ProfileScope profile("post", "present");
-	GLint viewport[4];
-	glGetIntegerv(GL_VIEWPORT, viewport);
 	bool bloom = _tuning.bloom != 0;
 	bool focus = _tuning.depth_of_field != 0;
 	this->composite.Use();
 	glUniform4f(this->composite.Uniform("u_area"), area.left, area.top, area.right, area.bottom);
-	glUniform2f(this->composite.Uniform("u_viewport"), static_cast<float>(viewport[2]), static_cast<float>(viewport[3]));
+	glUniform2f(this->composite.Uniform("u_viewport"), static_cast<float>(layer.width), static_cast<float>(layer.height));
 	glUniform1f(this->composite.Uniform("u_exposure"), static_cast<float>(BASE_EXPOSURE * std::exp2(_tuning.exposure)));
 	glUniform1f(this->composite.Uniform("u_bloom_strength"), bloom ? BLOOM_STRENGTH : 0.0f);
 	glUniform1f(this->composite.Uniform("u_sharpen"), ChosenAntialiasing() == Antialiasing::Temporal ? TEMPORAL_SHARPEN : 0.0f);

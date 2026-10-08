@@ -13,8 +13,6 @@ add_files(
     gl_api.h
     gl_program.cpp
     gl_program.h
-    gl_state.cpp
-    gl_state.h
     gpu_frame.cpp
     gpu_frame.h
     instanced_meshes.cpp

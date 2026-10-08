@@ -12,6 +12,8 @@
 
 #include <string_view>
 
+#include "../../core/geometry_type.hpp"
+
 struct ShaderArea {
 	float left;
 	float top;
@@ -19,10 +21,21 @@ struct ShaderArea {
 	float bottom;
 };
 
+/* The layer a painter draws into: its size in pixels, and the GL state it is drawn with, which a painter that set its own puts back before drawing into it.
+ * The host puts its state back itself once the painter is done. */
+class ShaderLayer {
+public:
+	virtual Dimension Size() const = 0;
+	virtual void Restore() = 0;
+
+protected:
+	~ShaderLayer() = default;
+};
+
 class ShaderPainter {
 public:
 	virtual ~ShaderPainter() = default;
-	virtual void Paint(const ShaderArea &area) = 0;
+	virtual void Paint(const ShaderArea &area, ShaderLayer &layer) = 0;
 	virtual void Release() = 0;
 };
 

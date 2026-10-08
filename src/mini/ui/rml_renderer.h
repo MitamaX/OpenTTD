@@ -19,7 +19,7 @@
 #include "../gpu/texture_store.h"
 #include "shader_painter.h"
 
-class RmlRenderer final : public RenderInterface_GL3 {
+class RmlRenderer final : public RenderInterface_GL3, public ShaderLayer {
 public:
 	static constexpr const char SCREEN_SOURCE[] = "?screen";
 
@@ -35,6 +35,9 @@ public:
 	Rml::CompiledShaderHandle CompileShader(const Rml::String &name, const Rml::Dictionary &parameters) override;
 	void RenderShader(Rml::CompiledShaderHandle shader_handle, Rml::CompiledGeometryHandle geometry_handle, Rml::Vector2f translation, Rml::TextureHandle texture) override;
 	void ReleaseShader(Rml::CompiledShaderHandle shader_handle) override;
+
+	Dimension Size() const override;
+	void Restore() override { this->RestoreFrameState(); }
 
 private:
 	struct Loan {

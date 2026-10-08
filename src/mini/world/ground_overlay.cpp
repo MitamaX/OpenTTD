@@ -50,14 +50,12 @@ void GroundOverlay::Upload(const DrawList &list)
 }
 
 /* Drawn in RmlUi's layer with its blending, in the same pixels as the world laid there under it. */
-void GroundOverlay::Draw(const WorldTarget &target) const
+void GroundOverlay::Draw(Dimension layer, const WorldTarget &target) const
 {
 	if (this->mesh.Empty()) return;
 
-	GLint viewport[4];
-	glGetIntegerv(GL_VIEWPORT, viewport);
 	this->program.Use();
-	glUniform2f(this->program.Uniform("u_viewport"), static_cast<float>(viewport[2]), static_cast<float>(viewport[3]));
+	glUniform2f(this->program.Uniform("u_viewport"), static_cast<float>(layer.width), static_cast<float>(layer.height));
 	this->program.BindSampler("u_depth", DEPTH_UNIT);
 	glActiveTexture(GL_TEXTURE0 + DEPTH_UNIT);
 	glBindTexture(GL_TEXTURE_2D, target.Depth());

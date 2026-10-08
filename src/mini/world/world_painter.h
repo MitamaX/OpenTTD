@@ -36,7 +36,7 @@ public:
 
 	void Reload();
 	void Prepare();
-	void Paint(const ShaderArea &area) override;
+	void Paint(const ShaderArea &area, ShaderLayer &layer) override;
 	void Release() override;
 	/* The tile of the building a sight line from the eye meets before it meets the ground. */
 	std::optional<TileIndex> BuildingAt(const Vec3 &origin, const Vec3 &direction) const;
@@ -59,6 +59,7 @@ private:
 	GroundOverlay overlay;
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	std::vector<ShaderProgram *> programs;
+	std::optional<bool> supported;
 	const StructurePass *structures = nullptr;
 	const VehiclePass *vehicles = nullptr;
 };
