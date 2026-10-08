@@ -18,8 +18,7 @@
 #include "../../track_type.h"
 #include "../core/camera.h"
 
-/* A train's way over the game's map from one point to another a few tile sides on: through the middles of the tile sides its track crosses between them,
- * or straight where no track leads there. */
+/* A train's way over the game's map from one point to another a few tile sides on, through the middles of the tile sides its track crosses, or straight where none leads there. */
 class TrackRoute {
 public:
 	TrackRoute(const MapVector &from, const MapVector &to);

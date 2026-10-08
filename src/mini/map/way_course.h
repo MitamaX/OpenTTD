@@ -83,8 +83,7 @@ private:
 	double end_slope = 0.0;
 };
 
-/* A rail piece as it is drawn: along its course's eased line where it eases, or else along the game's straight piece leaning at either end halfway toward
- * the track beyond, or wholly where it branches off at a junction, so pieces meet without a seam; and whether either end stands open, no track carrying on beyond it at its level. */
+/* A rail piece as it is drawn: along its course where it eases, or else along the game's piece leaning toward the track beyond; and whether either end stands open. */
 struct DrawnTrack {
 	int tx;
 	int ty;

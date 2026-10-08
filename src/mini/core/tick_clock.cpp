@@ -92,7 +92,6 @@ void TickTrail::Note(const Spot &spot, bool continues)
 	this->spots[this->count++] = spot;
 }
 
-/* Between two spots a unit moves from one to the other; before the first or after the last it stands there. */
 TickTrail::Bracket TickTrail::About(double tick) const
 {
 	auto noted = std::span(this->spots).first(this->count);

@@ -367,9 +367,7 @@ struct EarthBank {
 	}
 };
 
-/* Ways climb on embankments and run through cuttings whose earth sides lean out over the lower tile, short of any way along it there,
- * and an embankment grades out over open ground as far as the tile beyond when that is open too; buildings keep the stone walls of their foundations,
- * and a tunnel's entrance the walls of the cut its portal stands in. */
+/* Earth banks lean out over the lower tile under ways, short of a way along it and farther over open ground; buildings and tunnel entrances keep stone walls. */
 static std::optional<EarthBank> EarthBankOf(int tx, int ty, int nx, int ny)
 {
 	if (!OnMap(nx, ny) || IsTunnelTile(TileXY(nx, ny))) return std::nullopt;

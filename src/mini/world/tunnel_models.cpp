@@ -109,8 +109,7 @@ MapVector TunnelMouth(TileIndex entrance)
 	return MiddleOf(entrance) + Outward(GetTunnelBridgeDirection(entrance)) * HALF_TILE;
 }
 
-/* The face stands proud of the cut's wall as high as the hill over it, and never lower than its mouth needs; the arch springs from the mouth's sides,
- * its reveal running back and into the shade toward a dark mouth. */
+/* The face stands proud of the cut's wall as high as the hill over it and never lower than its mouth needs, its arch's reveal darkening into the mouth. */
 void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 {
 	int tx = TileX(entrance);

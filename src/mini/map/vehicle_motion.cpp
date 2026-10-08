@@ -108,9 +108,7 @@ void VehicleMotion::Advance(double delta_ms)
 	}
 }
 
-/* A unit stands at the point of the tick count the tick clock shows, a train gliding along its track between the ticks it was seen at.
- * A unit not seen the frame before, new or out of sight until now, one that jumped further than it could have moved, or a train turned about,
- * starts its trail over where it stands instead of streaking. */
+/* A unit stands where its trail passes the tick the clock shows, a train along its track; one new to view, jumping or turned about starts its trail afresh. */
 WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 {
 	Snapshot &e = this->snapshots[v->index.base()];

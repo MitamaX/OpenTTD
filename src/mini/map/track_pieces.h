@@ -85,7 +85,6 @@ struct Piece {
 };
 
 TileCoord TileOf(const MapVector &point);
-/* How far along a segment a point lies, kept within the segment. */
 double ShareAlong(const MapVector &point, const MapVector &from, const MapVector &to);
 Piece PieceOf(int tx, int ty, Track track);
 /* The rail pieces a tile carries as far as the track beside it goes, a rail bridge's head among them. */
@@ -118,7 +117,6 @@ std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rati
 	return PieceOf(tile.first, tile.second, *best);
 }
 
-/* The piece of a tile meeting a joint that runs on from it most nearly along a heading, unless none meets it. */
 std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, TrackBits among = TRACK_BIT_ALL);
 std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point);
 

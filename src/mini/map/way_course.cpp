@@ -149,9 +149,7 @@ static MapVector Crossing(const MapVector &heading, const MapVector &upward)
 	return upward * LEAST_CROSSING + side * (lean * std::sqrt(1.0 - LEAST_CROSSING * LEAST_CROSSING));
 }
 
-/* A run of way through joints that ease, traced whole from one of them to the joints that hold at either end, or round a loop back to it, and eased all at once:
- * its levels are pulled toward the straight line between their neighbours yet kept on or a little above the ground, and a rail run's joints
- * slide along their tile sides toward that line too, a step for each joint of reach. */
+/* A run of way through easing joints, traced whole to the joints holding at either end or round a loop back to its start, and eased all at once. */
 class Run {
 public:
 	explicit Run(const Joint &start);
@@ -182,8 +180,7 @@ private:
 	std::optional<double> loop;
 };
 
-/* The joints a run passes stepping from one joint into a tile beside it, until a joint that does not ease, which holds;
- * a run closing on itself ends where it began, and tells how far round it is. */
+/* The joints a run passes from a joint into a tile up to one that holds; a run closing on itself tells how far round it is. */
 std::optional<double> Run::Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &walked) const
 {
 	Joint start = at;
@@ -475,9 +472,7 @@ bool WayCourse::Raised() const
 	return false;
 }
 
-/* How a rail piece's end meets the track beyond: the way that track runs there, along the piece, where one piece alone carries it on at the piece's level;
- * whether none does; and whether the piece is a branch of a junction, one of several of its tile's meeting there.
- * The track beyond runs on along an eased course as that course heads, or else along its own piece. */
+/* How a rail piece's end meets the track beyond: which way the one piece carrying it on at its level runs, whether none does, and whether the end is a junction's. */
 struct PieceEnd {
 	std::optional<MapVector> run;
 	bool open;
@@ -513,9 +508,7 @@ static PieceEnd PieceEndAt(int tx, int ty, const MapVector &joint, const MapVect
 	return end;
 }
 
-/* A piece off any course leans at an end halfway toward the way the track runs on beyond, which leans as far toward it, so the two meet on one heading;
- * a branch of a junction leaves along the way the track beyond runs, as that track keeps its heading toward the branches, so every branch meets it on one heading.
- * The track beyond the first end runs on away from the piece, so it is turned about to lean along it. */
+/* A piece leans at an end halfway toward the track beyond, which leans as far back, and a junction's branch leaves wholly along it, so pieces meet on one heading. */
 static MapVector Leaning(const MapVector &own, const PieceEnd &end, bool first)
 {
 	if (!end.run.has_value()) return own;
@@ -578,7 +571,6 @@ const DrawnTrack &DrawnTrack::Of(int tx, int ty, Track track)
 	return _track_book.At(tx, ty, track);
 }
 
-/* A point keeps its share along the game's straight piece. */
 double DrawnTrack::ShareOf(const MapVector &point) const
 {
 	return ShareAlong(point, this->from, this->to);
@@ -601,7 +593,6 @@ WorldPoint DrawnTrack::Centred(const MapVector &point) const
 	return this->At(this->ShareOf(point), 0.0);
 }
 
-/* The drawn piece a point of the game's track lies on, unless the tile under it has no track. */
 static const DrawnTrack *DrawnUnder(const MapVector &point)
 {
 	TileCoord tile = TileOf(point);

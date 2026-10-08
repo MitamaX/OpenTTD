@@ -152,9 +152,7 @@ void FleetLayout::Lay(const SceneView &view, double reach)
 	}
 }
 
-/* The game spaces units in path steps, which on a diagonal lie further apart than the units are long, so the units are laid
- * nose to tail at their true length along the path through their centres as it is drawn, from a nose half a unit ahead of the first;
- * every point is drawn from where the game has it, so a train keeps to its track. */
+/* Units lie nose to tail at their true length along the drawn path through their centres, as the game's path steps lie further apart on a diagonal. */
 void FleetLayout::LayConsist(const Vehicle *head)
 {
 	this->links.clear();
