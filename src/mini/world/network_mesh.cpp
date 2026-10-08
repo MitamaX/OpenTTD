@@ -71,10 +71,10 @@ static bool Wired(TileIndex tile)
 	return HasRailCatenaryDrawn(GetRailType(tile));
 }
 
-static void LayWiredTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
+static void LayWiredTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth = std::nullopt)
 {
 	LayTrack(mesh, site, footing);
-	LayCatenary(mesh, site, footing);
+	LayCatenary(mesh, site, footing, mouth);
 }
 
 static MiniLayer LayerOf(TransportType transport)
@@ -169,7 +169,7 @@ private:
 		}
 		TransportType transport = GetTunnelBridgeTransportType(tile);
 		if (transport == TRANSPORT_RAIL) {
-			this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
+			LayWiredTrack(this->meshes.Layer(MiniLayer::Rail), this->TrackOf(tile, tx, ty), GroundFooting(tx, ty), TunnelMouth(tile));
 		} else {
 			LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, false), GroundFooting(tx, ty));
 		}

@@ -10,6 +10,8 @@
 #ifndef MINI_WORLD_TRACK_MODELS_H
 #define MINI_WORLD_TRACK_MODELS_H
 
+#include <optional>
+
 #include "../../track_type.h"
 #include "../map/world_tiles.h"
 #include "way_shapes.h"
@@ -33,6 +35,7 @@ struct TrackSite {
 double RideHeight(RailLook look);
 void LayTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
 void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
-void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
+/* Where the track runs into a tunnel's mouth its wires run on into the dark, and no mast stands. */
+void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth = std::nullopt);
 
 #endif /* MINI_WORLD_TRACK_MODELS_H */

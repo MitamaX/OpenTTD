@@ -325,8 +325,13 @@ static ModelMesh Mast(const WayLine &line, double share)
 	return mast.Append(Laid(Stretch{foot, line.At(share, ARM_REACH)}, ARM_SECTION, 1));
 }
 
+static bool InMouth(const MapVector &at, const std::optional<MapVector> &mouth)
+{
+	return mouth.has_value() && std::hypot(at.x - mouth->x, at.y - mouth->y) < HALF_TILE;
+}
+
 /* Masts stand evenly along an eased run; on any other tile one stands at the start of its first piece. */
-void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
+void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth)
 {
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
 	bool first = true;
@@ -337,7 +342,9 @@ void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
 		ModelMesh parts = piece.Body(WIRE_SECTION, false);
 		parts.Append(Messenger(line, wires));
 		if (piece.Distances().has_value() || first) {
-			for (double share : wires.SharesAt(0.0)) parts.Append(Mast(line, share));
+			for (double share : wires.SharesAt(0.0)) {
+				if (!InMouth(line.At(share, 0.0), mouth)) parts.Append(Mast(line, share));
+			}
 		}
 		first = false;
 		Lay(mesh, std::move(parts), piece.Lift(), piece.FootingOn(footing));

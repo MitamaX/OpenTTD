@@ -11,8 +11,11 @@
 #define MINI_WORLD_TUNNEL_MODELS_H
 
 #include "../../tile_type.h"
+#include "../core/camera.h"
 #include "../model/model_mesh.h"
 
+/* The middle of the side of a tunnel's entrance its portal stands on. */
+MapVector TunnelMouth(TileIndex entrance);
 void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance);
 
 #endif /* MINI_WORLD_TUNNEL_MODELS_H */
