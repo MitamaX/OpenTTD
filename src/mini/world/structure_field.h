@@ -11,9 +11,11 @@
 #define MINI_WORLD_STRUCTURE_FIELD_H
 
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "../gpu/mesh_buffer.h"
+#include "build_slice.h"
 #include "chunk_grid.h"
 #include "scene_view.h"
 #include "structure_mesh.h"
@@ -22,11 +24,32 @@
 inline constexpr double STRUCTURE_FADE_START = 1.2;
 inline constexpr double STRUCTURE_FADE_END = 2.2;
 
+/* A block's buildings, built a tile at a time so the work may be spread over frames, each tile's form noted in the digests as it is read. */
+class StructureBuild {
+public:
+	StructureBuild(const TileSpan &tiles, StructureDetail detail, std::span<uint32_t> digests);
+
+	StructureDetail Detail() const { return this->detail; }
+	bool Done() const { return this->next_ty > this->tiles.ty1; }
+	void Advance();
+	StructureParts Finish();
+
+private:
+	TileSpan tiles;
+	StructureDetail detail;
+	std::span<uint32_t> digests;
+	int next_tx;
+	int next_ty;
+	StructureParts parts;
+};
+
 /* A block of tiles: its mesh, built on the game's side and waiting to be handed to the GPU or already there, the boxes clicks meet, the stacks that smoke,
- * the detail it was built at, and the box it fills, guessed from the ground until it is built. */
+ * the detail it was built at and whether a form changed under it since, the build that will replace it and the frame since which it has waited for it,
+ * and the box it fills, guessed from the ground until it is built. */
 struct StructureChunk {
 	MeshBuffer mesh;
 	std::optional<StructureMesh> waiting;
+	std::optional<Rebuild<StructureBuild>> rebuild;
 	std::vector<StructurePick> picks;
 	std::vector<SmokeVent> vents;
 	StructureDetail detail = StructureDetail::Simple;
@@ -36,6 +59,11 @@ struct StructureChunk {
 	bool stale = true;
 	bool surveyed = false;
 	uint64_t wanted = 0;
+	uint64_t due_since = 0;
+
+	bool Outdated(StructureDetail wanted_detail) const { return this->stale || !this->built || this->detail != wanted_detail; }
+	/* Buildings wanted in full where none show yet are first drafted simply, which costs little. */
+	StructureDetail NextDetail(StructureDetail wanted_detail) const { return this->built ? wanted_detail : StructureDetail::Simple; }
 };
 
 /* The building a sight line meets first, the tile under where it meets it, and how far along the line that lies. */
@@ -57,8 +85,8 @@ public:
 	void Release();
 
 private:
-	/* A block waiting to be built, whether it is in sight, the tile pixels where it comes nearest the eye, and the detail it is wanted at. */
-	struct BuildOrder {
+	/* A block near enough to show its buildings whose mesh is out of date, whether it is in sight, the tile pixels where it comes nearest the eye, and the detail it is wanted at. */
+	struct Due {
 		size_t index;
 		bool in_sight;
 		double pixels;
@@ -68,13 +96,14 @@ private:
 	void Lay(Dimension map);
 	void Notice(TileIndex tile);
 	void Survey(StructureChunk &chunk, size_t index) const;
-	void Build(StructureChunk &chunk, size_t index, StructureDetail detail);
+	void Refine();
+	void Finish(StructureChunk &chunk);
 	void Evict();
 
 	ChunkGrid grid{CHUNK_TILES};
 	std::vector<StructureChunk> chunks;
 	std::vector<uint32_t> digests;
-	std::vector<BuildOrder> queue;
+	std::vector<Due> due;
 	double rise = 0.0;
 	uint64_t frame = 0;
 };

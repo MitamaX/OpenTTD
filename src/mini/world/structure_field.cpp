@@ -12,8 +12,8 @@
 
 #include <algorithm>
 #include <bit>
-#include <chrono>
 #include <ranges>
+#include <tuple>
 #include <utility>
 
 #include "../../map_func.h"
@@ -28,7 +28,6 @@
 static constexpr double FULL_DETAIL_PIXELS = 20.0;
 static constexpr double FOOTING_LEVELS = 1.0;
 static constexpr uint64_t EVICT_FRAMES = 600;
-static constexpr std::chrono::microseconds BUILD_BUDGET{4000};
 static constexpr int NEIGHBOUR_REACH = 1;
 static constexpr int FOOTPRINT_REACH = MAX_FOOTPRINT_TILES - 1;
 
@@ -108,7 +107,9 @@ void StructureField::Notice(TileIndex tile)
 			uint32_t digest = DigestOf(AnchoredForm(near));
 			if (digest == this->digests[near.base()]) continue;
 			this->digests[near.base()] = digest;
-			this->chunks[this->grid.IndexOf(tx, ty)].stale = true;
+			StructureChunk &chunk = this->chunks[this->grid.IndexOf(tx, ty)];
+			if (chunk.rebuild.has_value()) chunk.rebuild->outdated = true;
+			chunk.stale = true;
 		}
 	}
 }
@@ -131,24 +132,81 @@ void StructureField::Survey(StructureChunk &chunk, size_t index) const
 	chunk.surveyed = true;
 }
 
-/* The block's box shrinks to the mesh once it is built, so culling and detail go by what really stands there. */
-void StructureField::Build(StructureChunk &chunk, size_t index, StructureDetail detail)
+StructureBuild::StructureBuild(const TileSpan &tiles, StructureDetail detail, std::span<uint32_t> digests) :
+	tiles(tiles), detail(detail), digests(digests), next_tx(tiles.tx0), next_ty(tiles.ty0)
 {
-	_frame_profile.Count("structure_builds");
-	ProfileScope profile("build", "structures", ProfileClock::Cpu);
-	TileSpan tiles = this->grid.TilesOf(index);
-	StructureParts parts;
-	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
-		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
-			TileIndex tile = TileXY(tx, ty);
-			std::optional<BuildingForm> form = AnchoredForm(tile);
-			this->digests[tile.base()] = DigestOf(form);
-			if (form.has_value()) BuildStructure(*form, detail, LayerOf(tile), parts);
+}
+
+void StructureBuild::Advance()
+{
+	TileIndex tile = TileXY(this->next_tx, this->next_ty);
+	std::optional<BuildingForm> form = AnchoredForm(tile);
+	this->digests[tile.base()] = DigestOf(form);
+	if (form.has_value()) BuildStructure(*form, this->detail, LayerOf(tile), this->parts);
+	if (++this->next_tx <= this->tiles.tx1) return;
+	this->next_tx = this->tiles.tx0;
+	this->next_ty++;
+}
+
+StructureParts StructureBuild::Finish()
+{
+	return std::move(this->parts);
+}
+
+/* A block is built once the camera comes near enough to show its buildings, at the detail its nearest point asks for, and built afresh where a form changed in it.
+ * The blocks are built within a slice of each frame, each showing what it was last built as until its new mesh is done. */
+void StructureField::Prepare(const SceneView &camera)
+{
+	if (this->chunks.empty()) return;
+	for (TileIndex tile : _world_tiles.Touched()) this->Notice(tile);
+
+	double casting_pixels = camera.TilePixelsAt(camera.shadow_reach);
+	this->due.clear();
+	for (size_t index = 0; index < this->chunks.size(); index++) {
+		StructureChunk &chunk = this->chunks[index];
+		if (!chunk.surveyed) this->Survey(chunk, index);
+		bool in_sight = BoxMeets(camera.frustum, chunk.low, chunk.high);
+		double nearest_pixels = camera.NearestTilePixels(chunk.low, chunk.high);
+		if (nearest_pixels < (in_sight ? STRUCTURE_FADE_START : casting_pixels)) continue;
+		chunk.wanted = this->frame;
+		StructureDetail detail = nearest_pixels >= FULL_DETAIL_PIXELS ? StructureDetail::Full : StructureDetail::Simple;
+		if (chunk.Outdated(detail)) {
+			this->due.push_back({index, in_sight, nearest_pixels, detail});
+			if (chunk.due_since == 0) chunk.due_since = this->frame;
+		} else {
+			chunk.rebuild.reset();
+			chunk.due_since = 0;
 		}
 	}
+	this->Refine();
+}
 
+/* The blocks in sight go first, then those still showing none of their buildings, then those that have waited longest and the nearest of them,
+ * so neither the blocks casting shadows into the view nor a block the world keeps changing under can hold up the rest; a build cut short by the end of the slice goes on from where it stopped. */
+void StructureField::Refine()
+{
+	std::ranges::sort(this->due, {}, [&](const Due &entry) {
+		const StructureChunk &chunk = this->chunks[entry.index];
+		return std::make_tuple(!entry.in_sight, chunk.built, chunk.due_since, -entry.pixels);
+	});
+	BuildSlice slice;
+	for (const Due &entry : this->due) {
+		StructureChunk &chunk = this->chunks[entry.index];
+		ProfileScope profile("build", "structures", ProfileClock::Cpu);
+		StructureDetail detail = chunk.NextDetail(entry.detail);
+		if (chunk.rebuild.has_value() && chunk.rebuild->build.Detail() != detail) chunk.rebuild.reset();
+		if (!chunk.rebuild.has_value()) chunk.rebuild.emplace(StructureBuild(this->grid.TilesOf(entry.index), detail, this->digests));
+		if (!slice.Carry(chunk.rebuild->build)) return;
+		this->Finish(chunk);
+	}
+}
+
+/* The block's box shrinks to the mesh once it is built, so culling and detail go by what really stands there. */
+void StructureField::Finish(StructureChunk &chunk)
+{
+	_frame_profile.Count("structure_builds");
+	StructureParts parts = chunk.rebuild->build.Finish();
 	StructureMesh &mesh = parts.mesh;
-
 	if (!mesh.vertices.empty()) {
 		auto [x0, x1] = std::ranges::minmax(mesh.vertices | std::views::transform([](const StructureVertex &vertex) { return vertex.model.x; }));
 		auto [y0, y1] = std::ranges::minmax(mesh.vertices | std::views::transform([](const StructureVertex &vertex) { return vertex.model.y; }));
@@ -159,38 +217,11 @@ void StructureField::Build(StructureChunk &chunk, size_t index, StructureDetail 
 	chunk.waiting = std::move(mesh);
 	chunk.picks = std::move(parts.picks);
 	chunk.vents = std::move(parts.vents);
-	chunk.detail = detail;
+	chunk.detail = chunk.rebuild->build.Detail();
 	chunk.built = true;
-	chunk.stale = false;
-}
-
-/* A block is built once the camera comes near enough to show its buildings, at the detail its nearest point asks for:
- * the blocks in sight go first, nearest first, then those out of sight near enough to cast shadows into it.
- * Blocks are built until the frame's budget runs out, at least one a frame; one still waiting shows what it was last built as. */
-void StructureField::Prepare(const SceneView &camera)
-{
-	if (this->chunks.empty()) return;
-	for (TileIndex tile : _world_tiles.Touched()) this->Notice(tile);
-
-	double casting_pixels = camera.TilePixelsAt(camera.shadow_reach);
-	this->queue.clear();
-	for (size_t index = 0; index < this->chunks.size(); index++) {
-		StructureChunk &chunk = this->chunks[index];
-		if (!chunk.surveyed) this->Survey(chunk, index);
-		bool in_sight = BoxMeets(camera.frustum, chunk.low, chunk.high);
-		double nearest_pixels = camera.NearestTilePixels(chunk.low, chunk.high);
-		if (nearest_pixels < (in_sight ? STRUCTURE_FADE_START : casting_pixels)) continue;
-		chunk.wanted = this->frame;
-		StructureDetail detail = nearest_pixels >= FULL_DETAIL_PIXELS ? StructureDetail::Full : StructureDetail::Simple;
-		if (chunk.stale || !chunk.built || chunk.detail != detail) this->queue.push_back({index, in_sight, nearest_pixels, detail});
-	}
-
-	std::ranges::sort(this->queue, std::ranges::greater{}, [](const BuildOrder &order) { return std::pair(order.in_sight, order.pixels); });
-	auto deadline = std::chrono::steady_clock::now() + BUILD_BUDGET;
-	for (const BuildOrder &order : this->queue) {
-		this->Build(this->chunks[order.index], order.index, order.detail);
-		if (std::chrono::steady_clock::now() >= deadline) break;
-	}
+	chunk.stale = chunk.rebuild->outdated;
+	chunk.due_since = 0;
+	chunk.rebuild.reset();
 }
 
 /* Blocks built since the last frame are handed to the GPU before any view draws them. */
@@ -231,11 +262,14 @@ std::optional<StructureHit> StructureField::Pick(const Vec3 &origin, const Vec3 
 	return nearest;
 }
 
-/* A block the camera has long been too far from gives its mesh back, so a big map only holds the buildings near the view. */
+/* A block the camera has long been too far from gives its mesh back and drops any build of it left unfinished, so a big map only holds the buildings near the view. */
 void StructureField::Evict()
 {
 	for (StructureChunk &chunk : this->chunks) {
-		if (!chunk.built || this->frame - chunk.wanted < EVICT_FRAMES) continue;
+		if (this->frame - chunk.wanted < EVICT_FRAMES) continue;
+		chunk.rebuild.reset();
+		chunk.due_since = 0;
+		if (!chunk.built) continue;
 		chunk.mesh.Release();
 		chunk.waiting.reset();
 		chunk.picks.clear();
@@ -250,5 +284,6 @@ void StructureField::Release()
 	for (StructureChunk &chunk : this->chunks) chunk.mesh.Release();
 	this->chunks.clear();
 	this->digests.clear();
+	this->due.clear();
 	this->grid.Clear();
 }
