@@ -100,6 +100,8 @@ const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
 const float SHELF_REACH = 2.5;
 const float OPEN_SEA_LEVEL = 0.0;
+const float OPEN_SEA_LOD = 2.0;
+const vec4 OPEN_SEA = vec4(1.0, 1.0, 0.0, 0.0);
 const float FETCH_LOD = 4.0;
 const float FETCH_TILES = 16.0;
 const vec2 OPEN_FETCH = vec2(0.12, 0.4);
@@ -186,9 +188,9 @@ Surface Waves(vec2 p, float calm)
 		float angle = float(octave) * WAVE_TURN;
 		mat2 turn = mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
 		vec2 drift = vec2(cos(angle), sin(angle)) * WAVE_SPEED * Clock() / sqrt(frequency);
-		vec3 noise = NoiseSlope(turn * p * frequency + drift + float(octave) * 17.3);
 		float shown = smoothstep(UNRESOLVED_WAVE_PIXELS, RESOLVED_WAVE_PIXELS, tile_pixels / frequency);
-		vec2 rise = (noise.yz * turn) * frequency * height;
+		vec2 rise = vec2(0.0);
+		if (octave == 0 || shown > 0.0) rise = (NoiseSlope(turn * p * frequency + drift + float(octave) * 17.3).yz * turn) * frequency * height;
 		slope += rise * shown;
 		if (octave == 0) broad = rise;
 		lost += height * (1.0 - shown);
@@ -212,13 +214,22 @@ vec4 SheetWater(ivec2 tile, float level, float reach)
 	return level >= low - reach && level <= high + reach ? water : vec4(0.0);
 }
 
+/* Whether the four by four tiles from one before the cell to two past it are all open sea, from the water's texels averaged four tiles to a texel;
+ * read between texels at the corner the tiles share, the two by two texels blended hold every one of the tiles, and any other water leaves the blend short of full. */
+bool OpenSeaAbout(ivec2 cell)
+{
+	vec4 water = textureLod(u_water, (vec2(cell) + 1.0) / MapSize(), OPEN_SEA_LOD);
+	return water.r >= 1.0 && water.g >= 1.0;
+}
+
 /* The water field over only the tiles whose water joins this sheet, so a pool's outline is not drawn out over the water of the pool below it;
- * a stream running down between two pools joins both. */
+ * a stream running down between two pools joins both. Open sea, all flat and at one level, joins every tile it weighs. */
 vec4 SheetField(vec2 p, float level)
 {
 	float reach = fwidth(level) > STREAM_TILT * length(fwidth(p)) ? STREAM_REACH : SHEET_TOLERANCE;
 	vec2 t = p + ShoreWarp(p) - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(t));
+	if (OpenSeaAbout(cell)) return OPEN_SEA;
 	vec4 wx = SplineWeights(fract(t.x));
 	vec4 wy = SplineWeights(fract(t.y));
 	vec4 field = vec4(0.0);
@@ -232,7 +243,7 @@ vec4 SheetField(vec2 p, float level)
 vec4 FieldAt(vec2 p, float level)
 {
 	bool inside = all(greaterThanEqual(p, vec2(0.0))) && all(lessThanEqual(p, MapSize()));
-	return inside ? SheetField(p, level) : vec4(1.0, 1.0, 0.0, 0.0);
+	return inside ? SheetField(p, level) : OPEN_SEA;
 }
 
 Body BodyOf(vec4 field)
@@ -273,6 +284,7 @@ vec2 ChannelFlow(vec2 p, float level)
 /* Foam gathers in a band along the shore, thickest at the water's edge, broken into lace and drifting with the swell. */
 float Foam(vec2 p, float band, Body body)
 {
+	if (band <= 0.0) return 0.0;
 	vec2 drift = vec2(Clock() * FOAM_DRIFT, -Clock() * FOAM_DRIFT * 0.7);
 	float lace = Noise(p * FOAM_SCALE + drift) * 0.6 + Noise(p * FOAM_SCALE * 2.3 - drift * 1.4) * 0.4;
 	float threshold = mix(0.75, FOAM_EDGE_THRESHOLD, band * band);
@@ -290,6 +302,7 @@ float Breakers(vec2 p, float level, Body body)
 {
 	float offshore = level - WATERLINE;
 	float reach = smoothstep(0.03, 0.08, offshore) * (1.0 - smoothstep(0.15, BREAKER_REACH, offshore));
+	if (reach <= 0.0) return 0.0;
 	float phase = offshore * BREAKERS_PER_REACH + Clock() * BREAKER_SPEED + Noise(p * 0.7) * 3.0;
 	float crest = smoothstep(0.78, 0.98, 0.5 + 0.5 * sin(phase));
 	float broken = smoothstep(0.4, 0.75, Noise(p * 2.2 + vec2(Clock() * 0.07, 0.0)));
@@ -400,10 +413,12 @@ float WaterLevelNear(vec2 at, ivec2 home)
 	return WaterLevelOn(source, at - vec2(source));
 }
 
-/* How steeply the water's surface leans about a point, measured across a reach so a drop eases in above its lip and runs out into the pool below, and which way is down. */
+/* How steeply the water's surface leans about a point, measured across a reach so a drop eases in above its lip and runs out into the pool below, and which way is down;
+ * open sea lies level. */
 vec3 Descent(vec2 p)
 {
 	ivec2 home = ivec2(floor(p));
+	if (OpenSeaAbout(home)) return vec3(0.0);
 	vec2 dx = vec2(RAPIDS_REACH, 0.0);
 	vec2 dy = vec2(0.0, RAPIDS_REACH);
 	vec2 fall = vec2(WaterLevelNear(p - dx, home) - WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home) - WaterLevelNear(p + dy, home));
@@ -415,6 +430,7 @@ vec3 Descent(vec2 p)
 /* Where a river drops it breaks white, the broken water racing down the slope in streaks torn finer where the pixels can show them. */
 float Whitewater(vec2 p, vec3 descent)
 {
+	if (descent.z <= 0.0) return 0.0;
 	vec2 down = descent.xy;
 	vec2 across = vec2(-down.y, down.x);
 	vec2 q = vec2(dot(p, down) * RAPIDS_ALONG - Clock() * RAPIDS_SPEED, dot(p, across) * RAPIDS_ACROSS);
@@ -442,10 +458,11 @@ float DeckCover(vec2 p)
 /* Along snowbound shores, in snowfields or above the snow line, the water freezes in a rim of ice that reaches out further here and there and breaks into floes at its outer edge. */
 float ShoreIce(vec2 p, float level, out float floes)
 {
-	floes = 0.6 * Noise(p * FLOES_PER_TILE) + 0.4 * Noise(p * FLOES_PER_TILE * 2.3 + 4.7);
+	floes = 0.5;
 	if (Landscape() != LANDSCAPE_ARCTIC) return 0.0;
 	float snowbound = max(smoothstep(0.05, 0.35, ClimateAt(p).blanket), smoothstep(0.0, SNOW_LINE_PULL, SnowLift(v_world.z)));
 	if (snowbound <= 0.0) return 0.0;
+	floes = 0.6 * Noise(p * FLOES_PER_TILE) + 0.4 * Noise(p * FLOES_PER_TILE * 2.3 + 4.7);
 	float reach = ICE_REACH * snowbound * (0.5 + Noise(p * 0.6 + 2.9));
 	float edge = level - WATERLINE + (floes - 0.5) * ICE_ROUGHNESS;
 	return 1.0 - smoothstep(reach * 0.7, reach, edge);
@@ -482,8 +499,8 @@ void main()
 
 	float enclosed = Enclosed(p);
 	Surface waves = Waves(p, max(body.calm, enclosed));
-	waves = Stirred(waves, Streaks(p, flow, FLOW_SPEED) * FLOW_STEEPNESS * length(flow));
-	waves = Stirred(waves, Streaks(p, descent.xy, RAPIDS_SPEED) * RAPIDS_STEEPNESS * descent.z);
+	if (length(flow) > 0.0) waves = Stirred(waves, Streaks(p, flow, FLOW_SPEED) * FLOW_STEEPNESS * length(flow));
+	if (descent.z > 0.0) waves = Stirred(waves, Streaks(p, descent.xy, RAPIDS_SPEED) * RAPIDS_STEEPNESS * descent.z);
 	waves.ruffled = max(waves.ruffled, descent.z * RAPIDS_RUFFLE);
 	vec3 normal = waves.normal;
 
@@ -514,7 +531,8 @@ void main()
 
 	float reflected;
 	vec3 sky = SkyOnWater(sight, waves, view, reflected) * sheltered;
-	vec3 colour = mix(below, sky, reflected) + SunOnWater(waves, view, p, sun);
+	vec3 glitter = SunOnWater(waves, view, p, sun);
+	vec3 colour = mix(below, sky, reflected) + glitter;
 
 	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, straight.x);
 	float shore = Foam(p, max(ShoreBand(field.r), contact), body);
@@ -522,7 +540,7 @@ void main()
 	float ice = ShoreIce(p, field.r, floes);
 	float foam = max(max(shore, Breakers(p, field.r, body) * (1.0 - enclosed)), max(Whitewater(p, descent) * river, Wake(p))) * (1.0 - ice);
 	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
-	colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + SunOnWater(waves, view, p, sun) * 0.3, ice);
+	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
 	float shown = max(smoothstep(0.0, CONTACT_DEPTH, straight.y), body.calm) * outline;
