@@ -135,7 +135,6 @@ void VideoDriver::Tick()
 
 	auto now = std::chrono::steady_clock::now();
 	if (this->HasGUI() && now >= this->next_draw_tick) {
-		_tick_clock.BeginFrame(now);
 		auto draw_interval = this->GetDrawInterval();
 		this->next_draw_tick += draw_interval;
 		/* A late frame is not caught up on by drawing the next ones back to back. */
@@ -146,6 +145,7 @@ void VideoDriver::Tick()
 			ProfileScope profile("tick", "vidlock", ProfileClock::Cpu);
 			this->LockVideoBuffer();
 		}
+		_tick_clock.BeginFrame(std::chrono::steady_clock::now());
 
 		{
 			/* Tell the game-thread to stop so we can have a go. */
