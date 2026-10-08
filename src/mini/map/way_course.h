@@ -11,25 +11,12 @@
 #ifndef MINI_MAP_WAY_COURSE_H
 #define MINI_MAP_WAY_COURSE_H
 
-#include <array>
-#include <functional>
 #include <optional>
-#include <span>
 #include <utility>
 
 #include "../../track_type.h"
 #include "../core/camera.h"
 #include "way_line.h"
-
-/* Each rail piece's two ends on its tile, at the middles of the sides it joins, in the game's track order. */
-inline constexpr std::array<std::pair<MapVector, MapVector>, TRACK_END> TRACK_ENDS = {{
-	{{0.0, 0.5}, {1.0, 0.5}},
-	{{0.5, 0.0}, {0.5, 1.0}},
-	{{0.0, 0.5}, {0.5, 0.0}},
-	{{1.0, 0.5}, {0.5, 1.0}},
-	{{0.5, 0.0}, {1.0, 0.5}},
-	{{0.0, 0.5}, {0.5, 1.0}},
-}};
 
 /* How many joints along a run a change of the ways can move its ease, which is also how many tiles away it can reach. */
 inline constexpr int WAY_EASE_REACH = 16;
@@ -122,26 +109,6 @@ private:
 	friend class TrackBook;
 };
 
-/* A train's way over the game's map from one point to another a few tile sides on: through the middles of the tile sides its track crosses between them,
- * or straight where no track leads there. */
-class TrackRoute {
-public:
-	TrackRoute(const MapVector &from, const MapVector &to);
-
-	/* The middles of the tile sides crossed, in order. */
-	std::span<const MapVector> Sides() const;
-	/* The point a share of the way along. */
-	MapVector At(double share) const;
-
-private:
-	static constexpr size_t MOST_SIDES = 4;
-
-	bool Cross(const MapVector &from, const MapVector &to);
-
-	std::array<MapVector, MOST_SIDES + 2> points{};
-	size_t count = 0;
-};
-
 /* How far the eased rail line slides along a tile's west side and along its north side, from the middle of each. */
 std::pair<double, double> SideSlides(int tx, int ty);
 
@@ -153,9 +120,5 @@ WorldPoint TrackPoint(double x, double y);
 /* Where a train or a road vehicle at a point of the map is drawn: a train on the line of the piece it is on, either at its way's eased level or on the ground. */
 WorldPoint TrainPoint(double x, double y);
 WorldPoint RoadPoint(double x, double y);
-/* Which of a tile's pieces of track a train is known to take. */
-using TrackTaken = std::function<TrackBits(TileIndex tile)>;
-/* Where a train's path over the game's map runs to a reach on from a point the way it heads, along the game's pieces of track. */
-MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken);
 
 #endif /* MINI_MAP_WAY_COURSE_H */

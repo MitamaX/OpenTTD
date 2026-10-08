@@ -17,14 +17,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../../bridge_map.h"
 #include "../../core/bitmath_func.hpp"
 #include "../../map_func.h"
 #include "../../road_type.h"
 #include "../../track_func.h"
-#include "../../tunnelbridge_map.h"
 #include "../gpu/frame_profile.h"
 #include "tile_shapes.h"
+#include "track_pieces.h"
 #include "world_tiles.h"
 
 #include "../../safeguards.h"
@@ -49,134 +48,11 @@ static constexpr int DRAWN_READ_REACH = 2;
 /* Where each of the game's road bits leads out of its tile, in bit order. */
 static constexpr std::array<MapVector, ROAD_ARMS> ROAD_ENDS = {{{0.5, 0.0}, {1.0, 0.5}, {0.5, 1.0}, {0.0, 0.5}}};
 
-using TileCoord = std::pair<int, int>;
-
 enum class WayKind : uint8_t {
 	None,
 	Rail,
 	Road,
 };
-
-/* The middle of a tile's side, named on the half tile lattice, so the tiles either side name it alike. */
-struct Joint {
-	int hx;
-	int hy;
-
-	static Joint At(const MapVector &point) { return {static_cast<int>(std::lround(point.x * 2.0)), static_cast<int>(std::lround(point.y * 2.0))}; }
-	MapVector Point() const { return {this->hx * HALF_TILE, this->hy * HALF_TILE}; }
-	bool AlongX() const { return (this->hx & 1) != 0; }
-	/* Which way along its tile side a joint slides. */
-	MapVector Side() const { return this->AlongX() ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0}; }
-	uint64_t Key() const { return static_cast<uint64_t>(static_cast<uint32_t>(this->hx)) << 32 | static_cast<uint32_t>(this->hy); }
-	bool operator==(const Joint &) const = default;
-
-	/* The two tiles whose sides meet here, the one toward lower map coordinates first. */
-	std::array<TileCoord, 2> Tiles() const
-	{
-		if (this->AlongX()) return {{{(this->hx - 1) / 2, this->hy / 2 - 1}, {(this->hx - 1) / 2, this->hy / 2}}};
-		return {{{this->hx / 2 - 1, (this->hy - 1) / 2}, {this->hx / 2, (this->hy - 1) / 2}}};
-	}
-
-	bool Joins(const TileCoord &tile) const
-	{
-		auto [low, high] = this->Tiles();
-		return tile == low || tile == high;
-	}
-
-	TileCoord Beyond(const TileCoord &tile) const
-	{
-		auto [low, high] = this->Tiles();
-		return tile == low ? high : low;
-	}
-
-	/* The way across the side from its lower tile into its higher. */
-	MapVector Upward() const { return this->AlongX() ? MapVector{0.0, 1.0} : MapVector{1.0, 0.0}; }
-
-	/* The way across the side from one of its tiles into the other. */
-	MapVector Across(int tx, int ty) const
-	{
-		return this->Upward() * (this->Tiles()[0] == TileCoord{tx, ty} ? 1.0 : -1.0);
-	}
-};
-
-struct Piece {
-	Joint from;
-	Joint to;
-
-	Joint Other(const Joint &end) const { return end == this->from ? this->to : this->from; }
-	bool Meets(const Joint &joint) const { return this->from == joint || this->to == joint; }
-	double Span() const { return std::hypot(this->to.hx - this->from.hx, this->to.hy - this->from.hy) * HALF_TILE; }
-};
-
-static TileCoord TileOf(const MapVector &point)
-{
-	return {static_cast<int>(std::floor(point.x)), static_cast<int>(std::floor(point.y))};
-}
-
-/* How far along a segment a point lies, kept within the segment. */
-static double ShareAlong(const MapVector &point, const MapVector &from, const MapVector &to)
-{
-	MapVector along = to - from;
-	return std::clamp(Dot(point - from, along) / Dot(along, along), 0.0, 1.0);
-}
-
-static double SegmentDistance(const MapVector &point, const MapVector &from, const MapVector &to)
-{
-	return Length(from + (to - from) * ShareAlong(point, from, to) - point);
-}
-
-static Piece PieceOf(int tx, int ty, Track track)
-{
-	MapVector origin = {static_cast<double>(tx), static_cast<double>(ty)};
-	auto [from, to] = TRACK_ENDS[track];
-	return {Joint::At(origin + from), Joint::At(origin + to)};
-}
-
-/* The rail pieces a tile carries as far as the track beside it goes, a rail bridge's head among them. */
-static TrackBits TrackBitsOf(int tx, int ty)
-{
-	TileIndex tile = TileXY(tx, ty);
-	if (IsBridgeTile(tile) && GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL) return AxisToTrackBits(DiagDirToAxis(GetTunnelBridgeDirection(tile)));
-	return static_cast<TrackBits>(_world_tiles.NetworkAt(tile).track);
-}
-
-/* The piece of a tile's track rated highest among some of its pieces, passing over any the rating gives no value. */
-template <typename Rating>
-static std::optional<Track> BestTrackAt(const TileCoord &tile, Rating rating, TrackBits among = TRACK_BIT_ALL)
-{
-	std::optional<Track> best;
-	if (!OnMap(tile.first, tile.second)) return best;
-	double best_rating = 0.0;
-	for (Track track : SetTrackBitIterator(TrackBitsOf(tile.first, tile.second) & among)) {
-		std::optional<double> piece_rating = rating(PieceOf(tile.first, tile.second, track));
-		if (!piece_rating.has_value() || (best.has_value() && *piece_rating <= best_rating)) continue;
-		best = track;
-		best_rating = *piece_rating;
-	}
-	return best;
-}
-
-template <typename Rating>
-static std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rating rating, TrackBits among = TRACK_BIT_ALL)
-{
-	std::optional<Track> best = BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> {
-		if (!piece.Meets(joint)) return std::nullopt;
-		return rating(piece);
-	}, among);
-	if (!best.has_value()) return std::nullopt;
-	return PieceOf(tile.first, tile.second, *best);
-}
-
-/* The piece of a tile meeting a joint that runs on from it most nearly along a heading, unless none meets it. */
-static std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, TrackBits among = TRACK_BIT_ALL)
-{
-	return BestPieceAt(tile, joint, [&](const Piece &piece) { return Dot(Unit(piece.Other(joint).Point() - joint.Point()), heading); }, among);
-}
-
-static std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point)
-{
-	return BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> { return -SegmentDistance(point, piece.from.Point(), piece.to.Point()); });
-}
 
 /* A tile's way pieces as far as easing goes: the tile eases only with one rail piece or a parallel pair, or one road running in at two ends. */
 struct TileWays {
@@ -743,82 +619,6 @@ WorldPoint TrainPoint(double x, double y)
 {
 	const DrawnTrack *drawn = DrawnUnder({x, y});
 	return drawn != nullptr ? drawn->Centred({x, y}) : WorldPoint{x, y, GroundLevel(x, y)};
-}
-
-/* A train runs on into a tile along the straightest piece it is known to take there, or else along the straightest of all. */
-static std::optional<Piece> OnwardAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, const TrackTaken &taken)
-{
-	if (!OnMap(tile.first, tile.second)) return std::nullopt;
-	std::optional<Piece> known = StraightestAt(tile, joint, heading, taken(TileXY(tile.first, tile.second)));
-	return known.has_value() ? known : StraightestAt(tile, joint, heading);
-}
-
-MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken)
-{
-	TileCoord tile = TileOf(from);
-	std::optional<Track> under = TrackUnder(tile, from);
-	if (!under.has_value()) return from + heading * reach;
-
-	Piece piece = PieceOf(tile.first, tile.second, *under);
-	Joint exit = Dot(piece.to.Point() - piece.from.Point(), heading) >= 0.0 ? piece.to : piece.from;
-	MapVector at = from;
-	for (;;) {
-		heading = Unit(exit.Point() - piece.Other(exit).Point());
-		double left = std::max(Dot(exit.Point() - at, heading), 0.0);
-		if (reach <= left) break;
-		reach -= left;
-		at = exit.Point();
-		tile = exit.Beyond(tile);
-		std::optional<Piece> onward = OnwardAt(tile, exit, heading, taken);
-		if (!onward.has_value()) break;
-		piece = *onward;
-		exit = piece.Other(exit);
-	}
-	return at + heading * reach;
-}
-
-TrackRoute::TrackRoute(const MapVector &from, const MapVector &to)
-{
-	this->points[this->count++] = from;
-	if (!this->Cross(from, to)) this->count = 1;
-	this->points[this->count++] = to;
-}
-
-/* From the piece a train starts on it leaves by the end nearer where it is bound, and on through each tile by the piece leading nearest there. */
-bool TrackRoute::Cross(const MapVector &from, const MapVector &to)
-{
-	TileCoord tile = TileOf(from);
-	TileCoord bound = TileOf(to);
-	if (tile == bound) return true;
-	std::optional<Track> under = TrackUnder(tile, from);
-	if (!under.has_value()) return false;
-
-	auto nearness = [&to](const Joint &joint) { return -Length(to - joint.Point()); };
-	Piece piece = PieceOf(tile.first, tile.second, *under);
-	Joint exit = nearness(piece.from) >= nearness(piece.to) ? piece.from : piece.to;
-	for (size_t side = 0; side < MOST_SIDES; side++) {
-		this->points[this->count++] = exit.Point();
-		tile = exit.Beyond(tile);
-		if (tile == bound) return true;
-		std::optional<Piece> next = BestPieceAt(tile, exit, [&](const Piece &onward) { return nearness(onward.Other(exit)); });
-		if (!next.has_value()) return false;
-		exit = next->Other(exit);
-	}
-	return false;
-}
-
-std::span<const MapVector> TrackRoute::Sides() const
-{
-	return std::span(this->points).subspan(1, this->count - 2);
-}
-
-MapVector TrackRoute::At(double share) const
-{
-	std::span<const MapVector> path = std::span(this->points).first(this->count);
-	double length = 0.0;
-	for (size_t point = 1; point < path.size(); point++) length += Length(path[point] - path[point - 1]);
-	ArcPlace place = PlaceAlong(path, share * length);
-	return path[place.from] + (path[place.to] - path[place.from]) * place.share;
 }
 
 WorldPoint RoadPoint(double x, double y)

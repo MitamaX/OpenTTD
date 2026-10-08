@@ -22,6 +22,7 @@
 #include "../../train.h"
 #include "../../vehicle_base.h"
 #include "tile_shapes.h"
+#include "train_route.h"
 #include "way_course.h"
 
 #include "../../safeguards.h"

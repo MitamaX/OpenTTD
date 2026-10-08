@@ -22,6 +22,7 @@
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
+#include "../map/track_pieces.h"
 #include "../map/way_course.h"
 
 #include "../../safeguards.h"

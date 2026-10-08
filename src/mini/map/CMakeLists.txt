@@ -27,6 +27,10 @@ add_files(
     structure_forms.h
     tile_shapes.cpp
     tile_shapes.h
+    track_pieces.cpp
+    track_pieces.h
+    train_route.cpp
+    train_route.h
     transport_forms.cpp
     transport_forms.h
     vehicle_motion.cpp
