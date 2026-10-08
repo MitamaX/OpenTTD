@@ -99,10 +99,14 @@ static double HillOver(const PortalFrame &frame, int nx, int ny, double floor)
 	return std::min(hill.Level(left.x, left.y), hill.Level(right.x, right.y));
 }
 
+static MapVector MiddleOf(TileIndex tile)
+{
+	return {TileX(tile) + HALF_TILE, TileY(tile) + HALF_TILE};
+}
+
 MapVector TunnelMouth(TileIndex entrance)
 {
-	MapVector centre = {TileX(entrance) + HALF_TILE, TileY(entrance) + HALF_TILE};
-	return centre + Outward(GetTunnelBridgeDirection(entrance)) * HALF_TILE;
+	return MiddleOf(entrance) + Outward(GetTunnelBridgeDirection(entrance)) * HALF_TILE;
 }
 
 /* The face stands proud of the cut's wall as high as the hill over it, and never lower than its mouth needs; the arch springs from the mouth's sides,
@@ -112,7 +116,7 @@ void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 	int tx = TileX(entrance);
 	int ty = TileY(entrance);
 	MapVector inward = Outward(GetTunnelBridgeDirection(entrance));
-	MapVector centre = {tx + HALF_TILE, ty + HALF_TILE};
+	MapVector centre = MiddleOf(entrance);
 	MapVector edge = TunnelMouth(entrance);
 	PortalFrame frame(edge, inward);
 	double floor = TileGround(tx, ty).Level(centre.x, centre.y);

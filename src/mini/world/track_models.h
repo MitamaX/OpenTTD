@@ -36,6 +36,6 @@ double RideHeight(RailLook look);
 void LayTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
 void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
 /* Where the track runs into a tunnel's mouth its wires run on into the dark, and no mast stands. */
-void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth = std::nullopt);
+void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth);
 
 #endif /* MINI_WORLD_TRACK_MODELS_H */

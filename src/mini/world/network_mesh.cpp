@@ -141,7 +141,7 @@ private:
 		if (!crossing) return;
 		TrackSite rails = this->TrackOf(tile, tx, ty);
 		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), rails, footing);
-		LayCatenary(this->meshes.Layer(MiniLayer::Rail), rails, footing);
+		LayCatenary(this->meshes.Layer(MiniLayer::Rail), rails, footing, std::nullopt);
 	}
 
 	void Station(TileIndex tile, int tx, int ty)
