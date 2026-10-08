@@ -25,6 +25,7 @@
 #include "../../safeguards.h"
 
 static constexpr size_t NAMES_SHOWN = 8;
+static constexpr std::chrono::milliseconds SCAN_INTERVAL{250};
 
 static Rml::Vector<Rml::String> VehicleNames(const std::vector<VehicleID> &list)
 {
@@ -36,7 +37,7 @@ static Rml::Vector<Rml::String> VehicleNames(const std::vector<VehicleID> &list)
 	return names;
 }
 
-StatusStream::StatusStream() : HudPart("status")
+StatusStream::StatusStream() : HudPart("status"), scan_beat(SCAN_INTERVAL)
 {
 }
 
@@ -55,6 +56,7 @@ void StatusStream::Bind(Rml::DataModelConstructor &model)
 
 void StatusStream::Collect()
 {
+	if (!this->scan_beat.Due()) return;
 	_status_board.Scan();
 	this->rows.clear();
 	for (int i = 0; i < to_underlying(VehicleStatus::End); i++) {

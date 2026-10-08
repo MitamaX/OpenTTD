@@ -33,8 +33,8 @@ enum class VehicleStatus : uint8_t {
 std::string StatusLabel(VehicleStatus status);
 bool StatusIsCritical(VehicleStatus status);
 
-/* No event cards, only live aggregated problem states, rescanned whenever the
- * stream is drawn. */
+/* No event cards, only live aggregated problem states, rescanned on the
+ * stream's beat. */
 class StatusBoard {
 public:
 	void Scan();

@@ -10,6 +10,7 @@
 #ifndef MINI_HUD_STATUS_STREAM_H
 #define MINI_HUD_STATUS_STREAM_H
 
+#include "../core/beat.h"
 #include "../ui/hud_part.h"
 
 struct StatusRow {
@@ -33,6 +34,7 @@ private:
 	void Cycle(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 
 	Rml::Vector<StatusRow> rows;
+	Beat scan_beat;
 };
 
 #endif /* MINI_HUD_STATUS_STREAM_H */
