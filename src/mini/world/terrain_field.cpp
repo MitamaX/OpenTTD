@@ -110,17 +110,24 @@ double TerrainField::Distance(size_t index, const Vec3 &eye) const
  * each keeping its old meshes until its new ones are done. Shadows only draw the blocks there are. */
 void TerrainField::Refresh(const SceneView &camera)
 {
+	this->nearby.clear();
+	this->grid.ForEachAround(camera.eye, camera.Reach() + SHELF_TILES, [&](size_t index) {
+		auto [low, high] = this->Bounds(index);
+		this->nearby.push_back({index, low, high, this->Distance(index, camera.eye)});
+		return true;
+	});
+	std::ranges::sort(this->nearby, {}, &Nearby::distance);
+
 	this->due.clear();
 	bool blank = true;
-	for (size_t index = 0; index < this->chunks.size(); index++) {
-		auto [low, high] = this->Bounds(index);
-		if (!BoxMeets(camera.frustum, low, high)) continue;
-		Chunk &chunk = this->chunks[index];
+	for (const Nearby &near : this->nearby) {
+		if (!BoxMeets(camera.frustum, near.low, near.high)) continue;
+		Chunk &chunk = this->chunks[near.index];
 		chunk.drawn = this->frame;
 		blank = blank && chunk.ground.Empty();
-		int step = StepFor(camera.NearestTilePixels(low, high));
+		int step = StepFor(camera.NearestTilePixels(near.low, near.high));
 		if (chunk.Outdated(step)) {
-			this->due.push_back({index, step, this->Distance(index, camera.eye)});
+			this->due.push_back({near.index, step});
 		} else {
 			chunk.rebuild.reset();
 			chunk.due_since = 0;
@@ -128,7 +135,6 @@ void TerrainField::Refresh(const SceneView &camera)
 	}
 
 	BuildSlice slice;
-	std::ranges::sort(this->due, {}, &Due::distance);
 	for (const Due &entry : this->due) {
 		const Chunk &chunk = this->chunks[entry.index];
 		if (!chunk.ground.Empty()) continue;
@@ -181,20 +187,15 @@ void TerrainField::Finish(size_t index)
 }
 
 /* The nearest ground is drawn first and the seabed beyond the map last, so ground hidden behind hills is rejected before it is shaded. */
-void TerrainField::DrawGround(const SceneView &camera, const Frustum &frustum)
+void TerrainField::DrawGround(const Frustum &frustum)
 {
 	if (this->chunks.empty()) return;
-	this->shown.clear();
-	for (size_t index = 0; index < this->chunks.size(); index++) {
-		Chunk &chunk = this->chunks[index];
-		if (chunk.ground.Empty()) continue;
-		auto [low, high] = this->Bounds(index);
-		if (!BoxMeets(frustum, low, high)) continue;
+	for (const Nearby &near : this->nearby) {
+		Chunk &chunk = this->chunks[near.index];
+		if (chunk.ground.Empty() || !BoxMeets(frustum, near.low, near.high)) continue;
 		chunk.drawn = this->frame;
-		this->shown.push_back({&chunk, this->Distance(index, camera.eye)});
+		chunk.ground.Draw();
 	}
-	std::ranges::sort(this->shown, {}, &Shown::distance);
-	for (const Shown &entry : this->shown) entry.chunk->ground.Draw();
 	this->outer_bed.Draw();
 }
 
@@ -202,11 +203,9 @@ void TerrainField::DrawWater(const SceneView &camera)
 {
 	if (this->chunks.empty()) return;
 	this->outer_water.Draw();
-	for (size_t index = 0; index < this->chunks.size(); index++) {
-		Chunk &chunk = this->chunks[index];
-		if (chunk.ground.Empty()) continue;
-		auto [low, high] = this->Bounds(index);
-		if (BoxMeets(camera.frustum, low, high)) chunk.water.Draw();
+	for (const Nearby &near : this->nearby) {
+		const Chunk &chunk = this->chunks[near.index];
+		if (!chunk.ground.Empty() && BoxMeets(camera.frustum, near.low, near.high)) chunk.water.Draw();
 	}
 }
 
@@ -230,6 +229,7 @@ void TerrainField::Release()
 	}
 	this->chunks.clear();
 	this->due.clear();
+	this->nearby.clear();
 	this->keep.Clear();
 	this->outer_bed.Release();
 	this->outer_water.Release();

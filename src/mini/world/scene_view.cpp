@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 
 #include "../../landscape.h"
 #include "../../settings_type.h"
@@ -99,6 +100,11 @@ double SceneView::NearestTilePixels(const Vec3 &low, const Vec3 &high) const
 {
 	Vec3 nearest = {std::clamp(this->eye.x, low.x, high.x), std::clamp(this->eye.y, low.y, high.y), std::clamp(this->eye.z, low.z, high.z)};
 	return this->TilePixelsAt(Length(this->eye - nearest));
+}
+
+double SceneView::Reach() const
+{
+	return this->far * std::hypot(1.0, this->viewport.width * 0.5 / this->focal, this->viewport.height * 0.5 / this->focal);
 }
 
 void SceneUniforms::Upload(const SceneView &view)

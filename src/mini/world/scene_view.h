@@ -39,6 +39,8 @@ struct SceneView {
 	bool Sees(const Vec3 &low, const Vec3 &high) const;
 	double TilePixelsAt(double distance) const;
 	double NearestTilePixels(const Vec3 &low, const Vec3 &high) const;
+	/* How far from the eye the corners of the far plane lie, beyond which nothing shows. */
+	double Reach() const;
 	Vec3 Back() const { return {this->view.At(2, 0), this->view.At(2, 1), this->view.At(2, 2)}; }
 };
 

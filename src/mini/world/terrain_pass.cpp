@@ -54,14 +54,14 @@ void TerrainPass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready()) return;
 	this->caster.Use();
-	this->field.DrawGround(view.camera, view.frustum);
+	this->field.DrawGround(view.frustum);
 }
 
 void TerrainPass::Lay(const SceneView &view)
 {
 	if (!this->depth.Ready()) return;
 	this->depth.Use();
-	this->field.DrawGround(view, view.frustum);
+	this->field.DrawGround(view.frustum);
 }
 
 /* The ground's shading is the dearest in the world, so it is drawn after every solid pass over the depth it laid, and each pixel left in sight is shaded once. */
@@ -73,7 +73,7 @@ void TerrainPass::Draw(const SceneView &view)
 	this->detail.Bind();
 	glDepthFunc(GL_LEQUAL);
 	glDepthMask(GL_FALSE);
-	this->field.DrawGround(view, view.frustum);
+	this->field.DrawGround(view.frustum);
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LESS);
 }

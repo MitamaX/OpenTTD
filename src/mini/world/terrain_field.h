@@ -28,7 +28,7 @@ public:
 
 	void Sync(const WorldChanges &changes);
 	void Refresh(const SceneView &camera);
-	void DrawGround(const SceneView &camera, const Frustum &frustum);
+	void DrawGround(const Frustum &frustum);
 	void DrawWater(const SceneView &camera);
 	void Release();
 
@@ -54,16 +54,17 @@ private:
 		int NextStep(int wanted_step) const { return wanted_step == 1 && (this->ground.Empty() || this->step > DRAFT_STEP) ? DRAFT_STEP : wanted_step; }
 	};
 
-	/* A block in the camera's view whose meshes are out of date, the step the view asks of it and how far its middle lies from the eye. */
+	/* A block in the camera's view whose meshes are out of date and the step the view asks of it. */
 	struct Due {
 		size_t index;
 		int step;
-		double distance;
 	};
 
-	/* A block to draw this frame and how far its middle lies from the eye. */
-	struct Shown {
-		const Chunk *chunk;
+	/* A block near enough to the eye for this frame's views to show, its box and how far its middle lies from the eye. */
+	struct Nearby {
+		size_t index;
+		Vec3 low;
+		Vec3 high;
 		double distance;
 	};
 
@@ -82,7 +83,7 @@ private:
 	MeshBuffer outer_bed;
 	MeshBuffer outer_water;
 	std::vector<Due> due;
-	std::vector<Shown> shown;
+	std::vector<Nearby> nearby;
 	uint64_t frame = 0;
 };
 

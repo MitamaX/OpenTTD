@@ -54,22 +54,28 @@ public:
 		for (ChangeKind kind : kinds) this->ForEachTouched(changes.Of(kind), margin, visit);
 	}
 
-	/* Every block within the distance of the eye at which a tile still spans the fewest pixels, or within a margin of tiles beyond it, row by row; the visit says whether to go on. */
+	/* Every block holding a tile within a reach of tiles across the map of the point, row by row; the visit says whether to go on. */
 	template <class Visit>
-	void ForEachWithin(const SceneView &view, double fewest_pixels, int margin, Visit visit) const
+	void ForEachAround(const Vec3 &point, double reach, Visit visit) const
 	{
 		if (this->Count() == 0) return;
-		double reach = view.focal / fewest_pixels + margin;
 		auto chunk_at = [&](double at, int chunks) { return std::clamp(static_cast<int>(at) / this->chunk_tiles, 0, chunks - 1); };
-		int x0 = chunk_at(view.eye.x - reach, this->columns);
-		int x1 = chunk_at(view.eye.x + reach, this->columns);
-		int y0 = chunk_at(view.eye.y - reach, this->rows);
-		int y1 = chunk_at(view.eye.y + reach, this->rows);
+		int x0 = chunk_at(point.x - reach, this->columns);
+		int x1 = chunk_at(point.x + reach, this->columns);
+		int y0 = chunk_at(point.y - reach, this->rows);
+		int y1 = chunk_at(point.y + reach, this->rows);
 		for (int y = y0; y <= y1; y++) {
 			for (int x = x0; x <= x1; x++) {
 				if (!visit(static_cast<size_t>(y) * this->columns + x)) return;
 			}
 		}
+	}
+
+	/* Every block within the distance of the eye at which a tile still spans the fewest pixels, or within a margin of tiles beyond it, row by row; the visit says whether to go on. */
+	template <class Visit>
+	void ForEachWithin(const SceneView &view, double fewest_pixels, int margin, Visit visit) const
+	{
+		this->ForEachAround(view.eye, view.focal / fewest_pixels + margin, visit);
 	}
 
 	/* Every block within reach of the eye whose box, grown by a margin of tiles and standing up to the top, the frustum meets and in which a tile still spans the fewest pixels;
