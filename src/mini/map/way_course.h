@@ -108,7 +108,7 @@ struct DrawnTrack {
 	bool open_first;
 	bool open_last;
 
-	static DrawnTrack Of(int tx, int ty, Track track);
+	static const DrawnTrack &Of(int tx, int ty, Track track);
 	/* Where a point on the game's own piece is drawn: as far along the line and as far to its side, at the course's level or on the ground. */
 	WorldPoint Placed(const MapVector &point) const;
 	/* Where a point on the game's own piece is drawn on the line itself, as far along it. */
