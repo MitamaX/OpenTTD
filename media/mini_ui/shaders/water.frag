@@ -541,73 +541,117 @@ float ShelfPath(vec2 p, vec3 sight)
 	return depth / max(-sight.z, GRAZING_SIGHT);
 }
 
+/* The water at a point: its field and body, how its surface falls, how glassy it runs over a lip and how shut in it lies from the wind. */
+struct Water {
+	vec2 p;
+	vec4 field;
+	Body body;
+	Drop drop;
+	float glassy;
+	float enclosed;
+};
+
+Water WaterAt(vec2 p)
+{
+	Water water;
+	water.p = p;
+	water.field = FieldAt(p, v_world.z);
+	water.body = BodyOf(water.field);
+	water.drop = Descent(p);
+	water.glassy = smoothstep(0.0, LIP_BEND, -water.drop.bend);
+	water.enclosed = Enclosed(p);
+	return water;
+}
+
+/* The waves streaked and flecked where the current runs, stilled glassy over a lip and leaning down a drop, ruffled where it races down. */
+Surface Flowing(Water water, out float flecks)
+{
+	Surface waves = Waves(water.p, max(water.body.calm, water.enclosed));
+	vec2 flow = FlowAt(water.p);
+	float pace = length(flow);
+	flecks = 0.0;
+	if (pace > MIN_PACE) {
+		vec3 current = Current(water.p, flow);
+		float streaked = Resolved(STREAK_STRETCH.y) * pace;
+		waves = Stirred(Stilled(waves, pace * FLOW_STILLING), current.yz * mix(FLOW_STEEPNESS, RAPIDS_STEEPNESS, water.drop.steep) * streaked);
+		flecks = smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, current.x) * FLECK_FOAM * streaked;
+	}
+	waves = Tilted(Stilled(waves, water.glassy), water.drop.down * water.drop.slope);
+	waves.ruffled = max(waves.ruffled * (1.0 - water.glassy), water.drop.steep * (1.0 - water.glassy) * RAPIDS_RUFFLE);
+	return waves;
+}
+
+/* Where what lies behind the water shows through it, bent by its ripples, and the depth there; where the bend would reach past the water, straight behind. */
+vec2 Refracted(vec2 uv, vec3 ripples, Body body, vec2 straight, float surface, out vec2 depth)
+{
+	vec2 bend = (mat3(u_view) * ripples).xy * mix(REFRACTION, INLAND_REFRACTION, body.sheen) * clamp(straight.y / REFRACTION_DEPTH, 0.0, 1.0);
+	vec2 bent_uv = uv + bend;
+	depth = DepthBehind(bent_uv, SightAt(bent_uv * u_screen.xy), surface);
+	if (depth.x > 0.0 && depth.y > 0.0) return bent_uv;
+	depth = straight;
+	return uv;
+}
+
+/* How far light runs through the water to what shows through it: as far as that lies behind, and never less than a sea shelf deepens or a drop churns. */
+float PathThrough(Water water, vec3 sight, float behind)
+{
+	return max(behind, max(ShelfPath(water.p, sight) * water.body.sea, RAPIDS_PATH * water.drop.steep));
+}
+
+/* What shows through the water, dimmed and tinted along the light's path through it, under the light the water scatters back and a glow off its crests. */
+vec3 Below(vec2 uv, float path, Body body, vec3 light, vec3 ripples)
+{
+	vec3 transmittance = exp(-body.absorption * path) * (1.0 - body.murk * smoothstep(0.0, MURK_DEPTH, path));
+	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(ripples.xy));
+	return texture(u_scene_colour, uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
+}
+
+/* Foam along the shore and in breakers off it, white water down a drop, flecks on the current and the wakes of ships, all under any ice along the shore. */
+vec3 Frothed(vec3 colour, Water water, float flecks, float behind, vec3 light, vec3 glitter)
+{
+	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, behind);
+	float shore = Foam(water.p, max(ShoreBand(water.field.r), contact), water.body);
+	float breakers = Breakers(water.p, water.field.r, water.body) * (1.0 - water.enclosed);
+	float river = water.body.calm * (1.0 - water.body.canal);
+	float floes;
+	float ice = ShoreIce(water.p, water.field.r, floes);
+	float foam = max(max(shore, breakers), max(max(Whitewater(water.p, water.drop, water.glassy) * river, flecks), Wake(water.p))) * (1.0 - ice);
+	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
+	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
+	return colour;
+}
+
 void main()
 {
 	vec2 p = v_world.xy;
 	tile_pixels = 1.0 / max(max(length(dFdx(p)), length(dFdy(p))), MIN_SPREAD);
-	vec4 field = FieldAt(p, v_world.z);
-	Body body = BodyOf(field);
-	float outline = Outline(field, body);
-	float river = body.calm * (1.0 - body.canal);
-	vec2 flow = FlowAt(p);
-	float pace = length(flow);
-	Drop drop = Descent(p);
-	float glassy = smoothstep(0.0, LIP_BEND, -drop.bend);
-
-	float enclosed = Enclosed(p);
-	Surface waves = Waves(p, max(body.calm, enclosed));
-	float flecks = 0.0;
-	if (pace > MIN_PACE) {
-		vec3 current = Current(p, flow);
-		float streaked = Resolved(STREAK_STRETCH.y) * pace;
-		waves = Stirred(Stilled(waves, pace * FLOW_STILLING), current.yz * mix(FLOW_STEEPNESS, RAPIDS_STEEPNESS, drop.steep) * streaked);
-		flecks = smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, current.x) * FLECK_FOAM * streaked;
-	}
-	waves = Tilted(Stilled(waves, glassy), drop.down * drop.slope);
-	waves.ruffled = max(waves.ruffled * (1.0 - glassy), drop.steep * (1.0 - glassy) * RAPIDS_RUFFLE);
-	vec3 normal = waves.normal;
-	vec3 facing = normalize(vec3(drop.down * drop.slope, 1.0));
-	vec3 ripples = normal - facing + UP;
+	Water water = WaterAt(p);
+	float flecks;
+	Surface waves = Flowing(water, flecks);
+	vec3 facing = normalize(vec3(water.drop.down * water.drop.slope, 1.0));
+	vec3 ripples = waves.normal - facing + UP;
 
 	vec3 sight = SightAt(gl_FragCoord.xy);
 	float surface = length(v_position - Eye());
 	vec3 view = -sight;
 	vec2 uv = gl_FragCoord.xy / u_screen.xy;
 	vec2 straight = DepthBehind(uv, sight, surface);
-
-	vec2 bend = (mat3(u_view) * ripples).xy * mix(REFRACTION, INLAND_REFRACTION, body.sheen) * clamp(straight.y / REFRACTION_DEPTH, 0.0, 1.0);
-	vec2 bent_uv = uv + bend;
-	vec2 bent = DepthBehind(bent_uv, SightAt(bent_uv * u_screen.xy), surface);
-	if (bent.x <= 0.0 || bent.y <= 0.0) {
-		bent_uv = uv;
-		bent = straight;
-	}
+	vec2 bent;
+	vec2 bent_uv = Refracted(uv, ripples, water.body, straight, surface, bent);
 
 	float sunlit = SunVisibility(v_position, facing);
 	vec3 sun = SunRadiance() * sunlit;
 	float sheltered = 1.0 - DECK_SHELTER * DeckCover(p);
 	vec3 light = sun * max(dot(facing, SunDirection()), 0.0) + AmbientLight(facing) * sheltered;
 
-	float path = max(bent.x, max(ShelfPath(p, sight) * body.sea, RAPIDS_PATH * drop.steep));
-	vec3 transmittance = exp(-body.absorption * path) * (1.0 - body.murk * smoothstep(0.0, MURK_DEPTH, path));
-	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(ripples.xy));
-	vec3 below = texture(u_scene_colour, bent_uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
-
 	float reflected;
-	vec3 sky = SkyOnWater(sight, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, body.sheen), reflected) * sheltered;
-	vec3 glitter = SunOnWater(waves, view, p, sun, mix(1.0, INLAND_SPARKLE, body.sheen));
-	vec3 colour = mix(below, sky, reflected) + glitter;
-
-	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, straight.x);
-	float shore = Foam(p, max(ShoreBand(field.r), contact), body);
-	float floes;
-	float ice = ShoreIce(p, field.r, floes);
-	float foam = max(max(shore, Breakers(p, field.r, body) * (1.0 - enclosed)), max(max(Whitewater(p, drop, glassy) * river, flecks), Wake(p))) * (1.0 - ice);
-	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
-	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
+	vec3 sky = SkyOnWater(sight, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
+	vec3 glitter = SunOnWater(waves, view, p, sun, mix(1.0, INLAND_SPARKLE, water.body.sheen));
+	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
+	vec3 colour = Frothed(mix(below, sky, reflected) + glitter, water, flecks, straight.x, light, glitter);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
-	float filled = max(body.canal, drop.steep);
-	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, body.calm), straight.y), filled) * outline;
+	float filled = max(water.body.canal, water.drop.steep);
+	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, water.body.calm), straight.y), filled) * Outline(water.field, water.body);
 	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(facing, sunlit));
 }
