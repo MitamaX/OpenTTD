@@ -49,6 +49,13 @@ std::vector<ShaderProgram *> ForestPass::Programs()
 	return {&this->program, &this->caster};
 }
 
+void ForestPass::Load()
+{
+	if (this->models.Ready()) return;
+	std::vector<ModelMesh> meshes = BuildTreeModels();
+	this->models.Upload<ModelMesh>(meshes, MODEL_LAYOUT, TREE_INSTANCE_LAYOUT, sizeof(TreeInstance));
+}
+
 void ForestPass::Sync(const WorldChanges &changes)
 {
 	this->forest.Sync(changes);
@@ -73,15 +80,10 @@ void ForestPass::Draw(const SceneView &view)
 	this->DrawTrees(this->program, view, view.frustum, COARSEST_SHOWN, [](size_t mesh) { return mesh; });
 }
 
-/* The models are built the first time trees are drawn; each mesh's copies learn which detail they were gathered for. */
+/* Each mesh's copies learn which detail they were gathered for. */
 template <class ChooseMesh>
 void ForestPass::DrawTrees(const ShaderProgram &program, const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, ChooseMesh choose_mesh)
 {
-	if (!this->models.Ready()) {
-		std::vector<ModelMesh> meshes = BuildTreeModels();
-		this->models.Upload<ModelMesh>(meshes, MODEL_LAYOUT, TREE_INSTANCE_LAYOUT, sizeof(TreeInstance));
-	}
-
 	program.Use();
 	this->batch.Clear(TREE_DRAWN_MESHES);
 	this->forest.Gather(camera, frustum, coarsest, this->batch);

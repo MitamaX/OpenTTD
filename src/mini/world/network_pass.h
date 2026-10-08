@@ -24,6 +24,7 @@ public:
 
 	std::string_view Name() const override { return "network"; }
 	std::vector<ShaderProgram *> Programs() override;
+	void Load() override;
 	void Prepare(const SceneView &view) override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;

@@ -73,14 +73,24 @@ std::vector<ShaderProgram *> VehiclePass::Programs()
 	return {&this->program, &this->caster};
 }
 
-/* The models are built the first time vehicles are laid out, as the layout measures them. */
+/* The models are built the first time vehicles are laid out, as the layout measures them, and go up before the first frame draws. */
+void VehiclePass::BuildModels()
+{
+	if (!this->meshes.empty()) return;
+	this->meshes = BuildVehicleModels();
+	this->bounds = MeasureVehicleModels(this->meshes);
+	this->reach = FurthestReach(this->bounds);
+}
+
+void VehiclePass::Load()
+{
+	this->BuildModels();
+	if (!this->models.Ready()) this->models.Upload<ModelMesh>(this->meshes, MODEL_LAYOUT, VEHICLE_INSTANCE_LAYOUT, sizeof(VehicleInstance));
+}
+
 void VehiclePass::Prepare(const SceneView &view)
 {
-	if (this->meshes.empty()) {
-		this->meshes = BuildVehicleModels();
-		this->bounds = MeasureVehicleModels(this->meshes);
-		this->reach = FurthestReach(this->bounds);
-	}
+	this->BuildModels();
 	this->seen = view;
 	this->fleet.Lay(view, this->reach);
 }
@@ -122,8 +132,6 @@ void VehiclePass::Gather(const SceneView &camera, const Frustum &frustum, double
 /* Each model's copies learn which layer of the overlay they belong to. */
 void VehiclePass::DrawBatch(const ShaderProgram &program, const SceneView &camera)
 {
-	if (this->meshes.empty()) return;
-	if (!this->models.Ready()) this->models.Upload<ModelMesh>(this->meshes, MODEL_LAYOUT, VEHICLE_INSTANCE_LAYOUT, sizeof(VehicleInstance));
 	int way = program.Uniform("u_way");
 	int most_growth = program.Uniform("u_most_growth");
 	glUniform1f(program.Uniform("u_readable_pixels"), READABLE_TILE_PIXELS);

@@ -60,6 +60,13 @@ std::vector<ShaderProgram *> SmokePass::Programs()
 	return {&this->program};
 }
 
+void SmokePass::Load()
+{
+	if (this->card.Ready()) return;
+	std::vector<ModelMesh> meshes = {PuffCard()};
+	this->card.Upload<ModelMesh>(meshes, MODEL_LAYOUT, PUFF_INSTANCE_LAYOUT, sizeof(PuffInstance));
+}
+
 void SmokePass::Gather(const SceneView &view, std::span<const SmokeVent> vents)
 {
 	for (const SmokeVent &vent : vents) {
@@ -95,10 +102,6 @@ void SmokePass::Draw(const SceneView &view)
 	for (const Plume &plume : this->plumes) this->Add(*plume.vent);
 	this->batch.Clear(1);
 	this->batch.Add(0, this->puffs);
-	if (!this->card.Ready()) {
-		std::vector<ModelMesh> meshes = {PuffCard()};
-		this->card.Upload<ModelMesh>(meshes, MODEL_LAYOUT, PUFF_INSTANCE_LAYOUT, sizeof(PuffInstance));
-	}
 
 	this->program.Use();
 	glEnable(GL_BLEND);

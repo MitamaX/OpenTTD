@@ -33,6 +33,7 @@ public:
 
 	std::string_view Name() const override { return this->look.name; }
 	std::vector<ShaderProgram *> Programs() override;
+	void Load() override;
 	void Sync(const WorldChanges &changes) override;
 	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
@@ -44,7 +45,6 @@ private:
 
 	std::unique_ptr<Scatter> scatter;
 	ScatterLook look;
-	std::vector<ModelMesh> meshes;
 	InstancedMeshes models;
 	VehicleBatch batch;
 	ShaderProgram program;

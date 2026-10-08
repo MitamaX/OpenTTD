@@ -31,6 +31,7 @@ public:
 
 	std::string_view Name() const override { return "vehicles"; }
 	std::vector<ShaderProgram *> Programs() override;
+	void Load() override;
 	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
@@ -42,6 +43,7 @@ public:
 	std::span<const SmokeVent> Funnels() const { return this->fleet.Funnels(); }
 
 private:
+	void BuildModels();
 	void Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels);
 	void DrawBatch(const ShaderProgram &program, const SceneView &camera);
 

@@ -28,6 +28,13 @@ std::vector<ShaderProgram *> ScatterPass::Programs()
 	return {&this->program, &this->caster};
 }
 
+void ScatterPass::Load()
+{
+	if (this->models.Ready()) return;
+	std::vector<ModelMesh> meshes = this->look.build();
+	this->models.Upload<ModelMesh>(meshes, MODEL_LAYOUT, VEHICLE_INSTANCE_LAYOUT, sizeof(VehicleInstance));
+}
+
 void ScatterPass::Sync(const WorldChanges &changes)
 {
 	this->scatter->Sync(changes);
@@ -63,8 +70,6 @@ void ScatterPass::Draw(const SceneView &view)
 /* The copies keep their true size however far off, as they fade out before they would need to grow. */
 void ScatterPass::DrawBatch(const ShaderProgram &program)
 {
-	if (this->meshes.empty()) this->meshes = this->look.build();
-	if (!this->models.Ready()) this->models.Upload<ModelMesh>(this->meshes, MODEL_LAYOUT, VEHICLE_INSTANCE_LAYOUT, sizeof(VehicleInstance));
 	glUniform2f(program.Uniform("u_most_growth"), NO_GROWTH, NO_GROWTH);
 	this->batch.Draw(this->models, [](size_t mesh) { return mesh; });
 }

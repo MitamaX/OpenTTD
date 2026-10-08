@@ -64,6 +64,13 @@ std::vector<ShaderProgram *> NetworkPass::Programs()
 	return {&this->program, &this->caster, &this->span_program, &this->signal_program, &this->signal_caster};
 }
 
+void NetworkPass::Load()
+{
+	if (this->signal_models.Ready()) return;
+	std::vector<ModelMesh> models = BuildSignalModels();
+	this->signal_models.Upload<ModelMesh>(models, MODEL_LAYOUT, SIGNAL_INSTANCE_LAYOUT, sizeof(SignalInstance));
+}
+
 /* A signal's state is read anew every frame, as trains pass without the world's texels changing. */
 void NetworkPass::Prepare(const SceneView &view)
 {
@@ -131,10 +138,6 @@ void NetworkPass::DrawLayers(const ShaderProgram &program, NetworkBuffers Networ
 
 void NetworkPass::DrawSignals()
 {
-	if (!this->signal_models.Ready()) {
-		std::vector<ModelMesh> models = BuildSignalModels();
-		this->signal_models.Upload<ModelMesh>(models, MODEL_LAYOUT, SIGNAL_INSTANCE_LAYOUT, sizeof(SignalInstance));
-	}
 	this->signals.Draw(this->signal_models, [](size_t mesh) { return mesh; });
 }
 
