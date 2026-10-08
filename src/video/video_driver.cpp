@@ -136,9 +136,10 @@ void VideoDriver::Tick()
 	auto now = std::chrono::steady_clock::now();
 	if (this->HasGUI() && now >= this->next_draw_tick) {
 		_tick_clock.BeginFrame(now);
-		this->next_draw_tick += this->GetDrawInterval();
-		/* Avoid next_draw_tick getting behind more and more if it cannot keep up. */
-		if (this->next_draw_tick < now - ALLOWED_DRIFT * this->GetDrawInterval()) this->next_draw_tick = now;
+		auto draw_interval = this->GetDrawInterval();
+		this->next_draw_tick += draw_interval;
+		/* A late frame is not caught up on by drawing the next ones back to back. */
+		if (this->next_draw_tick < now) this->next_draw_tick = now + draw_interval;
 
 		/* Locking video buffer can block (especially with vsync enabled), do it before taking game state lock. */
 		{
