@@ -414,7 +414,7 @@ vec3 SunOnWater(Surface surface, vec3 view, vec2 p, vec3 sun, float sparkle)
 {
 	vec3 light = SunDirection();
 	vec3 swaying = normalize(mix(UP, surface.broad, PATH_SWAY));
-	float path = min(Highlight(swaying, view, light, PATH_ROUGHNESS) * PATH_STRENGTH * sparkle, PATH_CEILING) * surface.lost;
+	float path = min(Highlight(swaying, view, light, PATH_ROUGHNESS, DIELECTRIC_REFLECTANCE) * PATH_STRENGTH * sparkle, PATH_CEILING) * surface.lost;
 
 	float shown = Resolved(GLINTS_PER_TILE);
 	float glint = 0.0;
@@ -425,7 +425,7 @@ vec3 SunOnWater(Surface surface, vec3 view, vec2 p, vec3 sun, float sparkle)
 		float turn = seed.x * TAU + Clock() * GLINT_TWINKLE * (0.5 + seed.y);
 		vec3 facet = normalize(surface.normal + vec3(vec2(cos(turn), sin(turn)) * GLINT_TILT * seed.y, 0.0));
 		float spot = 1.0 - smoothstep(GLINT_SIZE * 0.4, GLINT_SIZE, length(fract(q) - 0.25 - 0.5 * seed));
-		glint = min(Highlight(facet, view, light, GLINT_ROUGHNESS) * GLINT_STRENGTH * sparkle, GLINT_CEILING) * spot * shown * (1.0 - surface.lost);
+		glint = min(Highlight(facet, view, light, GLINT_ROUGHNESS, DIELECTRIC_REFLECTANCE) * GLINT_STRENGTH * sparkle, GLINT_CEILING) * spot * shown * (1.0 - surface.lost);
 	}
 	return sun * max(dot(surface.normal, light), 0.0) * (path + glint);
 }

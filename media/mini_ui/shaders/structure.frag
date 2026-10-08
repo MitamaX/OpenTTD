@@ -12,7 +12,6 @@ out vec4 frag_colour;
 const vec3 SNOW = vec3(0.93, 0.95, 0.97);
 const float SNOW_LINE_RAGGED = 1.2;
 const float SNOW_PATCHES_PER_TILE = 6.0;
-const float GLASS_REFLECTANCE = 0.2;
 const float SEED_SCALE = 255.0;
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
@@ -54,8 +53,6 @@ void main()
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
-	vec4 lit = Radiance(albedo, normal, v_position, roughness, v_colour.a * clad.occlusion);
-	vec3 view = normalize(Eye() - v_position);
-	lit.rgb += clad.glass * Fresnel(dot(normal, view), GLASS_REFLECTANCE) * CloudedSky(reflect(-view, normal));
-	frag_colour = lit;
+	float reflectance = mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, clad.glass);
+	frag_colour = Radiance(albedo, normal, v_position, roughness, reflectance, v_colour.a * clad.occlusion);
 }
