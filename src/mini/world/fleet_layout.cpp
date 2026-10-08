@@ -17,6 +17,7 @@
 #include "../../aircraft.h"
 #include "../../ground_vehicle.hpp"
 #include "../../train.h"
+#include "../../tunnel_map.h"
 #include "../../vehicle_base.h"
 #include "../core/seed.h"
 #include "../gpu/draw_list.h"
@@ -97,6 +98,16 @@ static double UnitTiles(const Vehicle *unit)
 	return unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(TILE_SIZE);
 }
 
+/* The game hides a unit in a tunnel short of the mouth; it shows while an end of it stands on an entrance, the portal and the hill hiding it past the mouth. */
+static bool IsShown(const Vehicle *unit)
+{
+	if (!unit->vehstatus.Test(VehState::Hidden)) return true;
+	if (!IsTunnelTile(unit->tile)) return false;
+	TileIndexDiffC step = TileIndexDiffCByDir(unit->direction);
+	int reach = unit->GetGroundVehicleCache()->cached_veh_length / 2;
+	return std::ranges::any_of(std::array{-reach, reach}, [&](int end) { return IsTunnelTile(TileVirtXY(unit->x_pos + step.x * end, unit->y_pos + step.y * end)); });
+}
+
 /* How long a vehicle is from the nose of its first unit to the tail of its last; a ship or an aircraft is as long as nothing. */
 static double ConsistTiles(const Vehicle *head)
 {
@@ -157,7 +168,7 @@ void FleetLayout::LayConsist(const Vehicle *head)
 {
 	this->links.clear();
 	for (const Vehicle *unit = head; unit != nullptr; unit = unit->Next()) {
-		if (!unit->vehstatus.Test(VehState::Hidden)) this->links.push_back({unit, _vehicle_motion.Gliding(unit), UnitTiles(unit)});
+		if (IsShown(unit)) this->links.push_back({unit, _vehicle_motion.Gliding(unit), UnitTiles(unit)});
 	}
 	if (this->links.empty()) return;
 
@@ -179,7 +190,7 @@ void FleetLayout::LayConsist(const Vehicle *head)
 		double pitch = std::atan2((front.level - back.level) * LevelRise(), std::max(run, 1e-6)) * (IsReversed(link.unit) ? -1.0 : 1.0);
 		VehicleLook look = LookOf(link.unit);
 		this->Add(link.unit, look, Between(back, front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH));
-		if (look == VehicleLook::SteamEngine) this->AddFunnel(link.unit, heading);
+		if (look == VehicleLook::SteamEngine && !link.unit->vehstatus.Test(VehState::Hidden)) this->AddFunnel(link.unit, heading);
 	}
 }
 
