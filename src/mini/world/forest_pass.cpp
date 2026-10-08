@@ -36,6 +36,9 @@ static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/tree.frag",
 };
 static constexpr double TREE_CASTER_WIDTH = 0.2;
+/* Near trees cast with simpler meshes and distant ones cast none: their shadows would only speckle the ground, which the forest tint already shades. */
+static constexpr TreeDetail COARSEST_CAST = TreeDetail::Simple;
+static constexpr TreeDetail COARSEST_SHOWN = TreeDetail::Crude;
 
 ForestPass::ForestPass(const WorldTextures &textures) : textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
 {
@@ -51,11 +54,15 @@ void ForestPass::Sync(const WorldChanges &changes)
 	this->forest.Sync(changes);
 }
 
-/* Near trees cast with simpler meshes and distant ones cast none: their shadows would only speckle the ground, which the forest tint already shades. */
+void ForestPass::Prepare(const SceneView &view)
+{
+	this->forest.Refresh(view, COARSEST_SHOWN, COARSEST_CAST);
+}
+
 void ForestPass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready() || !view.Resolves(TREE_CASTER_WIDTH)) return;
-	this->DrawTrees(this->caster, view.camera, view.frustum, TreeDetail::Simple, TreeCasterMesh);
+	this->DrawTrees(this->caster, view.camera, view.frustum, COARSEST_CAST, TreeCasterMesh);
 }
 
 void ForestPass::Draw(const SceneView &view)
@@ -63,7 +70,7 @@ void ForestPass::Draw(const SceneView &view)
 	if (!this->program.Ready()) return;
 	WorldTextures::BindSamplers(this->program);
 	this->textures.Bind();
-	this->DrawTrees(this->program, view, view.frustum, TreeDetail::Crude, [](size_t mesh) { return mesh; });
+	this->DrawTrees(this->program, view, view.frustum, COARSEST_SHOWN, [](size_t mesh) { return mesh; });
 }
 
 /* The models are built the first time trees are drawn; each mesh's copies learn which detail they were gathered for. */

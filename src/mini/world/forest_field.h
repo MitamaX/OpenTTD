@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 #include "../gpu/instanced_meshes.h"
@@ -43,6 +44,7 @@ public:
 	static constexpr int CELL_TILES = 16;
 
 	void Sync(const WorldChanges &changes);
+	void Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast);
 	void Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, TreeBatch &batch);
 	void Release();
 
@@ -54,16 +56,25 @@ private:
 		size_t count;
 	};
 
-	/* A block's trees, sorted by shape, and the height levels its ground spans under them. */
+	/* A block's trees, sorted by shape, the height levels its ground spans under them, and whether the flora or the ground changed under them since they were planted. */
 	struct Cell {
 		std::vector<TreeInstance> trees;
 		std::vector<Run> runs;
 		double low = 0.0;
 		double high = 0.0;
 		bool planted = false;
+		bool stale = true;
 		uint64_t drawn = 0;
 	};
 
+	/* A stale block near enough for the camera to show its trees, whether it lies out of sight, and the tile pixels where it comes nearest the eye. */
+	struct Due {
+		bool unseen;
+		double pixels;
+		size_t index;
+	};
+
+	std::pair<Vec3, Vec3> Bounds(const Cell &cell, size_t index) const;
 	void Plant(Cell &cell, const TileSpan &tiles) const;
 	void GatherCell(const Cell &cell, const SceneView &camera, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const;
 	void Evict();
@@ -71,6 +82,7 @@ private:
 	ChunkGrid grid{CELL_TILES};
 	ChunkKeep keep;
 	std::vector<Cell> cells;
+	std::vector<Due> due;
 	uint64_t frame = 0;
 };
 

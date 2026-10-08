@@ -19,6 +19,7 @@
 #include "../gpu/draw_list.h"
 #include "../gpu/frame_profile.h"
 #include "../map/tile_shapes.h"
+#include "build_slice.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
@@ -62,6 +63,12 @@ static DetailSpan DetailsAt(double tile_pixels, TreeDetail coarsest)
 	size_t last = 0;
 	while (last < static_cast<size_t>(coarsest) && octave < floor(last) + TREE_CROSSFADE_OCTAVES) last++;
 	return {first, last};
+}
+
+/* The fewest pixels a tile spans where a tree still shows in the coarsest detail asked for. */
+static double FewestPixels(TreeDetail coarsest)
+{
+	return TREE_DETAIL_FLOORS[static_cast<size_t>(coarsest)] * std::exp2(-TREE_CROSSFADE_OCTAVES);
 }
 
 static uint8_t ShareByte(double share)
@@ -124,6 +131,7 @@ void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 		cell.trees.push_back(tree);
 	}
 	cell.planted = true;
+	cell.stale = false;
 }
 
 /* A block's trees grow from the flora of its own tiles, on a bed laid by the shape and the water of the tiles out to the shelf's edge. */
@@ -138,7 +146,7 @@ void ForestField::Sync(const WorldChanges &changes)
 		this->cells = std::vector<Cell>(this->grid.Count());
 		return;
 	}
-	auto unplant = [&](size_t index) { this->cells[index].planted = false; };
+	auto unplant = [&](size_t index) { this->cells[index].stale = true; };
 	this->grid.ForEachTouched(changes, ChangeKind::Flora, 0, unplant);
 	this->grid.ForEachTouched(changes, {ChangeKind::Shape, ChangeKind::Water}, SHELF_TILES, unplant);
 }
@@ -171,26 +179,55 @@ void ForestField::GatherCell(const Cell &cell, const SceneView &camera, double n
 	}
 }
 
-/* A block is planted only once a view is near enough to show its trees; until then it is bounded by the whole height of the map.
- * Only the blocks near enough for a tile to span the coarsest detail's fewest pixels are looked at. */
-void ForestField::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, TreeBatch &batch)
+/* Until it is planted, a block is bounded by the whole height of the map. */
+std::pair<Vec3, Vec3> ForestField::Bounds(const Cell &cell, size_t index) const
 {
 	double rise = LevelRise();
-	double fewest_pixels = TREE_DETAIL_FLOORS[static_cast<size_t>(coarsest)] * std::exp2(-TREE_CROSSFADE_OCTAVES);
-	this->grid.ForEachWithin(camera, fewest_pixels, CROWN_MARGIN, [&](size_t index) {
-		Cell &cell = this->cells[index];
-		TileSpan tiles = this->grid.TilesOf(index);
-		double low = cell.planted ? cell.low : 0.0;
-		double high = cell.planted ? cell.high : _world_tiles.Peak();
-		Vec3 low_corner = {tiles.tx0 - CROWN_REACH, tiles.ty0 - CROWN_REACH, low * rise - DEEPEST_SINK * rise};
-		Vec3 high_corner = {tiles.tx1 + 1.0 + CROWN_REACH, tiles.ty1 + 1.0 + CROWN_REACH, high * rise + TREE_TALLEST};
-		if (!BoxMeets(frustum, low_corner, high_corner)) return true;
+	TileSpan tiles = this->grid.TilesOf(index);
+	double low = cell.planted ? cell.low : 0.0;
+	double high = cell.planted ? cell.high : _world_tiles.Peak();
+	return {
+		{tiles.tx0 - CROWN_REACH, tiles.ty0 - CROWN_REACH, low * rise - DEEPEST_SINK * rise},
+		{tiles.tx1 + 1.0 + CROWN_REACH, tiles.ty1 + 1.0 + CROWN_REACH, high * rise + TREE_TALLEST},
+	};
+}
 
-		double near_pixels = camera.NearestTilePixels(low_corner, high_corner);
+/* A block is planted once the camera comes near enough to show its trees, or to show their shadows out of its sight, and planted afresh where the flora or the ground changed in it,
+ * within a slice of each frame: those in sight first, the nearest of them first, then those casting shadows into the view. Each shows the trees it last grew until then. */
+void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast)
+{
+	this->due.clear();
+	this->grid.ForEachWithin(camera, FewestPixels(coarsest_shown), CROWN_MARGIN, [&](size_t index) {
+		const Cell &cell = this->cells[index];
+		if (!cell.stale) return true;
+		auto [low, high] = this->Bounds(cell, index);
+		double pixels = camera.NearestTilePixels(low, high);
+		bool unseen = !BoxMeets(camera.frustum, low, high);
+		if (DetailsAt(pixels, unseen ? coarsest_cast : coarsest_shown).Shows()) this->due.push_back({unseen, pixels, index});
+		return true;
+	});
+	std::ranges::sort(this->due, {}, [](const Due &entry) { return std::make_pair(entry.unseen, -entry.pixels); });
+
+	BuildSlice slice;
+	for (const Due &entry : this->due) {
+		if (slice.Spent()) return;
+		this->Plant(this->cells[entry.index], this->grid.TilesOf(entry.index));
+	}
+}
+
+/* Only the blocks near enough for a tile to span the coarsest detail's fewest pixels are looked at. */
+void ForestField::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, TreeBatch &batch)
+{
+	this->grid.ForEachWithin(camera, FewestPixels(coarsest), CROWN_MARGIN, [&](size_t index) {
+		Cell &cell = this->cells[index];
+		if (!cell.planted) return true;
+		auto [low, high] = this->Bounds(cell, index);
+		if (!BoxMeets(frustum, low, high)) return true;
+
+		double near_pixels = camera.NearestTilePixels(low, high);
 		if (!DetailsAt(near_pixels, coarsest).Shows()) return true;
-		if (!cell.planted) this->Plant(cell, tiles);
 		cell.drawn = this->frame;
-		if (!cell.trees.empty()) this->GatherCell(cell, camera, near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low_corner, high_corner)), coarsest, batch);
+		if (!cell.trees.empty()) this->GatherCell(cell, camera, near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
 		return true;
 	});
 }
