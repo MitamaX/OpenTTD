@@ -42,6 +42,7 @@ const float FLOW_PHASE_SPREAD = 0.37;
 const vec2 FLOW_PHASE_SEED = vec2(5.2, 1.3);
 const float FLOW_STEEPNESS = 0.02;
 const float FLOW_STILLING = 0.6;
+const float PAST_EDGE_FLOW_TILES = 5.0;
 const float MIN_PACE = 0.01;
 const vec2 FLECK_EDGES = vec2(0.66, 0.8);
 const float FLECK_FOAM = 0.5;
@@ -297,11 +298,15 @@ vec4 SheetField(vec2 p, float level)
 	return Walled(field, p);
 }
 
+float PastEdge(vec2 p)
+{
+	return distance(p, clamp(p, vec2(0.0), MapSize()));
+}
+
 /* Past the map's edge lies open sea. */
 vec4 FieldAt(vec2 p, float level)
 {
-	bool inside = all(greaterThanEqual(p, vec2(0.0))) && all(lessThanEqual(p, MapSize()));
-	return inside ? SheetField(p, level) : OPEN_SEA;
+	return PastEdge(p) > 0.0 ? OPEN_SEA : SheetField(p, level);
 }
 
 Body BodyOf(vec4 field)
@@ -327,12 +332,11 @@ float Outline(vec4 field, Body body)
 	return mix(smoothstep(WATERLINE - edge, WATERLINE + edge, field.r), 1.0, body.canal);
 }
 
-/* Which way and how fast the water runs, a share of full pace; still past the map's edge. */
+/* Which way and how fast the water runs, a share of full pace; a current running off the map's edge runs on past it, dying away. */
 vec2 FlowAt(vec2 p)
 {
-	bool inside = all(greaterThanEqual(p, vec2(0.0))) && all(lessThanEqual(p, MapSize()));
 	vec2 flow = (textureLod(u_flow, p / MapSize(), 0.0).rg * 255.0 - FLOW_TEXEL_STILL) / FLOW_TEXEL_SPAN;
-	return inside ? flow : vec2(0.0);
+	return flow * max(1.0 - PastEdge(p) / PAST_EDGE_FLOW_TILES, 0.0);
 }
 
 /* Foam gathers in a band along the shore, thickest at the water's edge, broken into lace and drifting with the swell. */
@@ -536,7 +540,7 @@ float Enclosed(vec2 p)
  * Past the map's edge it deepens on with the distance out from the edge. */
 float ShelfPath(vec2 p, vec3 sight)
 {
-	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES + distance(p, clamp(p, vec2(0.0), MapSize()));
+	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES + PastEdge(p);
 	float depth = SHELF_DEPTH * smoothstep(0.0, SHELF_REACH, offshore);
 	return depth / max(-sight.z, GRAZING_SIGHT);
 }
