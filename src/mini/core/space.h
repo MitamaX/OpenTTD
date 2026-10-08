@@ -18,6 +18,8 @@ struct Vec3 {
 	double x;
 	double y;
 	double z;
+
+	bool operator==(const Vec3 &other) const = default;
 };
 
 constexpr Vec3 operator+(const Vec3 &a, const Vec3 &b)

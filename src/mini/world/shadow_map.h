@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -30,25 +31,35 @@ MapVector ShadowFall();
 class ShadowMap {
 public:
 	static constexpr int CASCADES = 4;
+	/* The nearer cascades are drawn every frame, the further ones in turn. */
+	static constexpr int FRESH_CASCADES = 2;
 	static constexpr int RESOLUTION = 2048;
 
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
-	void Warm(std::span<const std::unique_ptr<WorldPass>> passes) const;
+	void Warm(std::span<const std::unique_ptr<WorldPass>> passes);
 	void Bind() const;
 	void Release();
 
 private:
-	/* One cascade: how the sun sees it, how far from the camera it reaches and how wide one of its texels is. */
+	/* One cascade: how the sun sees it, how far from the camera it reaches and how wide one of its texels is;
+	 * in the sun's view, the box it is drawn over and the sphere about its slice of the camera's view, which the box holds. */
 	struct Cascade {
 		Mat4 view_projection;
 		double far;
 		double texel;
+		Vec3 low;
+		Vec3 high;
+		Vec3 centre;
+		double radius;
+
+		bool Holds(const Cascade &slice) const;
 	};
 
 	bool Build();
 	std::array<Cascade, CASCADES> Fit(const SceneView &camera) const;
-	Cascade FitSlice(const SceneView &camera, double near, double far) const;
-	void Upload(const std::array<Cascade, CASCADES> &cascades, const SceneView &camera);
+	Cascade FitSlice(const SceneView &camera, double near, double far, double margin) const;
+	bool Due(int cascade, const Cascade &fitted) const;
+	void Upload(const SceneView &camera);
 	void Aim(int cascade) const;
 	void BeginCasting() const;
 
@@ -57,6 +68,9 @@ private:
 	uint32_t buffer = 0;
 	size_t stride = 0;
 	std::vector<std::byte> staged;
+	std::array<Cascade, CASCADES> drawn{};
+	std::optional<Vec3> drawn_sun;
+	uint frame = 0;
 };
 
 #endif /* MINI_WORLD_SHADOW_MAP_H */
