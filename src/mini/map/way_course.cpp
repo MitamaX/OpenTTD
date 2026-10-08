@@ -253,13 +253,13 @@ static double GroundAt(const TileCoord &tile, const Joint &joint)
 }
 
 /* A joint's eased place, level and climb, and the run's heading through it, the climb and the heading both toward the joint's higher tile;
- * and how far along the run from the run's first end it lies, and whether that grows toward its higher tile. */
+ * and how far along the run from the run's first end it lies, unless a loop closes there, and whether that grows toward its higher tile. */
 struct JointEase {
 	MapVector at;
 	double level;
 	double slope;
 	MapVector heading;
-	double distance;
+	std::optional<double> distance;
 	bool rising;
 };
 
@@ -280,7 +280,7 @@ static MapVector Crossing(const MapVector &heading, const MapVector &upward)
 	return upward * LEAST_CROSSING + side * (lean * std::sqrt(1.0 - LEAST_CROSSING * LEAST_CROSSING));
 }
 
-/* A run of way through joints that ease, traced whole from one of them to the joints that hold at either end, and eased all at once:
+/* A run of way through joints that ease, traced whole from one of them to the joints that hold at either end, or round a loop back to it, and eased all at once:
  * its levels are pulled toward the straight line between their neighbours yet kept on or a little above the ground, and a rail run's joints
  * slide along their tile sides toward that line too, a step for each joint of reach. */
 class Run {
@@ -299,17 +299,23 @@ private:
 		bool held;
 	};
 
-	bool Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &nodes) const;
+	std::optional<double> Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &nodes) const;
 	std::vector<double> EasedLevels() const;
 	std::vector<MapVector> EasedPlaces() const;
+	size_t Before(size_t index) const;
+	size_t After(size_t index) const;
+	double Gap(size_t from, size_t to) const;
 	double Share(size_t index) const;
 
 	std::vector<Node> nodes;
 	WayKind kind;
+	/* How far round the run is, where it closes on itself. */
+	std::optional<double> loop;
 };
 
-/* The joints a run passes stepping from one joint into a tile beside it, until a joint that does not ease, which holds; a run closing on itself ends where it began. */
-bool Run::Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &walked) const
+/* The joints a run passes stepping from one joint into a tile beside it, until a joint that does not ease, which holds;
+ * a run closing on itself ends where it began, and tells how far round it is. */
+std::optional<double> Run::Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &walked) const
 {
 	Joint start = at;
 	double place = 0.0;
@@ -318,13 +324,10 @@ bool Run::Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &wa
 		if (!piece.has_value()) break;
 		Joint next = piece->Other(at);
 		place += piece->Span() * direction;
-		if (next == start) {
-			if (!walked.empty()) walked.back().held = true;
-			return true;
-		}
+		if (next == start) return std::abs(place);
 		if (!Eases(next)) {
 			walked.push_back({next, place, GroundAt(tile, next), true});
-			return false;
+			return std::nullopt;
 		}
 		auto [low, high] = next.Tiles();
 		walked.push_back({next, place, std::max(GroundAt(low, next), GroundAt(high, next)), false});
@@ -332,28 +335,45 @@ bool Run::Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &wa
 		at = next;
 	}
 	if (!walked.empty()) walked.back().held = true;
-	return false;
+	return std::nullopt;
 }
 
 Run::Run(const Joint &start) : kind(WaysOn(start.Tiles()[0].first, start.Tiles()[0].second).kind)
 {
 	auto [low, high] = start.Tiles();
 	std::vector<Node> highs;
-	bool closed = this->Walk(start, high, 1.0, highs);
+	this->loop = this->Walk(start, high, 1.0, highs);
 	std::vector<Node> lows;
-	if (!closed) this->Walk(start, low, -1.0, lows);
+	if (!this->loop.has_value()) this->Walk(start, low, -1.0, lows);
 
 	this->nodes.assign(lows.rbegin(), lows.rend());
-	this->nodes.push_back({start, 0.0, std::max(GroundAt(low, start), GroundAt(high, start)), closed});
+	this->nodes.push_back({start, 0.0, std::max(GroundAt(low, start), GroundAt(high, start)), false});
 	this->nodes.insert(this->nodes.end(), highs.begin(), highs.end());
+}
+
+/* A joint's neighbours along the run, round the joint a loop closes at; the ends of a run that does not close hold, so are never asked about. */
+size_t Run::Before(size_t index) const
+{
+	return (index == 0 ? this->nodes.size() : index) - 1;
+}
+
+size_t Run::After(size_t index) const
+{
+	return (index + 1) % this->nodes.size();
+}
+
+/* How far along the run from one joint on to another. */
+double Run::Gap(size_t from, size_t to) const
+{
+	double gap = this->nodes[to].place - this->nodes[from].place;
+	return gap < 0.0 ? gap + this->loop.value_or(0.0) : gap;
 }
 
 /* How far between its neighbours a joint lies along the run. */
 double Run::Share(size_t index) const
 {
-	const Node &before = this->nodes[index - 1];
-	const Node &after = this->nodes[index + 1];
-	return (this->nodes[index].place - before.place) / (after.place - before.place);
+	double before = this->Gap(this->Before(index), index);
+	return before / (before + this->Gap(index, this->After(index)));
 }
 
 std::vector<double> Run::EasedLevels() const
@@ -362,10 +382,10 @@ std::vector<double> Run::EasedLevels() const
 	std::ranges::transform(this->nodes, levels.begin(), &Node::ground);
 	std::vector<double> next = levels;
 	for (int pass = 0; pass < WAY_EASE_REACH; pass++) {
-		for (size_t index = 1; index + 1 < this->nodes.size(); index++) {
+		for (size_t index = 0; index < this->nodes.size(); index++) {
 			const Node &node = this->nodes[index];
 			if (node.held) continue;
-			double line = std::lerp(levels[index - 1], levels[index + 1], this->Share(index));
+			double line = std::lerp(levels[this->Before(index)], levels[this->After(index)], this->Share(index));
 			double pulled = levels[index] + (line - levels[index]) * EASE_PULL;
 			next[index] = std::clamp(pulled, node.ground, node.ground + LIFT_LIMIT);
 		}
@@ -382,17 +402,19 @@ std::vector<MapVector> Run::EasedPlaces() const
 	if (this->kind != WayKind::Rail) return places;
 
 	std::vector<double> limits(this->nodes.size(), 0.0);
-	for (size_t index = 1; index + 1 < this->nodes.size(); index++) {
-		MapVector course = Unit(places[index + 1] - places[index - 1]);
+	for (size_t index = 0; index < this->nodes.size(); index++) {
+		if (this->nodes[index].held) continue;
+		MapVector course = Unit(places[this->After(index)] - places[this->Before(index)]);
 		limits[index] = std::min(DRIFT_LIMIT / std::abs(Dot(course, this->nodes[index].joint.Upward())), HALF_TILE - CORNER_MARGIN);
 	}
 	std::vector<double> slides(this->nodes.size(), 0.0);
 	std::vector<double> next = slides;
 	for (int pass = 0; pass < WAY_EASE_REACH; pass++) {
-		for (size_t index = 1; index + 1 < this->nodes.size(); index++) {
+		for (size_t index = 0; index < this->nodes.size(); index++) {
 			const Node &node = this->nodes[index];
 			if (node.held) continue;
-			MapVector line = places[index - 1] + (places[index + 1] - places[index - 1]) * this->Share(index);
+			const MapVector &before = places[this->Before(index)];
+			MapVector line = before + (places[this->After(index)] - before) * this->Share(index);
 			double toward = Dot(line - node.joint.Point(), node.joint.Side());
 			next[index] = std::clamp(slides[index] + (toward - slides[index]) * SLIDE_PULL, -limits[index], limits[index]);
 		}
@@ -411,18 +433,22 @@ void Run::Ease(Store store)
 	std::vector<MapVector> places = this->EasedPlaces();
 	bool from_front = this->nodes.front().joint.Key() <= this->nodes.back().joint.Key();
 	double origin = from_front ? this->nodes.front().place : this->nodes.back().place;
-	auto climb = [&](size_t a, size_t b) { return (levels[b] - levels[a]) / (this->nodes[b].place - this->nodes[a].place); };
+	auto climb = [&](size_t a, size_t b) { return (levels[b] - levels[a]) / this->Gap(a, b); };
 	for (size_t index = 0; index < this->nodes.size(); index++) {
 		const Node &node = this->nodes[index];
 		if (node.held) {
 			store(node.joint, std::nullopt);
 			continue;
 		}
-		bool upward = this->nodes[index + 1].joint.Joins(node.joint.Tiles()[1]);
+		size_t before = this->Before(index);
+		size_t after = this->After(index);
+		bool upward = this->nodes[after].joint.Joins(node.joint.Tiles()[1]);
 		double sign = upward ? 1.0 : -1.0;
-		MapVector heading = this->kind == WayKind::Rail ? Crossing(Unit(places[index + 1] - places[index - 1]) * sign, node.joint.Upward()) : node.joint.Upward();
-		double slope = JointSlope(climb(index - 1, index), climb(index, index + 1)) * sign;
-		store(node.joint, JointEase{places[index], levels[index], slope, heading, std::abs(node.place - origin), upward == from_front});
+		MapVector heading = this->kind == WayKind::Rail ? Crossing(Unit(places[after] - places[before]) * sign, node.joint.Upward()) : node.joint.Upward();
+		double slope = JointSlope(climb(before, index), climb(index, after)) * sign;
+		std::optional<double> distance;
+		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
+		store(node.joint, JointEase{places[index], levels[index], slope, heading, distance, upward == from_front});
 	}
 }
 
@@ -497,8 +523,8 @@ std::optional<WayCourse::RunMark> WayCourse::MarkAt(const MapVector &point, bool
 {
 	Joint joint = Joint::At(point);
 	std::optional<JointEase> ease = _ease_book.At(joint);
-	if (!ease.has_value()) return std::nullopt;
-	return RunMark{ease->distance, ease->rising == this->Onward(joint, leaving) ? 1.0 : -1.0};
+	if (!ease.has_value() || !ease->distance.has_value()) return std::nullopt;
+	return RunMark{*ease->distance, ease->rising == this->Onward(joint, leaving) ? 1.0 : -1.0};
 }
 
 std::optional<std::pair<double, double>> WayCourse::Distances() const
