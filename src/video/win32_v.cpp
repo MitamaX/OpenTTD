@@ -1151,10 +1151,8 @@ void VideoDriver_Win32Base::EditBoxLostFocus()
 	SetCandidatePos(this->main_wnd);
 }
 
-static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC, LPRECT, LPARAM data)
+static int MonitorRefreshRate(HMONITOR hMonitor)
 {
-	auto &list = *reinterpret_cast<std::vector<int>*>(data);
-
 	MONITORINFOEX monitorInfo = {};
 	monitorInfo.cbSize = sizeof(MONITORINFOEX);
 	GetMonitorInfo(hMonitor, &monitorInfo);
@@ -1164,7 +1162,15 @@ static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC, LPRECT, LPARAM data
 	devMode.dmDriverExtra = 0;
 	EnumDisplaySettings(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode);
 
-	if (devMode.dmDisplayFrequency != 0) list.push_back(devMode.dmDisplayFrequency);
+	return devMode.dmDisplayFrequency;
+}
+
+static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC, LPRECT, LPARAM data)
+{
+	auto &list = *reinterpret_cast<std::vector<int>*>(data);
+
+	int rate = MonitorRefreshRate(hMonitor);
+	if (rate != 0) list.push_back(rate);
 	return true;
 }
 
@@ -1173,6 +1179,11 @@ std::vector<int> VideoDriver_Win32Base::GetListOfMonitorRefreshRates()
 	std::vector<int> rates = {};
 	EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, reinterpret_cast<LPARAM>(&rates));
 	return rates;
+}
+
+int VideoDriver_Win32Base::GetDisplayRefreshRate()
+{
+	return MonitorRefreshRate(MonitorFromWindow(this->main_wnd, MONITOR_DEFAULTTONEAREST));
 }
 
 Dimension VideoDriver_Win32Base::GetScreenSize() const
@@ -1394,6 +1405,7 @@ void VideoDriver_Win32GDI::Paint()
 static PFNWGLCREATECONTEXTATTRIBSARBPROC _wglCreateContextAttribsARB = nullptr;
 static PFNWGLSWAPINTERVALEXTPROC _wglSwapIntervalEXT = nullptr;
 static bool _hasWGLARBCreateContextProfile = false; ///< Is WGL_ARB_create_context_profile supported?
+static bool _hasWGLEXTSwapControlTear = false; ///< Is WGL_EXT_swap_control_tear supported?
 
 /** Platform-specific callback to get an OpenGL function pointer. */
 static OGLProc GetOGLProcAddressCallback(const char *proc)
@@ -1476,6 +1488,7 @@ static void LoadWGLExtensions()
 				if (HasStringInExtensionList(wgl_exts, "WGL_EXT_swap_control")) {
 					_wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
 				}
+				_hasWGLEXTSwapControlTear = HasStringInExtensionList(wgl_exts, "WGL_EXT_swap_control_tear");
 			}
 
 #ifdef __MINGW32__
@@ -1559,13 +1572,12 @@ void VideoDriver_Win32OpenGL::DestroyContext()
 	}
 }
 
-void VideoDriver_Win32OpenGL::ToggleVsync(bool vsync)
+bool VideoDriver_Win32OpenGL::SetSwapInterval(int interval)
 {
-	if (_wglSwapIntervalEXT != nullptr) {
-		_wglSwapIntervalEXT(vsync);
-	} else if (vsync) {
-		Debug(driver, 0, "OpenGL: Vsync requested, but not supported by driver");
-	}
+	if (interval < 0 && !_hasWGLEXTSwapControlTear) return false;
+	if (_wglSwapIntervalEXT != nullptr) return _wglSwapIntervalEXT(interval) && interval != 0;
+	if (interval != 0) Debug(driver, 0, "OpenGL: Vsync requested, but not supported by driver");
+	return false;
 }
 
 std::optional<std::string_view> VideoDriver_Win32OpenGL::AllocateContext()
@@ -1605,7 +1617,7 @@ std::optional<std::string_view> VideoDriver_Win32OpenGL::AllocateContext()
 	}
 	if (!wglMakeCurrent(this->dc, rc)) return "Can't activate GL context";
 
-	this->ToggleVsync(_video_vsync);
+	this->ApplyVsync();
 
 	this->gl_rc = rc;
 	return OpenGLBackend::Create(&GetOGLProcAddressCallback, this->GetScreenSize());

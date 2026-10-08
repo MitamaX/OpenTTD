@@ -45,8 +45,6 @@ public:
 	bool HasAnimBuffer() override { return true; }
 	uint8_t *GetAnimBuffer() override { return this->anim_buffer; }
 
-	void ToggleVsync(bool vsync) override;
-
 	std::string_view GetName() const override { return "sdl-opengl"; }
 
 protected:
@@ -56,6 +54,7 @@ protected:
 	void CheckPaletteAnim() override;
 	void Paint() override;
 	bool CreateMainWindow(uint w, uint h, uint flags) override;
+	bool SetSwapInterval(int interval) override;
 
 private:
 	void  *gl_context;  ///< OpenGL context.

@@ -97,9 +97,9 @@ void VideoDriver_SDL_OpenGL::DestroyContext()
 	}
 }
 
-void VideoDriver_SDL_OpenGL::ToggleVsync(bool vsync)
+bool VideoDriver_SDL_OpenGL::SetSwapInterval(int interval)
 {
-	SDL_GL_SetSwapInterval(vsync);
+	return SDL_GL_SetSwapInterval(interval) == 0 && interval != 0;
 }
 
 std::optional<std::string_view> VideoDriver_SDL_OpenGL::AllocateContext()
@@ -130,7 +130,7 @@ std::optional<std::string_view> VideoDriver_SDL_OpenGL::AllocateContext()
 	}
 	if (this->gl_context == nullptr) return "SDL2: Can't activate GL context";
 
-	ToggleVsync(_video_vsync);
+	this->ApplyVsync();
 
 	return OpenGLBackend::Create(&GetOGLProcAddressCallback, this->GetScreenSize());
 }

@@ -51,6 +51,7 @@ protected:
 	std::string driver_info{}; ///< Information string about selected driver.
 
 	Dimension GetScreenSize() const override;
+	int GetDisplayRefreshRate() override;
 	void InputLoop() override;
 	bool LockVideoBuffer() override;
 	void UnlockVideoBuffer() override;

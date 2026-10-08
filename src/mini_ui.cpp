@@ -563,6 +563,7 @@ static void Deactivate()
 	_camera.Halt();
 	_vehicle_motion.Clear();
 	_map_labels.Clear();
+	VideoDriver::GetInstance()->ApplyVsync();
 	MarkWholeScreenDirty();
 }
 
@@ -620,6 +621,7 @@ void MiniUiToggle()
 		_camera.CentreOn(Map::SizeX() / 2.0, Map::SizeY() / 2.0);
 	}
 	_mini_active = true;
+	VideoDriver::GetInstance()->ApplyVsync();
 }
 
 bool MiniUiHidesWindow(WindowClass wc)

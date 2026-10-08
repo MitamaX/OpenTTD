@@ -238,6 +238,13 @@ std::vector<int> VideoDriver_SDL_Base::GetListOfMonitorRefreshRates()
 	return rates;
 }
 
+int VideoDriver_SDL_Base::GetDisplayRefreshRate()
+{
+	SDL_DisplayMode mode = {};
+	if (SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(this->sdl_window), &mode) != 0) return 0;
+	return mode.refresh_rate;
+}
+
 
 struct SDLVkMapping {
 	const SDL_Keycode vk_from;

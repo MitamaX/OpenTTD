@@ -66,6 +66,7 @@ protected:
 	Win32Pointer pointer;   ///< Cursor the system draws in place of the game's own.
 
 	Dimension GetScreenSize() const override;
+	int GetDisplayRefreshRate() override;
 	void InputLoop() override;
 	bool LockVideoBuffer() override;
 	void UnlockVideoBuffer() override;
@@ -155,8 +156,6 @@ public:
 	bool HasAnimBuffer() override { return true; }
 	uint8_t *GetAnimBuffer() override { return this->anim_buffer; }
 
-	void ToggleVsync(bool vsync) override;
-
 	std::string_view GetName() const override { return "win32-opengl"; }
 
 	std::string_view GetInfoString() const override { return this->driver_info; }
@@ -176,6 +175,7 @@ protected:
 	void *GetVideoPointer() override;
 	void ReleaseVideoPointer() override;
 	void PaletteChanged(HWND) override {}
+	bool SetSwapInterval(int interval) override;
 
 	std::optional<std::string_view> AllocateContext();
 	void DestroyContext();

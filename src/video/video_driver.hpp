@@ -69,10 +69,9 @@ public:
 	virtual bool ToggleFullscreen(bool fullscreen) = 0;
 
 	/**
-	 * Change the vsync setting.
-	 * @param vsync The new setting.
+	 * Present frames on the display's refresh when the vsync setting asks for it, or while the mini UI shows its moving map.
 	 */
-	virtual void ToggleVsync([[maybe_unused]] bool vsync) {}
+	void ApplyVsync();
 
 	/**
 	 * Callback invoked after the blitter was changed.
@@ -218,6 +217,21 @@ public:
 protected:
 	const uint ALLOWED_DRIFT = 5; ///< How many times videodriver can miss deadlines without it being overly compensated.
 
+	bool presents_on_vsync = false; ///< Whether presenting a frame waits for the display's refresh.
+
+	/**
+	 * Change how many refreshes of the display each frame is shown for.
+	 * @param interval The refreshes; 0 to present at once, negative to present a frame that missed its refresh at once.
+	 * @return Whether presenting a frame now waits for the display's refresh.
+	 */
+	virtual bool SetSwapInterval([[maybe_unused]] int interval) { return false; }
+
+	/**
+	 * Get the refresh rate of the display showing the game.
+	 * @return The refresh rate in Hz, or 0 when unknown.
+	 */
+	virtual int GetDisplayRefreshRate() { return 0; }
+
 	/**
 	 * Get the resolution of the main screen.
 	 */
@@ -318,7 +332,7 @@ protected:
 		TicToc::Tick("DrawTick");
 
 		/* If vsync, draw interval is decided by the display driver */
-		if (_video_vsync && this->uses_hardware_acceleration) return std::chrono::microseconds(0);
+		if (this->presents_on_vsync) return std::chrono::microseconds(0);
 		return std::chrono::microseconds(1000000 / _settings_client.gui.refresh_rate);
 	}
 

@@ -31,6 +31,18 @@
 bool _video_hw_accel; ///< Whether to consider hardware accelerated video drivers on startup.
 bool _video_vsync; ///< Whether we should use vsync (only if active video driver supports HW acceleration).
 
+static constexpr int REPORTED_REFRESH_RATE_SLACK = 1; ///< Displays report rates such as 59.94 Hz rounded down.
+
+void VideoDriver::ApplyVsync()
+{
+	if (_video_vsync || !MiniUiActive()) {
+		this->presents_on_vsync = this->SetSwapInterval(_video_vsync ? 1 : 0);
+		return;
+	}
+	int refreshes_per_frame = std::max(1, (this->GetDisplayRefreshRate() + REPORTED_REFRESH_RATE_SLACK) / _settings_client.gui.refresh_rate);
+	this->presents_on_vsync = this->SetSwapInterval(-refreshes_per_frame) || this->SetSwapInterval(refreshes_per_frame);
+}
+
 void VideoDriver::GameLoop()
 {
 	auto interval = this->GetGameInterval();

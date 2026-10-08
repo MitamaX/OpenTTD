@@ -1012,7 +1012,7 @@ struct GameOptionsWindow : Window {
 				if (!_video_hw_accel) break;
 
 				_video_vsync = !_video_vsync;
-				VideoDriver::GetInstance()->ToggleVsync(_video_vsync);
+				VideoDriver::GetInstance()->ApplyVsync();
 
 				this->SetWidgetLoweredState(WID_GO_VIDEO_VSYNC_BUTTON, _video_vsync);
 				this->SetWidgetDirty(WID_GO_VIDEO_VSYNC_BUTTON);
@@ -1442,6 +1442,7 @@ struct GameOptionsWindow : Window {
 
 			case WID_GO_REFRESH_RATE_DROPDOWN: {
 				_settings_client.gui.refresh_rate = *std::next(_refresh_rates.begin(), index);
+				VideoDriver::GetInstance()->ApplyVsync();
 				if (_settings_client.gui.refresh_rate > 60) {
 					/* Show warning to the user that this refresh rate might not be suitable on
 					 * larger maps with many NewGRFs and vehicles. */
