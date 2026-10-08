@@ -23,7 +23,9 @@ public:
 
 	void Stamp(uint64_t tick, Clock::time_point at, Clock::duration interval);
 	void BeginFrame(Clock::time_point at);
-	double Advance(uint64_t tick);
+	void Advance(uint64_t tick);
+	double Shown() const { return this->shown; }
+	double FrameMs() const { return this->frame_ms; }
 
 private:
 	using Milliseconds = std::chrono::duration<double, std::milli>;
@@ -38,7 +40,7 @@ private:
 	std::deque<TickStamp> stamps;
 	Clock::duration interval{};
 	Clock::time_point frame_at{};
-	Clock::time_point advanced_at{};
+	double frame_ms = 0.0;
 	double shown = 0.0;
 	bool synced = false;
 };

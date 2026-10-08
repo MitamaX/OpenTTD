@@ -54,6 +54,7 @@
 #include "mini_atlas.h"
 #include "mini/core/camera.h"
 #include "mini/core/canvas.h"
+#include "mini/core/tick_clock.h"
 #include "mini/core/tones.h"
 #include "mini/core/tuning.h"
 #include "mini/dock/native_dock.h"
@@ -842,7 +843,7 @@ bool MiniUiHandleTextInput(std::string_view text, bool marked)
 	return _mini_active && _views.ProcessText(text, marked);
 }
 
-void MiniUiFrame(uint delta_ms)
+void MiniUiFrame()
 {
 	/* Entering a game activates the mini UI unless the config opts out. */
 	static GameMode last_mode = GM_MENU;
@@ -872,13 +873,15 @@ void MiniUiFrame(uint delta_ms)
 		_world_tiles.Sync();
 	}
 	_camera.SetPeak(_world_tiles.Peak());
-	_vehicle_motion.Advance(delta_ms);
-	_toast_feed.Age(delta_ms);
+	_tick_clock.Advance(TimerGameTick::counter);
+	double frame_ms = _tick_clock.FrameMs();
+	_vehicle_motion.Advance(frame_ms);
+	_toast_feed.Age(frame_ms);
 	if (VehicleID built = _deploy.Step(); built != VehicleID::Invalid()) OpenVehicleWindow(built);
 	_map_draw.Clear();
 	_ground_draw.Clear();
 
-	_camera.Update(delta_ms, _mode.FollowTarget());
+	_camera.Update(frame_ms, _mode.FollowTarget());
 	if (std::optional<ViewAim> aim = _frame_capture.Aim(); aim.has_value()) _camera.Aim(*aim);
 	if (std::optional<uint16_t> speed = _frame_capture.GameSpeed(); speed.has_value()) _game_speed = *speed;
 	_world_painter.Prepare();

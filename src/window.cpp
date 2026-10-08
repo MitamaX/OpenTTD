@@ -3157,7 +3157,7 @@ void UpdateWindows()
 
 	ProcessPendingPerformanceMeasurements();
 
-	MiniUiFrame(delta_ms.count());
+	MiniUiFrame();
 
 	TimerManager<TimerWindow>::Elapsed(delta_ms);
 	CallWindowRealtimeTickEvent(delta_ms.count());

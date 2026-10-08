@@ -15,20 +15,20 @@
 #include "../../safeguards.h"
 
 static constexpr size_t TOAST_MAX = 4;
-static constexpr uint TOAST_FADE_MS = 400;
-static constexpr uint MS_PER_SECOND = 1000;
+static constexpr double TOAST_FADE_MS = 400.0;
+static constexpr double MS_PER_SECOND = 1000.0;
 static constexpr uint NEWS_LIFE_FACTOR = 2;
 
 ToastFeed _toast_feed;
 
-static uint ErrorLife()
+static double ErrorLife()
 {
 	return std::max<uint>(_settings_client.gui.errmsg_duration, 1) * MS_PER_SECOND;
 }
 
 float Toast::Opacity() const
 {
-	return this->left_ms >= TOAST_FADE_MS ? 1.0f : static_cast<float>(this->left_ms) / TOAST_FADE_MS;
+	return this->left_ms >= TOAST_FADE_MS ? 1.0f : static_cast<float>(this->left_ms / TOAST_FADE_MS);
 }
 
 /* The same failure again restarts its card and counts up instead of stacking
@@ -54,10 +54,10 @@ void ToastFeed::Announce(std::string headline, std::string date, bool advice, Ne
 	this->Push({std::move(headline), std::move(date), 1, ErrorLife() * NEWS_LIFE_FACTOR, advice, ref});
 }
 
-void ToastFeed::Age(uint delta_ms)
+void ToastFeed::Age(double delta_ms)
 {
-	for (Toast &t : this->toasts) t.left_ms = t.left_ms > delta_ms ? t.left_ms - delta_ms : 0;
-	std::erase_if(this->toasts, [](const Toast &t) { return t.left_ms == 0; });
+	for (Toast &t : this->toasts) t.left_ms = std::max(t.left_ms - delta_ms, 0.0);
+	std::erase_if(this->toasts, [](const Toast &t) { return t.left_ms <= 0.0; });
 }
 
 std::optional<NewsReference> ToastFeed::Dismiss(size_t i)

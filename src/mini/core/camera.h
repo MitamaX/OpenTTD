@@ -140,7 +140,7 @@ public:
 	void ZoomAt(int sx, int sy, bool in);
 	void FaceNorth();
 	void Halt();
-	void Update(uint delta_ms, std::optional<WorldPoint> chase);
+	void Update(double delta_ms, std::optional<WorldPoint> chase);
 
 private:
 	struct Orbit {
@@ -158,13 +158,13 @@ private:
 	void Pin(const WorldPoint &ground, double sx, double sy);
 	void MoveToward(TilePoint target, double share);
 	void MoveBy(double dx, double dy);
-	void Pan(uint delta_ms);
-	void EdgeScroll(uint delta_ms);
-	void Glide(uint delta_ms);
-	void Spin(uint delta_ms);
+	void Pan(double delta_ms);
+	void EdgeScroll(double delta_ms);
+	void Glide(double delta_ms);
+	void Spin(double delta_ms);
 	void Swing();
-	void Settle(uint delta_ms);
-	void Rest(uint delta_ms, std::optional<double> level);
+	void Settle(double delta_ms);
+	void Rest(double delta_ms, std::optional<double> level);
 	void FollowGrab();
 
 	int width = 1;

@@ -20,7 +20,7 @@ struct Toast {
 	std::string summary;
 	std::string detail;
 	uint repeat = 1;
-	uint left_ms = 0;
+	double left_ms = 0.0;
 	bool warn = false;
 	NewsReference ref{};
 
@@ -35,7 +35,7 @@ public:
 
 	void Report(std::string summary, std::string detail, bool warn);
 	void Announce(std::string headline, std::string date, bool advice, NewsReference ref);
-	void Age(uint delta_ms);
+	void Age(double delta_ms);
 	std::optional<NewsReference> Dismiss(size_t i);
 	void Clear() { this->toasts.clear(); }
 

@@ -41,6 +41,7 @@ void TickClock::Stamp(uint64_t tick, Clock::time_point at, Clock::duration inter
 
 void TickClock::BeginFrame(Clock::time_point at)
 {
+	this->frame_ms = Milliseconds(at - this->frame_at).count();
 	this->frame_at = at;
 }
 
@@ -55,14 +56,13 @@ double TickClock::IntervalMs() const
 }
 
 /* The shown tick never goes back nor past the game's own; a frame far from where it should be, after a pause or a load, starts over there. */
-double TickClock::Advance(uint64_t tick)
+void TickClock::Advance(uint64_t tick)
 {
-	double frame_ms = Milliseconds(this->frame_at - this->advanced_at).count();
-	this->advanced_at = this->frame_at;
 	double interval_ms = this->IntervalMs();
 	if (this->stamps.empty() || this->stamps.back().tick != tick || interval_ms <= 0.0) {
 		this->synced = false;
-		return this->shown = static_cast<double>(tick);
+		this->shown = static_cast<double>(tick);
+		return;
 	}
 
 	const TickStamp &latest = this->stamps.back();
@@ -72,10 +72,10 @@ double TickClock::Advance(uint64_t tick)
 		this->shown = wanted;
 		this->synced = true;
 	} else {
-		double drawn_in = (wanted - this->shown) * (1.0 - std::exp(-frame_ms / SYNC_MS));
-		this->shown = std::max(this->shown, this->shown + frame_ms / interval_ms + drawn_in);
+		double drawn_in = (wanted - this->shown) * (1.0 - std::exp(-this->frame_ms / SYNC_MS));
+		this->shown = std::max(this->shown, this->shown + this->frame_ms / interval_ms + drawn_in);
 	}
-	return this->shown = std::min(this->shown, static_cast<double>(tick));
+	this->shown = std::min(this->shown, static_cast<double>(tick));
 }
 
 void TickTrail::Note(const Spot &spot, bool continues)

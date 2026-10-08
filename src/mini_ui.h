@@ -30,7 +30,7 @@
 void MiniUiToggle();
 void MiniUiResetGameState();
 void MiniUiTileChanged(TileIndex tile);
-void MiniUiFrame(uint delta_ms);
+void MiniUiFrame();
 bool MiniUiHandleMouseEvents(bool native_capture);
 bool MiniUiHandleKeypress(uint keycode, char32_t key);
 bool MiniUiHandleTextInput(std::string_view text, bool marked);

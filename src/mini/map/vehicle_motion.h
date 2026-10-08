@@ -22,7 +22,7 @@ struct Vehicle;
  * seen at on the ticks before, at the point of the tick count the tick clock shows. */
 class VehicleMotion {
 public:
-	void Advance(uint delta_ms);
+	void Advance(double delta_ms);
 	WorldPoint Position(const Vehicle *v);
 	/* The way a unit faces in radians from map X toward map Y, eased through its turns, and how fast it is turning. */
 	double Bearing(const Vehicle *v);
@@ -45,9 +45,8 @@ private:
 
 	std::unordered_map<uint32_t, Snapshot> snapshots;
 	uint64_t tick = 0;
-	double shown = 0.0;
 	uint64_t frames = 0;
-	uint frame_ms = 0;
+	double frame_ms = 0.0;
 };
 
 extern VehicleMotion _vehicle_motion;

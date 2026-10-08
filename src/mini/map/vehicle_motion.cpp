@@ -51,11 +51,10 @@ static double TurnBetween(double from, double to)
 	return std::remainder(to - from, 2.0 * std::numbers::pi);
 }
 
-void VehicleMotion::Advance(uint delta_ms)
+void VehicleMotion::Advance(double delta_ms)
 {
 	this->frame_ms = delta_ms;
 	this->tick = TimerGameTick::counter;
-	this->shown = _tick_clock.Advance(this->tick);
 	if ((++this->frames & PRUNE_INTERVAL_MASK) == 0) {
 		std::erase_if(this->snapshots, [this](const auto &entry) { return std::max(entry.second.seen, entry.second.turned) + STALE_FRAMES < this->frames; });
 	}
@@ -69,7 +68,7 @@ WorldPoint VehicleMotion::Position(const Vehicle *v)
 	TickTrail::Spot spot = SpotOf(v, this->tick);
 	e.trail.Note(spot, e.seen + 1 >= this->frames && !e.trail.Empty() && Glides(e.trail.Latest(), spot));
 	e.seen = this->frames;
-	TickTrail::Point at = e.trail.At(this->shown);
+	TickTrail::Point at = e.trail.At(_tick_clock.Shown());
 	return Grounded(v, {at.x / TILE_SIZE, at.y / TILE_SIZE, at.z / TILE_HEIGHT});
 }
 
@@ -84,9 +83,9 @@ VehicleMotion::Snapshot &VehicleMotion::Turned(const Vehicle *v)
 		e.turn_rate = 0.0;
 	} else if (e.turned != this->frames) {
 		double turn = TurnBetween(e.bearing, target);
-		double eased = std::abs(turn) > SNAP_TURN ? turn : turn * (1.0 - std::exp(-static_cast<double>(this->frame_ms) / TURN_EASE_MS));
+		double eased = std::abs(turn) > SNAP_TURN ? turn : turn * (1.0 - std::exp(-this->frame_ms / TURN_EASE_MS));
 		e.bearing += eased;
-		e.turn_rate = std::abs(turn) > SNAP_TURN || this->frame_ms == 0 ? 0.0 : eased * MS_PER_SECOND / this->frame_ms;
+		e.turn_rate = std::abs(turn) > SNAP_TURN || this->frame_ms <= 0.0 ? 0.0 : eased * MS_PER_SECOND / this->frame_ms;
 	}
 	e.turned = this->frames;
 	return e;

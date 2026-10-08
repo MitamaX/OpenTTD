@@ -48,12 +48,12 @@ static constexpr Vec3 EAST = {-std::numbers::sqrt2 / 2.0, std::numbers::sqrt2 / 
 
 Camera _camera;
 
-static double Approach(uint delta_ms, double time_constant_ms)
+static double Approach(double delta_ms, double time_constant_ms)
 {
 	return 1.0 - std::exp(delta_ms / -time_constant_ms);
 }
 
-static double Travel(double per_second, uint delta_ms)
+static double Travel(double per_second, double delta_ms)
 {
 	return per_second * delta_ms / MS_PER_SECOND;
 }
@@ -395,7 +395,7 @@ void Camera::Halt()
 	this->spin = 0.0;
 }
 
-void Camera::Update(uint delta_ms, std::optional<WorldPoint> chase)
+void Camera::Update(double delta_ms, std::optional<WorldPoint> chase)
 {
 	this->Pan(delta_ms);
 	this->EdgeScroll(delta_ms);
@@ -425,7 +425,7 @@ void Camera::MoveBy(double dx, double dy)
 }
 
 /* WASD and arrows arrive via _dirkeys; pan speed is constant in screen space. */
-void Camera::Pan(uint delta_ms)
+void Camera::Pan(double delta_ms)
 {
 	uint8_t keys = MiniUiPanKeys();
 	if (keys != 0) {
@@ -445,7 +445,7 @@ void Camera::Pan(uint delta_ms)
 	this->MoveBy(Travel(this->pan_vx, delta_ms), Travel(this->pan_vy, delta_ms));
 }
 
-void Camera::EdgeScroll(uint delta_ms)
+void Camera::EdgeScroll(double delta_ms)
 {
 	if (_tuning.edge_scroll == 0 || !_pointer.OnMap() || _middle_button_down || _right_button_down) return;
 
@@ -463,7 +463,7 @@ void Camera::EdgeScroll(uint delta_ms)
 	this->MoveBy(ex, ey);
 }
 
-void Camera::Glide(uint delta_ms)
+void Camera::Glide(double delta_ms)
 {
 	if (!this->gliding) return;
 
@@ -477,7 +477,7 @@ void Camera::Glide(uint delta_ms)
 }
 
 /* The turn keys spin the view about its focus, easing into and out of their full speed. */
-void Camera::Spin(uint delta_ms)
+void Camera::Spin(double delta_ms)
 {
 	int turn = MiniUiTurnKeys();
 	this->spin += (turn * _tuning.turn_speed - this->spin) * Approach(delta_ms, _tuning.turn_smooth_ms);
@@ -510,7 +510,7 @@ void Camera::Swing()
 }
 
 /* The scale changes before the anchor is pinned, so the anchored ground point stays under the pointer. */
-void Camera::Settle(uint delta_ms)
+void Camera::Settle(double delta_ms)
 {
 	if (this->ppt != this->dest_ppt) {
 		double share = Approach(delta_ms, _tuning.zoom_smooth_ms);
@@ -525,7 +525,7 @@ void Camera::Settle(uint delta_ms)
 }
 
 /* The focus rides the ground under it, or the vehicle it follows, except while a pinned point must stay put. */
-void Camera::Rest(uint delta_ms, std::optional<double> level)
+void Camera::Rest(double delta_ms, std::optional<double> level)
 {
 	if (this->anchored || this->grab.has_value()) return;
 
