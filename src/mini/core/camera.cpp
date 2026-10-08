@@ -162,8 +162,8 @@ void Camera::Frame()
 	this->right = Bearing(this->yaw + QUARTER_TURN_DEGREES);
 	this->up = Cross(this->back, this->right);
 	double sight = this->FocusDistance();
-	this->near = std::max(sight * NEAR_SHARE, MIN_NEAR);
-	this->far = sight * FAR_SHARE + FAR_MARGIN;
+	this->near_plane = std::max(sight * NEAR_SHARE, MIN_NEAR);
+	this->far_plane = sight * FAR_SHARE + FAR_MARGIN;
 }
 
 Mat4 Camera::ViewMatrix() const
@@ -174,7 +174,7 @@ Mat4 Camera::ViewMatrix() const
 Mat4 Camera::ProjectionMatrix() const
 {
 	double focal = this->Focal();
-	return Mat4::Perspective(2.0 * focal / this->width, 2.0 * focal / this->height, this->near, this->far);
+	return Mat4::Perspective(2.0 * focal / this->width, 2.0 * focal / this->height, this->near_plane, this->far_plane);
 }
 
 /* The map direction from a ground point toward the eye, which is the way down the screen there. */
@@ -204,7 +204,7 @@ ExactPoint Camera::ExactScreenOf(const WorldPoint &point) const
 	double ahead = this->Ahead(point);
 	double across = Dot(offset, this->right);
 	double rise = Dot(offset, this->up);
-	if (ahead >= this->near) {
+	if (ahead >= this->near_plane) {
 		double scale = this->Focal() / ahead;
 		return {this->width * 0.5 + across * scale, this->height * 0.5 - rise * scale};
 	}
@@ -249,10 +249,10 @@ Vec3 Camera::SightThrough(double sx, double sy) const
 WorldPoint Camera::GroundUnder(double sx, double sy) const
 {
 	SightLine sight = {this->eye, this->SightThrough(sx, sy), LevelRise()};
-	if (std::optional<GroundHit> hit = TraceGround(sight, this->far); hit.has_value()) return {hit->x, hit->y, hit->level};
+	if (std::optional<GroundHit> hit = TraceGround(sight, this->far_plane); hit.has_value()) return {hit->x, hit->y, hit->level};
 
-	double t = sight.direction.z < -NEGLIGIBLE ? -this->eye.z / sight.direction.z : this->far;
-	Vec3 at = sight.At(std::min(t, this->far));
+	double t = sight.direction.z < -NEGLIGIBLE ? -this->eye.z / sight.direction.z : this->far_plane;
+	Vec3 at = sight.At(std::min(t, this->far_plane));
 	return {at.x, at.y, std::max(at.z, 0.0) / LevelRise()};
 }
 
@@ -267,7 +267,7 @@ TilePoint Camera::MapAt(int sx, int sy) const
 TileSpan Camera::VisibleTiles(double raised_levels) const
 {
 	double focal = this->Focal();
-	double reach = std::min(this->far, focal / SMALLEST_SHOWN_TILE_PX);
+	double reach = std::min(this->far_plane, focal / SMALLEST_SHOWN_TILE_PX);
 	double half_x = this->width * 0.5 / focal;
 	double half_y = this->height * 0.5 / focal;
 	std::array<Vec3, 8> corners;
@@ -275,7 +275,7 @@ TileSpan Camera::VisibleTiles(double raised_levels) const
 		double across = (corner == 1 || corner == 2) ? half_x : -half_x;
 		double down = corner >= 2 ? half_y : -half_y;
 		Vec3 ray = this->right * across - this->up * down - this->back;
-		corners[corner] = this->eye + ray * this->near;
+		corners[corner] = this->eye + ray * this->near_plane;
 		corners[corner + 4] = this->eye + ray * reach;
 	}
 

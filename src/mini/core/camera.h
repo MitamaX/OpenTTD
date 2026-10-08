@@ -113,8 +113,8 @@ public:
 	const Vec3 &Eye() const { return this->eye; }
 	double Focal() const;
 	double FocusDistance() const;
-	double Near() const { return this->near; }
-	double Far() const { return this->far; }
+	double Near() const { return this->near_plane; }
+	double Far() const { return this->far_plane; }
 	Mat4 ViewMatrix() const;
 	Mat4 ProjectionMatrix() const;
 	Vec3 SightThrough(double sx, double sy) const;
@@ -184,8 +184,8 @@ private:
 	Vec3 right{};
 	Vec3 up{};
 	Vec3 back{};
-	double near = 1.0;
-	double far = 100.0;
+	double near_plane = 1.0;
+	double far_plane = 100.0;
 
 	bool anchored = false;
 	Point anchor_screen{};
