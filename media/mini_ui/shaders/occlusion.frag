@@ -1,11 +1,12 @@
 uniform sampler2D u_depth;
 
-out vec2 frag_occlusion;
+out vec4 frag_occlusion;
 
 const float HALF_PI = 1.5707963;
 const int SLICES = 3;
 const int STEPS = 4;
 const float RADIUS = 1.0;
+const float CONTACT_RADIUS = 0.15;
 const float FALLOFF_SHARE = 0.6;
 const float LARGEST_PIXELS = 40.0;
 const float SMALLEST_PIXELS = 1.0;
@@ -19,20 +20,18 @@ float Interleaved(ivec2 texel)
 	return (SPREAD[(texel.y & 3) * 4 + (texel.x & 3)] + 0.5) / 16.0;
 }
 
-/* How much of the sky above a point's surface the ground and solids around it leave open, horizon by horizon along a few slices through the view. */
-float Openness(ivec2 full_texel, vec2 uv, vec2 half_size)
+/* How much of the sky above a point's surface the ground and solids within the radius around it leave open, horizon by horizon along a few slices through the view. */
+float Openness(vec3 centre, vec3 normal, vec2 uv, vec2 half_size, float radius)
 {
-	vec3 centre = FetchViewPoint(u_depth, full_texel);
-	vec3 normal = ViewNormal(u_depth, full_texel);
 	vec3 view = normalize(-centre);
-	float reach = RADIUS * u_projection[1][1] * 0.5 * half_size.y / -centre.z;
+	float reach = radius * u_projection[1][1] * 0.5 * half_size.y / -centre.z;
 	if (reach < SMALLEST_PIXELS) return 1.0;
 	reach = min(reach, LARGEST_PIXELS);
 
 	ivec2 full_size = textureSize(u_depth, 0);
-	float falloff_range = FALLOFF_SHARE * RADIUS;
+	float falloff_range = FALLOFF_SHARE * radius;
 	float falloff_scale = -1.0 / falloff_range;
-	float falloff_offset = (RADIUS - falloff_range) / falloff_range + 1.0;
+	float falloff_offset = (radius - falloff_range) / falloff_range + 1.0;
 	float noise = Interleaved(ivec2(uv * half_size));
 	float turn = fract(noise + GOLDEN_STEP * u_screen.w);
 
@@ -76,16 +75,19 @@ float Openness(ivec2 full_texel, vec2 uv, vec2 half_size)
 	return clamp(openness / float(SLICES), 0.0, 1.0);
 }
 
-/* Each texel answers for the full size texel at its own corner, and keeps how far ahead that lies so the blur can tell surfaces apart. */
+/* Each texel answers for the full size texel at its own corner: how open it lies over a tile around and close about it where things meet,
+ * and how far ahead it lies so the blur can tell surfaces apart. */
 void main()
 {
 	vec2 half_size = vec2(textureSize(u_depth, 0) / 2);
 	ivec2 full_texel = ivec2(gl_FragCoord.xy) * 2;
 	float depth = texelFetch(u_depth, full_texel, 0).r;
 	if (depth >= SKY_DEPTH) {
-		frag_occlusion = vec2(1.0, u_lens.y);
+		frag_occlusion = vec4(1.0, 1.0, u_lens.y, 0.0);
 		return;
 	}
 	vec2 uv = (vec2(full_texel) + 0.5) / vec2(textureSize(u_depth, 0));
-	frag_occlusion = vec2(Openness(full_texel, uv, half_size), AheadOf(depth));
+	vec3 centre = FetchViewPoint(u_depth, full_texel);
+	vec3 normal = ViewNormal(u_depth, full_texel);
+	frag_occlusion = vec4(Openness(centre, normal, uv, half_size, RADIUS), Openness(centre, normal, uv, half_size, CONTACT_RADIUS), AheadOf(depth), 0.0);
 }

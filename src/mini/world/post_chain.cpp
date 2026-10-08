@@ -95,7 +95,7 @@ PostChain::PostChain() :
 	bloom_down(POST_VERTEX, BLOOM_DOWN_SOURCES),
 	bloom_up(POST_VERTEX, BLOOM_UP_SOURCES),
 	composite(SCREEN_VERTEX, COMPOSITE_SOURCES),
-	ambient(GL_RG16F, TargetSampling::Nearest),
+	ambient(GL_RGBA16F, TargetSampling::Nearest),
 	lit(GL_RGBA16F, TargetSampling::Linear),
 	history({PostTarget(GL_RGBA16F, TargetSampling::Linear), PostTarget(GL_RGBA16F, TargetSampling::Linear)})
 {

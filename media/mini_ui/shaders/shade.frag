@@ -8,6 +8,7 @@ out vec4 frag_colour;
 const int BLUR_SPAN = 4;
 const float BLUR_DEPTH_TOLERANCE = 0.04;
 const float OCCLUSION_POWER = 1.5;
+const float CONTACT_ON_SUN = 0.6;
 const float CLEAR_SHARE_OF_FOCUS = 0.8;
 
 /* Past where the camera's fog sets in the ground fades on into the haze, so the far clip never shows. */
@@ -17,31 +18,34 @@ float FarFade(float distance)
 	return t * t * (3.0 - 2.0 * t);
 }
 
-/* The half size occlusion blurred over four texels square, which takes in its whole noise spread, leaving out texels on other surfaces. */
-float Occlusion(ivec2 texel, float ahead)
+/* The half size openness, over a tile around and where things meet, blurred over four texels square, which takes in its whole noise spread, leaving out texels on other surfaces. */
+vec2 Openness(ivec2 texel, float ahead)
 {
 	ivec2 origin = texel / 2 - 1;
 	ivec2 last = textureSize(u_occlusion, 0) - 1;
 	float tolerance = ahead * BLUR_DEPTH_TOLERANCE;
-	float sum = 0.0;
+	vec2 sum = vec2(0.0);
 	float weights = 0.0;
 	for (int y = 0; y < BLUR_SPAN; y++) {
 		for (int x = 0; x < BLUR_SPAN; x++) {
-			vec2 tap = texelFetch(u_occlusion, clamp(origin + ivec2(x, y), ivec2(0), last), 0).rg;
-			float weight = max(0.0, 1.0 - abs(tap.y - ahead) / tolerance);
-			sum += tap.x * weight;
+			vec3 tap = texelFetch(u_occlusion, clamp(origin + ivec2(x, y), ivec2(0), last), 0).rgb;
+			float weight = max(0.0, 1.0 - abs(tap.z - ahead) / tolerance);
+			sum += tap.xy * weight;
 			weights += weight;
 		}
 	}
-	return weights > 1e-3 ? sum / weights : 1.0;
+	return weights > 1e-3 ? sum / weights : vec2(1.0);
 }
 
-/* Occlusion only dims the light of the sky and the ground around, the share of a surface's light its shader left in the alpha, so it bites less where the sun falls full on it. */
+/* The light of the sky and the ground around, the share of a surface's light its shader left in the alpha, dims by how closed in it lies over a tile around and where things meet;
+ * where things meet they shade a little of each other's sunlight too, which the sun's shadows are too coarse to catch. */
 vec3 Occluded(vec4 surface, ivec2 texel, float ahead)
 {
 	if (u_occlusion_strength <= 0.0) return surface.rgb;
-	float open = mix(1.0, pow(Occlusion(texel, ahead), OCCLUSION_POWER), u_occlusion_strength);
-	return surface.rgb * (1.0 - surface.a * (1.0 - open));
+	vec2 open = mix(vec2(1.0), pow(Openness(texel, ahead), vec2(OCCLUSION_POWER)), u_occlusion_strength);
+	float ambient = open.x * open.y;
+	float sun = mix(1.0, open.y, CONTACT_ON_SUN);
+	return surface.rgb * mix(sun, ambient, surface.a);
 }
 
 /* The air short of what the view looks at is left clear, so only what lies beyond it recedes into the haze. */
