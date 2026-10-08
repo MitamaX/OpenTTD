@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file tick_clock.h The game's ticks laid on the time they ran at, so frames show the game at a steady pace between them. */
+/** @file tick_clock.h The game's ticks laid on the time they were due at, so frames show the game at a steady pace between them. */
 
 #ifndef MINI_CORE_TICK_CLOCK_H
 #define MINI_CORE_TICK_CLOCK_H
@@ -15,8 +15,8 @@
 #include <cstdint>
 #include <deque>
 
-/* Each frame shows the game as it stood a little over a tick before the frame began, a point of the tick count moving on
- * with the time between frames at the pace ticks run and drawn gently toward when the ticks drawing saw really ran. */
+/* Each frame shows the game as it stood a couple of ticks before the frame began, a point of the tick count moving on
+ * with the time between frames at the pace ticks run and drawn gently toward when the ticks drawing saw were due. */
 class TickClock {
 public:
 	using Clock = std::chrono::steady_clock;

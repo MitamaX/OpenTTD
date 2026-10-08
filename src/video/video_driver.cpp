@@ -46,6 +46,7 @@ void VideoDriver::ApplyVsync()
 void VideoDriver::GameLoop()
 {
 	auto interval = this->GetGameInterval();
+	auto due = this->next_game_tick;
 	this->next_game_tick += interval;
 
 	/* Avoid next_game_tick getting behind more and more if it cannot keep up. */
@@ -56,7 +57,7 @@ void VideoDriver::GameLoop()
 		std::lock_guard<std::mutex> lock(this->game_state_mutex);
 
 		::GameLoop();
-		_tick_clock.Stamp(TimerGameTick::counter, std::chrono::steady_clock::now(), interval);
+		_tick_clock.Stamp(TimerGameTick::counter, due, interval);
 	}
 }
 

@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file tick_clock.cpp The game's ticks laid on the time they ran at, so frames show the game at a steady pace between them. */
+/** @file tick_clock.cpp The game's ticks laid on the time they were due at, so frames show the game at a steady pace between them. */
 
 #include "../../stdafx.h"
 #include "tick_clock.h"
@@ -20,7 +20,7 @@
 static constexpr std::chrono::milliseconds MEASURED_SPAN{500};
 static constexpr size_t MIN_MEASURED_STAMPS = 8;
 static constexpr std::chrono::milliseconds STALL{250};
-static constexpr double SHOWN_DELAY_TICKS = 2.0;
+static constexpr double SHOWN_DELAY_TICKS = 2.5;
 static constexpr double MIN_SHOWN_DELAY_MS = 20.0;
 static constexpr double SYNC_MS = 250.0;
 static constexpr double RESYNC_MS = 200.0;
