@@ -105,8 +105,9 @@ double TerrainField::Distance(size_t index, const Vec3 &eye) const
 }
 
 /* The blocks in the camera's view are brought to the step its view of their nearest point asks for, and those the world changed under are built afresh.
- * A view with nothing yet to show has every block built whole at once; otherwise a block first coming into view is laid at once, no finer than a draft where that would cost much,
- * and the rest are refined within a slice of each frame, each keeping its old meshes until its new ones are done. Shadows only draw the blocks there are. */
+ * A view with nothing yet to show has every block built whole at once; otherwise a block first coming into view is laid at once, the nearest no finer than a draft
+ * where that would cost much and those past the slice of the frame at the coarsest step, and the rest are refined within what is left of the slice,
+ * each keeping its old meshes until its new ones are done. Shadows only draw the blocks there are. */
 void TerrainField::Refresh(const SceneView &camera)
 {
 	this->due.clear();
@@ -126,17 +127,20 @@ void TerrainField::Refresh(const SceneView &camera)
 		}
 	}
 
+	BuildSlice slice;
+	std::ranges::sort(this->due, {}, &Due::distance);
 	for (const Due &entry : this->due) {
 		const Chunk &chunk = this->chunks[entry.index];
-		if (chunk.ground.Empty()) this->Build(entry.index, blank ? entry.step : chunk.NextStep(entry.step));
+		if (!chunk.ground.Empty()) continue;
+		this->Build(entry.index, blank ? entry.step : slice.Spent() ? COARSEST_STEP : chunk.NextStep(entry.step));
 	}
 	std::erase_if(this->due, [&](const Due &entry) { return !this->chunks[entry.index].Outdated(entry.step); });
 	for (const Due &entry : this->due) {
 		uint64_t &since = this->chunks[entry.index].due_since;
 		if (since == 0) since = this->frame;
 	}
-	std::ranges::sort(this->due, {}, [&](const Due &entry) { return std::make_pair(this->chunks[entry.index].due_since, entry.distance); });
-	this->Refine();
+	std::ranges::stable_sort(this->due, {}, [&](const Due &entry) { return this->chunks[entry.index].due_since; });
+	this->Refine(slice);
 }
 
 void TerrainField::Build(size_t index, int step)
@@ -150,9 +154,8 @@ void TerrainField::Build(size_t index, int step)
 
 /* The blocks that have waited longest go first, the nearest of them first, so a block the world keeps changing under cannot hold up the rest;
  * a build cut short by the end of the slice goes on from where it stopped. */
-void TerrainField::Refine()
+void TerrainField::Refine(const BuildSlice &slice)
 {
-	BuildSlice slice;
 	for (const Due &entry : this->due) {
 		Chunk &chunk = this->chunks[entry.index];
 		ProfileScope profile("build", "terrain", ProfileClock::Cpu);

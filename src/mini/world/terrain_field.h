@@ -72,7 +72,7 @@ private:
 	std::pair<Vec3, Vec3> Bounds(size_t index);
 	double Distance(size_t index, const Vec3 &eye) const;
 	void Build(size_t index, int step);
-	void Refine();
+	void Refine(const BuildSlice &slice);
 	void Finish(size_t index);
 	void Evict();
 
