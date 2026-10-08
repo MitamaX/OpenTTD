@@ -22,6 +22,7 @@
 #include "../gpu/gl_api.h"
 #include "../map/way_bends.h"
 #include "../map/way_course.h"
+#include "build_slice.h"
 #include "farm_models.h"
 #include "farmsteads.h"
 #include "figure_models.h"
@@ -94,6 +95,7 @@ void WorldPainter::Reload()
 void WorldPainter::Prepare()
 {
 	if (_world_tiles.Size().width == 0) return;
+	_build_frame.Open(std::chrono::microseconds(std::chrono::seconds(1)) / std::max<int>(_settings_client.gui.refresh_rate, 1));
 	ProfileScope profile("prepare", ProfileClock::Cpu);
 	{
 		ProfileScope bends_profile("prepare", "bends", ProfileClock::Cpu);

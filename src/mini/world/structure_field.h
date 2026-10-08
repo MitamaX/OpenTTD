@@ -45,7 +45,7 @@ private:
 };
 
 /* A block of tiles: its mesh, built on the game's side and waiting to be handed to the GPU or already there, with how many of its indices clad it solid before those of open claddings, the boxes clicks meet, the stacks that smoke,
- * the detail it was built at and whether a form changed under it since, the build that will replace it and the frame since which it has waited for it,
+ * the detail it was built at and whether a form changed under it since, the build that will replace it, the frame since which it has waited for it and whether in sight,
  * and the box it fills, guessed from the ground until it is built. */
 struct StructureChunk {
 	MeshBuffer mesh;
@@ -62,10 +62,11 @@ struct StructureChunk {
 	bool surveyed = false;
 	uint64_t wanted = 0;
 	uint64_t due_since = 0;
+	bool due_in_sight = false;
 
 	bool Outdated(StructureDetail wanted_detail) const { return this->stale || !this->built || this->detail != wanted_detail; }
-	/* Buildings wanted in full where none show yet are first drafted simply, which costs little. */
-	StructureDetail NextDetail(StructureDetail wanted_detail) const { return this->built ? wanted_detail : StructureDetail::Simple; }
+	/* Buildings wanted in full where none show yet out of sight are first drafted simply, which costs little; those in sight are built in full at once, rather than twice over. */
+	StructureDetail NextDetail(StructureDetail wanted_detail, bool in_sight) const { return this->built || in_sight ? wanted_detail : StructureDetail::Simple; }
 };
 
 /* The building a sight line meets first, the tile under where it meets it, and how far along the line that lies. */

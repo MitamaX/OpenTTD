@@ -29,7 +29,7 @@ inline constexpr double NETWORK_FADE_END = 12.0;
 using NetworkBuffers = std::array<MeshBuffer, NETWORK_LAYERS>;
 
 /* A block of tiles: its ways' and its bridges' spans' meshes per layer, built on the game's side and waiting to be handed to the GPU or already there,
- * the detail they were built at and whether the world changed under them since, the build that will replace them and the frame since which they have waited for it,
+ * the detail they were built at and whether the world changed under them since, the build that will replace them, the frame since which they have waited for it and whether in sight,
  * its signals, the levels its ways span, and a digest of the texels its ways were built from. */
 struct NetworkChunk {
 	NetworkBuffers layers;
@@ -47,10 +47,11 @@ struct NetworkChunk {
 	uint32_t digest = 0;
 	uint64_t wanted = 0;
 	uint64_t due_since = 0;
+	bool due_in_sight = false;
 
 	bool Outdated(WayDetail wanted_detail) const { return this->stale || !this->built || this->detail != wanted_detail; }
-	/* Ways wanted in full where none show yet are first drafted simply, which costs little. */
-	WayDetail NextDetail(WayDetail wanted_detail) const { return this->built ? wanted_detail : WayDetail::Simple; }
+	/* Ways wanted in full where none show yet out of sight are first drafted simply, which costs little; those in sight are built in full at once, rather than twice over. */
+	WayDetail NextDetail(WayDetail wanted_detail, bool in_sight) const { return this->built || in_sight ? wanted_detail : WayDetail::Simple; }
 	size_t Bytes() const;
 	void Release();
 };

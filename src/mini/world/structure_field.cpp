@@ -174,7 +174,7 @@ void StructureField::Prepare(const SceneView &camera)
 		StructureDetail detail = nearest_pixels >= FULL_DETAIL_PIXELS ? StructureDetail::Full : StructureDetail::Simple;
 		if (chunk.Outdated(detail)) {
 			this->due.push_back({index, in_sight, nearest_pixels, detail});
-			if (chunk.due_since == 0) chunk.due_since = this->frame;
+			MarkDue(chunk, this->frame, in_sight);
 		} else {
 			chunk.rebuild.reset();
 			chunk.due_since = 0;
@@ -185,18 +185,19 @@ void StructureField::Prepare(const SceneView &camera)
 }
 
 /* The blocks in sight go first, then those still showing none of their buildings, then those that have waited longest and the nearest of them,
- * so neither the blocks casting shadows into the view nor a block the world keeps changing under can hold up the rest; a build cut short by the end of the slice goes on from where it stopped. */
+ * so neither the blocks casting shadows into the view nor a block the world keeps changing under can hold up the rest; a build cut short by the end of the slice goes on from where it stopped.
+ * While blocks in sight wait, the slice hurries. */
 void StructureField::Refine()
 {
 	std::ranges::sort(this->due, {}, [&](const Due &entry) {
 		const StructureChunk &chunk = this->chunks[entry.index];
 		return std::make_tuple(!entry.in_sight, chunk.built, chunk.due_since, -entry.pixels);
 	});
-	BuildSlice slice;
+	BuildSlice slice(!this->due.empty() && this->due.front().in_sight);
 	for (const Due &entry : this->due) {
 		StructureChunk &chunk = this->chunks[entry.index];
 		ProfileScope profile("build", "structures", ProfileClock::Cpu);
-		StructureDetail detail = chunk.NextDetail(entry.detail);
+		StructureDetail detail = chunk.NextDetail(entry.detail, entry.in_sight);
 		if (chunk.rebuild.has_value() && chunk.rebuild->build.Detail() != detail) chunk.rebuild.reset();
 		if (!chunk.rebuild.has_value()) {
 			chunk.rebuild.emplace(StructureBuild(this->grid.TilesOf(entry.index), detail, this->digests));

@@ -104,18 +104,19 @@ void NetworkField::Build(size_t index, WayDetail detail)
 }
 
 /* The blocks in sight go first, then those still showing none of their ways, then those that have waited longest and the nearest of them,
- * so a block the world keeps changing under cannot hold up the rest; a build cut short by the end of the slice goes on from where it stopped. */
+ * so a block the world keeps changing under cannot hold up the rest; a build cut short by the end of the slice goes on from where it stopped.
+ * While blocks in sight wait, the slice hurries. */
 void NetworkField::Refine()
 {
 	std::ranges::sort(this->due, {}, [&](const Due &entry) {
 		const NetworkChunk &chunk = this->chunks[entry.index];
 		return std::make_tuple(!entry.in_sight, chunk.built, chunk.due_since, -chunk.nearest_pixels);
 	});
-	BuildSlice slice;
+	BuildSlice slice(!this->due.empty() && this->due.front().in_sight);
 	for (const Due &entry : this->due) {
 		NetworkChunk &chunk = this->chunks[entry.index];
 		ProfileScope profile("build", "network", ProfileClock::Cpu);
-		WayDetail detail = chunk.NextDetail(entry.detail);
+		WayDetail detail = chunk.NextDetail(entry.detail, entry.in_sight);
 		if (chunk.rebuild.has_value() && chunk.rebuild->build.Detail() != detail) chunk.rebuild.reset();
 		if (!chunk.rebuild.has_value()) {
 			chunk.rebuild.emplace(NetworkBuild(this->grid.TilesOf(entry.index), detail));
@@ -172,7 +173,7 @@ void NetworkField::Prepare(const SceneView &camera, std::vector<const NetworkChu
 		WayDetail detail = chunk.nearest_pixels >= FULL_DETAIL_PIXELS ? WayDetail::Full : WayDetail::Simple;
 		if (chunk.Outdated(detail)) {
 			this->due.push_back({index, detail, in_sight});
-			if (chunk.due_since == 0) chunk.due_since = this->frame;
+			MarkDue(chunk, this->frame, in_sight);
 		} else {
 			chunk.rebuild.reset();
 			chunk.due_since = 0;

@@ -107,7 +107,7 @@ double TerrainField::Distance(size_t index, const Vec3 &eye) const
 /* The blocks in the camera's view are brought to the step its view of their nearest point asks for, and those the world changed under are built afresh.
  * A view with nothing yet to show has every block built whole at once; otherwise a block first coming into view is laid at once, the nearest no finer than a draft
  * where that would cost much and those past the slice of the frame at the coarsest step, and the rest are refined within what is left of the slice,
- * each keeping its old meshes until its new ones are done. Shadows only draw the blocks there are. */
+ * which hurries while any wait, each keeping its old meshes until its new ones are done. Shadows only draw the blocks there are. */
 void TerrainField::Refresh(const SceneView &camera)
 {
 	this->nearby.clear();
@@ -134,7 +134,7 @@ void TerrainField::Refresh(const SceneView &camera)
 		}
 	}
 
-	BuildSlice slice;
+	BuildSlice slice(!this->due.empty());
 	for (const Due &entry : this->due) {
 		const Chunk &chunk = this->chunks[entry.index];
 		if (!chunk.ground.Empty()) continue;

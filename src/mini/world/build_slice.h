@@ -15,10 +15,37 @@
 #include <cstdint>
 #include <vector>
 
-/* The wall-clock time from its start a frame spends building, past which a build left unfinished goes on in the next frame. */
+/* A frame's building, from when the frame opens: the interval it is drawn in and how long the slices of every field have run in it so far. */
+class BuildFrame {
+public:
+	using Clock = std::chrono::steady_clock;
+
+	void Open(Clock::duration interval)
+	{
+		this->opened = Clock::now();
+		this->interval = interval;
+		this->spent = {};
+	}
+
+private:
+	friend class BuildSlice;
+
+	Clock::time_point opened = Clock::now();
+	Clock::duration interval{};
+	Clock::duration spent{};
+};
+
+extern BuildFrame _build_frame;
+
+/* The wall-clock time from its start a frame spends building, past which a build left unfinished goes on in the next frame.
+ * A field with blocks in sight still waiting on their builds hurries: its slice runs longer, as long as the frame's building and the frame itself leave room. */
 class BuildSlice {
 public:
-	explicit BuildSlice(std::chrono::microseconds length = LENGTH) : deadline(Clock::now() + length) {}
+	explicit BuildSlice(std::chrono::microseconds length = LENGTH) : start(Clock::now()), deadline(this->start + length) {}
+	explicit BuildSlice(bool hurried) : BuildSlice(hurried ? HurriedLength() : LENGTH) {}
+	~BuildSlice() { _build_frame.spent += Clock::now() - this->start; }
+	BuildSlice(const BuildSlice &) = delete;
+	BuildSlice &operator=(const BuildSlice &) = delete;
 
 	bool Spent() const { return Clock::now() >= this->deadline; }
 
@@ -34,9 +61,22 @@ public:
 	}
 
 private:
-	using Clock = std::chrono::steady_clock;
+	using Clock = BuildFrame::Clock;
 	static constexpr std::chrono::microseconds LENGTH{1500};
+	static constexpr std::chrono::microseconds HURRIED_LENGTH{4000};
+	static constexpr std::chrono::microseconds HURRIED_FRAME_BUILDING{6000};
+	static constexpr int HURRIED_FRAME_SHARE_PERCENT = 50;
 
+	static std::chrono::microseconds HurriedLength()
+	{
+		using std::chrono::duration_cast;
+		const BuildFrame &frame = _build_frame;
+		Clock::duration building_left = HURRIED_FRAME_BUILDING - frame.spent;
+		Clock::duration frame_left = frame.opened + frame.interval * HURRIED_FRAME_SHARE_PERCENT / 100 - Clock::now();
+		return std::clamp(duration_cast<std::chrono::microseconds>(std::min(building_left, frame_left)), LENGTH, HURRIED_LENGTH);
+	}
+
+	Clock::time_point start;
 	Clock::time_point deadline;
 };
 
@@ -46,6 +86,16 @@ struct Rebuild {
 	Build build;
 	bool outdated = false;
 };
+
+/* A block waits on its build from the frame it was found out of date in, counted afresh as it comes into sight or goes out of it,
+ * so the blocks a cut or a turn brings into sight are built nearest first instead of after those that waited out of sight. */
+template <class Chunk>
+void MarkDue(Chunk &chunk, uint64_t frame, bool in_sight)
+{
+	if (chunk.due_since != 0 && chunk.due_in_sight == in_sight) return;
+	chunk.due_since = frame;
+	chunk.due_in_sight = in_sight;
+}
 
 /* The blocks of a field with a build under way, so those no view has wanted for long drop their builds without every block being looked over. */
 class BuildsUnderWay {

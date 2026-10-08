@@ -4,6 +4,7 @@ add_files(
     block_scatter.h
     bridge_models.cpp
     bridge_models.h
+    build_slice.cpp
     build_slice.h
     chunk_grid.cpp
     chunk_grid.h
