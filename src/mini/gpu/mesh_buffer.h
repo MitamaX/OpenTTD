@@ -73,9 +73,11 @@ public:
 
 	void Upload(std::span<const std::byte> vertices, size_t stride, std::span<const VertexAttribute> layout, std::span<const uint32_t> indices);
 	void Draw() const;
+	void Draw(int first, int count) const;
 	void Release();
 
 	bool Empty() const { return this->index_count == 0; }
+	int IndexCount() const { return this->index_count; }
 	size_t Bytes() const { return this->bytes; }
 
 private:

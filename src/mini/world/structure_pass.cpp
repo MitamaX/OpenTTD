@@ -34,7 +34,7 @@ static constexpr std::array<const char *, 11> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/structure.glsl",
 	"mini_ui/shaders/structure.frag",
 };
-static constexpr std::array<const char *, 6> CASTER_FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 6> OPEN_CASTER_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/caster.glsl",
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
@@ -43,13 +43,13 @@ static constexpr std::array<const char *, 6> CASTER_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/structure_caster.frag",
 };
 
-StructurePass::StructurePass() : program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES, CASTER_FRAGMENT_SOURCES))
+StructurePass::StructurePass() : program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), open_caster(CasterProgram(VERTEX_SOURCES, OPEN_CASTER_FRAGMENT_SOURCES))
 {
 }
 
 std::vector<ShaderProgram *> StructurePass::Programs()
 {
-	return {&this->program, &this->caster};
+	return {&this->program, &this->caster, &this->open_caster};
 }
 
 void StructurePass::Prepare(const SceneView &view)
@@ -62,12 +62,15 @@ void StructurePass::Sync(const WorldChanges &changes)
 	this->field.Sync(changes);
 }
 
+/* Solid claddings cast with a program that only lays depth, so the GPU may lay it as fast as it can; open ones cut their gaps out of their shadows. */
 void StructurePass::Cast(const ShadowView &view)
 {
-	if (!this->caster.Ready()) return;
+	if (!this->caster.Ready() || !this->open_caster.Ready()) return;
 	this->field.Gather(view.camera, view.frustum, this->shown);
 	this->caster.Use();
-	this->DrawChunks();
+	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw(0, chunk->solid_indices);
+	this->open_caster.Use();
+	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw(chunk->solid_indices, chunk->mesh.IndexCount() - chunk->solid_indices);
 }
 
 void StructurePass::Draw(const SceneView &view)
@@ -82,9 +85,11 @@ void StructurePass::Draw(const SceneView &view)
 
 void StructurePass::WarmCast()
 {
-	if (!this->caster.Ready()) return;
-	this->caster.Use();
-	DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
+	for (ShaderProgram *caster : {&this->caster, &this->open_caster}) {
+		if (!caster->Ready()) continue;
+		caster->Use();
+		DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
+	}
 }
 
 void StructurePass::Warm()
@@ -104,4 +109,5 @@ void StructurePass::Release()
 	this->field.Release();
 	this->program.Release();
 	this->caster.Release();
+	this->open_caster.Release();
 }

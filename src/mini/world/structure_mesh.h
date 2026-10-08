@@ -65,8 +65,15 @@ struct StructurePick {
 	TileSpan tiles;
 };
 
+/* Claddings with gaps through them, which cast the shadow of what they are made of only. */
+constexpr bool IsOpen(Material material)
+{
+	return material == Material::Lattice || material == Material::Pickets;
+}
+
 struct StructureMesh : TriangleList<StructureVertex> {
 	void Polygon(std::span<const StructureVertex> corners);
+	size_t SolidFirst();
 };
 
 /* Everything forms stand as: their mesh, the boxes clicks meet and the stacks smoke rises from. */

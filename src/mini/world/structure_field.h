@@ -44,11 +44,12 @@ private:
 	StructureParts parts;
 };
 
-/* A block of tiles: its mesh, built on the game's side and waiting to be handed to the GPU or already there, the boxes clicks meet, the stacks that smoke,
+/* A block of tiles: its mesh, built on the game's side and waiting to be handed to the GPU or already there, with how many of its indices clad it solid before those of open claddings, the boxes clicks meet, the stacks that smoke,
  * the detail it was built at and whether a form changed under it since, the build that will replace it and the frame since which it has waited for it,
  * and the box it fills, guessed from the ground until it is built. */
 struct StructureChunk {
 	MeshBuffer mesh;
+	int solid_indices = 0;
 	std::optional<StructureMesh> waiting;
 	std::optional<Rebuild<StructureBuild>> rebuild;
 	std::vector<StructurePick> picks;

@@ -41,6 +41,21 @@ void StructureMesh::Polygon(std::span<const StructureVertex> corners)
 	for (uint32_t corner = 1; corner + 1 < corners.size(); corner++) this->Triangle(first, first + corner, first + corner + 1);
 }
 
+/* The triangles of solid claddings are laid before those of open ones; how many indices the solid ones take. */
+size_t StructureMesh::SolidFirst()
+{
+	std::vector<uint32_t> solid;
+	std::vector<uint32_t> open;
+	for (auto corner = this->indices.begin(); corner != this->indices.end(); corner += 3) {
+		std::vector<uint32_t> &into = IsOpen(static_cast<Material>(this->vertices[*corner].surface[0])) ? open : solid;
+		into.insert(into.end(), corner, corner + 3);
+	}
+	size_t solid_indices = solid.size();
+	solid.insert(solid.end(), open.begin(), open.end());
+	this->indices = std::move(solid);
+	return solid_indices;
+}
+
 FormStyle::FormStyle(const BuildingForm &form, MiniLayer layer) :
 	floor(form.floor * LevelRise()),
 	layer(to_underlying(layer)),

@@ -43,6 +43,7 @@ private:
 	std::vector<const StructureChunk *> shown;
 	ShaderProgram program;
 	ShaderProgram caster;
+	ShaderProgram open_caster;
 };
 
 #endif /* MINI_WORLD_STRUCTURE_PASS_H */

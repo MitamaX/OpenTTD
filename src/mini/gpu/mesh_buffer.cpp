@@ -69,9 +69,15 @@ void MeshBuffer::Upload(std::span<const std::byte> vertices, size_t stride, std:
 
 void MeshBuffer::Draw() const
 {
-	if (this->Empty()) return;
+	this->Draw(0, this->index_count);
+}
+
+/* Only the indices from the first on, as many as counted. */
+void MeshBuffer::Draw(int first, int count) const
+{
+	if (count <= 0) return;
 	glBindVertexArray(this->vertex_array);
-	glDrawElements(GL_TRIANGLES, this->index_count, GL_UNSIGNED_INT, nullptr);
+	glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, reinterpret_cast<const void *>(static_cast<uintptr_t>(first) * sizeof(uint32_t)));
 }
 
 void MeshBuffer::Release()
