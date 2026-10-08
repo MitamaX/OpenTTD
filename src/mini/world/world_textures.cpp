@@ -10,7 +10,11 @@
 #include "../../stdafx.h"
 #include "world_textures.h"
 
+#include <algorithm>
+#include <iterator>
+
 #include "../gpu/frame_profile.h"
+#include "../map/tile_shapes.h"
 #include "../map/way_bends.h"
 #include "frame_units.h"
 
@@ -19,6 +23,36 @@
 static_assert(WorldTextures::UNIT_COUNT <= SHADOW_UNIT);
 
 static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_shore"};
+/* Two spans go up as one where the area bounding both is at most this many times what they cover, or at most this many texels. */
+static constexpr int64_t MOST_JOINED_SPREAD = 2;
+static constexpr int64_t FREELY_JOINED_TEXELS = 128 * 128;
+
+static int64_t Area(const Rect &span)
+{
+	return static_cast<int64_t>(span.Width()) * span.Height();
+}
+
+static Rect Joined(const Rect &a, const Rect &b)
+{
+	return TakingIn(TakingIn(a, b.left, b.top), b.right, b.bottom);
+}
+
+/* Spans lying over or close by one another are joined, so a texture is sent each area once a frame and in as few pieces as it takes. */
+static void Coalesce(std::vector<Rect> &spans)
+{
+	for (size_t kept = 0; kept < spans.size(); kept++) {
+		for (size_t other = kept + 1; other < spans.size();) {
+			Rect joined = Joined(spans[kept], spans[other]);
+			if (Area(joined) > std::max(FREELY_JOINED_TEXELS, MOST_JOINED_SPREAD * (Area(spans[kept]) + Area(spans[other])))) {
+				other++;
+				continue;
+			}
+			spans[kept] = joined;
+			spans.erase(spans.begin() + static_cast<std::ptrdiff_t>(other));
+			other = kept + 1;
+		}
+	}
+}
 
 WorldTextures::Source WorldTextures::SourceOf(uint unit) const
 {
@@ -51,9 +85,9 @@ void WorldTextures::Sync(const WorldChanges &changes)
 	} else {
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) {
 			Source source = this->SourceOf(unit);
-			for (ChangeKind kind : source.kinds) {
-				for (const Rect &span : changes.Of(kind)) this->textures[unit].Update(span, source.texels);
-			}
+			this->spans.clear();
+			for (ChangeKind kind : source.kinds) std::ranges::copy(changes.Of(kind), std::back_inserter(this->spans));
+			this->SendSpans(unit, source.texels);
 		}
 		this->ResurveyShore(changes);
 	}
@@ -65,13 +99,21 @@ void WorldTextures::ResurveyShore(const WorldChanges &changes)
 {
 	if (!changes.Has(ChangeKind::Water) && !changes.Has(ChangeKind::Shape)) return;
 	ProfileScope profile("build", "shore", ProfileClock::Cpu);
+	this->spans.clear();
 	for (ChangeKind kind : {ChangeKind::Water, ChangeKind::Shape}) {
 		for (const Rect &span : changes.Of(kind)) {
 			_frame_profile.Count("shore_surveys");
 			std::optional<Rect> shifted = this->shore.Resurvey(span);
-			if (shifted.has_value()) this->textures[SHORE_UNIT].Update(*shifted, this->shore.Texels());
+			if (shifted.has_value()) this->spans.push_back(*shifted);
 		}
 	}
+	this->SendSpans(SHORE_UNIT, this->shore.Texels());
+}
+
+void WorldTextures::SendSpans(uint unit, const void *texels)
+{
+	Coalesce(this->spans);
+	for (const Rect &span : this->spans) this->textures[unit].Update(span, texels);
 }
 
 void WorldTextures::Bind() const

@@ -11,6 +11,7 @@
 #define MINI_WORLD_WORLD_TEXTURES_H
 
 #include <array>
+#include <vector>
 
 #include "../gpu/data_texture.h"
 #include "../map/world_tiles.h"
@@ -46,10 +47,12 @@ private:
 
 	Source SourceOf(uint unit) const;
 	void Allocate(uint unit);
+	void SendSpans(uint unit, const void *texels);
 	void ResurveyShore(const WorldChanges &changes);
 
 	std::array<DataTexture, UNIT_COUNT> textures;
 	ShoreField shore;
+	std::vector<Rect> spans;
 };
 
 #endif /* MINI_WORLD_WORLD_TEXTURES_H */

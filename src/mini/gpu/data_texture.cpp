@@ -106,6 +106,7 @@ void DataTexture::Upload(int level, Dimension level_size, const Rect &area, cons
 {
 	TexelLayout layout = LayoutOf(this->format);
 	size_t first = (static_cast<size_t>(area.top) * level_size.width + area.left) * layout.bytes;
+	_frame_profile.Count("texture_uploads");
 	_frame_profile.Count("texture_bytes", static_cast<size_t>(area.Width()) * area.Height() * layout.bytes);
 	glBindTexture(GL_TEXTURE_2D, this->name);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
