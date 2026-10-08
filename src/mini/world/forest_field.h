@@ -37,6 +37,10 @@ inline constexpr std::array<VertexAttribute, 2> TREE_INSTANCE_LAYOUT = {{
 /* The largest size a tree's size byte stands for, as a share of a grown tree. */
 inline constexpr double TREE_LARGEST_SCALE = 2.0;
 
+/* How much lower and taller trees stand between thickets and in them, and how much squatter and taller each grows than its model. */
+inline constexpr std::array<double, 2> TREE_THICKET_SCALES = {0.8, 1.2};
+inline constexpr std::array<double, 2> TREE_STRETCHES = {0.85, 1.2};
+
 using TreeBatch = InstanceBatch<TreeInstance>;
 
 class ForestField {

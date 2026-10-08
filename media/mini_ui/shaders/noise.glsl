@@ -17,3 +17,15 @@ float Noise(vec2 p)
 	vec4 corners = LatticeHashes(ivec2(floor(p)));
 	return mix(mix(corners.x, corners.y, s.x), mix(corners.z, corners.w, s.x), s.y);
 }
+
+/* Each layer of the lattice up is hashed as a far off stretch of the flat one. */
+const ivec2 NOISE_LAYER_STRIDE = ivec2(1013, 619);
+
+float Noise(vec3 p)
+{
+	vec3 f = fract(p);
+	vec3 s = f * f * (3.0 - 2.0 * f);
+	ivec3 cell = ivec3(floor(p));
+	vec4 corners = mix(LatticeHashes(cell.xy + cell.z * NOISE_LAYER_STRIDE), LatticeHashes(cell.xy + (cell.z + 1) * NOISE_LAYER_STRIDE), s.z);
+	return mix(mix(corners.x, corners.y, s.x), mix(corners.z, corners.w, s.x), s.y);
+}

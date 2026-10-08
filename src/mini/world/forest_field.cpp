@@ -24,16 +24,22 @@
 
 #include "../../safeguards.h"
 
-static constexpr double CROWN_REACH = 0.3;
+static constexpr double CROWN_REACH = 0.4;
 static constexpr int CROWN_MARGIN = 1;
 static_assert(CROWN_REACH <= CROWN_MARGIN);
-static constexpr double SLOT_JITTER = 0.09;
+static constexpr double SLOT_JITTER = 0.15;
 static constexpr double EDGE_MARGIN = 0.08;
+static constexpr SeedRange TREE_SPREAD = {0.7, 1.25};
 static constexpr double SPARE_TREE_SCALE = 0.85;
+static constexpr uint THICK_WOOD = 3;
+static constexpr int FRINGE_MARGIN = 1;
+static constexpr double FRINGE_REACH = 0.45;
+static constexpr double FRINGE_SCALE = 0.6;
 static constexpr double TOY_SCALE = 1.4;
 static constexpr double TOY_HUDDLE = 0.3;
 static constexpr SeedRange TOY_HUDDLE_SPOT = {0.3, 0.7};
 static constexpr uint32_t PLANTING_SALT = 0x7EE5F00DU;
+static constexpr double TALLEST_GROWN = TREE_TALLEST * TREE_THICKET_SCALES[1] * TREE_STRETCHES[1];
 
 /* Spots a tile's trees stand on, spread so neighbours' crowns just meet; the middle one comes last, clear of a park's paths. */
 static constexpr std::array<TilePoint, 6> SLOTS = {{
@@ -76,7 +82,24 @@ static uint8_t ShareByte(double share)
 	return static_cast<uint8_t>(std::lround(std::clamp(share, 0.0, 1.0) * CHANNEL_MAX));
 }
 
-/* A tile's trees, the same every time it is planted: each on a slot of its own, the slots turned, mirrored and shuffled tile by tile. */
+static bool Treeless(int tx, int ty)
+{
+	return !OnMap(tx, ty) || (_world_tiles.GroundAt(TileXY(tx, ty)).flora & FLORA_COUNT_MASK) == 0;
+}
+
+/* How deep within a thick wood a spot of its tile lies, from nothing on a side that opens onto treeless ground to whole a fringe's reach in. */
+static double FringeDepth(int tx, int ty, double fx, double fy)
+{
+	double reach = FRINGE_REACH;
+	if (Treeless(tx - 1, ty)) reach = std::min(reach, fx);
+	if (Treeless(tx + 1, ty)) reach = std::min(reach, 1.0 - fx);
+	if (Treeless(tx, ty - 1)) reach = std::min(reach, fy);
+	if (Treeless(tx, ty + 1)) reach = std::min(reach, 1.0 - fy);
+	return reach / FRINGE_REACH;
+}
+
+/* A tile's trees, the same every time it is planted: each on a slot of its own, the slots turned, mirrored and shuffled tile by tile.
+ * A thick wood thins out toward treeless ground, its spare trees dropping out and the rest growing smaller over its fringe. */
 static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance>> &planted)
 {
 	TileIndex tile = TileXY(tx, ty);
@@ -101,7 +124,10 @@ static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance
 		double fy = std::clamp((mirror_y ? 1.0 - sy : sy) + dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
 		double x = tx + (toy ? std::lerp(fx, huddle.x, TOY_HUDDLE) : fx);
 		double y = ty + (toy ? std::lerp(fy, huddle.y, TOY_HUDDLE) : fy);
-		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(0.82, 1.15) * (tree < count ? 1.0 : SPARE_TREE_SCALE) * (toy ? TOY_SCALE : 1.0);
+		double fringe = toy || count < THICK_WOOD ? 1.0 : FringeDepth(tx, ty, fx, fy);
+		bool spare = tree >= count;
+		if (spare && dice.Share() > fringe) continue;
+		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(TREE_SPREAD) * std::lerp(FRINGE_SCALE, 1.0, fringe) * (spare ? SPARE_TREE_SCALE : 1.0) * (toy ? TOY_SCALE : 1.0);
 		double wither = age == TreeAge::Dying ? dice.Between(0.35, 0.7) : 0.0;
 		TreeShape shape = {kind, static_cast<uint8_t>(dice.Next() % TREE_SHAPES)};
 		TreeInstance instance = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(tx, ty, x, y)), {ShareByte(dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(dice.Share()), ShareByte(wither)}};
@@ -148,7 +174,7 @@ void ForestField::Sync(const WorldChanges &changes)
 		return;
 	}
 	auto unplant = [&](size_t index) { this->cells[index].stale = true; };
-	this->grid.ForEachTouched(changes, ChangeKind::Flora, 0, unplant);
+	this->grid.ForEachTouched(changes, ChangeKind::Flora, FRINGE_MARGIN, unplant);
 	this->grid.ForEachTouched(changes, {ChangeKind::Shape, ChangeKind::Water}, SHELF_TILES, unplant);
 }
 
@@ -189,7 +215,7 @@ std::pair<Vec3, Vec3> ForestField::Bounds(const Cell &cell, size_t index) const
 	double high = cell.planted ? cell.high : _world_tiles.Peak();
 	return {
 		{tiles.tx0 - CROWN_REACH, tiles.ty0 - CROWN_REACH, low * rise - DEEPEST_SINK * rise},
-		{tiles.tx1 + 1.0 + CROWN_REACH, tiles.ty1 + 1.0 + CROWN_REACH, high * rise + TREE_TALLEST},
+		{tiles.tx1 + 1.0 + CROWN_REACH, tiles.ty1 + 1.0 + CROWN_REACH, high * rise + TALLEST_GROWN},
 	};
 }
 

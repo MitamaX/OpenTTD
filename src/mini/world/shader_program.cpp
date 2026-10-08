@@ -160,6 +160,8 @@ static std::string ShaderHeader()
 	DefineFloat(header, "TREE_CROSSFADE", TREE_CROSSFADE_OCTAVES);
 	DefineFloat(header, "TREE_SWAY_HEIGHT", TREE_SWAY_HEIGHT);
 	DefineFloat(header, "TREE_LARGEST_SCALE", TREE_LARGEST_SCALE);
+	DefineFloats(header, "TREE_THICKET_SCALES", TREE_THICKET_SCALES);
+	DefineFloats(header, "TREE_STRETCHES", TREE_STRETCHES);
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
