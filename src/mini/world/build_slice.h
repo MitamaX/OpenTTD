@@ -10,7 +10,10 @@
 #ifndef MINI_WORLD_BUILD_SLICE_H
 #define MINI_WORLD_BUILD_SLICE_H
 
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <vector>
 
 /* The wall-clock time from its start a frame spends building, past which a build left unfinished goes on in the next frame. */
 class BuildSlice {
@@ -42,6 +45,34 @@ template <class Build>
 struct Rebuild {
 	Build build;
 	bool outdated = false;
+};
+
+/* The blocks of a field with a build under way, so those no view has wanted for long drop their builds without every block being looked over. */
+class BuildsUnderWay {
+public:
+	void Clear() { this->blocks.clear(); }
+
+	void Begin(size_t index)
+	{
+		if (std::ranges::find(this->blocks, index) == this->blocks.end()) this->blocks.push_back(index);
+	}
+
+	/* A block's build is dropped once the block has gone unwanted for the given frames. */
+	template <class Chunk>
+	void Abandon(std::vector<Chunk> &chunks, uint64_t frame, uint64_t unwanted_frames)
+	{
+		std::erase_if(this->blocks, [&](size_t index) {
+			Chunk &chunk = chunks[index];
+			if (!chunk.rebuild.has_value()) return true;
+			if (frame - chunk.wanted < unwanted_frames) return false;
+			chunk.rebuild.reset();
+			chunk.due_since = 0;
+			return true;
+		});
+	}
+
+private:
+	std::vector<size_t> blocks;
 };
 
 #endif /* MINI_WORLD_BUILD_SLICE_H */

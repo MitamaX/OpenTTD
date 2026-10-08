@@ -195,7 +195,10 @@ void StructureField::Refine()
 		ProfileScope profile("build", "structures", ProfileClock::Cpu);
 		StructureDetail detail = chunk.NextDetail(entry.detail);
 		if (chunk.rebuild.has_value() && chunk.rebuild->build.Detail() != detail) chunk.rebuild.reset();
-		if (!chunk.rebuild.has_value()) chunk.rebuild.emplace(StructureBuild(this->grid.TilesOf(entry.index), detail, this->digests));
+		if (!chunk.rebuild.has_value()) {
+			chunk.rebuild.emplace(StructureBuild(this->grid.TilesOf(entry.index), detail, this->digests));
+			this->building.Begin(entry.index);
+		}
 		if (!slice.Carry(chunk.rebuild->build)) return;
 		this->Finish(chunk);
 	}
@@ -228,12 +231,14 @@ void StructureField::Finish(StructureChunk &chunk)
 void StructureField::Gather(const SceneView &camera, const Frustum &frustum, std::vector<const StructureChunk *> &shown)
 {
 	shown.clear();
-	for (StructureChunk &chunk : this->chunks) {
+	for (size_t index = 0; index < this->chunks.size(); index++) {
+		StructureChunk &chunk = this->chunks[index];
 		if (chunk.waiting.has_value()) {
 			if (chunk.waiting->indices.empty()) {
 				chunk.mesh.Release();
 			} else {
 				chunk.mesh.Upload(*chunk.waiting, STRUCTURE_LAYOUT);
+				this->keep.Hold(index);
 			}
 			chunk.waiting.reset();
 		}
@@ -266,11 +271,7 @@ std::optional<StructureHit> StructureField::Pick(const Vec3 &origin, const Vec3 
  * so a big map only holds the buildings about the view. */
 void StructureField::Evict()
 {
-	for (StructureChunk &chunk : this->chunks) {
-		if (this->frame - chunk.wanted < ABANDON_FRAMES) continue;
-		chunk.rebuild.reset();
-		chunk.due_since = 0;
-	}
+	this->building.Abandon(this->chunks, this->frame, ABANDON_FRAMES);
 	auto bytes = [](const StructureChunk &chunk) { return chunk.mesh.Bytes(); };
 	this->keep.Trim(this->chunks, this->frame, bytes, &StructureChunk::wanted, [](StructureChunk &chunk) {
 		chunk.mesh.Release();
@@ -288,5 +289,7 @@ void StructureField::Release()
 	this->chunks.clear();
 	this->digests.clear();
 	this->due.clear();
+	this->keep.Clear();
+	this->building.Clear();
 	this->grid.Clear();
 }

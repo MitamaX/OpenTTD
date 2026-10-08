@@ -84,6 +84,7 @@ private:
 
 	ChunkGrid grid{CHUNK_TILES};
 	ChunkKeep keep;
+	BuildsUnderWay building;
 	std::vector<NetworkChunk> chunks;
 	std::vector<Due> due;
 	double rise = 0.0;

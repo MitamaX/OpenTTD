@@ -144,6 +144,7 @@ void ForestField::Sync(const WorldChanges &changes)
 	if (changes.whole || size != this->grid.Map()) {
 		this->grid.Lay(size);
 		this->cells = std::vector<Cell>(this->grid.Count());
+		this->keep.Clear();
 		return;
 	}
 	auto unplant = [&](size_t index) { this->cells[index].stale = true; };
@@ -212,6 +213,7 @@ void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, Tr
 	for (const Due &entry : this->due) {
 		if (slice.Spent()) return;
 		this->Plant(this->cells[entry.index], this->grid.TilesOf(entry.index));
+		this->keep.Hold(entry.index);
 	}
 }
 
@@ -242,5 +244,6 @@ void ForestField::Evict()
 void ForestField::Release()
 {
 	this->cells.clear();
+	this->keep.Clear();
 	this->grid.Clear();
 }

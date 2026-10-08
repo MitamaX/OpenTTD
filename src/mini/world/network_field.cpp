@@ -117,7 +117,10 @@ void NetworkField::Refine()
 		ProfileScope profile("build", "network", ProfileClock::Cpu);
 		WayDetail detail = chunk.NextDetail(entry.detail);
 		if (chunk.rebuild.has_value() && chunk.rebuild->build.Detail() != detail) chunk.rebuild.reset();
-		if (!chunk.rebuild.has_value()) chunk.rebuild.emplace(NetworkBuild(this->grid.TilesOf(entry.index), detail));
+		if (!chunk.rebuild.has_value()) {
+			chunk.rebuild.emplace(NetworkBuild(this->grid.TilesOf(entry.index), detail));
+			this->building.Begin(entry.index);
+		}
 		if (!slice.Carry(chunk.rebuild->build)) return;
 		this->Finish(chunk);
 	}
@@ -207,6 +210,7 @@ void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::
 				Hand(chunk.spans[layer], chunk.waiting->spans[layer], SPAN_LAYOUT);
 			}
 			chunk.waiting.reset();
+			this->keep.Hold(index);
 		}
 		if (!chunk.built) continue;
 		auto [low, high] = this->Bounds(chunk, index);
@@ -218,11 +222,7 @@ void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::
  * so a big map only holds the ways about the view. */
 void NetworkField::Evict()
 {
-	for (NetworkChunk &chunk : this->chunks) {
-		if (this->frame - chunk.wanted < ABANDON_FRAMES) continue;
-		chunk.rebuild.reset();
-		chunk.due_since = 0;
-	}
+	this->building.Abandon(this->chunks, this->frame, ABANDON_FRAMES);
 	this->keep.Trim(this->chunks, this->frame, &NetworkChunk::Bytes, &NetworkChunk::wanted, [](NetworkChunk &chunk) {
 		chunk.Release();
 		chunk.waiting.reset();
@@ -250,5 +250,7 @@ void NetworkField::Release()
 	for (NetworkChunk &chunk : this->chunks) chunk.Release();
 	this->chunks.clear();
 	this->due.clear();
+	this->keep.Clear();
+	this->building.Clear();
 	this->grid.Clear();
 }

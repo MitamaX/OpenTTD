@@ -172,6 +172,7 @@ void TerrainField::Finish(size_t index)
 	Chunk &chunk = this->chunks[index];
 	_frame_profile.Count("terrain_builds");
 	chunk.ground.Upload(chunk.rebuild->build.Finish(), TERRAIN_LAYOUT);
+	this->keep.Hold(index);
 	if (chunk.stale) chunk.water.Upload(BuildWaterSurface(this->grid.TilesOf(index)), WATER_LAYOUT);
 	chunk.step = chunk.rebuild->build.Step();
 	chunk.stale = chunk.rebuild->outdated;
@@ -229,6 +230,7 @@ void TerrainField::Release()
 	}
 	this->chunks.clear();
 	this->due.clear();
+	this->keep.Clear();
 	this->outer_bed.Release();
 	this->outer_water.Release();
 	this->grid.Clear();

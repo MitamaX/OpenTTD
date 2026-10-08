@@ -103,6 +103,7 @@ private:
 
 	ChunkGrid grid{CHUNK_TILES};
 	ChunkKeep keep;
+	BuildsUnderWay building;
 	std::vector<StructureChunk> chunks;
 	std::vector<uint32_t> digests;
 	std::vector<Due> due;
