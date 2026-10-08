@@ -15,7 +15,7 @@
 /* The wall-clock time from its start a frame spends building, past which a build left unfinished goes on in the next frame. */
 class BuildSlice {
 public:
-	BuildSlice() : deadline(Clock::now() + LENGTH) {}
+	explicit BuildSlice(std::chrono::microseconds length = LENGTH) : deadline(Clock::now() + length) {}
 
 	bool Spent() const { return Clock::now() >= this->deadline; }
 

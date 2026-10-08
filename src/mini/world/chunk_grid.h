@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <span>
+#include <utility>
 
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
@@ -77,12 +78,20 @@ public:
 	void ForEachSeen(const SceneView &view, const Frustum &frustum, double fewest_pixels, int margin, double top, Visit visit) const
 	{
 		this->ForEachWithin(view, fewest_pixels, margin, [&](size_t index) {
-			TileSpan tiles = this->TilesOf(index);
-			Vec3 low = {static_cast<double>(tiles.tx0 - margin), static_cast<double>(tiles.ty0 - margin), 0.0};
-			Vec3 high = {static_cast<double>(tiles.tx1 + 1 + margin), static_cast<double>(tiles.ty1 + 1 + margin), top};
+			auto [low, high] = this->BoxOf(index, margin, top);
 			if (!BoxMeets(frustum, low, high) || view.NearestTilePixels(low, high) < fewest_pixels) return true;
 			return visit(index);
 		});
+	}
+
+	/* The box of a block grown by a margin of tiles, standing from the ground's foot up to the top. */
+	std::pair<Vec3, Vec3> BoxOf(size_t index, int margin, double top) const
+	{
+		TileSpan tiles = this->TilesOf(index);
+		return {
+			{static_cast<double>(tiles.tx0 - margin), static_cast<double>(tiles.ty0 - margin), 0.0},
+			{static_cast<double>(tiles.tx1 + 1 + margin), static_cast<double>(tiles.ty1 + 1 + margin), top},
+		};
 	}
 
 private:

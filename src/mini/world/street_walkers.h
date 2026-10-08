@@ -14,8 +14,8 @@
 #include <span>
 #include <vector>
 
-#include "chunk_grid.h"
 #include "scatter.h"
+#include "strewn_blocks.h"
 
 /* A walker paces up and down a stretch of pavement, from its start along a heading for a length, or stands still where its pace is nothing. */
 struct Walker {
@@ -31,27 +31,22 @@ struct Walker {
 };
 
 /* Walkers stand on the pavements of town streets that run straight on through a tile, more of them where houses crowd close.
- * A block is laid out again once the roads or houses about it change, a few blocks a frame at most. */
+ * A block is laid out again once the roads or houses about it change. */
 class StreetWalkers final : public Scatter {
 public:
+	StreetWalkers();
+
 	void Sync(const WorldChanges &changes) override;
+	void Prepare(const SceneView &camera, double shown_pixels, double cast_pixels) override;
 	/* Each walker is gathered in the bucket of its pose. */
 	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) override;
 	void Release() override;
 
 private:
-	static constexpr int BLOCK_TILES = 16;
-
-	struct Block {
-		std::vector<Walker> walkers;
-		bool stale = true;
-	};
-
-	void Build(size_t index);
+	static void Build(const TileSpan &tiles, std::vector<Walker> &walkers);
 	static size_t GatherBlock(const SceneView &view, std::span<const Walker> walkers, double fewest_pixels, VehicleBatch &batch);
 
-	ChunkGrid grid{BLOCK_TILES};
-	std::vector<Block> blocks;
+	StrewnBlocks<std::vector<Walker>> blocks;
 };
 
 #endif /* MINI_WORLD_STREET_WALKERS_H */

@@ -33,6 +33,11 @@ void ScatterPass::Sync(const WorldChanges &changes)
 	this->scatter->Sync(changes);
 }
 
+void ScatterPass::Prepare(const SceneView &view)
+{
+	this->scatter->Prepare(view, this->look.shown_pixels, this->look.cast_pixels);
+}
+
 void ScatterPass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready()) return;

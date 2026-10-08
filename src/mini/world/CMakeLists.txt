@@ -72,6 +72,7 @@ add_files(
     street_furniture.h
     street_walkers.cpp
     street_walkers.h
+    strewn_blocks.h
     structure_dressing.cpp
     structure_dressing.h
     structure_field.cpp

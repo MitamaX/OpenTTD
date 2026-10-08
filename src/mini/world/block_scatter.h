@@ -14,6 +14,7 @@
 
 #include "chunk_grid.h"
 #include "scatter.h"
+#include "strewn_blocks.h"
 
 /* A tile with nothing on it: no way, no building and no water. */
 bool IsOpenLand(int tx, int ty);
@@ -24,13 +25,12 @@ bool ClearAround(int tx, int ty, int reach);
 /* The copies of each model a block holds. */
 using ScatterCopies = std::vector<std::vector<VehicleInstance>>;
 
-/* A block goes stale when a tile within reach of it changes in a way the scatter reads, since what stands on a tile may hang on the tiles about it; only a few stale blocks in sight are strewn again each frame,
- * those strewn longest ago first, the others showing what they held until their turn comes. */
 class BlockScatter : public Scatter {
 public:
-	BlockScatter(size_t models, int reach, ChangeKinds reads) : models(models), reach(reach), reads(reads) {}
+	BlockScatter(size_t models, int reach, ChangeKinds reads) : models(models), blocks(reads, reach) {}
 
 	void Sync(const WorldChanges &changes) final;
+	void Prepare(const SceneView &camera, double shown_pixels, double cast_pixels) final;
 	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) final;
 	void Release() final;
 
@@ -39,24 +39,8 @@ protected:
 	virtual void Strew(const TileSpan &tiles, ScatterCopies &copies) const = 0;
 
 private:
-	static constexpr int BLOCK_TILES = 16;
-	static constexpr int MOST_STREWN_PER_FRAME = 4;
-
-	struct Block {
-		ScatterCopies copies;
-		bool stale = true;
-		uint64_t strewn_turn = 0;
-	};
-
-	void Lay();
-
-	ChunkGrid grid{BLOCK_TILES};
-	std::vector<Block> blocks;
-	std::vector<size_t> waiting;
-	uint64_t strews = 0;
 	size_t models;
-	int reach;
-	ChangeKinds reads;
+	StrewnBlocks<ScatterCopies> blocks;
 };
 
 #endif /* MINI_WORLD_BLOCK_SCATTER_H */

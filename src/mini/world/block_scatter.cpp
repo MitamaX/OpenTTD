@@ -10,11 +10,7 @@
 #include "../../stdafx.h"
 #include "block_scatter.h"
 
-#include <algorithm>
-#include <span>
-
 #include "../../map_func.h"
-#include "../gpu/frame_profile.h"
 #include "../map/tile_shapes.h"
 
 #include "../../safeguards.h"
@@ -36,51 +32,28 @@ bool ClearAround(int tx, int ty, int reach)
 	return true;
 }
 
-void BlockScatter::Lay()
-{
-	this->grid.Lay(_world_tiles.Size());
-	this->blocks = std::vector<Block>(this->grid.Count());
-}
-
 void BlockScatter::Sync(const WorldChanges &changes)
 {
-	if (changes.whole || this->grid.Map() != _world_tiles.Size()) {
-		this->Lay();
-		return;
-	}
-	this->grid.ForEachTouched(changes, this->reads, this->reach, [&](size_t index) { this->blocks[index].stale = true; });
+	this->blocks.Sync(changes);
+}
+
+void BlockScatter::Prepare(const SceneView &camera, double shown_pixels, double cast_pixels)
+{
+	this->blocks.Refresh(camera, shown_pixels, cast_pixels, 0, [&](const TileSpan &tiles, ScatterCopies &copies) {
+		copies.assign(this->models, {});
+		this->Strew(tiles, copies);
+	});
 }
 
 void BlockScatter::Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch)
 {
-	if (this->grid.Map() != _world_tiles.Size()) this->Lay();
-	double top = (_world_tiles.Peak() + 1.0) * LevelRise();
-	this->waiting.clear();
-	this->grid.ForEachSeen(view, frustum, fewest_pixels, 0, top, [&](size_t index) {
-		if (this->blocks[index].stale) this->waiting.push_back(index);
-		return true;
-	});
-	size_t due = std::min<size_t>(this->waiting.size(), MOST_STREWN_PER_FRAME);
-	std::partial_sort(this->waiting.begin(), this->waiting.begin() + due, this->waiting.end(), [&](size_t a, size_t b) { return this->blocks[a].strewn_turn < this->blocks[b].strewn_turn; });
-	for (size_t index : std::span(this->waiting).first(due)) {
-		Block &block = this->blocks[index];
-		_frame_profile.Count("scatter_strews");
-		ProfileScope profile("build", "scatter", ProfileClock::Cpu);
-		block.copies.assign(this->models, {});
-		this->Strew(this->grid.TilesOf(index), block.copies);
-		block.stale = false;
-		block.strewn_turn = ++this->strews;
-	}
-
-	this->grid.ForEachSeen(view, frustum, fewest_pixels, 0, top, [&](size_t index) {
-		const Block &block = this->blocks[index];
-		for (size_t model = 0; model < block.copies.size(); model++) batch.Add(model, block.copies[model]);
+	this->blocks.ForEachSeen(view, frustum, fewest_pixels, 0, [&](const ScatterCopies &copies) {
+		for (size_t model = 0; model < copies.size(); model++) batch.Add(model, copies[model]);
 		return true;
 	});
 }
 
 void BlockScatter::Release()
 {
-	this->grid.Clear();
-	this->blocks.clear();
+	this->blocks.Release();
 }

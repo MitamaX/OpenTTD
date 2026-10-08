@@ -38,7 +38,6 @@ static constexpr SeedRange PACE = {0.12, 0.24};
 static constexpr double STRIDE = 0.045;
 static constexpr double BOB = 0.004;
 static constexpr size_t MOST_WALKERS = 8000;
-static constexpr int MOST_BUILDS = 4;
 static constexpr uint32_t WALKER_SALT = 0x5EED11U;
 
 static constexpr std::array<uint32_t, 12> SHIRTS = {
@@ -85,23 +84,24 @@ static int RunOn(int tx, int ty, MapVector step, Axis axis)
 	return run;
 }
 
+StreetWalkers::StreetWalkers() : blocks({ChangeKind::Cover, ChangeKind::Ways}, RUN_REACH + DENSITY_REACH)
+{
+}
+
 void StreetWalkers::Sync(const WorldChanges &changes)
 {
-	if (changes.whole || this->grid.Map() != _world_tiles.Size()) {
-		this->grid.Lay(_world_tiles.Size());
-		this->blocks = std::vector<Block>(this->grid.Count());
-		return;
-	}
-	this->grid.ForEachTouched(changes, {ChangeKind::Cover, ChangeKind::Ways}, RUN_REACH + DENSITY_REACH, [&](size_t index) { this->blocks[index].stale = true; });
+	this->blocks.Sync(changes);
+}
+
+void StreetWalkers::Prepare(const SceneView &camera, double shown_pixels, double cast_pixels)
+{
+	this->blocks.Refresh(camera, shown_pixels, cast_pixels, RUN_REACH, &StreetWalkers::Build);
 }
 
 /* Each pavement beside a house gets its walkers, pacing the stretch of street that runs straight on through their tile, or standing about on it. */
-void StreetWalkers::Build(size_t index)
+void StreetWalkers::Build(const TileSpan &tiles, std::vector<Walker> &walkers)
 {
-	Block &block = this->blocks[index];
-	block.walkers.clear();
-	block.stale = false;
-	TileSpan tiles = this->grid.TilesOf(index);
+	walkers.clear();
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			for (Axis axis : {AXIS_X, AXIS_Y}) {
@@ -123,7 +123,7 @@ void StreetWalkers::Build(size_t index)
 							InstanceColour(SHIRTS[dice.Below(SHIRTS.size())]), InstanceColour(TROUSERS[dice.Below(TROUSERS.size())]),
 						};
 						if (dice.Share() < STANDING_SHARE) placed.pace = 0.0f;
-						block.walkers.push_back(placed);
+						walkers.push_back(placed);
 					}
 				}
 			}
@@ -134,18 +134,9 @@ void StreetWalkers::Build(size_t index)
 /* Only blocks within the distance at which a tile still spans the fewest pixels are visited, so the work stays near the eye however big the map. */
 void StreetWalkers::Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch)
 {
-	if (this->grid.Map() != _world_tiles.Size()) this->Sync(WorldChanges{.whole = true});
-	double top = (_world_tiles.Peak() + 1.0) * LevelRise();
-	int builds = 0;
 	size_t gathered = 0;
-	this->grid.ForEachSeen(view, frustum, fewest_pixels, RUN_REACH, top, [&](size_t index) {
-		Block &block = this->blocks[index];
-		if (block.stale) {
-			if (builds >= MOST_BUILDS) return true;
-			this->Build(index);
-			builds++;
-		}
-		gathered += GatherBlock(view, block.walkers, fewest_pixels, batch);
+	this->blocks.ForEachSeen(view, frustum, fewest_pixels, RUN_REACH, [&](const std::vector<Walker> &walkers) {
+		gathered += GatherBlock(view, walkers, fewest_pixels, batch);
 		return gathered < MOST_WALKERS;
 	});
 }
@@ -180,6 +171,5 @@ size_t StreetWalkers::GatherBlock(const SceneView &view, std::span<const Walker>
 
 void StreetWalkers::Release()
 {
-	this->grid.Clear();
-	this->blocks.clear();
+	this->blocks.Release();
 }

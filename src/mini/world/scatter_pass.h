@@ -34,6 +34,7 @@ public:
 	std::string_view Name() const override { return this->look.name; }
 	std::vector<ShaderProgram *> Programs() override;
 	void Sync(const WorldChanges &changes) override;
+	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
 	void Release() override;
