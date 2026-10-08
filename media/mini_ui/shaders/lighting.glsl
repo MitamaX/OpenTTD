@@ -87,14 +87,21 @@ float AmbientShare(vec3 normal, float sunlit)
 	return ambient / (ambient + sun);
 }
 
-/* The light a surface point sends toward the eye with the share of the sun that reaches it given: sunlight, sky and ground light and the sheen of its surroundings dimmed by occlusion,
- * the sun's highlight and its glints off crystals; reflectance is how much of the light it reflects head on. */
-vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float reflectance, float occlusion, float glint, float sunlit)
+/* The light a surface point's coat reflects toward the eye: the sun's highlight, by the share of the sun that reaches it, and the sheen of its surroundings dimmed by occlusion;
+ * reflectance is how much of the light it reflects head on. */
+vec3 Reflected(vec3 normal, vec3 position, float roughness, float reflectance, float occlusion, float sunlit)
 {
 	vec3 light = SunDirection();
 	vec3 view = normalize(Eye() - position);
 	vec3 sun = SunRadiance() * max(dot(normal, light), 0.0) * sunlit;
-	vec3 reflected = sun * (Highlight(normal, view, light, roughness, reflectance) + glint) + Sheen(normal, view, roughness, reflectance) * occlusion;
+	return sun * Highlight(normal, view, light, roughness, reflectance) + Sheen(normal, view, roughness, reflectance) * occlusion;
+}
+
+/* The light a surface point sends toward the eye with the share of the sun that reaches it given: sunlight, sky and ground light dimmed by occlusion, what its coat reflects and the sun's glints off crystals. */
+vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 position, float roughness, float reflectance, float occlusion, float glint, float sunlit)
+{
+	vec3 sun = SunRadiance() * max(dot(normal, SunDirection()), 0.0) * sunlit;
+	vec3 reflected = Reflected(normal, position, roughness, reflectance, occlusion, sunlit) + sun * glint;
 	return vec4(Diffuse(albedo, sun, normal, occlusion, reflectance) + reflected, AmbientShare(normal, sunlit));
 }
 
