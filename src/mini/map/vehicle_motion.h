@@ -13,13 +13,13 @@
 #include <unordered_map>
 
 #include "../core/camera.h"
+#include "../core/tick_clock.h"
 
 struct Vehicle;
 
 /* Vehicles only move on game ticks while drawing runs at render rate, so
- * raw positions stutter. Each frame interpolates between a unit's previous
- * and current tick position; the fraction comes from a smoothed measure of
- * the real tick interval, which also absorbs fast forward. */
+ * raw positions stutter. Each frame places a unit along the positions it was
+ * seen at on the ticks before, at the point of the tick count the tick clock shows. */
 class VehicleMotion {
 public:
 	void Advance(uint delta_ms);
@@ -31,32 +31,23 @@ public:
 	void Clear();
 
 private:
-	struct TickPosition {
-		int32_t x;
-		int32_t y;
-		int32_t z;
-	};
-
 	struct Snapshot {
-		TickPosition previous;
-		TickPosition current;
-		uint64_t tick;
+		TickTrail trail;
+		uint64_t seen;
 		double bearing;
 		double turn_rate;
 		uint64_t turned;
 	};
 
-	static TickPosition PositionOf(const Vehicle *v);
-	double Interpolated(int32_t previous, int32_t current) const;
+	static TickTrail::Spot SpotOf(const Vehicle *v, uint64_t tick);
+	static bool Glides(const TickTrail::Spot &from, const TickTrail::Spot &to);
 	Snapshot &Turned(const Vehicle *v);
 
 	std::unordered_map<uint32_t, Snapshot> snapshots;
 	uint64_t tick = 0;
+	double shown = 0.0;
 	uint64_t frames = 0;
 	uint frame_ms = 0;
-	double since = 0.0;
-	double interval = 30.0;
-	double alpha = 1.0;
 };
 
 extern VehicleMotion _vehicle_motion;

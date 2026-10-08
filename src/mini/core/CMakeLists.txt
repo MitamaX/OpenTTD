@@ -13,6 +13,8 @@ add_files(
     sunlight.h
     system_pointer.cpp
     system_pointer.h
+    tick_clock.cpp
+    tick_clock.h
     tones.cpp
     tones.h
     tuning.cpp

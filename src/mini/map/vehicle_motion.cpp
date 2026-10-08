@@ -22,12 +22,10 @@
 
 #include "../../safeguards.h"
 
-static constexpr double MIN_TICK_MS = 5.0;
-static constexpr double MAX_TICK_MS = 200.0;
-static constexpr double TICK_SMOOTHING = 0.3;
 static constexpr uint64_t PRUNE_INTERVAL_MASK = 0xFF;
-static constexpr uint64_t STALE_TICKS = 64;
-static constexpr int32_t MAX_GLIDE_DISTANCE = 2 * TILE_SIZE;
+static constexpr uint64_t STALE_FRAMES = PRUNE_INTERVAL_MASK + 1;
+static constexpr int64_t MAX_GLIDE_DISTANCE = 2 * TILE_SIZE;
+static constexpr int64_t MAX_STRIDE_PER_TICK = TILE_SIZE;
 static constexpr double TURN_EASE_MS = 110.0;
 static constexpr double SNAP_TURN = 0.75 * std::numbers::pi;
 static constexpr double MS_PER_SECOND = 1000.0;
@@ -56,36 +54,23 @@ static double TurnBetween(double from, double to)
 void VehicleMotion::Advance(uint delta_ms)
 {
 	this->frame_ms = delta_ms;
-	this->since += delta_ms;
-	uint64_t now = TimerGameTick::counter;
-	if (now != this->tick) {
-		double per = this->since / static_cast<double>(now - this->tick);
-		if (per >= MIN_TICK_MS && per <= MAX_TICK_MS) this->interval = this->interval * (1.0 - TICK_SMOOTHING) + per * TICK_SMOOTHING;
-		this->tick = now;
-		this->since = 0.0;
-	}
-	this->alpha = std::min(this->since / this->interval, 1.0);
+	this->tick = TimerGameTick::counter;
+	this->shown = _tick_clock.Advance(this->tick);
 	if ((++this->frames & PRUNE_INTERVAL_MASK) == 0) {
-		std::erase_if(this->snapshots, [this](const auto &entry) { return entry.second.tick + STALE_TICKS < this->tick; });
+		std::erase_if(this->snapshots, [this](const auto &entry) { return std::max(entry.second.seen, entry.second.turned) + STALE_FRAMES < this->frames; });
 	}
 }
 
-/* Returns the display position in tiles and height levels. Entries older
- * than one tick and jumps wider than two tiles snap instead of streaking. */
+/* Returns the display position in tiles and height levels. A unit not seen the frame before, new or out of sight until
+ * now, or one that jumped further than it could have moved, starts its trail over where it stands instead of streaking. */
 WorldPoint VehicleMotion::Position(const Vehicle *v)
 {
 	Snapshot &e = this->snapshots[v->index.base()];
-	if (e.tick != this->tick) {
-		e.previous = (e.tick + 1 == this->tick) ? e.current : PositionOf(v);
-		e.current = PositionOf(v);
-		e.tick = this->tick;
-	}
-	if (std::abs(e.current.x - e.previous.x) > MAX_GLIDE_DISTANCE || std::abs(e.current.y - e.previous.y) > MAX_GLIDE_DISTANCE) {
-		e.previous = e.current;
-	}
-	double x = this->Interpolated(e.previous.x, e.current.x) / TILE_SIZE;
-	double y = this->Interpolated(e.previous.y, e.current.y) / TILE_SIZE;
-	return Grounded(v, {x, y, this->Interpolated(e.previous.z, e.current.z) / TILE_HEIGHT});
+	TickTrail::Spot spot = SpotOf(v, this->tick);
+	e.trail.Note(spot, e.seen + 1 >= this->frames && !e.trail.Empty() && Glides(e.trail.Latest(), spot));
+	e.seen = this->frames;
+	TickTrail::Point at = e.trail.At(this->shown);
+	return Grounded(v, {at.x / TILE_SIZE, at.y / TILE_SIZE, at.z / TILE_HEIGHT});
 }
 
 /* A unit eases toward the way it faces once a frame; a turn of more than three quarters of a half turn is a reversal and snaps,
@@ -123,14 +108,16 @@ WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)
 	return v->type == VEH_TRAIN ? TrackPoint(point.x, point.y) : RoadPoint(point.x, point.y);
 }
 
-VehicleMotion::TickPosition VehicleMotion::PositionOf(const Vehicle *v)
+TickTrail::Spot VehicleMotion::SpotOf(const Vehicle *v, uint64_t tick)
 {
-	return {v->x_pos, v->y_pos, v->z_pos};
+	return {tick, v->x_pos, v->y_pos, v->z_pos};
 }
 
-double VehicleMotion::Interpolated(int32_t previous, int32_t current) const
+bool VehicleMotion::Glides(const TickTrail::Spot &from, const TickTrail::Spot &to)
 {
-	return previous + (current - previous) * this->alpha;
+	if (to.tick < from.tick) return false;
+	int64_t reach = std::max<int64_t>(MAX_GLIDE_DISTANCE, static_cast<int64_t>(to.tick - from.tick) * MAX_STRIDE_PER_TICK);
+	return std::abs(static_cast<int64_t>(to.x) - from.x) <= reach && std::abs(static_cast<int64_t>(to.y) - from.y) <= reach;
 }
 
 void VehicleMotion::Clear()

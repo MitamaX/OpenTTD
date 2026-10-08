@@ -17,10 +17,12 @@
 #include "../gfx_func.h"
 #include "../gfxinit.h"
 #include "../mini_ui.h"
+#include "../mini/core/tick_clock.h"
 #include "../mini/gpu/frame_profile.h"
 #include "../progress.h"
 #include "../rev.h"
 #include "../thread.h"
+#include "../timer/timer_game_tick.h"
 #include "../window_func.h"
 #include "video_driver.hpp"
 
@@ -31,16 +33,18 @@ bool _video_vsync; ///< Whether we should use vsync (only if active video driver
 
 void VideoDriver::GameLoop()
 {
-	this->next_game_tick += this->GetGameInterval();
+	auto interval = this->GetGameInterval();
+	this->next_game_tick += interval;
 
 	/* Avoid next_game_tick getting behind more and more if it cannot keep up. */
 	auto now = std::chrono::steady_clock::now();
-	if (this->next_game_tick < now - ALLOWED_DRIFT * this->GetGameInterval()) this->next_game_tick = now;
+	if (this->next_game_tick < now - ALLOWED_DRIFT * interval) this->next_game_tick = now;
 
 	{
 		std::lock_guard<std::mutex> lock(this->game_state_mutex);
 
 		::GameLoop();
+		_tick_clock.Stamp(TimerGameTick::counter, std::chrono::steady_clock::now(), interval);
 	}
 }
 
@@ -118,6 +122,7 @@ void VideoDriver::Tick()
 
 	auto now = std::chrono::steady_clock::now();
 	if (this->HasGUI() && now >= this->next_draw_tick) {
+		_tick_clock.BeginFrame(now);
 		this->next_draw_tick += this->GetDrawInterval();
 		/* Avoid next_draw_tick getting behind more and more if it cannot keep up. */
 		if (this->next_draw_tick < now - ALLOWED_DRIFT * this->GetDrawInterval()) this->next_draw_tick = now;
