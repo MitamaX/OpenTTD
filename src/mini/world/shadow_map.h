@@ -11,8 +11,10 @@
 #define MINI_WORLD_SHADOW_MAP_H
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <span>
+#include <vector>
 
 #include "shader_program.h"
 #include "world_pass.h"
@@ -46,11 +48,13 @@ private:
 	std::array<Cascade, CASCADES> Fit(const SceneView &camera) const;
 	Cascade FitSlice(const SceneView &camera, double near, double far) const;
 	void Upload(const std::array<Cascade, CASCADES> &cascades, const SceneView &camera);
-	void Aim(const Mat4 &view_projection) const;
+	void Aim(int cascade) const;
 
 	uint32_t texture = 0;
 	uint32_t framebuffer = 0;
 	uint32_t buffer = 0;
+	size_t stride = 0;
+	std::vector<std::byte> staged;
 };
 
 #endif /* MINI_WORLD_SHADOW_MAP_H */

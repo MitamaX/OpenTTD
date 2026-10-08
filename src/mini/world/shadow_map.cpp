@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <vector>
 
+#include "../../core/math_func.hpp"
 #include "../../debug.h"
 #include "../core/sunlight.h"
 #include "../gpu/frame_profile.h"
@@ -106,9 +107,17 @@ static double SplitDistance(double near, double far, int index)
 	return std::lerp(even, scaled, LOG_SPLIT_SHARE);
 }
 
+/* Each cascade's copy of the block lies on its own boundary within the buffer, so every one may be bound by itself. */
 bool ShadowMap::Build()
 {
 	if (this->framebuffer != 0) return true;
+
+	GLint alignment = 1;
+	glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &alignment);
+	size_t boundary = static_cast<size_t>(std::max(alignment, 1));
+	this->stride = CeilDiv(sizeof(ShadowsBlock), boundary) * boundary;
+	this->staged.assign(this->stride * CASCADES, std::byte{0});
+	glGenBuffers(1, &this->buffer);
 
 	glGenTextures(1, &this->texture);
 	glBindTexture(GL_TEXTURE_2D_ARRAY, this->texture);
@@ -167,6 +176,7 @@ std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneVi
 	return cascades;
 }
 
+/* The block goes up once a frame, a copy for each cascade differing only in the caster's view, so no cascade waits on the GPU to finish with the one before. */
 void ShadowMap::Upload(const std::array<Cascade, CASCADES> &cascades, const SceneView &camera)
 {
 	ShadowsBlock block{};
@@ -177,18 +187,19 @@ void ShadowMap::Upload(const std::array<Cascade, CASCADES> &cascades, const Scen
 		block.cascade_texel[index] = static_cast<float>(cascades[index].texel);
 	}
 	block.fade = {static_cast<float>(camera.shadow_reach * FADE_START_SHARE), static_cast<float>(camera.shadow_reach), 0.0f, 0.0f};
+	for (int index = 0; index < CASCADES; index++) {
+		block.caster = cascades[index].view_projection.Floats();
+		std::ranges::copy(std::as_bytes(std::span(&block, 1)), this->staged.begin() + static_cast<std::ptrdiff_t>(this->stride * index));
+	}
 
-	if (this->buffer == 0) glGenBuffers(1, &this->buffer);
 	glBindBuffer(GL_UNIFORM_BUFFER, this->buffer);
-	glBufferData(GL_UNIFORM_BUFFER, sizeof(block), &block, GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_UNIFORM_BUFFER, SHADOWS_BINDING, this->buffer);
+	glBufferData(GL_UNIFORM_BUFFER, static_cast<GLsizeiptr>(this->staged.size()), this->staged.data(), GL_DYNAMIC_DRAW);
 }
 
-void ShadowMap::Aim(const Mat4 &view_projection) const
+/* The last cascade's copy stays bound for the passes that receive the shadows, which read only what every copy shares. */
+void ShadowMap::Aim(int cascade) const
 {
-	std::array<float, 16> caster = view_projection.Floats();
-	glBindBuffer(GL_UNIFORM_BUFFER, this->buffer);
-	glBufferSubData(GL_UNIFORM_BUFFER, offsetof(ShadowsBlock, caster), sizeof(caster), caster.data());
+	glBindBufferRange(GL_UNIFORM_BUFFER, SHADOWS_BINDING, this->buffer, static_cast<GLintptr>(this->stride * cascade), sizeof(ShadowsBlock));
 }
 
 /* Casters nearer the sun than a cascade's box are pressed onto its near side instead of being cut away. */
@@ -209,7 +220,7 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 	for (int index = 0; index < CASCADES; index++) {
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, this->texture, 0, index);
 		glClear(GL_DEPTH_BUFFER_BIT);
-		this->Aim(cascades[index].view_projection);
+		this->Aim(index);
 		ShadowView view = {cascades[index].view_projection, FrustumOf(cascades[index].view_projection), camera, cascades[index].texel};
 		for (const auto &pass : passes) {
 			ProfileScope pass_profile("cast", pass->Name());
