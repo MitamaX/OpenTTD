@@ -23,7 +23,7 @@
 
 static constexpr std::string_view TUNING_FILE = "mini_ui.cfg";
 static constexpr std::string_view TUNING_GROUP = "mini";
-static constexpr std::array<std::string_view, 2> RETIRED_KEYS = {"height_scale", "relief_strength"};
+static constexpr std::array<std::string_view, 3> RETIRED_KEYS = {"height_scale", "relief_strength", "sun_azimuth"};
 
 MiniTuning _tuning;
 
@@ -77,7 +77,7 @@ void MiniTuning::Load()
 	ReadIniNumber(group, "depth_of_field", this->depth_of_field);
 	ReadIniNumber(group, "exposure", this->exposure);
 	ReadIniNumber(group, "sun_elevation", this->sun_elevation);
-	ReadIniNumber(group, "sun_azimuth", this->sun_azimuth);
+	ReadIniNumber(group, "sun_bearing", this->sun_bearing);
 
 	this->pan_speed = Clamp(this->pan_speed, 100.0, 10000.0);
 	this->pan_speed_fast = Clamp(this->pan_speed_fast, 100.0, 20000.0);
@@ -101,7 +101,7 @@ void MiniTuning::Load()
 	this->anti_aliasing = Clamp(this->anti_aliasing, 0, 2);
 	this->exposure = Clamp(this->exposure, -4.0, 4.0);
 	this->sun_elevation = Clamp(this->sun_elevation, 5.0, 85.0);
-	this->sun_azimuth = Clamp(this->sun_azimuth, 0.0, 360.0);
+	this->sun_bearing = Clamp(this->sun_bearing, -180.0, 180.0);
 
 	ini.SaveToDisk(path);
 }
