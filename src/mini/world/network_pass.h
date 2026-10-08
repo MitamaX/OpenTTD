@@ -23,7 +23,7 @@ public:
 	NetworkPass();
 
 	std::string_view Name() const override { return "network"; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Prepare(const SceneView &view) override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;

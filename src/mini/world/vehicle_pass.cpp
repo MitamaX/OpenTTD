@@ -68,10 +68,9 @@ VehiclePass::VehiclePass() : program(VEHICLE_VERTEX_SOURCES, VEHICLE_FRAGMENT_SO
 {
 }
 
-void VehiclePass::Reload()
+std::vector<ShaderProgram *> VehiclePass::Programs()
 {
-	this->program.Reload();
-	this->caster.Reload();
+	return {&this->program, &this->caster};
 }
 
 /* The models are built the first time vehicles are laid out, as the layout measures them. */

@@ -23,7 +23,7 @@ public:
 	StructurePass();
 
 	std::string_view Name() const override { return "structures"; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Prepare(const SceneView &view) override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;

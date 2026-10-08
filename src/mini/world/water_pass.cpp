@@ -52,9 +52,9 @@ WaterPass::WaterPass(const WorldTextures &textures, TerrainField &field, const V
 {
 }
 
-void WaterPass::Reload()
+std::vector<ShaderProgram *> WaterPass::Programs()
 {
-	this->program.Reload();
+	return {&this->program};
 }
 
 void WaterPass::Draw(const SceneView &view)

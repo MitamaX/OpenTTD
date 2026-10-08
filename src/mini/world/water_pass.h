@@ -28,7 +28,7 @@ public:
 	WaterPass(const WorldTextures &textures, TerrainField &field, const VehiclePass &vehicles);
 
 	std::string_view Name() const override { return "water"; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Draw(const SceneView &view) override;
 	void Release() override;
 	WorldStage Stage() const override { return WorldStage::Surface; }

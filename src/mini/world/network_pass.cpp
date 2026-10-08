@@ -59,13 +59,9 @@ NetworkPass::NetworkPass() :
 {
 }
 
-void NetworkPass::Reload()
+std::vector<ShaderProgram *> NetworkPass::Programs()
 {
-	this->program.Reload();
-	this->caster.Reload();
-	this->span_program.Reload();
-	this->signal_program.Reload();
-	this->signal_caster.Reload();
+	return {&this->program, &this->caster, &this->span_program, &this->signal_program, &this->signal_caster};
 }
 
 /* A signal's state is read anew every frame, as trains pass without the world's texels changing. */

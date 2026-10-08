@@ -58,6 +58,7 @@ private:
 	PostChain post;
 	GroundOverlay overlay;
 	std::vector<std::unique_ptr<WorldPass>> passes;
+	std::vector<ShaderProgram *> programs;
 	const StructurePass *structures = nullptr;
 	const VehiclePass *vehicles = nullptr;
 };

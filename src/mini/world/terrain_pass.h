@@ -10,6 +10,8 @@
 #ifndef MINI_WORLD_TERRAIN_PASS_H
 #define MINI_WORLD_TERRAIN_PASS_H
 
+#include <vector>
+
 #include "ground_detail.h"
 #include "shader_program.h"
 #include "terrain_field.h"
@@ -21,7 +23,7 @@ public:
 	TerrainPass(const WorldTextures &textures, TerrainField &field);
 
 	std::string_view Name() const override { return "terrain"; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Cast(const ShadowView &view) override;
 	void Lay(const SceneView &view) override;
 	void Draw(const SceneView &view) override;

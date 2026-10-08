@@ -55,9 +55,9 @@ SmokePass::SmokePass(const StructurePass &structures, const VehiclePass &vehicle
 {
 }
 
-void SmokePass::Reload()
+std::vector<ShaderProgram *> SmokePass::Programs()
 {
-	this->program.Reload();
+	return {&this->program};
 }
 
 /* Each plume's puffs start evenly through their rise, the whole plume shifted by its vent's seed. */

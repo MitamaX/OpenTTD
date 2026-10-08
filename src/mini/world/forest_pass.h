@@ -10,6 +10,8 @@
 #ifndef MINI_WORLD_FOREST_PASS_H
 #define MINI_WORLD_FOREST_PASS_H
 
+#include <vector>
+
 #include "../gpu/instanced_meshes.h"
 #include "forest_field.h"
 #include "shader_program.h"
@@ -21,7 +23,7 @@ public:
 	explicit ForestPass(const WorldTextures &textures);
 
 	std::string_view Name() const override { return "forest"; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;

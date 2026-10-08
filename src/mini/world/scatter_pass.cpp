@@ -23,10 +23,9 @@ ScatterPass::ScatterPass(std::unique_ptr<Scatter> scatter, const ScatterLook &lo
 {
 }
 
-void ScatterPass::Reload()
+std::vector<ShaderProgram *> ScatterPass::Programs()
 {
-	this->program.Reload();
-	this->caster.Reload();
+	return {&this->program, &this->caster};
 }
 
 void ScatterPass::Sync(const WorldChanges &changes)

@@ -30,7 +30,7 @@ public:
 	VehiclePass();
 
 	std::string_view Name() const override { return "vehicles"; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Prepare(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;

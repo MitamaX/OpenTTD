@@ -32,7 +32,7 @@ public:
 	ScatterPass(std::unique_ptr<Scatter> scatter, const ScatterLook &look);
 
 	std::string_view Name() const override { return this->look.name; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;

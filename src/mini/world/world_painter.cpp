@@ -10,6 +10,8 @@
 #include "../../stdafx.h"
 #include "world_painter.h"
 
+#include <algorithm>
+#include <iterator>
 #include <limits>
 
 #include "../core/camera.h"
@@ -77,13 +79,14 @@ WorldPainter::WorldPainter()
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
 	this->passes.push_back(std::make_unique<SmokePass>(*this->structures, *this->vehicles));
+	for (const auto &pass : this->passes) std::ranges::copy(pass->Programs(), std::back_inserter(this->programs));
 }
 
 void WorldPainter::Reload()
 {
 	this->post.Reload();
 	this->overlay.Reload();
-	for (const auto &pass : this->passes) pass->Reload();
+	for (ShaderProgram *program : this->programs) program->Reload();
 }
 
 /* Called from the mini UI's frame while the game's state holds still, so passes may read the game's map. */
@@ -145,9 +148,12 @@ void WorldPainter::Release()
 	for (const auto &pass : this->passes) pass->Release();
 }
 
+/* Every pass's program is built with the painter's own, though a pass whose program fails only goes undrawn. */
 bool WorldPainter::Ready()
 {
-	return GlSupportsWorld() && this->post.Ready() && this->overlay.Ready();
+	if (!GlSupportsWorld()) return false;
+	for (ShaderProgram *program : this->programs) program->Ready();
+	return this->post.Ready() && this->overlay.Ready();
 }
 
 /* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, and the finishing steps work on the whole. */

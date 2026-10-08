@@ -41,10 +41,9 @@ ForestPass::ForestPass(const WorldTextures &textures) : textures(textures), prog
 {
 }
 
-void ForestPass::Reload()
+std::vector<ShaderProgram *> ForestPass::Programs()
 {
-	this->program.Reload();
-	this->caster.Reload();
+	return {&this->program, &this->caster};
 }
 
 void ForestPass::Sync(const WorldChanges &changes)

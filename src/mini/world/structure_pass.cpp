@@ -47,10 +47,9 @@ StructurePass::StructurePass() : program(VERTEX_SOURCES, FRAGMENT_SOURCES), cast
 {
 }
 
-void StructurePass::Reload()
+std::vector<ShaderProgram *> StructurePass::Programs()
 {
-	this->program.Reload();
-	this->caster.Reload();
+	return {&this->program, &this->caster};
 }
 
 void StructurePass::Prepare(const SceneView &view)

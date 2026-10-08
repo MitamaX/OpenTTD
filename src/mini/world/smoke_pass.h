@@ -49,7 +49,7 @@ public:
 	SmokePass(const StructurePass &structures, const VehiclePass &vehicles);
 
 	std::string_view Name() const override { return "smoke"; }
-	void Reload() override;
+	std::vector<ShaderProgram *> Programs() override;
 	void Draw(const SceneView &view) override;
 	void Release() override;
 	WorldStage Stage() const override { return WorldStage::Surface; }

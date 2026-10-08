@@ -45,11 +45,9 @@ TerrainPass::TerrainPass(const WorldTextures &textures, TerrainField &field) :
 {
 }
 
-void TerrainPass::Reload()
+std::vector<ShaderProgram *> TerrainPass::Programs()
 {
-	this->program.Reload();
-	this->caster.Reload();
-	this->depth.Reload();
+	return {&this->program, &this->caster, &this->depth};
 }
 
 void TerrainPass::Cast(const ShadowView &view)
