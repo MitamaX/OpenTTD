@@ -83,6 +83,19 @@ const float ROUGH_BARE = 0.6;
 const float TOY_ROUGH_BARE = 0.2;
 const vec3 LUSH_DARK = vec3(0.2, 0.35, 0.17);
 const vec3 LUSH_LIGHT = vec3(0.31, 0.47, 0.23);
+const vec3 PARCHED_DARK = vec3(0.46, 0.45, 0.26);
+const vec3 PARCHED_LIGHT = vec3(0.62, 0.59, 0.36);
+const vec2 BROAD_SPAN = vec2(0.25, 0.75);
+const float MOISTURE_FREQUENCY = 0.03;
+const float MOISTURE_DRIFT_FREQUENCY = 0.09;
+const float WATERSIDE_LOD = 3.0;
+const float WATERSIDE_WETTING = 1.5;
+const float WATERSIDE_MOST = 0.3;
+const float UPLAND_DRYING = 0.2;
+const float SUNNY_SLOPE_DRYING = 0.3;
+const vec2 SUNNY_SIDE = vec2(0.6, 0.8);
+const vec2 LUSH_MOISTURE = vec2(0.56, 0.8);
+const vec2 PARCHED_MOISTURE = vec2(0.12, 0.36);
 const vec3 ROUGH_TINT = vec3(0.55, 0.50, 0.30);
 const vec3 STRAW_TINT = vec3(1.14, 1.04, 0.78);
 const float STRAW_PATCHES_PER_TILE = 3.0;
@@ -287,11 +300,12 @@ struct Grain {
 	float hollow;
 };
 
-/* How the ground leans and how well its rock layers resolve, read before the fragment branches. */
+/* How the ground leans, the way it faces and how well its rock layers resolve, read before the fragment branches. */
 struct Relief {
 	float slope;
 	float steep;
 	float strata;
+	vec2 facing;
 };
 
 struct Exposure {
@@ -431,7 +445,7 @@ Relief ReliefAt(vec3 normal, float levels_per_pixel)
 {
 	float slope = SlopeOf(normal);
 	float layer_pixels = 1.0 / (levels_per_pixel * STRATA_PER_LEVEL);
-	return Relief(slope, smoothstep(STANDARD_SLOPE, STEEPEST_SLOPE, slope), smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS * 2.0, layer_pixels));
+	return Relief(slope, smoothstep(STANDARD_SLOPE, STEEPEST_SLOPE, slope), smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS * 2.0, layer_pixels), normal.xy);
 }
 
 vec3 Altitude(vec3 colour, float height)
@@ -456,9 +470,11 @@ vec3 ToyLawn(float shade)
 	return mix(mix(TOY_TEAL, TOY_MINT, smoothstep(0.2, 0.45, calm)), TOY_LIME, smoothstep(0.55, 0.85, calm));
 }
 
-vec3 GrassTone(float shade, float lush)
+/* Grass shades from a darker to a lighter green across the land, deep green where it grows lush and hay gold where it is parched. */
+vec3 GrassTone(float shade, Climate climate)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return ToyLawn(shade);
+	float tone = smoothstep(BROAD_SPAN.x, BROAD_SPAN.y, shade);
 	vec3 dark = vec3(0.33, 0.43, 0.21);
 	vec3 light = vec3(0.50, 0.56, 0.30);
 	if (Landscape() == LANDSCAPE_ARCTIC) {
@@ -468,7 +484,8 @@ vec3 GrassTone(float shade, float lush)
 		dark = vec3(0.52, 0.55, 0.28);
 		light = vec3(0.68, 0.66, 0.36);
 	}
-	return mix(mix(dark, light, shade), mix(LUSH_DARK, LUSH_LIGHT, shade), lush);
+	vec3 green = mix(mix(dark, light, tone), mix(LUSH_DARK, LUSH_LIGHT, tone), climate.lush);
+	return mix(green, mix(PARCHED_DARK, PARCHED_LIGHT, tone), climate.parched);
 }
 
 float Hollowed(Grain grain, float depth)
@@ -482,9 +499,9 @@ float Cover(float density, float clump)
 }
 
 /* Grass turns to straw here and there, and its blades fleck it light and dark up close; from afar the straw's patches, too small to make out, settle into one tone. */
-vec3 Grass(Ground ground, Grain grain, float lush)
+vec3 Grass(Ground ground, Grain grain, Climate climate)
 {
-	vec3 green = GrassTone(grain.broad, lush);
+	vec3 green = GrassTone(grain.broad, climate);
 	vec3 straw = green * STRAW_TINT;
 	float shade = Varied(grain.local, 0.3) * Varied(grain.clump, 0.35) * Varied(grain.fine, 0.25) * Varied(grain.micro, 0.45);
 	float strawed = mix(STRAW_MEAN, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro), Resolved(STRAW_PATCHES_PER_TILE));
@@ -493,9 +510,9 @@ vec3 Grass(Ground ground, Grain grain, float lush)
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
 
-vec3 Meadow(Grain grain, float lush)
+vec3 Meadow(Grain grain, Climate climate)
 {
-	return Grass(Ground(MAT_GRASS, 1.0, 0u), grain, lush);
+	return Grass(Ground(MAT_GRASS, 1.0, 0u), grain, climate);
 }
 
 /* Toyland's strata blended as they read from too far to make out one from another. */
@@ -581,9 +598,9 @@ Patch Exposed(Patch ground, Site site)
 }
 
 /* Rough land: tussocks of dry and green grass in clumps, opening onto patches of stony soil. */
-Patch Rough(Grain grain, vec2 p, float lush)
+Patch Rough(Grain grain, vec2 p, Climate climate)
 {
-	vec3 green = GrassTone(grain.broad, lush) * 0.9;
+	vec3 green = GrassTone(grain.broad, climate) * 0.9;
 	vec3 dry = mix(green, ROUGH_TINT, 0.5);
 	float clumps = smoothstep(0.35, 0.65, Octave(p, 2.3));
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
@@ -599,11 +616,10 @@ Patch Rocks(Site site)
 	Grain grain = site.grain;
 	vec2 p = site.p;
 	Bare bare = Bare(Capped(site.bare.scree, site), Capped(site.bare.rock, site), site.bare.shelf);
-	float lush = site.climate.lush;
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
-	vec3 strewn = mix(Meadow(grain, lush), bare.scree * PALE_STONE, stones);
+	vec3 strewn = mix(Meadow(grain, site.climate), bare.scree * PALE_STONE, stones);
 	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, patches), ROCK_RUGGED, outcrop));
 }
 
@@ -641,12 +657,12 @@ bool Armoured(vec2 p)
 }
 
 /* A beach is wet sand at the water's edge drying up the shore, and grass where the shore rises well clear of the sea. */
-Patch Beach(Grain grain)
+Patch Beach(Grain grain, Climate climate)
 {
 	float lift = v_world.z + (grain.fine - 0.5) * 0.12 + (grain.micro - 0.5) * 0.05;
 	vec3 sand = mix(WET_SAND, DRY_SAND, smoothstep(0.03, 0.22, lift)) * Varied(grain.local, 0.12) * Varied(grain.micro, 0.12);
 	float grassed = smoothstep(0.45, 0.75, lift + (grain.local - 0.5) * 0.4);
-	return Patch(mix(sand, Meadow(grain, 0.0), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
+	return Patch(mix(sand, Meadow(grain, climate), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
@@ -660,12 +676,12 @@ vec3 Riprap(vec2 p, Bare bare)
 /* Beside a railway or a road the shore is armoured with heaped stone. */
 Patch Shore(Site site)
 {
-	return site.armoured ? Patch(Riprap(site.p, site.bare), SCREE_RUGGED) : Beach(site.grain);
+	return site.armoured ? Patch(Riprap(site.p, site.bare), SCREE_RUGGED) : Beach(site.grain, site.climate);
 }
 
-vec3 Steppe(Grain grain, float lush)
+vec3 Steppe(Grain grain, Climate climate)
 {
-	return mix(Meadow(grain, lush) * STRAW_TINT, DRY_SAND * Varied(grain.micro, 0.15), 0.4);
+	return mix(Meadow(grain, climate) * STRAW_TINT, DRY_SAND * Varied(grain.micro, 0.15), 0.4);
 }
 
 Patch Albedo(Ground ground, Site site)
@@ -673,12 +689,12 @@ Patch Albedo(Ground ground, Site site)
 	Grain grain = site.grain;
 	vec2 p = site.p;
 	switch (ground.material) {
-		case MAT_GRASS: return Patch(Grass(ground, grain, site.climate.lush), GRASS_RUGGED);
+		case MAT_GRASS: return Patch(Grass(ground, grain, site.climate), GRASS_RUGGED);
 		case MAT_ROUGH:
-		case MAT_SNOW: return Rough(grain, p, site.climate.lush);
+		case MAT_SNOW: return Rough(grain, p, site.climate);
 		case MAT_ROCKS: return Rocks(site);
 		case MAT_FIELDS: return Fields(ground, grain, p);
-		case MAT_DESERT: return Patch(Steppe(grain, site.climate.lush), SAND_RUGGED);
+		case MAT_DESERT: return Patch(Steppe(grain, site.climate), SAND_RUGGED);
 		case MAT_SHORE: return Shore(site);
 		case MAT_PAVED: return Patch(Paving() * (0.94 + 0.08 * grain.local) * Varied(grain.fine, 0.06) * Varied(grain.micro, 0.08), PAVED_RUGGED);
 		case MAT_DIRT: return Patch(YARD * Varied(grain.local, 0.15) * Varied(grain.fine, 0.1) * Varied(grain.micro, 0.2), ROUGH_RUGGED);
@@ -741,10 +757,20 @@ vec2 Drift(vec2 p, float frequency, float reach)
 	return (vec2(Noise(q + 3.3), Noise(q + 9.1)) - 0.5) * 2.0 * reach;
 }
 
+/* How wet temperate ground lies: in broad drifts of wetter and drier land, wetter about water, drier up on the hills and on the slopes facing the midday sun.
+ * The midday sun stands on one side of the map, wherever the view's own sun is turned. */
+float Moisture(vec2 p, Relief relief)
+{
+	float drifts = (2.0 * Octave(p + 11.3, MOISTURE_FREQUENCY) + Octave(p + 4.9, MOISTURE_DRIFT_FREQUENCY)) / 3.0;
+	float waterside = min(textureLod(u_water, p / MapSize(), WATERSIDE_LOD).r * WATERSIDE_WETTING, WATERSIDE_MOST);
+	float upland = clamp(v_world.z / max(Peak(), MIN_RELIEF_SPAN), 0.0, 1.0);
+	return drifts + waterside - upland * UPLAND_DRYING - dot(relief.facing, SUNNY_SIDE) * SUNNY_SLOPE_DRYING;
+}
+
 /* The stone is only worked out where some ground at the point shows it. */
 Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4], vec2 warp, float settled)
 {
-	Climate climate = Climate(0.0, 0.0);
+	Climate climate = Climate(0.0, 0.0, 0.0);
 	float ragged = 0.0;
 	float trodden = 0.0;
 	if (Landscape() == LANDSCAPE_ARCTIC || Landscape() == LANDSCAPE_TROPIC) {
@@ -752,6 +778,10 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 		ragged = Ragged(p, grain);
 		climate.lush = smoothstep(0.15, 0.85, climate.lush + ragged * 0.6);
 		if (Landscape() == LANDSCAPE_TROPIC) trodden = smoothstep(0.05, 0.4, settled + ragged * 0.4);
+	} else if (Landscape() != LANDSCAPE_TOYLAND) {
+		float moisture = Moisture(p, relief);
+		climate.lush = smoothstep(LUSH_MOISTURE.x, LUSH_MOISTURE.y, moisture);
+		climate.parched = 1.0 - smoothstep(PARCHED_MOISTURE.x, PARCHED_MOISTURE.y, moisture);
 	}
 	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
 	bool bared = exposure.scree > 0.0 || armoured || HasCorner(corners, MAT_ROCKS);

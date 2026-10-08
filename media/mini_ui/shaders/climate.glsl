@@ -1,8 +1,10 @@
 const float SNOW_LINE_PULL = 0.2;
 
+/* What the climate does to the ground at a point: the blanket of snow or sand over it, and how lush or how parched its grass grows. */
 struct Climate {
 	float blanket;
 	float lush;
+	float parched;
 };
 
 float BlanketDepth(uvec4 codes)
@@ -28,7 +30,7 @@ Climate ClimateAt(vec2 p)
 	vec2 t = fract(p) - TILE_CENTRE;
 	vec3 wx = QuadraticWeights(t.x);
 	vec3 wy = QuadraticWeights(t.y);
-	Climate climate = Climate(0.0, 0.0);
+	Climate climate = Climate(0.0, 0.0, 0.0);
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
 			uvec4 codes = CodesAt(middle + ivec2(x, y));
