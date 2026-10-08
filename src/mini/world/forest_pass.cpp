@@ -66,7 +66,7 @@ void ForestPass::Sync(const WorldChanges &changes)
 	this->forest.Sync(changes);
 }
 
-void ForestPass::Prepare(const SceneView &view)
+void ForestPass::Refresh(const SceneView &view)
 {
 	this->forest.Refresh(view, COARSEST_SHOWN, COARSEST_CAST);
 }

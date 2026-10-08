@@ -37,7 +37,7 @@ void BlockScatter::Sync(const WorldChanges &changes)
 	this->blocks.Sync(changes);
 }
 
-void BlockScatter::Prepare(const SceneView &camera, double shown_pixels, double cast_pixels)
+void BlockScatter::Refresh(const SceneView &camera, double shown_pixels, double cast_pixels)
 {
 	this->blocks.Refresh(camera, shown_pixels, cast_pixels, 0, [&](const TileSpan &tiles, ScatterCopies &copies) {
 		copies.assign(this->models, {});

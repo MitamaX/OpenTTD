@@ -30,7 +30,7 @@ public:
 	BlockScatter(size_t models, int reach, ChangeKinds reads) : models(models), blocks(reads, reach) {}
 
 	void Sync(const WorldChanges &changes) final;
-	void Prepare(const SceneView &camera, double shown_pixels, double cast_pixels) final;
+	void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) final;
 	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) final;
 	void Release() final;
 

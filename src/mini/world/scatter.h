@@ -21,7 +21,7 @@ public:
 	virtual void Sync(const WorldChanges &changes) = 0;
 	/* Lays out afresh, within a slice of the frame, what the camera may show where a tile spans the shown pixels, or the shadows of where it spans the cast pixels,
 	 * as far as the world changed there. */
-	virtual void Prepare(const SceneView &camera, double shown_pixels, double cast_pixels) = 0;
+	virtual void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) = 0;
 	/* Adds the copies the view sees where a tile spans at least the fewest pixels, each in the bucket of the model it is drawn with. */
 	virtual void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) = 0;
 	virtual void Release() = 0;

@@ -44,7 +44,7 @@ public:
 	StreetWalkers();
 
 	void Sync(const WorldChanges &changes) override;
-	void Prepare(const SceneView &camera, double shown_pixels, double cast_pixels) override;
+	void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) override;
 	/* Each walker is gathered in the bucket of its pose. */
 	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) override;
 	void Release() override;

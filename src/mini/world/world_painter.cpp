@@ -181,6 +181,10 @@ void WorldPainter::Render(const SceneView &view)
 {
 	this->SyncChanges();
 	this->field.Refresh(view);
+	for (const auto &pass : this->passes) {
+		ProfileScope profile("refresh", pass->Name(), ProfileClock::Cpu);
+		pass->Refresh(view);
+	}
 
 	BeginWorldState();
 	this->scene.Upload(this->post.Jitter(view));

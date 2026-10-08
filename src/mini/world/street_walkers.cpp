@@ -94,7 +94,7 @@ void StreetWalkers::Sync(const WorldChanges &changes)
 	this->blocks.Sync(changes);
 }
 
-void StreetWalkers::Prepare(const SceneView &camera, double shown_pixels, double cast_pixels)
+void StreetWalkers::Refresh(const SceneView &camera, double shown_pixels, double cast_pixels)
 {
 	this->blocks.Refresh(camera, shown_pixels, cast_pixels, RUN_REACH, &StreetWalkers::Build);
 }

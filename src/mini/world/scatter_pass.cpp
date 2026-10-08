@@ -40,9 +40,9 @@ void ScatterPass::Sync(const WorldChanges &changes)
 	this->scatter->Sync(changes);
 }
 
-void ScatterPass::Prepare(const SceneView &view)
+void ScatterPass::Refresh(const SceneView &view)
 {
-	this->scatter->Prepare(view, this->look.shown_pixels, this->look.cast_pixels);
+	this->scatter->Refresh(view, this->look.shown_pixels, this->look.cast_pixels);
 }
 
 void ScatterPass::Cast(const ShadowView &view)

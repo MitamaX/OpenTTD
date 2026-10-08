@@ -35,7 +35,7 @@ public:
 	std::vector<ShaderProgram *> Programs() override;
 	void Load() override;
 	void Sync(const WorldChanges &changes) override;
-	void Prepare(const SceneView &view) override;
+	void Refresh(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
 	void WarmCast() override;
