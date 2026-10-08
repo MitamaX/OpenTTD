@@ -50,6 +50,11 @@ std::vector<ShaderProgram *> TerrainPass::Programs()
 	return {&this->program, &this->caster, &this->depth};
 }
 
+void TerrainPass::Load()
+{
+	this->detail.Load();
+}
+
 void TerrainPass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready()) return;

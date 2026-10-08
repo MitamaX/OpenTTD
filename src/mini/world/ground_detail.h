@@ -15,7 +15,8 @@
 
 class GroundDetail {
 public:
-	void Bind();
+	void Load();
+	void Bind() const;
 	void Release();
 
 	static void BindSamplers(const ShaderProgram &program);

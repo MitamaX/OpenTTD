@@ -153,6 +153,7 @@ bool WorldPainter::Ready()
 	if (!this->supported.has_value()) this->supported = GlSupportsWorld();
 	if (!*this->supported) return false;
 	for (ShaderProgram *program : this->programs) program->Ready();
+	for (const auto &pass : this->passes) pass->Load();
 	return this->post.Ready() && this->overlay.Ready();
 }
 

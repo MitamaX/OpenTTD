@@ -24,6 +24,7 @@ public:
 
 	std::string_view Name() const override { return "terrain"; }
 	std::vector<ShaderProgram *> Programs() override;
+	void Load() override;
 	void Cast(const ShadowView &view) override;
 	void Lay(const SceneView &view) override;
 	void Draw(const SceneView &view) override;

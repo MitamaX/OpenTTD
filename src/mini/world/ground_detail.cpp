@@ -250,13 +250,16 @@ static const DetailTexels &Detail()
 	return texels;
 }
 
-void GroundDetail::Bind()
+void GroundDetail::Load()
 {
-	if (!this->grain.Allocated()) {
-		Dimension size{DETAIL_SIZE, DETAIL_SIZE};
-		this->grain.Allocate(TexelFormat::TiledRgba, size, Detail().grain.data());
-		this->relief.Allocate(TexelFormat::TiledRgba, size, Detail().relief.data());
-	}
+	if (this->grain.Allocated()) return;
+	Dimension size{DETAIL_SIZE, DETAIL_SIZE};
+	this->grain.Allocate(TexelFormat::TiledRgba, size, Detail().grain.data());
+	this->relief.Allocate(TexelFormat::TiledRgba, size, Detail().relief.data());
+}
+
+void GroundDetail::Bind() const
+{
 	this->grain.Bind(GRAIN_UNIT);
 	this->relief.Bind(RELIEF_UNIT);
 }
