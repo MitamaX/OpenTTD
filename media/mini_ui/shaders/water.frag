@@ -68,12 +68,12 @@ const float REFRACTION = 0.012;
 const float INLAND_REFRACTION = 0.024;
 const float REFRACTION_DEPTH = 0.5;
 
-const float PATH_ROUGHNESS = 0.3;
+const Coat PATH_COAT = Coat(0.3, DIELECTRIC_REFLECTANCE);
 const float PATH_STRENGTH = 0.03;
 const float PATH_SWAY = 0.3;
 const float PATH_CEILING = 0.35;
 const float GLINTS_PER_TILE = 9.0;
-const float GLINT_ROUGHNESS = 0.06;
+const Coat GLINT_COAT = Coat(0.06, DIELECTRIC_REFLECTANCE);
 const float GLINT_TILT = 0.22;
 const float GLINT_TWINKLE = 0.7;
 const float GLINT_SIZE = 0.3;
@@ -410,11 +410,11 @@ float Wake(vec2 p)
 }
 
 /* Sun on water: a soft path where the waves are too fine to make out, and close up glints off single wavelets turned to catch it, each twinkling as it turns. */
-vec3 SunOnWater(Surface surface, vec3 view, vec2 p, vec3 sun, float sparkle)
+vec3 SunOnWater(Surface surface, vec3 view, vec2 p, float sunlit, float sparkle)
 {
 	vec3 light = SunDirection();
 	vec3 swaying = normalize(mix(UP, surface.broad, PATH_SWAY));
-	float path = min(Highlight(swaying, view, light, PATH_ROUGHNESS, DIELECTRIC_REFLECTANCE) * PATH_STRENGTH * sparkle, PATH_CEILING) * surface.lost;
+	float path = min(Highlight(swaying, view, light, PATH_COAT) * PATH_STRENGTH * sparkle, PATH_CEILING) * surface.lost;
 
 	float shown = Resolved(GLINTS_PER_TILE);
 	float glint = 0.0;
@@ -425,9 +425,9 @@ vec3 SunOnWater(Surface surface, vec3 view, vec2 p, vec3 sun, float sparkle)
 		float turn = seed.x * TAU + Clock() * GLINT_TWINKLE * (0.5 + seed.y);
 		vec3 facet = normalize(surface.normal + vec3(vec2(cos(turn), sin(turn)) * GLINT_TILT * seed.y, 0.0));
 		float spot = 1.0 - smoothstep(GLINT_SIZE * 0.4, GLINT_SIZE, length(fract(q) - 0.25 - 0.5 * seed));
-		glint = min(Highlight(facet, view, light, GLINT_ROUGHNESS, DIELECTRIC_REFLECTANCE) * GLINT_STRENGTH * sparkle, GLINT_CEILING) * spot * shown * (1.0 - surface.lost);
+		glint = min(Highlight(facet, view, light, GLINT_COAT) * GLINT_STRENGTH * sparkle, GLINT_CEILING) * spot * shown * (1.0 - surface.lost);
 	}
-	return sun * max(dot(surface.normal, light), 0.0) * (path + glint);
+	return Sunlight(surface.normal, sunlit) * (path + glint);
 }
 
 /* The sky the water mirrors, a little deepened, seen never quite at the horizon, and never mirrored whole however low the view.
@@ -640,18 +640,19 @@ void main()
 	vec2 bent_uv = Refracted(uv, ripples, water.body, straight, surface, bent);
 
 	float sunlit = SunVisibility(v_position, facing);
-	vec3 sun = SunRadiance() * sunlit;
+	vec3 sun = Sunlight(facing, sunlit);
+	vec3 ambient = AmbientLight(facing);
 	float sheltered = 1.0 - DECK_SHELTER * DeckCover(p);
-	vec3 light = sun * max(dot(facing, SunDirection()), 0.0) + AmbientLight(facing) * sheltered;
+	vec3 light = sun + ambient * sheltered;
 
 	float reflected;
 	vec3 sky = SkyOnWater(sight, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
-	vec3 glitter = SunOnWater(waves, view, p, sun, mix(1.0, INLAND_SPARKLE, water.body.sheen));
+	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, sky, reflected) + glitter, water, flecks, straight.x, light, glitter);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
 	float filled = max(water.body.canal, water.drop.steep);
 	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, water.body.calm), straight.y), filled) * Outline(water.field, water.body);
-	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(facing, sunlit));
+	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(ambient, sun));
 }

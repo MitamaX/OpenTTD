@@ -82,7 +82,6 @@ void main()
 
 	float sunlit = SunVisibility(v_position, leaves);
 	vec3 albedo = Albedo(normal) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, smoothstep(0.25, 0.75, clumps)), foliage);
-	vec4 lit = FoliageRadiance(Linear(albedo), leaves, v_position, v_translucency, v_openness, sunlit);
-	lit.rgb += Reflected(leaves, v_position, mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Leafy()), DIELECTRIC_REFLECTANCE, v_openness, sunlit);
-	frag_colour = lit;
+	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Leafy()), DIELECTRIC_REFLECTANCE);
+	frag_colour = FoliageRadiance(Linear(albedo), leaves, v_position, v_translucency, coat, v_openness, sunlit);
 }

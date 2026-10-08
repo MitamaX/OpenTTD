@@ -441,7 +441,7 @@ vec4 Lit(Shade shade)
 	vec3 position = RenderPoint(v_world);
 	float scattered = SCATTERED_SHADOW * smoothstep(0.0, SCATTERING_LEVELS, -v_world.z);
 	float sunlit = mix(SunVisibility(position, shade.normal), 1.0, scattered);
-	return SunlitRadiance(Linear(shade.albedo), shade.normal, position, shade.roughness, DIELECTRIC_REFLECTANCE, shade.occlusion, shade.glint * GLINT_GAIN, sunlit);
+	return SunlitRadiance(Linear(shade.albedo), shade.normal, position, Coat(shade.roughness, DIELECTRIC_REFLECTANCE), shade.occlusion, shade.glint * GLINT_GAIN, sunlit);
 }
 
 /* How steeply the ground leans at the fragment, in levels per tile. */

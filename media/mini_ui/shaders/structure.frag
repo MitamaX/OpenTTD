@@ -53,6 +53,6 @@ void main()
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
-	float reflectance = mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, clad.glass);
-	frag_colour = Radiance(albedo, normal, v_position, roughness, reflectance, v_colour.a * clad.occlusion);
+	Coat coat = Coat(roughness, mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, clad.glass));
+	frag_colour = Radiance(albedo, normal, v_position, coat, v_colour.a * clad.occlusion);
 }

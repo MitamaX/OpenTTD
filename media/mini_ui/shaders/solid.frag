@@ -43,8 +43,8 @@ void main()
 	vec3 grained = v_colour.rgb * Grain(v_position, gloss);
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, MIN_SPREAD)));
-	float reflectance = mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss));
-	vec4 lit = Radiance(albedo, normal, v_position, mix(MATTE, POLISHED, gloss), reflectance, v_colour.a);
+	Coat coat = Coat(mix(MATTE, POLISHED, gloss), mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss)));
+	vec4 lit = Radiance(albedo, normal, v_position, coat, v_colour.a);
 	lit.rgb += albedo * max(-v_trait, 0.0) * GLOW_RADIANCE;
 	frag_colour = lit;
 }
