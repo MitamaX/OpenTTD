@@ -156,6 +156,7 @@ void VideoDriver::Tick()
 				lock_wait.lock();
 				lock_state.lock();
 			}
+			ProfileScope locked_profile("tick", "locked", ProfileClock::Cpu);
 
 			/* Keep the interactive randomizer a bit more random by requesting
 			 * new values when-ever we can. */
