@@ -12,6 +12,7 @@
 
 #include <array>
 #include <charconv>
+#include <cmath>
 
 #include "../../core/format.hpp"
 #include "../../core/math_func.hpp"
@@ -23,6 +24,7 @@
 
 static constexpr std::string_view TUNING_FILE = "mini_ui.cfg";
 static constexpr std::string_view TUNING_GROUP = "mini";
+static constexpr double FULL_TURN_DEGREES = 360.0;
 static constexpr std::array<std::string_view, 3> RETIRED_KEYS = {"height_scale", "relief_strength", "sun_azimuth"};
 
 MiniTuning _tuning;
@@ -101,7 +103,7 @@ void MiniTuning::Load()
 	this->anti_aliasing = Clamp(this->anti_aliasing, 0, 2);
 	this->exposure = Clamp(this->exposure, -4.0, 4.0);
 	this->sun_elevation = Clamp(this->sun_elevation, 5.0, 85.0);
-	this->sun_bearing = Clamp(this->sun_bearing, -180.0, 180.0);
+	this->sun_bearing = std::remainder(this->sun_bearing, FULL_TURN_DEGREES);
 
 	ini.SaveToDisk(path);
 }
