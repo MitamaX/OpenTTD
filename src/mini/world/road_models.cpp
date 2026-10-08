@@ -200,17 +200,18 @@ public:
 	{
 	}
 
+	/* The parts are laid on the footing together, as many share the spots where they meet. */
 	void Build()
 	{
 		if (this->site.road != ROAD_NONE) this->Asphalt();
 		if (this->site.tram != ROAD_NONE) this->Tram();
+		this->mesh.Append(Drape(this->parts, this->footing));
 	}
 
 private:
 	void Lay(ModelMesh part)
 	{
-		part.Transform(Mat4::Translation({this->origin.x, this->origin.y, 0.0}));
-		this->mesh.Append(Drape(part, this->footing));
+		this->parts.Append(part.Move({this->origin.x, this->origin.y, 0.0}));
 	}
 
 	void Lay(ModelMesh part, uint32_t tone, double gloss = 0.0)
@@ -440,6 +441,7 @@ private:
 	ModelMesh &mesh;
 	const Footing &footing;
 	MapVector origin;
+	ModelMesh parts;
 };
 
 void LayRoad(ModelMesh &mesh, const RoadSite &site, const Footing &footing)

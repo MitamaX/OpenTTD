@@ -11,8 +11,10 @@
 #include "way_shapes.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <numbers>
+#include <unordered_map>
 
 #include "../map/tile_shapes.h"
 #include "../model/model_shapes.h"
@@ -170,17 +172,33 @@ std::vector<MapVector> Arc(const MapVector &centre, double radius, const MapVect
 	return points;
 }
 
+/* The footing's level under a spot of the map and how steeply it climbs east and south there. */
+struct FootingLie {
+	double level;
+	double east;
+	double south;
+};
+
+/* The corners of a box and the edges neighbouring faces share stand over the same spot, so the footing is read once for each spot. */
 ModelMesh &Drape(ModelMesh &mesh, const Footing &footing)
 {
 	static constexpr double PROBE = 1.0e-3;
 	double rise = LevelRise();
+	std::unordered_map<uint64_t, FootingLie> lies;
+	lies.reserve(mesh.vertices.size());
 	for (ModelVertex &vertex : mesh.vertices) {
 		Vec3 at = vertex.Position();
+		uint64_t spot = static_cast<uint64_t>(std::bit_cast<uint32_t>(vertex.x)) << 32 | std::bit_cast<uint32_t>(vertex.y);
+		auto [found, fresh] = lies.try_emplace(spot);
+		FootingLie &lie = found->second;
+		if (fresh) {
+			lie.level = footing(at.x, at.y) * rise;
+			lie.east = (footing(at.x + PROBE, at.y) - footing(at.x - PROBE, at.y)) * rise / (2.0 * PROBE);
+			lie.south = (footing(at.x, at.y + PROBE) - footing(at.x, at.y - PROBE)) * rise / (2.0 * PROBE);
+		}
 		Vec3 normal = vertex.Normal();
-		double east = (footing(at.x + PROBE, at.y) - footing(at.x - PROBE, at.y)) * rise / (2.0 * PROBE);
-		double south = (footing(at.x, at.y + PROBE) - footing(at.x, at.y - PROBE)) * rise / (2.0 * PROBE);
-		vertex.Place({at.x, at.y, at.z + footing(at.x, at.y) * rise});
-		vertex.Face({normal.x - east * normal.z, normal.y - south * normal.z, normal.z});
+		vertex.Place({at.x, at.y, at.z + lie.level});
+		vertex.Face({normal.x - lie.east * normal.z, normal.y - lie.south * normal.z, normal.z});
 	}
 	return mesh;
 }

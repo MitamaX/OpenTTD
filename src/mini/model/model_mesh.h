@@ -49,6 +49,7 @@ struct ModelMesh : TriangleList<ModelVertex> {
 
 	ModelMesh &Append(const ModelMesh &part);
 	ModelMesh &Transform(const Mat4 &transform);
+	ModelMesh &Move(const Vec3 &offset);
 	ModelMesh &Displace(double reach, uint32_t seed);
 	ModelMesh &Facet();
 	ModelMesh &Smooth();

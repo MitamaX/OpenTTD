@@ -215,7 +215,7 @@ static ModelMesh PieceModel(const TrackSite &site, const TrackPiece &piece, uint
 
 static void Lay(ModelMesh &mesh, ModelMesh piece, double lift, const Footing &footing)
 {
-	piece.Transform(Mat4::Translation({0.0, 0.0, lift}));
+	piece.Move({0.0, 0.0, lift});
 	mesh.Append(Drape(piece, footing));
 }
 

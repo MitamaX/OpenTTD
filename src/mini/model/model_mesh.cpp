@@ -94,6 +94,13 @@ ModelMesh &ModelMesh::Transform(const Mat4 &transform)
 	return *this;
 }
 
+/* Moving a part leaves which way its faces look as they were. */
+ModelMesh &ModelMesh::Move(const Vec3 &offset)
+{
+	for (ModelVertex &vertex : this->vertices) vertex.Place(vertex.Position() + offset);
+	return *this;
+}
+
 /* The spot a corner lies on, the same for corners whose positions differ only by rounding. */
 static std::array<int32_t, 3> Spot(const Vec3 &at)
 {
