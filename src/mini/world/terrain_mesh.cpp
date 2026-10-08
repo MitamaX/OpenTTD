@@ -20,6 +20,7 @@
 
 #include "../../map_func.h"
 #include "../../track_func.h"
+#include "../../tunnel_map.h"
 #include "../map/network_style.h"
 #include "../map/tile_shapes.h"
 #include "../map/way_course.h"
@@ -367,10 +368,11 @@ struct EarthBank {
 };
 
 /* Ways climb on embankments and run through cuttings whose earth sides lean out over the lower tile, short of any way along it there,
- * and an embankment grades out over open ground as far as the tile beyond when that is open too; buildings keep the stone walls of their foundations. */
+ * and an embankment grades out over open ground as far as the tile beyond when that is open too; buildings keep the stone walls of their foundations,
+ * and a tunnel's entrance the walls of the cut its portal stands in. */
 static std::optional<EarthBank> EarthBankOf(int tx, int ty, int nx, int ny)
 {
-	if (!OnMap(nx, ny)) return std::nullopt;
+	if (!OnMap(nx, ny) || IsTunnelTile(TileXY(nx, ny))) return std::nullopt;
 	Groundwork high = GroundworkAt(tx, ty);
 	Groundwork low = GroundworkAt(nx, ny);
 	if (high == Groundwork::Built || low == Groundwork::Built || (high == Groundwork::Open && low == Groundwork::Open)) return std::nullopt;
