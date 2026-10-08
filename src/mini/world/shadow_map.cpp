@@ -136,8 +136,7 @@ bool ShadowMap::Build()
 	return false;
 }
 
-/* Each slice of the view is wrapped in the sphere around it, which keeps its size however the camera turns,
- * and the sphere is moved in whole texels so shadow edges hold still while the camera pans; the box about it is grown by the margin. */
+/* The sphere about a slice of the view keeps its size however the camera turns, and moves in whole texels so shadow edges hold still while the camera pans. */
 ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, double near, double far, double margin) const
 {
 	double half_x = camera.viewport.width * 0.5 / camera.focal;
@@ -147,24 +146,32 @@ ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, double near, dou
 	double radius = std::sqrt((far - ahead) * (far - ahead) + far * far * spread);
 
 	Mat4 view = SunView(camera.sun);
-	Vec3 middle = Transformed(view, camera.eye - camera.Back() * ahead);
+	Vec3 middle = camera.eye - camera.Back() * ahead;
+	Vec3 seen = Transformed(view, middle);
 	double half = radius * (1.0 + margin);
 	double texel = 2.0 * half / RESOLUTION;
-	Vec3 centre = {std::floor(middle.x / texel) * texel, std::floor(middle.y / texel) * texel, middle.z};
+	Vec3 centre = {std::floor(seen.x / texel) * texel, std::floor(seen.y / texel) * texel, seen.z};
 
 	double tallest = (_world_tiles.Peak() + CASTER_HEADROOM_LEVELS + DEEPEST_SINK) * LevelRise();
-	double toward_sun = tallest / std::max(camera.sun.z, LOWEST_SUN_RISE);
+	double sunward = tallest / std::max(camera.sun.z, LOWEST_SUN_RISE);
 	Vec3 low = {centre.x - half, centre.y - half, centre.z - half - DEPTH_MARGIN};
-	Vec3 high = {centre.x + half, centre.y + half, centre.z + half + toward_sun};
-	return {Mat4::Orthographic(low, high) * view, far, texel, low, high, middle, radius};
+	Vec3 high = {centre.x + half, centre.y + half, centre.z + half + sunward};
+	return {Mat4::Orthographic(low, high) * view, far, texel, camera.sun, low, high, sunward, middle, radius};
 }
 
 /* Whatever stands between a slice's sphere and the sun is pressed onto the box's near side, so only its far side must reach past the sphere. */
 bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 {
-	return slice.centre.x - slice.radius >= this->low.x && slice.centre.x + slice.radius <= this->high.x &&
-		slice.centre.y - slice.radius >= this->low.y && slice.centre.y + slice.radius <= this->high.y &&
-		slice.centre.z - slice.radius >= this->low.z;
+	Vec3 centre = Transformed(SunView(this->sun), slice.middle);
+	return centre.x - slice.radius >= this->low.x && centre.x + slice.radius <= this->high.x &&
+		centre.y - slice.radius >= this->low.y && centre.y + slice.radius <= this->high.y &&
+		centre.z - slice.radius >= this->low.z;
+}
+
+/* The sun may turn until the longest shadow the box takes in has swung by one of its texels. */
+bool ShadowMap::Cascade::Faces(const Vec3 &sun) const
+{
+	return Length(sun - this->sun) * this->sunward <= this->texel;
 }
 
 /* Cascades drawn in turn are given room to spare, so the camera may move a little before they no longer hold their slices. */
@@ -179,12 +186,13 @@ std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneVi
 	return cascades;
 }
 
-/* A further cascade is drawn on its turn, and between turns as well once its slice of the view has moved out of the box it was last drawn over or the sun has moved. */
-bool ShadowMap::Due(int cascade, const Cascade &fitted, const Vec3 &sun) const
+/* A further cascade is drawn on its turn, and between turns as well once its slice of the view has moved out of the box it was last drawn over or the sun has turned too far from where it was drawn by. */
+bool ShadowMap::Due(int cascade, const Cascade &fitted) const
 {
-	if (cascade < FRESH_CASCADES || this->drawn_sun != sun) return true;
+	if (cascade < FRESH_CASCADES || !this->kept) return true;
 	if (static_cast<int>(this->frame % TURNS) == cascade - FRESH_CASCADES) return true;
-	return !this->drawn[cascade].Holds(fitted);
+	const Cascade &drawn = this->drawn[cascade];
+	return !drawn.Faces(fitted.sun) || !drawn.Holds(fitted);
 }
 
 /* The block goes up once a frame, a copy for each cascade differing only in the caster's view, so no cascade waits on the GPU to finish with the one before. */
@@ -213,6 +221,7 @@ void ShadowMap::Aim(int cascade) const
 	glBindBufferRange(GL_UNIFORM_BUFFER, SHADOWS_BINDING, this->buffer, static_cast<GLintptr>(this->stride * cascade), sizeof(ShadowsBlock));
 }
 
+/* Casters nearer the sun than a cascade's box are pressed onto its near side instead of being cut away. */
 void ShadowMap::BeginCasting() const
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
@@ -230,8 +239,7 @@ static void EndCasting()
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
-/* Casters nearer the sun than a cascade's box are pressed onto its near side instead of being cut away.
- * A cascade not due this frame keeps the picture and the view it was last drawn with, taking only where it hands over to the next anew. */
+/* A cascade not due this frame keeps the picture and the view it was last drawn with, taking only where it hands over to the next anew. */
 void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes)
 {
 	if (!this->Build()) return;
@@ -241,14 +249,14 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 	std::array<bool, CASCADES> due;
 	this->frame++;
 	for (int index = 0; index < CASCADES; index++) {
-		due[index] = this->Due(index, fitted[index], camera.sun);
+		due[index] = this->Due(index, fitted[index]);
 		if (due[index]) {
 			this->drawn[index] = fitted[index];
 		} else {
 			this->drawn[index].far = fitted[index].far;
 		}
 	}
-	this->drawn_sun = camera.sun;
+	this->kept = true;
 	this->Upload(camera);
 
 	this->BeginCasting();
@@ -274,7 +282,7 @@ void ShadowMap::Warm(std::span<const std::unique_ptr<WorldPass>> passes)
 	this->BeginCasting();
 	for (const auto &pass : passes) pass->WarmCast();
 	EndCasting();
-	this->drawn_sun.reset();
+	this->kept = false;
 }
 
 void ShadowMap::Bind() const

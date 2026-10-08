@@ -13,7 +13,6 @@
 #include <array>
 #include <cstddef>
 #include <memory>
-#include <optional>
 #include <span>
 #include <vector>
 
@@ -41,24 +40,26 @@ public:
 	void Release();
 
 private:
-	/* One cascade: how the sun sees it, how far from the camera it reaches and how wide one of its texels is;
-	 * in the sun's view, the box it is drawn over and the sphere about its slice of the camera's view, which the box holds. */
+	/* One cascade: how the sun sees it, how far from the camera it reaches, how wide one of its texels is, the way to the sun it is drawn by, the box it is drawn over in the sun's view and how far that reaches toward the sun, and the sphere about its slice of the camera's view. */
 	struct Cascade {
 		Mat4 view_projection;
 		double far;
 		double texel;
+		Vec3 sun;
 		Vec3 low;
 		Vec3 high;
-		Vec3 centre;
+		double sunward;
+		Vec3 middle;
 		double radius;
 
 		bool Holds(const Cascade &slice) const;
+		bool Faces(const Vec3 &sun) const;
 	};
 
 	bool Build();
 	std::array<Cascade, CASCADES> Fit(const SceneView &camera) const;
 	Cascade FitSlice(const SceneView &camera, double near, double far, double margin) const;
-	bool Due(int cascade, const Cascade &fitted, const Vec3 &sun) const;
+	bool Due(int cascade, const Cascade &fitted) const;
 	void Upload(const SceneView &camera);
 	void Aim(int cascade) const;
 	void BeginCasting() const;
@@ -69,7 +70,8 @@ private:
 	size_t stride = 0;
 	std::vector<std::byte> staged;
 	std::array<Cascade, CASCADES> drawn{};
-	std::optional<Vec3> drawn_sun;
+	/* Whether the depth layers still hold what each cascade was last drawn with. */
+	bool kept = false;
 	uint frame = 0;
 };
 
