@@ -1,0 +1,16 @@
+<rml>
+<head>
+	<link type="text/rcss" href="theme.rcss"/>
+	<link type="text/rcss" href="hud.rcss"/>
+</head>
+<body>
+	<div id="notes" class="dock notes" data-model="notes">
+		<div class="chip pause-banner" data-if="paused">{{pause_text}}</div>
+		<div id="tool-note" class="tool-note" data-if="tool_shown">
+			<div class="chip">{{title}}</div>
+			<div class="chip">{{hint}}</div>
+			<div class="chip" data-if="cost != ''" data-attr-tone="cost_tone">{{cost}}</div>
+		</div>
+	</div>
+</body>
+</rml>

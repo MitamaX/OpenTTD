@@ -1,0 +1,33 @@
+<rml>
+<head>
+	<link type="text/rcss" href="theme.rcss"/>
+	<link type="text/rcss" href="hud.rcss"/>
+</head>
+<body>
+	<div class="dock dock-right">
+		<div id="windows" class="corner" data-model="windows">
+			<div id="window-base" class="window-base">
+				<div class="tile-row">
+					<div class="tile menu-tile press" data-for="category, index : categories" data-class-active="category.active" data-event-click="toggle(index)">
+						<svg class="art" data-attr-src="category.icon"/>
+						<div class="tile-label">{{category.label}}</div>
+					</div>
+				</div>
+				<div class="chrome tile-row overlay-strip" data-if="overlays.size > 0">
+					<div class="tile cell press" data-for="layer, index : overlays" data-class-active="layer.active" data-event-click="overlay(index)">
+						<svg class="mark" data-attr-src="layer.icon"/>
+					</div>
+				</div>
+			</div>
+			<div class="stage stage-end stage-drop">
+				<div class="chrome shelf drop tool-grid" data-class-open="shelf">
+					<div class="tile menu-tile press" data-for="window, index : windows" data-event-click="pick(index)">
+						<svg class="art" data-attr-src="window.icon"/>
+						<div class="tile-label">{{window.label}}</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</body>
+</rml>

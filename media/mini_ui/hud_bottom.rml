@@ -1,0 +1,61 @@
+<rml>
+<head>
+	<link type="text/rcss" href="theme.rcss"/>
+	<link type="text/rcss" href="hud.rcss"/>
+</head>
+<body>
+	<div class="dock dock-bottom">
+		<div id="build" class="corner" data-model="build">
+			<div class="stage">
+				<div class="chrome shelf tool-grid" data-class-open="shelf">
+					<div class="tile menu-tile press" data-for="tool, index : tools" data-class-active="tool.active" data-event-click="pick(index)">
+						<svg class="art" data-attr-src="tool.icon"/>
+						<div class="tile-label">{{tool.label}}</div>
+					</div>
+				</div>
+				<div class="chrome shelf choices" data-class-open="title != ''">
+					<div class="shelf-title">{{title}}</div>
+					<div id="build-choices" class="scroll-list">
+						<div data-for="row : rows">
+							<div class="option-head" data-if="row.head">{{row.text}}</div>
+							<div data-if="!row.head">
+								<div class="tile-row facings" data-if="row.cells.size > 0">
+									<div class="tile cell press" data-for="cell : row.cells" data-class-active="cell.active" data-event-click="apply(row.option, cell.value)">
+										<svg class="mark" data-attr-src="row.mark" data-style-transform="cell.turn"/>
+									</div>
+								</div>
+								<div class="row link option" data-if="row.cells.size == 0" data-class-active="row.active" data-event-click="apply(row.option, row.value)">{{row.text}}</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="tile-row">
+				<div class="tile menu-tile press" data-for="category, index : categories" data-class-active="category.active" data-event-click="toggle(index)">
+					<svg class="art" data-attr-src="category.icon"/>
+					<div class="tile-label">{{category.label}}</div>
+				</div>
+			</div>
+		</div>
+		<div id="toasts" class="toasts" data-model="toasts">
+			<div class="alert" data-for="card, index : cards" data-attr-tone="card.tone" data-style-opacity="card.opacity" data-event-click="open(index)">
+				<div class="alert-head">{{card.head}}</div>
+				<div class="alert-detail" data-if="card.detail != ''">{{card.detail}}</div>
+			</div>
+		</div>
+		<div class="corner">
+			<div id="clear" class="stage stage-end" data-model="clear">
+				<div class="chrome shelf option-list" data-class-open="shown">
+					<div class="row link option" data-for="row, index : rows" data-class-active="row.active" data-event-click="pick(index)">{{row.label}}</div>
+				</div>
+			</div>
+			<div id="commands" class="tile-row" data-model="commands">
+				<div class="tile menu-tile press" data-for="command, index : commands" data-class-active="command.active" data-event-click="pick(index)">
+					<svg class="art" data-attr-src="command.icon"/>
+					<div class="tile-label">{{command.label}}</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</body>
+</rml>

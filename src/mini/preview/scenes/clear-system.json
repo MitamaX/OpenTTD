@@ -7,7 +7,19 @@
 	"backdrop": "#79a85a",
 	"documents": [
 		{
-			"path": "mini_ui/hud.rml"
+			"path": "mini_ui/hud_map.rml"
+		},
+		{
+			"path": "mini_ui/hud_left.rml"
+		},
+		{
+			"path": "mini_ui/hud_right.rml"
+		},
+		{
+			"path": "mini_ui/hud_bottom.rml"
+		},
+		{
+			"path": "mini_ui/hud_notes.rml"
 		}
 	],
 	"models": {

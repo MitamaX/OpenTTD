@@ -2,7 +2,11 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/floats.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/floats.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/hud.rcss
-        ${CMAKE_CURRENT_SOURCE_DIR}/hud.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/hud_bottom.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/hud_left.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/hud_map.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/hud_notes.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/hud_right.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/abandon.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/aircraft.svg
         ${CMAKE_CURRENT_SOURCE_DIR}/icons/airport.svg

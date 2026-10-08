@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file hud.h The screen-wide RmlUi document holding every HUD region. */
+/** @file hud.h The screen-wide RmlUi documents holding the HUD regions, one per dock so a change lays out only its own dock. */
 
 #ifndef MINI_UI_HUD_H
 #define MINI_UI_HUD_H
@@ -27,7 +27,7 @@ public:
 
 private:
 	const std::vector<std::unique_ptr<HudPart>> parts;
-	Rml::ElementDocument *document = nullptr;
+	std::vector<Rml::ElementDocument *> documents;
 };
 
 #endif /* MINI_UI_HUD_H */
