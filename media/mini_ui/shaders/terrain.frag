@@ -69,6 +69,9 @@ const float DEPTH_LOD = 3.0;
 const int DRY_LEVEL = 3;
 const int DRY_REACH = 2;
 const float SANDED_SEA = 0.26;
+const vec2 SHORE_DAMP = vec2(0.18, 0.28);
+const vec2 BANK_DAMP = vec2(0.34, 0.14);
+const float DAMP_LEVEL = 0.5;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
 const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
@@ -853,9 +856,11 @@ Water WaterAt(vec2 p)
 	return water;
 }
 
+/* Ground near water is damp, darkening toward the waterline; a river or a lake soaks its banks darker and further back than the sea's spray does. */
 vec3 Banks(vec3 land, Water water, vec3 beach)
 {
-	vec3 damp = land * (1.0 - 0.18 * smoothstep(0.28, 0.5, water.level));
+	vec2 soaking = mix(SHORE_DAMP, BANK_DAMP, 1.0 - clamp(water.share.x, 0.0, 1.0));
+	vec3 damp = land * (1.0 - soaking.x * smoothstep(soaking.y, DAMP_LEVEL, water.level));
 	vec3 walled = mix(damp, BANK, smoothstep(0.3, 0.46, water.canal));
 	return mix(walled, beach, smoothstep(SANDED_SEA, 0.44, water.sea));
 }

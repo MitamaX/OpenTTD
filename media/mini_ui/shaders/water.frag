@@ -84,7 +84,8 @@ const vec2 TOY_WHITEWATER_EDGES = vec2(0.55, 0.61);
 const float FOAM_SCALE = 3.1;
 const float FOAM_DRIFT = 0.12;
 const float CONTACT_DEPTH = 0.025;
-const float INLAND_FOAM = 0.15;
+const float INLAND_CONTACT_DEPTH = 0.08;
+const float INLAND_FOAM = 0.45;
 const float FOAM_EDGE_THRESHOLD = 0.3;
 const float FOAM_OPACITY = 0.85;
 const float OUTLINE_FOAM_WIDTH = 0.12;
@@ -544,6 +545,7 @@ void main()
 	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
-	float shown = max(smoothstep(0.0, CONTACT_DEPTH, straight.y), body.calm) * outline;
+	float filled = max(body.canal, descent.z);
+	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, body.calm), straight.y), filled) * outline;
 	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(up, sunlit));
 }
