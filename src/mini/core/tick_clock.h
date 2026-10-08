@@ -26,6 +26,7 @@ public:
 	void Advance(uint64_t tick);
 	double Shown() const { return this->shown; }
 	double FrameMs() const { return this->frame_ms; }
+	Clock::time_point FrameAt() const { return this->frame_at; }
 
 private:
 	using Milliseconds = std::chrono::duration<double, std::milli>;
