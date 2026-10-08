@@ -10,6 +10,7 @@ in vec3 v_position;
 out vec4 frag_colour;
 
 const float TAU = 6.2831853;
+const vec3 UP = vec3(0.0, 0.0, 1.0);
 
 const int WAVE_OCTAVES = 5;
 const float WAVE_FREQUENCY = 0.55;
@@ -53,6 +54,9 @@ const float RAPIDS_ALONG = 2.6;
 const float RAPIDS_ACROSS = 9.0;
 const float RAPIDS_PATH = 0.4;
 const float RAPIDS_RUFFLE = 0.8;
+const float LIP_BEND = 0.5;
+const float PLUNGE_BEND = 0.4;
+const float PLUNGE_FROTH = 0.2;
 const float CREST_GLOW = 0.35;
 
 const float WATER_REFLECTANCE = 0.02;
@@ -135,6 +139,14 @@ const float WAKE_STREAK_ALONG = 2.5;
 const float WAKE_STREAK_ACROSS = 14.0;
 const float WAKE_DRIFT = 0.3;
 
+/* How the water's surface falls about a point: which way is down, how steeply, how surely that reads as a drop, and how it bends, bowing over a lip and hollowing at a foot. */
+struct Drop {
+	vec2 down;
+	float slope;
+	float steep;
+	float bend;
+};
+
 struct Body {
 	vec3 absorption;
 	vec3 scatter;
@@ -195,8 +207,14 @@ Surface Stirred(Surface surface, vec2 slope)
 
 Surface Stilled(Surface surface, float stilling)
 {
-	surface.normal = normalize(mix(surface.normal, vec3(0.0, 0.0, 1.0), stilling));
+	surface.normal = normalize(mix(surface.normal, UP, stilling));
 	return surface;
+}
+
+Surface Tilted(Surface surface, vec2 lean)
+{
+	surface.broad = normalize(surface.broad + vec3(lean, 0.0));
+	return Stirred(surface, -lean);
 }
 
 /* Long swell rolls in across the open sea before the wind with a weaker cross swell over it, in crests broken here and there, still to be made out from far away. */
@@ -444,31 +462,32 @@ float WaterLevelNear(vec2 at, ivec2 home)
 	return WaterLevelOn(source, at - vec2(source));
 }
 
-/* How steeply the water's surface leans about a point, measured across a reach so a drop eases in above its lip and runs out into the pool below, and which way is down;
- * open sea lies level. */
-vec3 Descent(vec2 p)
+/* How the water's surface falls about a point, measured across a reach so a drop eases in above its lip and runs out into the pool below; open sea lies level. */
+Drop Descent(vec2 p)
 {
 	ivec2 home = ivec2(floor(p));
-	if (OpenSeaAbout(home)) return vec3(0.0);
+	if (OpenSeaAbout(home)) return Drop(vec2(0.0), 0.0, 0.0, 0.0);
 	vec2 dx = vec2(RAPIDS_REACH, 0.0);
 	vec2 dy = vec2(0.0, RAPIDS_REACH);
-	vec2 fall = vec2(WaterLevelNear(p - dx, home) - WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home) - WaterLevelNear(p + dy, home));
-	fall *= LevelRise() / (2.0 * RAPIDS_REACH);
-	float tilt = length(fall);
-	return vec3(tilt > 0.0 ? fall / tilt : vec2(0.0), smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, tilt));
+	vec4 around = vec4(WaterLevelNear(p - dx, home), WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home), WaterLevelNear(p + dy, home));
+	vec2 fall = vec2(around.x - around.y, around.z - around.w) * LevelRise() / (2.0 * RAPIDS_REACH);
+	float slope = length(fall);
+	float bend = (dot(around, vec4(1.0)) - 4.0 * WaterLevelNear(p, home)) / RAPIDS_REACH;
+	return Drop(slope > 0.0 ? fall / slope : vec2(0.0), slope, smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, slope), bend);
 }
 
-/* Where a river drops it breaks white, the broken water racing down the slope in streaks torn finer where the pixels can show them. */
-float Whitewater(vec2 p, vec3 descent)
+/* Where a river drops it breaks white: glassy over the lip, torn into streaks racing down the slope, and churned thick where it plunges into the pool at the foot. */
+float Whitewater(vec2 p, Drop drop, float glassy)
 {
-	if (descent.z <= 0.0) return 0.0;
-	vec2 down = descent.xy;
-	vec2 across = vec2(-down.y, down.x);
-	vec2 q = vec2(dot(p, down) * RAPIDS_ALONG - Clock() * RAPIDS_SPEED, dot(p, across) * RAPIDS_ACROSS);
+	float plunge = smoothstep(0.0, PLUNGE_BEND, drop.bend);
+	float broken = max(drop.steep * (1.0 - glassy), plunge);
+	if (broken <= 0.0) return 0.0;
+	vec2 across = vec2(-drop.down.y, drop.down.x);
+	vec2 q = vec2(dot(p, drop.down) * RAPIDS_ALONG - Clock() * RAPIDS_SPEED, dot(p, across) * RAPIDS_ACROSS);
 	float torn = Resolved(RAPIDS_ACROSS * 2.3);
 	float churn = 0.55 * Noise(q) + 0.3 * Noise(q * 2.3 + 5.1) + 0.15 * mix(0.5, Noise(q * 5.3 + 1.7), torn);
-	vec2 edges = Landscape() == LANDSCAPE_TOYLAND ? TOY_WHITEWATER_EDGES : vec2(0.4, mix(0.65, 0.58, torn));
-	return descent.z * smoothstep(edges.x, edges.y, churn) * RAPIDS_FOAM;
+	vec2 edges = (Landscape() == LANDSCAPE_TOYLAND ? TOY_WHITEWATER_EDGES : vec2(0.4, mix(0.65, 0.58, torn))) - PLUNGE_FROTH * plunge;
+	return broken * smoothstep(edges.x, edges.y, churn) * RAPIDS_FOAM;
 }
 
 bool Spanned(ivec2 tile)
@@ -527,7 +546,8 @@ void main()
 	float river = body.calm * (1.0 - body.canal);
 	vec2 flow = FlowAt(p);
 	float pace = length(flow);
-	vec3 descent = Descent(p);
+	Drop drop = Descent(p);
+	float glassy = smoothstep(0.0, LIP_BEND, -drop.bend);
 
 	float enclosed = Enclosed(p);
 	Surface waves = Waves(p, max(body.calm, enclosed));
@@ -535,11 +555,14 @@ void main()
 	if (pace > MIN_PACE) {
 		vec3 current = Current(p, flow);
 		float streaked = Resolved(STREAK_STRETCH.y) * pace;
-		waves = Stirred(Stilled(waves, pace * FLOW_STILLING), current.yz * mix(FLOW_STEEPNESS, RAPIDS_STEEPNESS, descent.z) * streaked);
+		waves = Stirred(Stilled(waves, pace * FLOW_STILLING), current.yz * mix(FLOW_STEEPNESS, RAPIDS_STEEPNESS, drop.steep) * streaked);
 		flecks = smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, current.x) * FLECK_FOAM * streaked;
 	}
-	waves.ruffled = max(waves.ruffled, descent.z * RAPIDS_RUFFLE);
+	waves = Tilted(Stilled(waves, glassy), drop.down * drop.slope);
+	waves.ruffled = max(waves.ruffled * (1.0 - glassy), drop.steep * (1.0 - glassy) * RAPIDS_RUFFLE);
 	vec3 normal = waves.normal;
+	vec3 facing = normalize(vec3(drop.down * drop.slope, 1.0));
+	vec3 ripples = normal - facing + UP;
 
 	vec3 sight = SightAt(gl_FragCoord.xy);
 	float surface = length(v_position - Eye());
@@ -547,7 +570,7 @@ void main()
 	vec2 uv = gl_FragCoord.xy / u_screen.xy;
 	vec2 straight = DepthBehind(uv, sight, surface);
 
-	vec2 bend = (mat3(u_view) * normal).xy * REFRACTION * clamp(straight.y / REFRACTION_DEPTH, 0.0, 1.0);
+	vec2 bend = (mat3(u_view) * ripples).xy * REFRACTION * clamp(straight.y / REFRACTION_DEPTH, 0.0, 1.0);
 	vec2 bent_uv = uv + bend;
 	vec2 bent = DepthBehind(bent_uv, SightAt(bent_uv * u_screen.xy), surface);
 	if (bent.x <= 0.0 || bent.y <= 0.0) {
@@ -555,15 +578,14 @@ void main()
 		bent = straight;
 	}
 
-	vec3 up = vec3(0.0, 0.0, 1.0);
-	float sunlit = SunVisibility(v_position, up);
+	float sunlit = SunVisibility(v_position, facing);
 	vec3 sun = SunRadiance() * sunlit;
 	float sheltered = 1.0 - DECK_SHELTER * DeckCover(p);
-	vec3 light = sun * max(SunDirection().z, 0.0) + AmbientLight(up) * sheltered;
+	vec3 light = sun * max(dot(facing, SunDirection()), 0.0) + AmbientLight(facing) * sheltered;
 
-	float path = max(bent.x, max(ShelfPath(p, sight) * body.sea, RAPIDS_PATH * descent.z));
+	float path = max(bent.x, max(ShelfPath(p, sight) * body.sea, RAPIDS_PATH * drop.steep));
 	vec3 transmittance = exp(-body.absorption * path) * (1.0 - body.murk * smoothstep(0.0, MURK_DEPTH, path));
-	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(normal.xy));
+	vec3 crest = body.scatter * light * CREST_GLOW * smoothstep(0.03, 0.25, length(ripples.xy));
 	vec3 below = texture(u_scene_colour, bent_uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
 
 	float reflected;
@@ -575,12 +597,12 @@ void main()
 	float shore = Foam(p, max(ShoreBand(field.r), contact), body);
 	float floes;
 	float ice = ShoreIce(p, field.r, floes);
-	float foam = max(max(shore, Breakers(p, field.r, body) * (1.0 - enclosed)), max(max(Whitewater(p, descent) * river, flecks), Wake(p))) * (1.0 - ice);
+	float foam = max(max(shore, Breakers(p, field.r, body) * (1.0 - enclosed)), max(max(Whitewater(p, drop, glassy) * river, flecks), Wake(p))) * (1.0 - ice);
 	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
 	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
-	float filled = max(body.canal, descent.z);
+	float filled = max(body.canal, drop.steep);
 	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, body.calm), straight.y), filled) * outline;
-	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(up, sunlit));
+	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(facing, sunlit));
 }
