@@ -1,6 +1,13 @@
 const float TAU = 6.2831853;
 const float TEXELS = float(TEXELS_PER_TILE);
 const float PLINTH_HEIGHT = 0.016;
+const float COURSE_TILT = 0.2;
+const float FIRING_BLOTCHES = 4.5;
+const vec2 RAIN_STREAKS = vec2(13.0, 1.4);
+const float STREAK_DEPTH = 0.16;
+const float LICHEN_PATCHES = 2.7;
+const float LICHEN_COVER = 0.4;
+const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 
 /* What a point of a building is: its colour before light, how its surface tilts off the face across and up it,
  * how rough and how much glass it is, and how open it lies to the sky. */
@@ -21,6 +28,29 @@ Clad Matte(vec3 colour, float roughness)
 float Sharpness(float x)
 {
 	return 1.0 - smoothstep(0.2, 0.45, fwidth(x));
+}
+
+float Sharpness(vec2 q)
+{
+	return min(Sharpness(q.x), Sharpness(q.y));
+}
+
+/* The variance of the slopes a surface leans through when tilted along a sine wave of this amplitude, and evenly across this span. */
+float WaveSpread(float amplitude)
+{
+	return amplitude * amplitude * 0.5;
+}
+
+float RampSpread(float span)
+{
+	return span * span / 12.0;
+}
+
+/* Tilts too fine to show widen the highlight instead, the variance of their slopes adding to the one the roughness stands for. */
+float Roughened(float roughness, float unseen_slope_variance)
+{
+	float alpha = roughness * roughness;
+	return sqrt(sqrt(alpha * alpha + unseen_slope_variance));
 }
 
 /* How much of a pixel lines of this width, one a unit, cover; lines too fine to show blend into the share they cover. */
@@ -47,18 +77,36 @@ Clad Coursed(vec2 p, vec3 tint, vec2 units, float joint, float variety, vec3 fil
 	return Matte(mix(unit, filling, joints), 0.85);
 }
 
-/* Overlapping courses down a slope, each shaded where the course above overhangs it and lit along its own lower edge. */
+/* A roof weathers in patches broader than its courses, which still show where the courses blur:
+ * units fired or split a shade apart lie in blotches, rain streaks it down the slope and lichen spreads pale over it here and there.
+ * Toyland's sweets stay as fresh as they were made. */
+vec3 Weathered(vec2 p, vec3 tint, float variety)
+{
+	if (Landscape() == LANDSCAPE_TOYLAND) return tint;
+	vec2 blotch = p * FIRING_BLOTCHES;
+	vec2 streak = p * RAIN_STREAKS;
+	vec2 patches = p * LICHEN_PATCHES;
+	float blotches = mix(0.5, smoothstep(0.2, 0.8, Noise(blotch + 3.7)), Sharpness(blotch));
+	float streaks = mix(0.5, Noise(streak + 9.2), Sharpness(streak));
+	float lichen = smoothstep(0.62, 0.86, Noise(patches + 1.3)) * Sharpness(patches) * LICHEN_COVER;
+	vec3 weathered = tint * Varied(blotches, variety * 1.5) * Varied(streaks, STREAK_DEPTH);
+	return mix(weathered, LICHEN, lichen);
+}
+
+/* Overlapping courses down a weathered slope, each shaded where the course above overhangs it and lit along its own lower edge, and each unit rolled across it as far as roll asks. */
 Clad Tiled(vec2 p, vec3 tint, vec2 units, float variety, float roughness, float roll)
 {
 	float course = p.y * units.y;
 	float column = p.x * units.x + 0.5 * floor(course);
 	float sharp = Sharpness(course);
+	float rolled = Sharpness(column);
 	float along = fract(course);
 	float shade = mix(1.0, mix(0.72, 1.06, smoothstep(0.0, 0.4, along)) * (1.0 - 0.12 * smoothstep(0.88, 1.0, along)), sharp);
-	vec3 colour = tint * shade * Spread(vec2(column, course), variety, sharp);
+	vec3 colour = Weathered(p, tint, variety) * shade * Spread(vec2(column, course), variety, sharp);
 	float gaps = Lines(column, 0.06) * sharp;
-	Clad clad = Matte(colour * (1.0 - 0.35 * gaps), roughness);
-	clad.tilt = vec2(roll * sin(TAU * column) * Sharpness(column), -0.2 * sharp * (along - 0.5));
+	float unseen_tilt = WaveSpread(roll) * (1.0 - rolled) + RampSpread(COURSE_TILT) * (1.0 - sharp);
+	Clad clad = Matte(colour * (1.0 - 0.35 * gaps), Roughened(roughness, unseen_tilt));
+	clad.tilt = vec2(roll * sin(TAU * column) * rolled, -COURSE_TILT * sharp * (along - 0.5));
 	return clad;
 }
 
@@ -80,7 +128,7 @@ Clad Ribbed(vec2 p, vec3 tint, float frequency, float depth, float roughness)
 {
 	float phase = p.x * frequency;
 	float sharp = Sharpness(phase);
-	Clad clad = Matte(tint * (1.0 + 0.06 * cos(TAU * phase) * sharp), roughness);
+	Clad clad = Matte(tint * (1.0 + 0.06 * cos(TAU * phase) * sharp), Roughened(roughness, WaveSpread(depth) * (1.0 - sharp)));
 	clad.tilt = vec2(depth * sin(TAU * phase) * sharp, 0.0);
 	return clad;
 }
@@ -178,8 +226,8 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_METAL: return Panelled(p, tint, vec2(9.0, 0.0), 0.04, 0.3);
 		case CLAD_GLASS: return Glazed(p, tint, vec2(12.0, 10.0), 0.08);
 		case CLAD_LATTICE: return Matte(tint, 0.5);
-		case CLAD_CLAY_TILE: return Tiled(p, tint, vec2(34.0, 42.0), 0.14, 0.55, 0.3);
-		case CLAD_SLATE: return Tiled(p, tint, vec2(28.0, 60.0), 0.16, 0.32, 0.0);
+		case CLAD_CLAY_TILE: return Tiled(p, tint, vec2(34.0, 42.0), 0.14, 0.7, 0.3);
+		case CLAD_SLATE: return Tiled(p, tint, vec2(28.0, 60.0), 0.16, 0.4, 0.0);
 		case CLAD_SHINGLE: return Tiled(p, tint, vec2(22.0, 50.0), 0.22, 0.8, 0.0);
 		case CLAD_THATCH: return Mottled(vec2(p.x * 8.0, p.y), tint, 9.0, 0.3, 0.95);
 		case CLAD_METAL_SEAM: return Ribbed(vec2(p.x * 0.25, p.y), tint, 80.0, 0.12, 0.28);
