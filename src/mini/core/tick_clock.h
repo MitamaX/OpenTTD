@@ -50,9 +50,9 @@ class TickTrail {
 public:
 	struct Spot {
 		uint64_t tick;
-		int32_t x;
-		int32_t y;
-		int32_t z;
+		double x;
+		double y;
+		double z;
 	};
 
 	struct Point {

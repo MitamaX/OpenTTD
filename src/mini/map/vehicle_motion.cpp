@@ -24,8 +24,10 @@
 
 static constexpr uint64_t PRUNE_INTERVAL_MASK = 0xFF;
 static constexpr uint64_t STALE_FRAMES = PRUNE_INTERVAL_MASK + 1;
-static constexpr int64_t MAX_GLIDE_DISTANCE = 2 * TILE_SIZE;
-static constexpr int64_t MAX_STRIDE_PER_TICK = TILE_SIZE;
+static constexpr double MAX_GLIDE_DISTANCE = 2 * TILE_SIZE;
+static constexpr double MAX_STRIDE_PER_TICK = TILE_SIZE;
+static constexpr double AIRCRAFT_STEP_PROGRESS = 256.0;
+static constexpr double MAX_STEP_SHARE = 1.0;
 static constexpr double TURN_EASE_MS = 110.0;
 static constexpr double SNAP_TURN = 0.75 * std::numbers::pi;
 static constexpr double MS_PER_SECOND = 1000.0;
@@ -43,6 +45,14 @@ static double BearingOf(Direction direction)
 {
 	TileIndexDiffC step = TileIndexDiffCByDir(direction);
 	return std::atan2(step.y, step.x);
+}
+
+/* The game moves a unit a whole step at a time once its front has gathered the progress a step takes; the share gathered toward the next step. */
+static double StepShare(const Vehicle *front)
+{
+	if (front->cur_speed == 0) return 0.0;
+	double needed = front->type == VEH_AIRCRAFT ? AIRCRAFT_STEP_PROGRESS : front->GetAdvanceDistance();
+	return std::min(front->progress / needed, MAX_STEP_SHARE);
 }
 
 /* The smaller signed angle turning from one bearing to another. */
@@ -107,16 +117,19 @@ WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)
 	return v->type == VEH_TRAIN ? TrackPoint(point.x, point.y) : RoadPoint(point.x, point.y);
 }
 
+/* A unit stands that share of its next step further along the way it faces. */
 TickTrail::Spot VehicleMotion::SpotOf(const Vehicle *v, uint64_t tick)
 {
-	return {tick, v->x_pos, v->y_pos, v->z_pos};
+	TileIndexDiffC step = TileIndexDiffCByDir(v->direction);
+	double share = StepShare(v->First());
+	return {tick, v->x_pos + step.x * share, v->y_pos + step.y * share, static_cast<double>(v->z_pos)};
 }
 
 bool VehicleMotion::Glides(const TickTrail::Spot &from, const TickTrail::Spot &to)
 {
 	if (to.tick < from.tick) return false;
-	int64_t reach = std::max<int64_t>(MAX_GLIDE_DISTANCE, static_cast<int64_t>(to.tick - from.tick) * MAX_STRIDE_PER_TICK);
-	return std::abs(static_cast<int64_t>(to.x) - from.x) <= reach && std::abs(static_cast<int64_t>(to.y) - from.y) <= reach;
+	double reach = std::max(MAX_GLIDE_DISTANCE, (to.tick - from.tick) * MAX_STRIDE_PER_TICK);
+	return std::abs(to.x - from.x) <= reach && std::abs(to.y - from.y) <= reach;
 }
 
 void VehicleMotion::Clear()

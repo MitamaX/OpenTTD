@@ -409,7 +409,7 @@ public:
 	 *
 	 * @return distance to drive for a movement step on the map.
 	 */
-	inline uint GetAdvanceDistance()
+	inline uint GetAdvanceDistance() const
 	{
 		return (this->direction & 1) ? TILE_AXIAL_DISTANCE : TILE_CORNER_DISTANCE * 2;
 	}
