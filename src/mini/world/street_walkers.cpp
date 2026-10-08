@@ -90,6 +90,7 @@ StreetWalkers::StreetWalkers() : blocks({ChangeKind::Cover, ChangeKind::Ways}, R
 
 void StreetWalkers::Sync(const WorldChanges &changes)
 {
+	this->frame++;
 	this->blocks.Sync(changes);
 }
 
@@ -99,9 +100,11 @@ void StreetWalkers::Prepare(const SceneView &camera, double shown_pixels, double
 }
 
 /* Each pavement beside a house gets its walkers, pacing the stretch of street that runs straight on through their tile, or standing about on it. */
-void StreetWalkers::Build(const TileSpan &tiles, std::vector<Walker> &walkers)
+void StreetWalkers::Build(const TileSpan &tiles, Pavement &pavement)
 {
+	std::vector<Walker> &walkers = pavement.walkers;
 	walkers.clear();
+	pavement.moved = 0;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			for (Axis axis : {AXIS_X, AXIS_Y}) {
@@ -135,17 +138,23 @@ void StreetWalkers::Build(const TileSpan &tiles, std::vector<Walker> &walkers)
 void StreetWalkers::Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch)
 {
 	size_t gathered = 0;
-	this->blocks.ForEachSeen(view, frustum, fewest_pixels, RUN_REACH, [&](const std::vector<Walker> &walkers) {
-		gathered += GatherBlock(view, walkers, fewest_pixels, batch);
+	this->blocks.ForEachSeen(view, frustum, fewest_pixels, RUN_REACH, [&](Pavement &pavement) {
+		if (pavement.moved != this->frame) this->Move(view, pavement);
+		for (const Stroll &stroll : pavement.strolls) {
+			if (stroll.tile_pixels < fewest_pixels) continue;
+			batch.Add(to_underlying(stroll.pose), stroll.instance);
+			gathered++;
+		}
 		return gathered < MOST_WALKERS;
 	});
 }
 
 /* A walker turns about at either end of its stretch; one standing about keeps to its spot, facing along the street one way or the other. */
-size_t StreetWalkers::GatherBlock(const SceneView &view, std::span<const Walker> walkers, double fewest_pixels, VehicleBatch &batch)
+void StreetWalkers::Move(const SceneView &view, Pavement &pavement) const
 {
-	size_t gathered = 0;
-	for (const Walker &walker : walkers) {
+	pavement.moved = this->frame;
+	pavement.strolls.clear();
+	for (const Walker &walker : pavement.walkers) {
 		bool walking = walker.pace > 0.0f;
 		double walked = view.clock * walker.pace + walker.phase * walker.length;
 		double lap = std::fmod(walked / walker.length, 2.0);
@@ -154,19 +163,17 @@ size_t StreetWalkers::GatherBlock(const SceneView &view, std::span<const Walker>
 		double x = walker.x + walker.along_x * share * walker.length;
 		double y = walker.y + walker.along_y * share * walker.length;
 		double z = GroundLevel(x, y) * LevelRise() + PAVEMENT_TOP;
-		if (view.TilePixelsAt(Length(view.eye - Vec3{x, y, z})) < fewest_pixels) continue;
 
 		double steps = walked / STRIDE;
 		FigurePose pose = walking ? WALK_CYCLE[static_cast<size_t>(std::fmod(steps, 2.0) * 2.0) % WALK_CYCLE.size()] : FigurePose::Upright;
 		double bob = walking ? BOB * std::abs(std::sin(steps * std::numbers::pi)) : 0.0;
 		double yaw = std::atan2(walker.along_y * heading, walker.along_x * heading);
-		batch.Add(to_underlying(pose), VehicleInstance{
+		VehicleInstance instance = {
 			static_cast<float>(x), static_cast<float>(y), static_cast<float>(z + bob), static_cast<float>(yaw), 0.0f, 0.0f, 1.0f,
 			walker.shirt, walker.trousers, {},
-		});
-		gathered++;
+		};
+		pavement.strolls.push_back({instance, pose, view.TilePixelsAt(Length(view.eye - Vec3{x, y, z}))});
 	}
-	return gathered;
 }
 
 void StreetWalkers::Release()
