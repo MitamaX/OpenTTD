@@ -581,7 +581,7 @@ Surface Flowing(Water water, out float flecks)
 	return waves;
 }
 
-/* Where what lies behind the water shows through it, bent by its ripples, and the depth there; where the bend would reach past the water, straight behind. */
+/* Where what lies behind the water shows through it bent by its ripples, falling back to straight behind where the bend would reach past the water. */
 vec2 Refracted(vec2 uv, vec3 ripples, Body body, vec2 straight, float surface, out vec2 depth)
 {
 	vec2 bend = (mat3(u_view) * ripples).xy * mix(REFRACTION, INLAND_REFRACTION, body.sheen) * clamp(straight.y / REFRACTION_DEPTH, 0.0, 1.0);
@@ -606,7 +606,7 @@ vec3 Below(vec2 uv, float path, Body body, vec3 light, vec3 ripples)
 	return texture(u_scene_colour, uv).rgb * transmittance + body.scatter * light * (1.0 - transmittance) + crest;
 }
 
-/* Foam along the shore and in breakers off it, white water down a drop, flecks on the current and the wakes of ships, all under any ice along the shore. */
+/* Every kind of foam the water churns up, lying under any ice along the shore. */
 vec3 Frothed(vec3 colour, Water water, float flecks, float behind, vec3 light, vec3 glitter)
 {
 	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, behind);

@@ -37,8 +37,7 @@ vec2 Openness(ivec2 texel, float ahead)
 	return weights > 1e-3 ? sum / weights : vec2(1.0);
 }
 
-/* The light of the sky and the ground around, the share of a surface's light its shader left in the alpha, dims by how closed in it lies over a tile around and where things meet;
- * where things meet they shade a little of each other's sunlight too, which the sun's shadows are too coarse to catch. */
+/* The ambient share a surface's shader left in the alpha dims by how closed in it lies, and where things meet a little of the sunlight too, which the sun's shadows are too coarse to catch. */
 vec3 Occluded(vec4 surface, ivec2 texel, float ahead)
 {
 	if (u_occlusion_strength <= 0.0) return surface.rgb;

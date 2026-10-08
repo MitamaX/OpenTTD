@@ -82,8 +82,7 @@ float Openness(vec3 centre, vec3 normal, vec2 uv, vec2 half_size, float radius)
 	return clamp(openness / float(SLICES), 0.0, 1.0);
 }
 
-/* Each texel answers for the full size texel at its own corner: how open it lies over a tile around and close about it where things meet,
- * and how far ahead it lies so the blur can tell surfaces apart. */
+/* Each texel stands for the full size texel at its corner, and keeps how far ahead that lies for the blur to tell surfaces apart. */
 void main()
 {
 	vec2 half_size = vec2(textureSize(u_depth, 0) / 2);
