@@ -27,6 +27,7 @@ struct SceneView {
 	double focus_pixels;
 	double near;
 	double far;
+	double focus;
 	double fog_start;
 	double shadow_reach;
 	double clock;

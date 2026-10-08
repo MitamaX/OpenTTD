@@ -67,8 +67,9 @@ SceneView SceneView::Of(const Camera &camera)
 	view.focus_pixels = camera.Ppt();
 	view.near = camera.Near();
 	view.far = camera.Far();
-	view.fog_start = std::min(camera.FocusDistance() * FOG_START_SHARE, view.far);
-	view.shadow_reach = std::min(camera.FocusDistance() * SHADOW_REACH_SHARE, view.far);
+	view.focus = camera.FocusDistance();
+	view.fog_start = std::min(view.focus * FOG_START_SHARE, view.far);
+	view.shadow_reach = std::min(view.focus * SHADOW_REACH_SHARE, view.far);
 	view.clock = Clock();
 	view.viewport = {static_cast<uint>(camera.Width()), static_cast<uint>(camera.Height())};
 	return view;
@@ -118,7 +119,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		view.view_projection.Floats(),
 		floats(view.eye.x, view.eye.y, view.eye.z, 1.0),
 		floats(sun.x, sun.y, sun.z, 0.0),
-		floats(view.near, view.far, view.fog_start, view.far),
+		floats(view.near, view.far, view.fog_start, view.focus),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
 		floats(view.viewport.width, view.viewport.height, view.clock, view.phase),
 		floats(SnowLine(), 0.0, 0.0, 0.0),

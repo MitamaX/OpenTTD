@@ -71,6 +71,12 @@ vec3 Eye()
 	return u_eye.xyz;
 }
 
+/* How far the eye stands from the ground point the view turns about. */
+float FocusDistance()
+{
+	return u_lens.w;
+}
+
 /* How many screen pixels one tile spans this far from the eye. */
 float TilePixelsAt(float distance)
 {

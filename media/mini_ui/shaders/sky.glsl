@@ -18,7 +18,7 @@ const float SUN_DISC_COSINE = 0.99993;
 const float SUN_DISC_EDGE = 0.99985;
 const float SUN_DISC_BRIGHTNESS = 12.0;
 
-const float HAZE_DENSITY = 0.0020;
+const float HAZE_DENSITY = 0.007;
 const float HAZE_FALLOFF = 1.0 / 16.0;
 
 vec3 SunRadiance()
@@ -70,7 +70,8 @@ float HazeDepth(vec3 from, vec3 to)
 	return HAZE_DENSITY * length(to - from) * mean;
 }
 
-vec3 Hazed(vec3 radiance, vec3 from, vec3 to)
+/* The light leaving a point along a sight line, through the air between two points of the line. */
+vec3 Hazed(vec3 radiance, vec3 sight, vec3 from, vec3 to)
 {
-	return mix(Haze(normalize(to - from)), radiance, exp(-HazeDepth(from, to)));
+	return mix(Haze(sight), radiance, exp(-HazeDepth(from, to)));
 }
