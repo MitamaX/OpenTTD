@@ -163,9 +163,21 @@ void Overview::Paint(int width, int height, OverviewMode mode)
 {
 	this->width = width;
 	this->height = height;
-	this->PaintTiles(mode);
-	if (mode == OverviewMode::Vehicles) this->PaintVehicles();
-	if (mode == OverviewMode::Flow) this->PaintFlow();
+	this->ground.assign(static_cast<size_t>(width) * height, COL_VOID);
+	this->PaintRows(0, height, mode);
+	this->next_row = 0;
+	this->Compose(mode);
+}
+
+bool Overview::PaintSlice(int rows, OverviewMode mode)
+{
+	int end = std::min(this->height, this->next_row + rows);
+	this->PaintRows(this->next_row, end, mode);
+	this->next_row = end < this->height ? end : 0;
+	if (this->next_row != 0) return false;
+
+	this->Compose(mode);
+	return true;
 }
 
 /* The map is drawn turned so its north corner points up-left: pixel columns follow the tile y axis, pixel rows the tile x axis. */
@@ -187,13 +199,19 @@ TileIndex Overview::TileAt(int x, int y) const
 	return TileXY(tile_x, tile_y);
 }
 
-void Overview::PaintTiles(OverviewMode mode)
+void Overview::PaintRows(int from, int to, OverviewMode mode)
 {
-	this->pixels.assign(static_cast<size_t>(this->width) * this->height, COL_VOID);
-	for (int y = 0; y < this->height; y++) {
-		uint32_t *row = this->pixels.data() + static_cast<size_t>(y) * this->width;
+	for (int y = from; y < to; y++) {
+		uint32_t *row = this->ground.data() + static_cast<size_t>(y) * this->width;
 		for (int x = 0; x < this->width; x++) row[x] = TileColour(this->TileAt(x, y), mode);
 	}
+}
+
+void Overview::Compose(OverviewMode mode)
+{
+	this->pixels = this->ground;
+	if (mode == OverviewMode::Vehicles) this->PaintVehicles();
+	if (mode == OverviewMode::Flow) this->PaintFlow();
 }
 
 void Overview::PaintVehicles()

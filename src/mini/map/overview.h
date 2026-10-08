@@ -30,6 +30,7 @@ enum class OverviewMode : uint8_t {
 class Overview {
 public:
 	void Paint(int width, int height, OverviewMode mode);
+	bool PaintSlice(int rows, OverviewMode mode);
 
 	std::span<const uint32_t> Pixels() const { return this->pixels; }
 	int Width() const { return this->width; }
@@ -40,15 +41,18 @@ public:
 	TileIndex TileAt(int x, int y) const;
 
 private:
-	void PaintTiles(OverviewMode mode);
+	void PaintRows(int from, int to, OverviewMode mode);
+	void Compose(OverviewMode mode);
 	void PaintVehicles();
 	void PaintFlow();
 	void Dot(Point at, int radius, uint32_t colour);
 	void Line(Point from, Point to, int thickness, uint32_t colour);
 
+	std::vector<uint32_t> ground;
 	std::vector<uint32_t> pixels;
 	int width = 0;
 	int height = 0;
+	int next_row = 0;
 };
 
 #endif /* MINI_MAP_OVERVIEW_H */

@@ -10,7 +10,6 @@
 #ifndef MINI_WINDOWS_MAP_PANEL_H
 #define MINI_WINDOWS_MAP_PANEL_H
 
-#include <chrono>
 #include <optional>
 #include <vector>
 
@@ -32,14 +31,13 @@ private:
 	OverviewMode Mode() const { return static_cast<OverviewMode>(this->tab); }
 	Rml::Element *Frame() const;
 	std::optional<Rml::Vector2i> FrameSize() const;
-	void Repaint(Rml::Element &frame, Rml::Vector2i size);
+	void ShowPicture(Rml::Element &frame);
 	void PlaceView(Rml::Element &frame);
 	void PlaceTowns(Rml::Element &frame);
 	void Seek(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 
 	Overview overview;
 	OverviewMode painted_mode = OverviewMode::Contour;
-	std::chrono::steady_clock::time_point painted_at{};
 	Rml::Vector<Rml::String> towns;
 	std::vector<Point> town_points;
 };

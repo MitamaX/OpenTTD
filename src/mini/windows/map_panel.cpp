@@ -12,6 +12,7 @@
 
 #include <RmlUi/Core.h>
 
+#include "../../core/math_func.hpp"
 #include "../../map_func.h"
 #include "../../town.h"
 #include "../core/camera.h"
@@ -27,7 +28,7 @@
 static constexpr const char MAP_DOCUMENT[] = "mini_ui/map.rml";
 static constexpr const char TOWN_CLASS[] = "map-town";
 static constexpr const char HIDDEN_CLASS[] = "hidden";
-static constexpr std::chrono::milliseconds REPAINT_INTERVAL{500};
+static constexpr int REPAINT_SLICES = 30;
 static constexpr float TOWN_LIFT = 2.0f;
 
 static constexpr StringID MAP_MODE_NAMES[] = {
@@ -126,25 +127,29 @@ bool MapPanel::Shape()
 	return resized;
 }
 
-/* Scanning every tile costs too much to repeat per frame, so the picture is repainted on a slow beat. */
+/* Scanning every tile costs too much to do in one frame, so the picture is repainted a slice of rows each frame, and at once only for a new mode or size. */
 void MapPanel::AfterLayout()
 {
 	Rml::Element *frame = this->Frame();
 	std::optional<Rml::Vector2i> size = this->FrameSize();
 	if (frame == nullptr || !size.has_value()) return;
 
-	bool stale = std::chrono::steady_clock::now() - this->painted_at >= REPAINT_INTERVAL;
-	if (stale || this->Mode() != this->painted_mode || *size != Rml::Vector2i(this->overview.Width(), this->overview.Height())) this->Repaint(*frame, *size);
+	if (this->Mode() != this->painted_mode || *size != Rml::Vector2i(this->overview.Width(), this->overview.Height())) {
+		this->overview.Paint(size->x, size->y, this->Mode());
+		this->painted_mode = this->Mode();
+		this->ShowPicture(*frame);
+	} else if (this->overview.PaintSlice(static_cast<int>(CeilDiv(size->y, REPAINT_SLICES)), this->Mode())) {
+		this->ShowPicture(*frame);
+	}
 	this->PlaceView(*frame);
 	this->PlaceTowns(*frame);
 }
 
-void MapPanel::Repaint(Rml::Element &frame, Rml::Vector2i size)
+void MapPanel::ShowPicture(Rml::Element &frame)
 {
-	this->overview.Paint(size.x, size.y, this->Mode());
-	this->painted_mode = this->Mode();
-	this->painted_at = std::chrono::steady_clock::now();
-	if (auto *image = dynamic_cast<RasterImage *>(frame.GetElementById("map-image")); image != nullptr) image->Show(this->overview.Pixels(), size);
+	if (auto *image = dynamic_cast<RasterImage *>(frame.GetElementById("map-image")); image != nullptr) {
+		image->Show(this->overview.Pixels(), Rml::Vector2i(this->overview.Width(), this->overview.Height()));
+	}
 }
 
 /* The camera sees a turned rectangle of the map, so its box is laid out upright around the centre and turned onto it. */
