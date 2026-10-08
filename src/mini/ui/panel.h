@@ -14,6 +14,9 @@
 #include <string>
 #include <vector>
 
+#include <RmlUi/Core/EventListener.h>
+
+#include "../core/beat.h"
 #include "view.h"
 
 namespace Rml { class ElementDocument; }
@@ -40,10 +43,11 @@ public:
 	void Close();
 	void Dismiss();
 	void Raise();
+	void RefreshWhenDue();
 	void Reshape();
 	void Settle();
 
-	void SelectTab(int tab) { this->tab = tab; }
+	void SelectTab(int tab);
 	void BeginEdit(Rml::String key, Rml::String text);
 
 	Rml::Vector2f Size() const;
@@ -75,6 +79,11 @@ protected:
 	bool wide = false;
 
 private:
+	struct TouchListener : Rml::EventListener {
+		bool touched = true;
+		void ProcessEvent(Rml::Event &) override { this->touched = true; }
+	};
+
 	void Run(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void DismissClicked(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
 	void EditTitle(Rml::DataModelHandle model, Rml::Event &event, const Rml::VariantList &arguments);
@@ -89,6 +98,8 @@ private:
 	Rml::String editing;
 	Rml::String draft;
 	bool focus_pending = false;
+	TouchListener touch;
+	Beat refresh_beat;
 };
 
 #endif /* MINI_UI_PANEL_H */

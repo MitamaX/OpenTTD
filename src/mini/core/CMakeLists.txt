@@ -1,4 +1,5 @@
 add_files(
+    beat.h
     camera.cpp
     camera.h
     canvas.cpp

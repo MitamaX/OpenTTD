@@ -19,6 +19,11 @@
 
 static constexpr const char EDIT_FIELD[] = ".editing .edit";
 static constexpr const char WIDE_CLASS[] = "wide";
+static constexpr std::chrono::milliseconds REFRESH_INTERVAL{250};
+static constexpr Rml::EventId TOUCH_EVENTS[] = {
+	Rml::EventId::Mousedown, Rml::EventId::Mouseup, Rml::EventId::Click, Rml::EventId::Dblclick, Rml::EventId::Mouseover, Rml::EventId::Mousescroll,
+	Rml::EventId::Drag, Rml::EventId::Keydown, Rml::EventId::Textinput, Rml::EventId::Change, Rml::EventId::Blur,
+};
 
 static Rml::String KeyArgument(const Rml::VariantList &arguments)
 {
@@ -32,7 +37,7 @@ bool PanelCommand::operator==(const PanelCommand &other) const
 }
 
 Panel::Panel(std::string key, std::string document_path, Rml::String title, Rml::Vector<Rml::String> tabs) :
-	title(std::move(title)), key(std::move(key)), document_path(std::move(document_path)), tabs(std::move(tabs))
+	title(std::move(title)), key(std::move(key)), document_path(std::move(document_path)), tabs(std::move(tabs)), refresh_beat(REFRESH_INTERVAL)
 {
 }
 
@@ -48,6 +53,7 @@ bool Panel::Open(Rml::Context &context, Rml::String model_name)
 		return false;
 	}
 	this->document->SetClass(WIDE_CLASS, this->wide);
+	for (Rml::EventId event : TOUCH_EVENTS) this->document->AddEventListener(event, &this->touch, true);
 	this->document->Show();
 	return true;
 }
@@ -59,6 +65,7 @@ void Panel::ListNatives(std::vector<NativeKey> &) const
 void Panel::Close()
 {
 	if (this->document == nullptr) return;
+	for (Rml::EventId event : TOUCH_EVENTS) this->document->RemoveEventListener(event, &this->touch, true);
 	this->document->Close();
 	this->document = nullptr;
 }
@@ -75,6 +82,13 @@ void Panel::Raise()
 	if (this->document != nullptr) this->document->PullToFront();
 }
 
+void Panel::RefreshWhenDue()
+{
+	if (!this->touch.touched && !this->refresh_beat.Due()) return;
+	this->touch.touched = false;
+	this->Refresh();
+}
+
 /* A panel is laid out again at once when it changed shape, so it is drawn at the size its slots are pinned to. */
 void Panel::Reshape()
 {
@@ -88,11 +102,18 @@ void Panel::Settle()
 	this->AfterLayout();
 }
 
+void Panel::SelectTab(int tab)
+{
+	this->tab = tab;
+	this->touch.touched = true;
+}
+
 void Panel::BeginEdit(Rml::String key, Rml::String text)
 {
 	this->editing = std::move(key);
 	this->draft = std::move(text);
 	this->focus_pending = true;
+	this->touch.touched = true;
 }
 
 Rml::Vector2f Panel::Size() const

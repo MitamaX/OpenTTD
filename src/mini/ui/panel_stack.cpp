@@ -60,7 +60,7 @@ void PanelStack::Refresh()
 {
 	for (const auto &panel : this->panels) {
 		if (panel->IsOpen() && !panel->IsAlive()) panel->Close();
-		if (panel->IsOpen()) panel->Refresh();
+		if (panel->IsOpen()) panel->RefreshWhenDue();
 	}
 }
 
