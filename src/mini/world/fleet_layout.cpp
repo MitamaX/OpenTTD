@@ -95,8 +95,8 @@ static bool IsShown(const Vehicle *unit)
 	if (!unit->vehstatus.Test(VehState::Hidden)) return true;
 	if (!IsTunnelTile(unit->tile)) return false;
 	TileIndexDiffC step = TileIndexDiffCByDir(unit->direction);
-	int reach = unit->GetGroundVehicleCache()->cached_veh_length / 2;
-	return std::ranges::any_of(std::array{-reach, reach}, [&](int end) { return IsTunnelTile(TileVirtXYClampedToMap(unit->x_pos + step.x * end, unit->y_pos + step.y * end)); });
+	int half_length = unit->GetGroundVehicleCache()->cached_veh_length / 2;
+	return std::ranges::any_of(std::array{-half_length, half_length}, [&](int end) { return IsTunnelTile(TileVirtXYClampedToMap(unit->x_pos + step.x * end, unit->y_pos + step.y * end)); });
 }
 
 /* How long a vehicle is from the nose of its first unit to the tail of its last; a ship or an aircraft is as long as nothing. */
@@ -166,9 +166,9 @@ void FleetLayout::LayConsist(const Vehicle *head)
 	const Link &first = this->links.front();
 	const Link &last = this->links.back();
 	this->path.clear();
-	this->Reach(first.unit, _vehicle_motion.Onward(first.unit, first.centre, first.length * 0.5));
-	for (const Link &link : this->links) this->Reach(link.unit, link.centre);
-	this->Reach(last.unit, _vehicle_motion.Onward(last.unit, last.centre, -last.length * 0.5));
+	this->ExtendPath(first.unit, _vehicle_motion.Onward(first.unit, first.centre, first.length * 0.5));
+	for (const Link &link : this->links) this->ExtendPath(link.unit, link.centre);
+	this->ExtendPath(last.unit, _vehicle_motion.Onward(last.unit, last.centre, -last.length * 0.5));
 
 	double arc = 0.0;
 	for (const Link &link : this->links) {
@@ -186,12 +186,11 @@ void FleetLayout::LayConsist(const Vehicle *head)
 }
 
 /* The path runs on to a point as a unit there runs, a train along its track through the middles of the tile sides between. */
-void FleetLayout::Reach(const Vehicle *unit, const WorldPoint &to)
+void FleetLayout::ExtendPath(const Vehicle *unit, const WorldPoint &to)
 {
 	auto pass = [&](const WorldPoint &at) { this->path.push_back({at, VehicleMotion::Grounded(unit, at)}); };
 	if (!this->path.empty() && VehicleMotion::FollowsTrack(unit)) {
-		const WorldPoint &from = this->path.back().game;
-		TrackRoute route({from.x, from.y}, {to.x, to.y});
+		TrackRoute route(Flat(this->path.back().game), Flat(to));
 		for (const MapVector &side : route.Sides()) pass({side.x, side.y, to.level});
 	}
 	pass(to);

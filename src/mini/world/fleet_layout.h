@@ -81,7 +81,7 @@ private:
 
 	bool MayShow(const SceneView &view, const Vehicle *head, double reach) const;
 	void LayConsist(const Vehicle *head);
-	void Reach(const Vehicle *unit, const WorldPoint &to);
+	void ExtendPath(const Vehicle *unit, const WorldPoint &to);
 	void LayShip(const Vehicle *ship);
 	void LayAircraft(const Vehicle *aircraft);
 	void Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length);
