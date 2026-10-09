@@ -33,11 +33,11 @@ const vec3 SPRAY_VARIETY = vec3(0.32, 0.24, 0.08);
 const vec2 SPRAY_EDGES = vec2(0.25, 0.75);
 const float SPRAY_SEED = 2.3;
 const vec2 LEAF_SHOWN_PIXELS = vec2(1.5, 4.0);
-const float LEAF_POCKETS = 0.3;
-const vec2 LEAF_POCKET_EDGES = vec2(0.25, 0.75);
-const float LEAF_RELIEF = 0.008;
+const float LEAF_POCKETS = 0.4;
+const vec2 LEAF_DOME_EDGES = vec2(0.2, 0.8);
+const float LEAF_RELIEF = 0.018;
 const float LEAST_FACING = 0.1;
-const float RAGGED_EDGE = 0.45;
+const float RAGGED_EDGE = 0.55;
 const float RAGGED_FACING = 0.45;
 const float LEAF_ROUGHNESS = 0.6;
 const float BARK_ROUGHNESS = 0.9;
@@ -99,6 +99,11 @@ vec3 Albedo(vec3 normal)
 	return mix(albedo, SNOW_COVER, v_snow * leafy * smoothstep(SNOW_SETTLES, SNOW_COVERS, normal.z));
 }
 
+float LeafDome(float clumps)
+{
+	return smoothstep(LEAF_DOME_EDGES.x, LEAF_DOME_EDGES.y, clumps);
+}
+
 vec3 Bumped(vec3 normal, float relief, vec3 view)
 {
 	vec3 across = dFdx(v_position);
@@ -120,13 +125,14 @@ void main()
 	float foliage = Foliage();
 	float clumps = foliage > 0.0 ? Noise(v_grown * LEAF_CLUMPS_PER_TILE) : 0.5;
 	vec3 view = ToEye(v_position);
-	vec3 leaves = Bumped(normal, (clumps - 0.5) * LEAF_RELIEF * foliage, view);
+	float dome = LeafDome(clumps);
+	vec3 leaves = Bumped(normal, (dome - 0.5) * LEAF_RELIEF * foliage, view);
 	if (clumps < RAGGED_EDGE * (1.0 - smoothstep(0.0, RAGGED_FACING, abs(dot(normal, view)))) * foliage) discard;
 
 	float clouds = CloudLight(v_position);
 	float sunlit = SunVisibility(v_position, leaves, clouds);
 	float openness = gl_FrontFacing ? v_openness : v_openness * INSIDE_OPENNESS;
-	vec3 albedo = Albedo(normal) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, smoothstep(LEAF_POCKET_EDGES.x, LEAF_POCKET_EDGES.y, clumps)), foliage);
+	vec3 albedo = Albedo(normal) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, dome), foliage);
 	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Leafy()), DIELECTRIC_REFLECTANCE);
 	frag_colour = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, openness, sunlit, v_crown_sunlit * clouds);
 }

@@ -33,6 +33,7 @@ static constexpr double FLESH_TRANSLUCENCY = 0.12;
 static constexpr double CANDY_TRANSLUCENCY = 0.05;
 static constexpr double FACET_SPREAD = 0.07;
 static constexpr double CANOPY_ROUNDING = 0.45;
+static constexpr double SOFT_CANOPY_ROUNDING = 0.6;
 static constexpr double SHADED_UNDERSIDE = 0.4;
 static constexpr double CROWN_HOLLOW = 0.55;
 static constexpr SeedRange CROWN_CORE_EDGES = {0.45, 0.9};
@@ -208,10 +209,20 @@ static constexpr std::array<CrownHabit, TREE_SHAPES> JUNGLE_HABITS = {{
 	{{0.3, 0.34}, {0.13, 0.13, 0.1}, 4, 1, {0.06, 0.075}, 0.7, false, {0.0, 0.03}, {0.018, 0.012}},
 }};
 
+enum class LeafSurface : uint8_t {
+	Soft,
+	Faceted,
+};
+
+static LeafSurface SurfaceOf(TreeKind kind)
+{
+	return kind == TreeKind::Broadleaf || kind == TreeKind::Jungle ? LeafSurface::Soft : LeafSurface::Faceted;
+}
+
 /* One shape at one detail, built up part by part. */
 class TreeBuilder {
 public:
-	TreeBuilder(const TreeTones &tones, uint32_t seed) : tones(tones), dice(seed) {}
+	TreeBuilder(const TreeTones &tones, LeafSurface surface, uint32_t seed) : tones(tones), surface(surface), dice(seed) {}
 
 	SeedDice &Dice() { return this->dice; }
 
@@ -231,7 +242,12 @@ public:
 
 	void Leaves(ModelMesh part, const Crown &crown, uint32_t tone, double translucency)
 	{
-		part.Facet().Round(crown.centre, CANOPY_ROUNDING).Paint(tone).Vary(FACET_SPREAD, this->dice.Next()).Translucent(translucency);
+		if (this->surface == LeafSurface::Faceted) {
+			part.Facet().Round(crown.centre, CANOPY_ROUNDING).Paint(tone).Vary(FACET_SPREAD, this->dice.Next());
+		} else {
+			part.Smooth().Round(crown.centre, SOFT_CANOPY_ROUNDING).Paint(tone);
+		}
+		part.Translucent(translucency);
 		this->model.Append(part.Occlude([&](const Vec3 &at) { return crown.Openness(at); }));
 	}
 
@@ -284,6 +300,7 @@ public:
 
 private:
 	const TreeTones &tones;
+	LeafSurface surface;
 	SeedDice dice;
 	ModelMesh model;
 };
@@ -502,7 +519,7 @@ static void Toy(TreeBuilder &tree, TreeDetail detail, uint8_t variant)
 
 static ModelMesh BuildTree(TreeShape shape, TreeDetail detail)
 {
-	TreeBuilder tree(TONES[static_cast<size_t>(shape.kind)][shape.variant % TONE_SETS], Hash32(SHAPE_SALT + static_cast<uint32_t>(shape.Index())));
+	TreeBuilder tree(TONES[static_cast<size_t>(shape.kind)][shape.variant % TONE_SETS], SurfaceOf(shape.kind), Hash32(SHAPE_SALT + static_cast<uint32_t>(shape.Index())));
 	switch (shape.kind) {
 		case TreeKind::Broadleaf: Canopy(tree, detail, BROADLEAF_HABITS[shape.variant]); break;
 		case TreeKind::Conifer: Conifer(tree, detail, CONIFER_HABITS[shape.variant]); break;
