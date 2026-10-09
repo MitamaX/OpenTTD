@@ -240,6 +240,8 @@ const float VERGE_OPACITY = 0.8;
 const float CROP_FLOW = 0.32;
 const float RIPENING_PER_TILE = 0.9;
 const vec3 UNRIPE = vec3(0.84, 1.02, 0.74);
+const vec2 UNRIPE_EDGES = vec2(0.5, 0.75);
+const float RIPENING_SEED = 3.7;
 
 const float FOREST_COVER = 0.9;
 const float CANOPY_OCCLUSION = 0.45;
@@ -659,7 +661,7 @@ Patch Rocks(Site site)
 Patch Fields(Ground ground, Grain grain, vec2 p)
 {
 	vec3 crop = CROPS[int(ground.variant % uint(CROP_COUNT))] * Varied(Octave(p + 1.9, 0.6), CROP_FLOW) * Varied(Octave(p + 7.4, 2.1), 0.1) * Varied(grain.local, 0.1);
-	crop *= mix(vec3(1.0), UNRIPE, smoothstep(0.5, 0.75, Octave(p + 3.7, RIPENING_PER_TILE)));
+	crop *= mix(vec3(1.0), UNRIPE, smoothstep(UNRIPE_EDGES.x, UNRIPE_EDGES.y, Octave(p + RIPENING_SEED, RIPENING_PER_TILE)));
 	bool rows_along_y = (ground.variant & 1u) == 0u;
 	float across = rows_along_y ? p.x : p.y;
 	float along = rows_along_y ? p.y : p.x;

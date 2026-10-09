@@ -26,6 +26,7 @@ const vec2 LEAF_TRANSLUCENCY = vec2(0.2, 0.4);
 const float LEAF_CLUMPS_PER_TILE = 24.0;
 const vec2 LEAF_SHOWN_PIXELS = vec2(1.5, 4.0);
 const float LEAF_POCKETS = 0.3;
+const vec2 LEAF_POCKET_EDGES = vec2(0.25, 0.75);
 const float LEAF_RELIEF = 0.008;
 const float LEAST_FACING = 0.1;
 const float RAGGED_EDGE = 0.45;
@@ -81,7 +82,7 @@ void main()
 	if (clumps < RAGGED_EDGE * (1.0 - smoothstep(0.0, RAGGED_FACING, abs(dot(normal, view)))) * foliage) discard;
 
 	float sunlit = SunVisibility(v_position, leaves);
-	vec3 albedo = Albedo(normal) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, smoothstep(0.25, 0.75, clumps)), foliage);
+	vec3 albedo = Albedo(normal) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, smoothstep(LEAF_POCKET_EDGES.x, LEAF_POCKET_EDGES.y, clumps)), foliage);
 	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Leafy()), DIELECTRIC_REFLECTANCE);
 	frag_colour = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, v_openness, sunlit);
 }
