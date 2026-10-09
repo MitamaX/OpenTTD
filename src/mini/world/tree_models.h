@@ -25,7 +25,7 @@ enum class TreeDetail : uint8_t {
 };
 
 inline constexpr size_t TREE_DETAILS = static_cast<size_t>(TreeDetail::End);
-inline constexpr size_t TREE_SHAPES = 3;
+inline constexpr size_t TREE_SHAPES = 6;
 inline constexpr size_t TREE_KINDS = static_cast<size_t>(TreeKind::End);
 
 /* The tile pixels below which each detail hands over to the next, crossfading over a band either side of it. */

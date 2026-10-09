@@ -17,6 +17,7 @@
 #include <numbers>
 
 #include "../core/seed.h"
+#include "../core/tones.h"
 #include "../model/model_shapes.h"
 
 #include "../../safeguards.h"
@@ -47,6 +48,9 @@ static constexpr double BROADLEAF_TRUNK_INSET = 0.04;
 static constexpr Vec3 BROADLEAF_HEART = {0.14, 0.14, 0.12};
 static constexpr double BROADLEAF_HEART_ROUGHNESS = 0.1;
 static constexpr int BROADLEAF_RING_FEWEST = 4;
+static constexpr uint32_t BROADLEAF_RING_CHOICES = 3;
+static constexpr SeedRange BROADLEAF_SQUASH = {0.65, 1.05};
+static constexpr SeedRange BROADLEAF_SPREAD = {0.85, 1.12};
 static constexpr SeedRange BROADLEAF_CREST_SCATTER = {-0.025, 0.025};
 static constexpr double BROADLEAF_CREST_RISE = 0.08;
 static constexpr Vec3 BROADLEAF_CREST = {0.085, 0.085, 0.075};
@@ -59,7 +63,10 @@ static constexpr SeedRange CONIFER_TRUNK = {0.02, 0.012};
 static constexpr double CONIFER_TRUNK_TOP = 0.2;
 static constexpr double CONIFER_BOUGHS_BASE = 0.07;
 static constexpr double CONIFER_RADIUS = 0.155;
-static constexpr int CONIFER_TIERS = 4;
+static constexpr int CONIFER_FEWEST_TIERS = 3;
+static constexpr uint32_t CONIFER_TIER_CHOICES = 3;
+static constexpr uint32_t CONIFER_DEEP_GREEN = 0x2C5A44;
+static constexpr uint CONIFER_DEEP_SHARE = 110;
 static constexpr double CONIFER_TOP_TIER_REACH = 0.22;
 static constexpr double CONIFER_TIER_TAPER = 0.65;
 static constexpr double CONIFER_TIER_HEIGHT = 0.21;
@@ -132,7 +139,8 @@ struct TreeTones {
 	uint32_t wood;
 };
 
-static constexpr std::array<std::array<TreeTones, TREE_SHAPES>, TREE_KINDS> TONES = {{
+static constexpr size_t TONE_SETS = 3;
+static constexpr std::array<std::array<TreeTones, TONE_SETS>, TREE_KINDS> TONES = {{
 	{{{0x5E8C3A, 0x5E5246}, {0x4E8034, 0x564A3E}, {0x6E9A3E, 0x665A4C}}},
 	{{{0x3A6B38, 0x54463A}, {0x447334, 0x4E4136}, {0x356640, 0x5A4A3C}}},
 	{{{0x3B7A2E, 0x6A604E}, {0x2F6E2A, 0x625846}, {0x4C8A30, 0x72684F}}},
@@ -248,8 +256,14 @@ static void Broadleaf(TreeBuilder &tree, TreeDetail detail)
 	switch (detail) {
 		case TreeDetail::Full: {
 			tree.Trunk(6, BROADLEAF_TRUNK, trunk_top);
-			ModelMesh canopy = tree.Lump(crown.centre, BROADLEAF_HEART, 1, BROADLEAF_HEART_ROUGHNESS);
-			canopy.Append(tree.Ring(crown.centre, BROADLEAF_RING, BROADLEAF_RING_FEWEST + static_cast<int>(dice.Below(2))));
+			LumpRing ring = BROADLEAF_RING;
+			double spread = dice.Between(BROADLEAF_SPREAD);
+			ring.reach = {ring.reach.low * spread, ring.reach.high * spread};
+			ring.squash = dice.Between(BROADLEAF_SQUASH);
+			int lumps = BROADLEAF_RING_FEWEST + static_cast<int>(dice.Below(BROADLEAF_RING_CHOICES));
+			Vec3 heart = {BROADLEAF_HEART.x * spread, BROADLEAF_HEART.y * spread, BROADLEAF_HEART.z * ring.squash / BROADLEAF_RING.squash};
+			ModelMesh canopy = tree.Lump(crown.centre, heart, 1, BROADLEAF_HEART_ROUGHNESS);
+			canopy.Append(tree.Ring(crown.centre, ring, lumps));
 			Vec3 crest = {dice.Between(BROADLEAF_CREST_SCATTER), dice.Between(BROADLEAF_CREST_SCATTER), crown_z + BROADLEAF_CREST_RISE};
 			canopy.Append(tree.Lump(crest, BROADLEAF_CREST, 1, BROADLEAF_RING.roughness));
 			tree.Leaves(std::move(canopy), crown);
@@ -275,18 +289,18 @@ static void Conifer(TreeBuilder &tree, TreeDetail detail)
 	switch (detail) {
 		case TreeDetail::Full: {
 			tree.Trunk(5, CONIFER_TRUNK, CONIFER_TRUNK_TOP);
-			ModelMesh boughs;
-			for (int tier = 0; tier < CONIFER_TIERS; tier++) {
-				double share = static_cast<double>(tier) / CONIFER_TIERS;
+			int tiers = CONIFER_FEWEST_TIERS + static_cast<int>(dice.Below(CONIFER_TIER_CHOICES));
+			uint32_t deep = Mix(tree.Tones().leaves, CONIFER_DEEP_GREEN, CONIFER_DEEP_SHARE);
+			for (int tier = 0; tier < tiers; tier++) {
+				double share = static_cast<double>(tier) / tiers;
 				double base = CONIFER_BOUGHS_BASE + share * (top - CONIFER_TOP_TIER_REACH);
 				double tier_radius = radius * (1.0 - share * CONIFER_TIER_TAPER);
-				double height = tier == CONIFER_TIERS - 1 ? top - base : CONIFER_TIER_HEIGHT * (1.0 - share * CONIFER_TIER_SHRINK);
+				double height = tier == tiers - 1 ? top - base : CONIFER_TIER_HEIGHT * (1.0 - share * CONIFER_TIER_SHRINK);
 				std::array<LatheRing, 3> profile = {{{tier_radius, 0.0}, {tier_radius * CONIFER_WAIST.radius, height * CONIFER_WAIST.z}, {0.0, height}}};
 				ModelMesh bough = Lathe(profile, 7);
 				bough.Transform(Mat4::Translation({0.0, 0.0, base}) * Mat4::Turn(UP, dice.Between(0.0, TAU)));
-				boughs.Append(bough.Displace(CONIFER_ROUGHNESS, dice.Next()));
+				tree.Leaves(bough.Displace(CONIFER_ROUGHNESS, dice.Next()), crown, tier % 2 == 0 ? deep : tree.Tones().leaves, LEAF_TRANSLUCENCY);
 			}
-			tree.Leaves(std::move(boughs), crown);
 			break;
 		}
 		case TreeDetail::Simple:
@@ -430,7 +444,7 @@ static void Toy(TreeBuilder &tree, TreeDetail detail, uint8_t variant)
 
 	bool full = detail == TreeDetail::Full;
 	tree.Trunk(full ? 6 : 4, TOY_STICK, crown.underside + TOY_STICK_INSET);
-	switch (variant) {
+	switch (variant % TONE_SETS) {
 		case 0:
 			tree.Leaves(tree.Lump(crown.centre, TOY_LOLLIPOP, full ? 1 : 0, 0.0), crown, CANDY_TRANSLUCENCY);
 			break;
@@ -455,7 +469,7 @@ static void Toy(TreeBuilder &tree, TreeDetail detail, uint8_t variant)
 
 static ModelMesh BuildTree(TreeShape shape, TreeDetail detail)
 {
-	TreeBuilder tree(TONES[static_cast<size_t>(shape.kind)][shape.variant], Hash32(SHAPE_SALT + static_cast<uint32_t>(shape.Index())));
+	TreeBuilder tree(TONES[static_cast<size_t>(shape.kind)][shape.variant % TONE_SETS], Hash32(SHAPE_SALT + static_cast<uint32_t>(shape.Index())));
 	switch (shape.kind) {
 		case TreeKind::Broadleaf: Broadleaf(tree, detail); break;
 		case TreeKind::Conifer: Conifer(tree, detail); break;
