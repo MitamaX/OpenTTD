@@ -3,10 +3,20 @@ const float TEXELS = float(TEXELS_PER_TILE);
 const float PLINTH_HEIGHT = 0.016;
 const float COURSE_TILT = 0.2;
 const float FIRING_BLOTCHES = 4.5;
+const vec2 BLOTCH_EDGES = vec2(0.2, 0.8);
+const float BLOTCH_VARIETY = 1.5;
+const float BLOTCH_SEED = 3.7;
 const vec2 RAIN_STREAKS = vec2(13.0, 1.4);
 const float STREAK_DEPTH = 0.16;
+const float STREAK_SEED = 9.2;
 const float LICHEN_PATCHES = 2.7;
-const float LICHEN_COVER = 0.4;
+const vec2 LICHEN_PATCH_EDGES = vec2(0.62, 0.86);
+const float LICHEN_PATCH_SEED = 1.3;
+const float LICHEN_SPOTS = 40.0;
+const vec2 LICHEN_SPOT_EDGES = vec2(0.5, 0.7);
+const float LICHEN_SPOT_MEAN = 0.25;
+const float LICHEN_SPOT_SEED = 6.1;
+const float LICHEN_COVER = 0.45;
 const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 
 /* What a point of a building is: its colour before light, how its surface tilts off the face across and up it,
@@ -77,20 +87,20 @@ Clad Coursed(vec2 p, vec3 tint, vec2 units, float joint, float variety, vec3 fil
 	return Matte(mix(unit, filling, joints), 0.85);
 }
 
-/* A roof weathers in patches broader than its courses, which still show where the courses blur:
- * units fired or split a shade apart lie in blotches, rain streaks it down the slope and lichen spreads pale over it here and there.
- * Toyland's sweets stay as fresh as they were made. */
+/* A roof weathers in patches broader than its courses: blotches of units fired or split a shade apart, rain streaks down the slope and patches spotted with pale lichen. */
 vec3 Weathered(vec2 p, vec3 tint, float variety)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return tint;
 	vec2 blotch = p * FIRING_BLOTCHES;
 	vec2 streak = p * RAIN_STREAKS;
 	vec2 patches = p * LICHEN_PATCHES;
-	float blotches = mix(0.5, smoothstep(0.2, 0.8, Noise(blotch + 3.7)), Sharpness(blotch));
-	float streaks = mix(0.5, Noise(streak + 9.2), Sharpness(streak));
-	float lichen = smoothstep(0.62, 0.86, Noise(patches + 1.3)) * Sharpness(patches) * LICHEN_COVER;
-	vec3 weathered = tint * Varied(blotches, variety * 1.5) * Varied(streaks, STREAK_DEPTH);
-	return mix(weathered, LICHEN, lichen);
+	vec2 spots = p * LICHEN_SPOTS;
+	float blotches = mix(0.5, smoothstep(BLOTCH_EDGES.x, BLOTCH_EDGES.y, Noise(blotch + BLOTCH_SEED)), Sharpness(blotch));
+	float streaks = mix(0.5, Noise(streak + STREAK_SEED), Sharpness(streak));
+	float patched = smoothstep(LICHEN_PATCH_EDGES.x, LICHEN_PATCH_EDGES.y, Noise(patches + LICHEN_PATCH_SEED)) * Sharpness(patches);
+	float spotted = mix(LICHEN_SPOT_MEAN, smoothstep(LICHEN_SPOT_EDGES.x, LICHEN_SPOT_EDGES.y, Noise(spots + LICHEN_SPOT_SEED)), Sharpness(spots));
+	vec3 weathered = tint * Varied(blotches, variety * BLOTCH_VARIETY) * Varied(streaks, STREAK_DEPTH);
+	return mix(weathered, LICHEN, patched * spotted * LICHEN_COVER);
 }
 
 /* Overlapping courses down a weathered slope, each shaded where the course above overhangs it and lit along its own lower edge, and each unit rolled across it as far as roll asks. */
