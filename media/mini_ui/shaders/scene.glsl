@@ -10,7 +10,6 @@ layout(std140) uniform Scene {
 	vec4 u_climate;
 };
 
-const int CASCADES = 4;
 const vec3 LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
 
 layout(std140) uniform Shadows {

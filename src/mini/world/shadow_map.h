@@ -33,6 +33,7 @@ public:
 	/* The nearer cascades are drawn every frame, the further ones in turn. */
 	static constexpr int FRESH_CASCADES = 2;
 	static constexpr int RESOLUTION = 2048;
+	static constexpr double FILTER_SPAN = 4.0;
 
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
 	void Warm(std::span<const std::unique_ptr<WorldPass>> passes);

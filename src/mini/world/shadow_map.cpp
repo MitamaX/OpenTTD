@@ -35,20 +35,22 @@ static constexpr double CASTER_HEADROOM_LEVELS = 24.0;
 static constexpr double LOWEST_SUN_RISE = 0.1;
 static constexpr double DEPTH_MARGIN = 1.0;
 static constexpr double TURN_MARGIN = 0.05;
-/* Half the span shadow.glsl softens an edge over. */
-static constexpr double UNSEEN_SWING_TEXELS = 2.0;
+static constexpr double UNSEEN_SWING_TEXELS = ShadowMap::FILTER_SPAN / 2.0;
 static constexpr int TURNS = ShadowMap::CASCADES - ShadowMap::FRESH_CASCADES;
 static constexpr float SLOPE_OFFSET = 2.0f;
 static constexpr float CONSTANT_OFFSET = 2.0f;
 static constexpr Vec3 SKY = {0.0, 0.0, 1.0};
 
-/* The layout of the Shadows block in scene.glsl, std140. */
+/* The layout of the Shadows block in scene.glsl, std140, holding a value of each cascade in one vector. */
+static constexpr int VECTOR_LANES = 4;
+static_assert(ShadowMap::CASCADES == VECTOR_LANES);
+
 struct ShadowsBlock {
 	std::array<std::array<float, 16>, ShadowMap::CASCADES> cascades;
 	std::array<float, 16> caster;
-	std::array<float, 4> cascade_far;
-	std::array<float, 4> cascade_texel;
-	std::array<float, 4> fade;
+	std::array<float, ShadowMap::CASCADES> cascade_far;
+	std::array<float, ShadowMap::CASCADES> cascade_texel;
+	std::array<float, VECTOR_LANES> fade;
 };
 
 ShaderProgram CasterProgram(std::span<const char *const> vertex_sources)

@@ -39,6 +39,7 @@
 #include "network_field.h"
 #include "scene_view.h"
 #include "seabed.h"
+#include "shadow_map.h"
 #include "structure_mesh.h"
 #include "tree_models.h"
 #include "water_outline.h"
@@ -191,6 +192,8 @@ static std::string ShaderHeader()
 	DefineSurfaceFlag(header, "SURFACE_ROOF", SurfaceFlag::Roof);
 	DefineSurfaceFlag(header, "SURFACE_DECAL", SurfaceFlag::Decal);
 	DefineInt(header, "MOST_WAKES", MOST_WAKES);
+	DefineInt(header, "CASCADES", ShadowMap::CASCADES);
+	DefineFloat(header, "SHADOW_FILTER_SPAN", ShadowMap::FILTER_SPAN);
 	return header;
 }
 

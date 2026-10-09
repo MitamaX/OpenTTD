@@ -2,7 +2,6 @@ uniform sampler2DArrayShadow u_shadow_map;
 
 const float NORMAL_OFFSET_TEXELS = 1.2;
 const float CASCADE_BLEND = 0.12;
-const float FILTER_SPAN = 4.0;
 const int FILTER_LOOKUPS = 3;
 
 float ViewDepth(vec3 position)
@@ -10,7 +9,7 @@ float ViewDepth(vec3 position)
 	return -(u_view * vec4(position, 1.0)).z;
 }
 
-/* A box of filtered lookups FILTER_SPAN texels wide weighs the five texels it covers along each axis by 1 - f, 1, 1, 1 and f, f being how far the point lies into its texel;
+/* A box of filtered lookups SHADOW_FILTER_SPAN texels wide weighs the five texels it covers along each axis by 1 - f, 1, 1, 1 and f, f being how far the point lies into its texel;
  * FILTER_LOOKUPS filtered lookups along the axis weigh them just so, the outer two each blending a pair: where each reads, counted from the first texel's centre, and how much it counts. */
 float[FILTER_LOOKUPS] FilterOffsets(float f)
 {
@@ -44,7 +43,7 @@ float CascadeLight(int cascade, vec3 position, vec3 normal)
 
 	vec2 size = vec2(textureSize(u_shadow_map, 0).xy);
 	vec2 texels = at.xy * size;
-	vec2 first = floor(texels) - 0.5 * FILTER_SPAN + 0.5;
+	vec2 first = floor(texels) - 0.5 * SHADOW_FILTER_SPAN + 0.5;
 	vec2 f = texels - floor(texels);
 	float x_offsets[FILTER_LOOKUPS] = FilterOffsets(f.x);
 	float y_offsets[FILTER_LOOKUPS] = FilterOffsets(f.y);
@@ -57,7 +56,7 @@ float CascadeLight(int cascade, vec3 position, vec3 normal)
 			lit += x_weights[x] * y_weights[y] * texture(u_shadow_map, vec4(tap, float(cascade), at.z));
 		}
 	}
-	return lit / (FILTER_SPAN * FILTER_SPAN);
+	return lit / (SHADOW_FILTER_SPAN * SHADOW_FILTER_SPAN);
 }
 
 /* How much of the sun the world lets reach a point: the nearest cascade holding it decides, handing over to the next across a band, and shadows fade out where the cascades end. */
