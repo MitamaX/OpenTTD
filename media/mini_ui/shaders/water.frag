@@ -690,7 +690,7 @@ void main()
 	float reflected;
 	vec3 way = reflect(sight, waves.normal);
 	vec3 sky = SkyOnWater(way, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
-	vec3 mirrored = WorldOver(sky, way, water.body.mirror * (1.0 - waves.ruffled));
+	vec3 mirrored = WorldOver(sky, Skyward(way, REFLECTED_LIFT), water.body.mirror * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);

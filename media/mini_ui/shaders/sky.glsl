@@ -56,9 +56,14 @@ vec3 SkyRadiance(vec3 sight)
 	return sight.z > HAZE_LIFT ? OpenSky(sight) : Haze(sight);
 }
 
+vec3 Skyward(vec3 way, float lift)
+{
+	return normalize(vec3(way.xy, max(abs(way.z), lift)));
+}
+
 vec3 MirroredSky(vec3 way, float lift)
 {
-	return SkyRadiance(normalize(vec3(way.xy, max(abs(way.z), lift))));
+	return SkyRadiance(Skyward(way, lift));
 }
 
 vec3 SunDisc(vec3 sight)
