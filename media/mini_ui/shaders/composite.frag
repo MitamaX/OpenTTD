@@ -54,6 +54,15 @@ vec3 Tonemap(vec3 radiance)
 	return pow(max(AGX_OUTSET * encoded, 0.0), vec3(1.0 / DISPLAY_GAMMA));
 }
 
+/* A colour past the display's reach gives up saturation, keeping its hue and luminance. */
+vec3 Fitted(vec3 display_light)
+{
+	float brightest = max(display_light.r, max(display_light.g, display_light.b));
+	if (brightest <= 1.0) return display_light;
+	float luma = Luminance(display_light);
+	return luma >= 1.0 ? vec3(1.0) : luma + (display_light - luma) * ((1.0 - luma) / (brightest - luma));
+}
+
 /* Shadows lean a touch cool and highlights a touch warm, as a sunny afternoon reads. */
 vec3 Graded(vec3 display_light)
 {
@@ -118,6 +127,6 @@ void main()
 	vec3 radiance = Sharpened(texel, texelFetch(u_resolved, texel, 0).rgb);
 	if (u_focus > 0.0) radiance = Defocused(uv, radiance);
 	radiance = mix(radiance, textureLod(u_bloom, uv, 0.0).rgb, u_bloom_strength);
-	vec3 display_light = Graded(Tonemap(radiance * u_exposure)) * Vignette(uv);
+	vec3 display_light = Fitted(Graded(Tonemap(radiance * u_exposure)) * Vignette(uv));
 	frag_colour = vec4(pow(display_light, vec3(DISPLAY_GAMMA)) + Dither(gl_FragCoord.xy), 1.0);
 }
