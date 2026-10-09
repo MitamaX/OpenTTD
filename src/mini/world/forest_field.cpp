@@ -124,6 +124,15 @@ static double FringeDepth(int tx, int ty, double fx, double fy)
 
 using ShapedTree = std::pair<size_t, TreeInstance>;
 
+/* The dice a tree rolls, in the order it rolls them, so every tree planted again is the same. */
+struct TreeRolls {
+	double spread;
+	double wither;
+	uint8_t shape;
+	double turn;
+	double tint;
+};
+
 /* A tile's trees, the same every time it is planted: each on a slot of its own, the slots turned, mirrored and shuffled tile by tile, all rolled off one run of dice. */
 class Grove {
 public:
@@ -132,7 +141,8 @@ public:
 
 private:
 	TilePoint Spot(uint tree);
-	double Scale(double fringe, bool spare);
+	TreeRolls Roll();
+	double Scale(double spread, double fringe, bool spare) const;
 	ShapedTree Grown(const TilePoint &spot, double fringe, bool spare);
 
 	int tx;
@@ -194,20 +204,34 @@ TilePoint Grove::Spot(uint tree)
 	return {fx, jittered(sy, this->mirror_y)};
 }
 
-double Grove::Scale(double fringe, bool spare)
+TreeRolls Grove::Roll()
 {
-	double grown = TREE_AGE_SCALES[to_underlying(this->age)] * this->dice.Between(TREE_SPREAD);
-	return grown * std::lerp(FRINGE_SCALE, 1.0, fringe) * (spare ? SPARE_TREE_SCALE : 1.0) * (this->kind == TreeKind::Toy ? TOY_TREE_SCALE : 1.0);
+	TreeRolls rolls;
+	rolls.spread = this->dice.Between(TREE_SPREAD);
+	rolls.wither = this->age == TreeAge::Dying ? this->dice.Between(DYING_WITHER) : 0.0;
+	rolls.shape = static_cast<uint8_t>(this->dice.Below(TREE_SHAPES));
+	rolls.turn = this->dice.Share();
+	rolls.tint = this->dice.Share();
+	return rolls;
+}
+
+double Grove::Scale(double spread, double fringe, bool spare) const
+{
+	double aged = TREE_AGE_SCALES[to_underlying(this->age)] * spread;
+	double fringed = std::lerp(FRINGE_SCALE, 1.0, fringe);
+	double spared = spare ? SPARE_TREE_SCALE : 1.0;
+	double sweet = this->kind == TreeKind::Toy ? TOY_TREE_SCALE : 1.0;
+	return aged * fringed * spared * sweet;
 }
 
 ShapedTree Grove::Grown(const TilePoint &spot, double fringe, bool spare)
 {
+	TreeRolls rolls = this->Roll();
 	double x = this->tx + std::lerp(spot.first, this->huddle.x, this->huddling);
 	double y = this->ty + std::lerp(spot.second, this->huddle.y, this->huddling);
-	double scale = this->Scale(fringe, spare);
-	double wither = this->age == TreeAge::Dying ? this->dice.Between(DYING_WITHER) : 0.0;
-	TreeShape shape = {this->kind, static_cast<uint8_t>(this->dice.Below(TREE_SHAPES))};
-	std::array<uint8_t, 4> look = {ShareByte(this->dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(this->dice.Share()), ShareByte(wither)};
+	double scale = this->Scale(rolls.spread, fringe, spare);
+	TreeShape shape = {this->kind, rolls.shape};
+	std::array<uint8_t, 4> look = {ShareByte(rolls.turn), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(rolls.tint), ShareByte(rolls.wither)};
 	return {shape.Index(), {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(this->tx, this->ty, x, y)), look}};
 }
 
