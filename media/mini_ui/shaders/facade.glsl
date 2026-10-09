@@ -207,8 +207,9 @@ vec3 RoundedEdge(vec2 half_size, vec2 from_centre)
 	float radius = min(half_size.x, half_size.y) * TOY_ROUNDING;
 	vec2 corner = abs(from_centre) - half_size + radius;
 	vec2 rounding = max(corner, 0.0);
-	float outside = length(rounding) + min(max(corner.x, corner.y), 0.0) - radius;
-	vec2 outward = length(rounding) > 0.0 ? normalize(rounding) : corner.x > corner.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+	float rounded = length(rounding);
+	float outside = rounded + min(max(corner.x, corner.y), 0.0) - radius;
+	vec2 outward = rounded > 0.0 ? rounding / rounded : corner.x > corner.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
 	return vec3(outward * SideOf(from_centre), outside);
 }
 
