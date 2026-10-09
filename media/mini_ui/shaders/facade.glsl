@@ -183,9 +183,14 @@ vec2 SightShift(Outlook outlook)
 	return -outlook.eye.xy / max(outlook.eye.z, LOWEST_FACING);
 }
 
+vec2 SideOf(vec2 v)
+{
+	return mix(vec2(-1.0), vec2(1.0), step(0.0, v));
+}
+
 vec2 Heading(vec2 shift)
 {
-	return sign(shift) * max(abs(shift), vec2(MIN_SPREAD));
+	return SideOf(shift) * max(abs(shift), vec2(MIN_SPREAD));
 }
 
 vec2 ReachOut(vec2 from, vec2 heading, vec2 low, vec2 high)
@@ -200,7 +205,7 @@ vec3 RoundedEdge(vec2 half_size, vec2 from_centre)
 	vec2 rounding = max(corner, 0.0);
 	float outside = length(rounding) + min(max(corner.x, corner.y), 0.0) - radius;
 	vec2 outward = length(rounding) > 0.0 ? normalize(rounding) : corner.x > corner.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-	return vec3(outward * sign(from_centre), outside);
+	return vec3(outward * SideOf(from_centre), outside);
 }
 
 /* Which way out of the opening its nearest edge faces, and how far outside it a point lies, in texels; inside is negative. */
@@ -215,7 +220,7 @@ vec3 NearestEdge(Opening opening, vec2 at)
 		return reach - half_width >= -at.y ? vec3(from_centre / reach, reach - half_width) : vec3(0.0, -1.0, -at.y);
 	}
 	vec3 sides = vec3(abs(at.x) - half_width, -at.y, at.y - opening.height);
-	if (sides.x >= max(sides.y, sides.z)) return vec3(sign(at.x), 0.0, sides.x);
+	if (sides.x >= max(sides.y, sides.z)) return vec3(SideOf(at).x, 0.0, sides.x);
 	return sides.y >= sides.z ? vec3(0.0, -1.0, sides.y) : vec3(0.0, 1.0, sides.z);
 }
 
