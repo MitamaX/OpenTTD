@@ -36,11 +36,11 @@ Pane PaneOf(vec3 room, float lamp, uint material)
 	return Pane(room, film, coated ? GLASS_REFLECTANCE : PANE_REFLECTANCE, lamp);
 }
 
-/* A surface tilted off its face across it, to the right as seen from outside, and up it. */
-vec3 Tilted(vec3 normal, vec2 tilt)
+/* A face's axes: across it, to the right as seen from outside, up it, and out of it. */
+mat3 FaceFrame(vec3 normal)
 {
 	vec3 across = abs(normal.z) > 0.95 ? vec3(1.0, 0.0, 0.0) : normalize(vec3(-normal.y, normal.x, 0.0));
-	return normalize(normal + across * tilt.x + cross(normal, across) * tilt.y);
+	return mat3(across, cross(normal, across), normal);
 }
 
 float RoofSnow(vec3 normal)
@@ -67,16 +67,17 @@ void main()
 	uint material = v_surface.x;
 	if (Cover(material, v_pattern) < noise) discard;
 
+	vec3 view = ToEye(v_position);
+	mat3 frame = FaceFrame(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0));
 	Clad clad = Has(SURFACE_FACADE) ? FacadeWall(material, v_pattern, v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
-	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)));
-	vec3 normal = Tilted(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0), clad.tilt);
+	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)), Outlook(InTexels(view * frame), InTexels(SunDirection() * frame)));
+	vec3 normal = normalize(frame * clad.facing);
 	if (Has(SURFACE_ROOF)) clad.albedo = Snowed(clad.albedo, normal);
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
-	vec3 view = ToEye(v_position);
-	float sunlit = SunVisibility(v_position, normal);
+	float sunlit = SunVisibility(v_position, normal) * clad.sunlit;
 	float occlusion = v_colour.a * clad.occlusion;
 	vec4 lit = clad.glass < 1.0 ? SunlitRadiance(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, 0.0, sunlit) : vec4(0.0);
 	if (clad.glass > 0.0) lit = mix(lit, PaneRadiance(PaneOf(albedo, clad.lamp, material), normal, view, roughness, occlusion, sunlit, v_pattern.y), clad.glass);

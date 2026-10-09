@@ -92,6 +92,17 @@ const vec2 PANE_WARP = vec2(0.03, 0.08);
 const float PANE_ROUGHNESS = 0.06;
 const float GLAZED_SHARE = 0.85;
 const vec3 SPANDREL_BACKING = vec3(0.16, 0.17, 0.18);
+const float RECESS_DEPTH = 1.5;
+const float CURTAIN_RECESS = 0.3;
+const float RECESS_OPENNESS = 0.55;
+const float LOWEST_FACING = 0.05;
+const float SHADOW_SOFTNESS = 0.3;
+const float SURROUND_BEVEL = 0.5;
+const float SILL_LEDGE_TILT = 1.2;
+const float SILL_PROJECTION = 0.8;
+const float UNDER_SILL_OPENNESS = 0.8;
+const float SASH_WIDTH = 0.4;
+const vec3 SHOPFRONT_FRAME = vec3(0.22);
 const vec2 COLUMNS_FADE = vec2(1.2, 2.6);
 const vec2 STOREYS_FADE = vec2(2.6, 4.5);
 
@@ -122,13 +133,34 @@ Bay BayAt(uint grid, vec2 texel, bool front)
 	return Bay(opening, vec2(across, texel.y - opening.sill), ivec2(column, 0));
 }
 
-/* How far outside the opening a point lies, in texels; inside is negative. */
-float OutsideOpening(Opening opening, vec2 at)
+struct Outlook {
+	vec3 eye;
+	vec3 sun;
+};
+
+vec3 InTexels(vec3 way)
+{
+	return vec3(way.x, way.y / FORM_HEIGHT_SCALE, way.z);
+}
+
+/* Which way out of the opening its nearest edge faces, and how far outside it a point lies, in texels; inside is negative. */
+vec3 NearestEdge(Opening opening, vec2 at)
 {
 	float half_width = opening.width * 0.5;
 	float spring = opening.height - half_width;
-	if (opening.arch && at.y > spring) return max(length(vec2(at.x, at.y - spring)) - half_width, -at.y);
-	return max(abs(at.x) - half_width, max(-at.y, at.y - opening.height));
+	if (opening.arch && at.y > spring) {
+		vec2 from_centre = vec2(at.x, at.y - spring);
+		float reach = length(from_centre);
+		return reach - half_width >= -at.y ? vec3(from_centre / reach, reach - half_width) : vec3(0.0, -1.0, -at.y);
+	}
+	vec3 sides = vec3(abs(at.x) - half_width, -at.y, at.y - opening.height);
+	if (sides.x >= max(sides.y, sides.z)) return vec3(sign(at.x), 0.0, sides.x);
+	return sides.y >= sides.z ? vec3(0.0, -1.0, sides.y) : vec3(0.0, 1.0, sides.z);
+}
+
+float OutsideOpening(Opening opening, vec2 at)
+{
+	return NearestEdge(opening, at).z;
 }
 
 bool OnMuntin(Opening opening, vec2 at, float pixel)
@@ -194,38 +226,93 @@ Room RoomBehind(Bay bay, uint grid, uint seed)
 
 Clad PaneOver(vec3 room, float lamp)
 {
-	return Clad(room, vec2(0.0), PANE_ROUGHNESS, 1.0, 1.0, lamp);
+	return Clad(room, FACING_OUT, PANE_ROUGHNESS, 1.0, 1.0, 1.0, lamp);
 }
 
-Clad Glazing(Bay bay, uint grid, uint seed, float reveal)
+Clad Glazing(Bay bay, uint grid, uint seed)
 {
 	Room room = RoomBehind(bay, grid, seed);
 	Opening opening = bay.opening;
 	vec3 seen = DIM_ROOM * room.tone;
 	if (bay.at.y > opening.height * (1.0 - room.drop)) seen = room.blind;
 	else if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) seen = room.curtain;
-	Clad clad = PaneOver(seen * reveal, room.lamp);
-	clad.tilt = (Hash2(bay.window * WINDOW_SALT + ivec2(int(seed), ROLL_WARP * ROLL_STRIDE)) - 0.5) * PANE_WARP;
+	Clad clad = PaneOver(seen, room.lamp);
+	clad.facing = vec3((Hash2(bay.window * WINDOW_SALT + ivec2(int(seed), ROLL_WARP * ROLL_STRIDE)) - 0.5) * PANE_WARP, 1.0);
 	return clad;
 }
 
-/* What fills an opening: glass behind its bars and frame, a painted door, or the slats of a shutter; the head of every opening lies in the shade of its reveal. */
+/* What fills an opening: glass behind its bars and frame, a painted door, or the slats of a shutter. */
 Clad Filling(Bay bay, uint grid, uint seed, float pixel)
 {
 	Opening opening = bay.opening;
 	vec2 at = bay.at;
-	float reveal = mix(1.0, 0.6, smoothstep(opening.height - 1.6, opening.height - 0.4, at.y));
 	if (opening.kind == OPEN_DOOR) {
 		vec3 paint = DOOR_PAINTS[(seed + uint(bay.window.y)) % 5u];
-		return Matte(paint * reveal * (OnMuntin(opening, at, pixel) ? 0.7 : 1.0), 0.6);
+		return Matte(paint * (OnMuntin(opening, at, pixel) ? 0.7 : 1.0), 0.6);
 	}
 	if (opening.kind == OPEN_SHUTTER) {
 		bool groove = fract(at.y * 0.5) < 0.5;
-		return Matte((at.y > opening.height - 1.0 ? SHUTTER_GROOVE * 0.8 : groove ? SHUTTER_GROOVE : SHUTTER_SLAT) * reveal, 0.45);
+		return Matte(at.y > opening.height - 1.0 ? SHUTTER_GROOVE * 0.8 : groove ? SHUTTER_GROOVE : SHUTTER_SLAT, 0.45);
 	}
-	bool rimmed = opening.kind != OPEN_WINDOW && OutsideOpening(opening, at) > -max(0.6, pixel);
-	if (rimmed || OnMuntin(opening, at, pixel)) return Matte((rimmed ? vec3(0.22) : FramePaint(seed)) * reveal, 0.5);
-	return Glazing(bay, grid, seed, reveal);
+	bool sashed = opening.kind == OPEN_WINDOW;
+	bool rimmed = OutsideOpening(opening, at) > -max(sashed ? SASH_WIDTH : 0.6, pixel);
+	if (rimmed || OnMuntin(opening, at, pixel)) return Matte(sashed ? FramePaint(seed) : SHOPFRONT_FRAME, 0.5);
+	return Glazing(bay, grid, seed);
+}
+
+float RecessOpenness(float sunk)
+{
+	return mix(1.0, RECESS_OPENNESS, sunk / RECESS_DEPTH);
+}
+
+float SunThrough(Opening opening, vec2 at, float sunk, vec3 sun)
+{
+	if (sun.z <= 0.0) return 0.0;
+	vec2 mouth = at + sun.xy * (sunk / max(sun.z, LOWEST_FACING));
+	return 1.0 - smoothstep(-SHADOW_SOFTNESS, SHADOW_SOFTNESS, OutsideOpening(opening, mouth));
+}
+
+vec2 SightShift(Outlook outlook)
+{
+	return -outlook.eye.xy / max(outlook.eye.z, LOWEST_FACING);
+}
+
+Clad Reveal(Clad wall, Opening opening, vec2 at, float depth, Outlook outlook)
+{
+	vec2 shift = SightShift(outlook);
+	vec2 heading = sign(shift) * max(abs(shift), vec2(MIN_SPREAD));
+	vec2 edges = vec2(heading.x > 0.0 ? opening.width * 0.5 : -opening.width * 0.5, heading.y > 0.0 ? opening.height : 0.0);
+	vec2 reach = (edges - at) / heading;
+	float sunk = clamp(min(reach.x, reach.y), 0.0, depth);
+	vec2 hit = at + shift * sunk;
+	Clad reveal = Matte(wall.albedo, wall.roughness);
+	reveal.facing = vec3(-NearestEdge(opening, hit).xy, 0.0);
+	reveal.occlusion = RecessOpenness(sunk);
+	reveal.sunlit = SunThrough(opening, hit, sunk, outlook.sun);
+	return reveal;
+}
+
+Clad Recessed(Clad wall, Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
+{
+	Opening opening = bay.opening;
+	float depth = Mullioned(grid) ? CURTAIN_RECESS : RECESS_DEPTH;
+	Bay sunk = Bay(opening, bay.at + SightShift(outlook) * depth, bay.window);
+	Clad filling = Filling(sunk, grid, seed, pixel);
+	filling.occlusion = RecessOpenness(depth);
+	filling.sunlit = SunThrough(opening, sunk.at, depth, outlook.sun);
+	float behind = OutsideOpening(opening, sunk.at);
+	if (behind <= -pixel) return filling;
+	return Mixed(Reveal(wall, opening, bay.at, depth, outlook), filling, clamp(0.5 - behind / max(pixel, 1e-3), 0.0, 1.0));
+}
+
+Clad UnderSill(Clad wall, Opening opening, vec2 at, vec3 sun)
+{
+	float below = -1.0 - at.y;
+	if (below < 0.0 || abs(at.x) > opening.width * 0.5 + 1.0 || sun.y <= 0.0) return wall;
+	float shadow = SILL_PROJECTION * sun.y / max(sun.z, LOWEST_FACING);
+	wall.sunlit *= smoothstep(shadow - SHADOW_SOFTNESS, shadow + SHADOW_SOFTNESS, below);
+	wall.occlusion *= mix(UNDER_SILL_OPENNESS, 1.0, smoothstep(0.0, 1.0, below));
+	return wall;
 }
 
 float Drips(Bay bay, vec2 texel, uint grid)
@@ -244,7 +331,7 @@ Clad FacadeWall(uint material, vec2 pattern, vec3 tint)
 	return material == CLAD_GLASS ? PaneOver(SPANDREL_BACKING, 0.0) : CladOf(material, pattern, tint);
 }
 
-Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, float pixel)
+Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook outlook, float pixel)
 {
 	Bay bay = BayAt(grid, texel, front);
 	Opening opening = bay.opening;
@@ -258,15 +345,22 @@ Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, float pix
 	}
 	if (opening.kind == OPEN_NONE) return clad;
 
-	float outside = OutsideOpening(opening, bay.at);
+	vec3 edge = NearestEdge(opening, bay.at);
 	bool sills = !Mullioned(grid) && (opening.kind == OPEN_WINDOW || opening.kind == OPEN_SHOP);
 	float springline = opening.arch ? opening.height - opening.width * 0.5 : opening.height;
-	bool framed = outside < (Mullioned(grid) ? MULLION_WIDTH : SURROUND_WIDTH) && (!sills || bay.at.y >= springline);
+	bool framed = edge.z < (Mullioned(grid) ? MULLION_WIDTH : SURROUND_WIDTH) && (!sills || bay.at.y >= springline);
 	bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -1.0 && abs(bay.at.x) < opening.width * 0.5 + 1.0;
-	vec3 surround = Mullioned(grid) ? FramePaint(seed) : mix(wall.albedo, SILL_STONE, SURROUND_SHARE);
-	if (framed || on_sill) clad = Matte(on_sill ? SILL_STONE : surround, 0.7);
-	float inside = clamp(0.5 - outside / max(pixel, 1e-3), 0.0, 1.0);
-	return Mixed(clad, Filling(bay, grid, seed, pixel), inside);
+	if (sills) clad = UnderSill(clad, opening, bay.at, outlook.sun);
+	if (on_sill) {
+		clad = Matte(SILL_STONE, 0.7);
+		clad.facing = vec3(0.0, SILL_LEDGE_TILT, 1.0);
+	} else if (framed) {
+		clad = Matte(Mullioned(grid) ? FramePaint(seed) : mix(wall.albedo, SILL_STONE, SURROUND_SHARE), 0.7);
+		clad.facing = vec3(-edge.xy * SURROUND_BEVEL, 1.0);
+	}
+	float inside = clamp(0.5 - edge.z / max(pixel, 1e-3), 0.0, 1.0);
+	if (inside <= 0.0) return clad;
+	return Mixed(clad, Recessed(wall, bay, grid, seed, outlook, pixel), inside);
 }
 
 Clad Banded(Clad wall, Clad glazed, uint grid, float height, float pixel)
@@ -281,7 +375,7 @@ Clad Banded(Clad wall, Clad glazed, uint grid, float height, float pixel)
 
 /* The windows, doors and frames of a facade over the wall it is cut into; seen from too far for them to show, the wall blends toward its windows' glass,
  * the storeys' bands of windows outlasting the windows along them. */
-Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed)
+Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed, Outlook outlook)
 {
 	vec2 texel = pattern * TEXELS;
 	vec2 pixel = vec2(fwidth(texel.x), fwidth(texel.y));
@@ -293,5 +387,5 @@ Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed)
 	if (storeys <= 0.0) return far;
 	Clad banded = Mixed(far, Banded(wall, glazed, grid, texel.y, pixel.y), storeys);
 	if (columns <= 0.0) return banded;
-	return Mixed(banded, Windowed(wall, grid, texel, front, seed, max(pixel.x, pixel.y)), columns);
+	return Mixed(banded, Windowed(wall, grid, texel, front, seed, outlook, max(pixel.x, pixel.y)), columns);
 }

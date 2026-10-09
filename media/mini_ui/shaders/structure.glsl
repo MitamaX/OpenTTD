@@ -26,25 +26,29 @@ const float LICHEN_COVER = 0.45;
 const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 const vec3 DIM_ROOM = vec3(0.4, 0.38, 0.35);
 
-/* What a point of a building is: its colour before light, how its surface tilts off the face across and up it,
- * how rough and how much glass it is, how open it lies to the sky, and how brightly lamps light the room behind its glass. */
+/* What a point of a building is: its colour before light, which way its surface faces across, up and out of the face,
+ * how rough and how much glass it is, how open it lies to the sky and to the sun, and how brightly lamps light the room behind its glass. */
 struct Clad {
 	vec3 albedo;
-	vec2 tilt;
+	vec3 facing;
 	float roughness;
 	float glass;
 	float occlusion;
+	float sunlit;
 	float lamp;
 };
 
+const vec3 FACING_OUT = vec3(0.0, 0.0, 1.0);
+
 Clad Matte(vec3 colour, float roughness)
 {
-	return Clad(colour, vec2(0.0), roughness, 0.0, 1.0, 0.0);
+	return Clad(colour, FACING_OUT, roughness, 0.0, 1.0, 1.0, 0.0);
 }
 
 Clad Mixed(Clad a, Clad b, float share)
 {
-	return Clad(mix(a.albedo, b.albedo, share), mix(a.tilt, b.tilt, share), mix(a.roughness, b.roughness, share), mix(a.glass, b.glass, share), mix(a.occlusion, b.occlusion, share), mix(a.lamp, b.lamp, share));
+	return Clad(mix(a.albedo, b.albedo, share), mix(a.facing, b.facing, share), mix(a.roughness, b.roughness, share), mix(a.glass, b.glass, share),
+		mix(a.occlusion, b.occlusion, share), mix(a.sunlit, b.sunlit, share), mix(a.lamp, b.lamp, share));
 }
 
 /* How sharply a pattern repeating once a unit of x still shows: whole while a repeat spans a few pixels, gone once it blurs. */
@@ -143,7 +147,7 @@ Clad Tiled(vec2 p, vec3 tint, vec2 units, float variety, float roughness, float 
 	float gaps = Lines(column, TILE_GAP_WIDTH, rolled) * sharp;
 	float unseen_tilt = WaveSpread(roll) * (1.0 - rolled) + RampSpread(COURSE_TILT) * (1.0 - sharp);
 	Clad clad = Matte(colour * (1.0 - TILE_GAP_SHADE * gaps), Roughened(roughness, unseen_tilt));
-	clad.tilt = vec2(roll * sin(TAU * column) * rolled, -COURSE_TILT * sharp * (along - 0.5));
+	clad.facing = vec3(roll * sin(TAU * column) * rolled, -COURSE_TILT * sharp * (along - 0.5), 1.0);
 	return clad;
 }
 
@@ -166,7 +170,7 @@ Clad Ribbed(vec2 p, vec3 tint, float frequency, float depth, float roughness)
 	float phase = p.x * frequency;
 	float sharp = Sharpness(phase);
 	Clad clad = Matte(tint * (1.0 + 0.06 * cos(TAU * phase) * sharp), Roughened(roughness, WaveSpread(depth) * (1.0 - sharp)));
-	clad.tilt = vec2(depth * sin(TAU * phase) * sharp, 0.0);
+	clad.facing = vec3(depth * sin(TAU * phase) * sharp, 0.0, 1.0);
 	return clad;
 }
 
@@ -176,7 +180,7 @@ Clad Boarded(vec2 p, vec3 tint, float boards, float roughness)
 	float sharp = Sharpness(board);
 	float shade = mix(1.0, mix(0.84, 1.06, fract(board)), sharp);
 	Clad clad = Matte(tint * shade * Spread(vec2(0.0, board), 0.1, sharp), roughness);
-	clad.tilt = vec2(0.0, 0.25 * sharp);
+	clad.facing = vec3(0.0, 0.25 * sharp, 1.0);
 	return clad;
 }
 
@@ -235,7 +239,7 @@ Clad Leafy(vec2 p, vec3 tint)
 	float sharp = Sharpness(p.x * 60.0);
 	float clumps = mix(0.5, Noise(p * 60.0), sharp);
 	Clad clad = Matte(tint * Varied(clumps, 0.45) * Varied(mix(0.5, Noise(p * 17.0), Sharpness(p.x * 17.0)), 0.25), 0.95);
-	clad.tilt = (vec2(Noise(p * 60.0 + 3.1), Noise(p * 60.0 + 7.7)) - 0.5) * 0.9 * sharp;
+	clad.facing = vec3((vec2(Noise(p * 60.0 + 3.1), Noise(p * 60.0 + 7.7)) - 0.5) * 0.9 * sharp, 1.0);
 	return clad;
 }
 

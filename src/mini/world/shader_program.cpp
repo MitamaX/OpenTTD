@@ -185,6 +185,7 @@ static std::string ShaderHeader()
 	DefineCodes(header, "CLAD_", MATERIAL_NAMES);
 	DefineCodes(header, "WINDOWS_", WINDOW_GRID_NAMES);
 	DefineInt(header, "TEXELS_PER_TILE", TEXELS_PER_TILE);
+	DefineFloat(header, "FORM_HEIGHT_SCALE", FORM_HEIGHT_SCALE);
 	DefineFacadeTexels(header, "FACADE_GROUND", &FacadeMetrics::ground_texels);
 	DefineFacadeTexels(header, "FACADE_STOREY", &FacadeMetrics::storey_texels);
 	DefineFacadeTexels(header, "FACADE_BAY", &FacadeMetrics::bay_texels);
