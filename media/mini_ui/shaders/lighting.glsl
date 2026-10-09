@@ -1,5 +1,5 @@
 const vec3 SKY_LIGHT = vec3(0.49, 0.58, 0.69);
-const vec3 GROUND_ALBEDO = vec3(0.155, 0.135, 0.098);
+const vec3 GROUND_ALBEDOS[4] = vec3[4](vec3(0.155, 0.135, 0.098), vec3(0.4, 0.42, 0.45), vec3(0.28, 0.22, 0.13), vec3(0.16, 0.19, 0.09));
 const float SKY_TOWARD_SUN = 0.15;
 const float DIELECTRIC_REFLECTANCE = 0.04;
 const float GLASS_REFLECTANCE = 0.2;
@@ -23,7 +23,7 @@ float Fresnel(float cosine, float reflectance)
 /* The light the ground around throws back of the sun and sky falling on it. */
 vec3 GroundBounce()
 {
-	return GROUND_ALBEDO * (SunRadiance() * SunDirection().z + SKY_LIGHT);
+	return GROUND_ALBEDOS[Landscape()] * (SunRadiance() * SunDirection().z + SKY_LIGHT);
 }
 
 /* The light of the sky dome and of the ground around a surface facing this way; the sky is a little brighter toward the sun. */
