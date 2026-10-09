@@ -32,13 +32,23 @@ int CascadeHolding(float depth)
 	return min(int(dot(vec4(greaterThan(vec4(depth), u_cascade_far)), vec4(1.0))), CASCADES - 1);
 }
 
+vec3 InCascade(int cascade, vec3 position)
+{
+	return (u_cascades[cascade] * vec4(position, 1.0)).xyz;
+}
+
+float FadedOut(float light, float depth)
+{
+	return mix(light, 1.0, smoothstep(u_shadow_fade.x, u_shadow_fade.y, depth));
+}
+
 /* The point is pushed off its surface by about a texel, more where the sun grazes it, so the surface never shadows itself;
  * a box of filtered lookups softens the edge over a few texels. */
 float CascadeLight(int cascade, vec3 position, vec3 normal)
 {
 	float grazing = 1.0 - max(dot(normal, SunDirection()), 0.0);
 	vec3 lifted = position + normal * OfCascade(u_cascade_texel, cascade) * NORMAL_OFFSET_TEXELS * (0.5 + grazing);
-	vec3 at = (u_cascades[cascade] * vec4(lifted, 1.0)).xyz;
+	vec3 at = InCascade(cascade, lifted);
 	if (at.z >= 1.0) return 1.0;
 
 	vec2 size = vec2(textureSize(u_shadow_map, 0).xy);
@@ -72,7 +82,15 @@ float CascadedLight(vec3 position, vec3 normal)
 		float start = mix(OfCascade(u_cascade_far, cascade - 1), end, 1.0 - CASCADE_BLEND);
 		if (depth > start) light = mix(light, CascadeLight(cascade + 1, position, normal), smoothstep(start, end, depth));
 	}
-	return mix(light, 1.0, smoothstep(u_shadow_fade.x, u_shadow_fade.y, depth));
+	return FadedOut(light, depth);
+}
+
+float SunReaches(vec3 position)
+{
+	float depth = ViewDepth(position);
+	int cascade = CascadeHolding(depth);
+	vec3 at = InCascade(cascade, position);
+	return FadedOut(at.z >= 1.0 ? 1.0 : texture(u_shadow_map, vec4(at.xy, float(cascade), at.z)), depth);
 }
 
 /* How much of the sun reaches a point past whatever stands in its way and the clouds drifting over, given the share the clouds let through. */

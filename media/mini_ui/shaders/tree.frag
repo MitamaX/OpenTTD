@@ -10,6 +10,7 @@ in float v_hue;
 in float v_wither;
 in float v_snow;
 flat in vec2 v_window;
+flat in float v_crown_sunlit;
 
 out vec4 frag_colour;
 
@@ -37,6 +38,7 @@ const float RAGGED_EDGE = 0.45;
 const float RAGGED_FACING = 0.45;
 const float LEAF_ROUGHNESS = 0.6;
 const float BARK_ROUGHNESS = 0.9;
+const float INSIDE_OPENNESS = 0.35;
 
 float Leafy()
 {
@@ -99,8 +101,10 @@ void main()
 	vec3 leaves = Bumped(normal, (clumps - 0.5) * LEAF_RELIEF * foliage, view);
 	if (clumps < RAGGED_EDGE * (1.0 - smoothstep(0.0, RAGGED_FACING, abs(dot(normal, view)))) * foliage) discard;
 
-	float sunlit = SunVisibility(v_position, leaves);
+	float clouds = CloudLight(v_position);
+	float sunlit = SunVisibility(v_position, leaves, clouds);
+	float openness = gl_FrontFacing ? v_openness : v_openness * INSIDE_OPENNESS;
 	vec3 albedo = Albedo(normal) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, smoothstep(LEAF_POCKET_EDGES.x, LEAF_POCKET_EDGES.y, clumps)), foliage);
 	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Leafy()), DIELECTRIC_REFLECTANCE);
-	frag_colour = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, v_openness, sunlit);
+	frag_colour = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, openness, sunlit, v_crown_sunlit * clouds);
 }

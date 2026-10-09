@@ -186,6 +186,7 @@ static std::string ShaderHeader()
 	DefineFloats(header, "TREE_THICKET_SCALES", TREE_THICKET_SCALES);
 	DefineFloats(header, "TREE_STRETCHES", TREE_STRETCHES);
 	DefineFloat(header, "TREE_LEAN", TREE_LEAN);
+	DefineFloat(header, "TREE_MODEL_TALLEST", TREE_MODEL_TALLEST);
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
 	DefineTones(header, "FRAME_TONES", SwatchTints(Swatch::Frame));
 	DefineTones(header, "MULLION_TONES", SwatchTints(Swatch::Mullion));

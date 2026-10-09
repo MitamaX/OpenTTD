@@ -9,6 +9,7 @@ const vec4 RESPONSE_FIT_BASE = vec4(1.0, 0.0425, 1.04, -0.04);
 const float RESPONSE_FIT_GRAZING = 1.04;
 const float RESPONSE_FIT_FALLOFF = 9.28;
 const float GLOW_FOCUS_POWER = 4.0;
+const float CANOPY_SCATTER = 0.5;
 
 struct Coat {
 	float roughness;
@@ -98,7 +99,7 @@ vec4 SurfaceRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlu
 {
 	vec3 ambient = AmbientLight(normal);
 	vec3 scattered = Diffuse(albedo, scattered_sun + ambient * occlusion, coat.reflectance);
-	return vec4(scattered + Reflected(normal, view, coat, sun, ambient, occlusion), AmbientShare(ambient, sun));
+	return vec4(scattered + Reflected(normal, view, coat, sun, ambient, occlusion), AmbientShare(ambient, scattered_sun));
 }
 
 /* The light a surface point sends toward the eye with the share of the sun that reaches it given, and how brightly crystals in it glint in the sun. */
@@ -123,8 +124,14 @@ vec3 SunlightThrough(vec3 normal, vec3 view, float translucency, float sunlit)
 	return SunRadiance() * (wrapped + glow) * sunlit;
 }
 
-/* Leaves let light through as well as reflecting it off their coat. */
-vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 view, float translucency, Coat coat, float occlusion, float sunlit)
+vec3 CanopyScatter(float translucency, float depth, float crown_sunlit)
 {
-	return SurfaceRadiance(albedo, normal, view, coat, occlusion, Sunlight(normal, sunlit), SunlightThrough(normal, view, translucency, sunlit));
+	return SunRadiance() * max(SunDirection().z, 0.0) * translucency * CANOPY_SCATTER * depth * crown_sunlit;
+}
+
+/* Leaves let light through as well as reflecting it off their coat. */
+vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 view, float translucency, Coat coat, float occlusion, float sunlit, float crown_sunlit)
+{
+	vec3 through = SunlightThrough(normal, view, translucency, sunlit) + CanopyScatter(translucency, 1.0 - occlusion, crown_sunlit);
+	return SurfaceRadiance(albedo, normal, view, coat, occlusion, Sunlight(normal, sunlit), through);
 }

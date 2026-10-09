@@ -18,6 +18,7 @@ out float v_hue;
 out float v_wither;
 out float v_snow;
 flat out vec2 v_window;
+flat out float v_crown_sunlit;
 
 const float TAU = 6.2831853;
 const vec2 WIND_WAY = vec2(0.8, 0.6);
@@ -132,6 +133,7 @@ void main()
 	v_snow = 0.0;
 #else
 	v_hue = HueOf(seat);
+	v_crown_sunlit = SunReaches(base + Grown(growth, vec3(0.0, 0.0, TREE_MODEL_TALLEST)));
 	ReadGround();
 #endif
 	gl_Position = ClipPosition(v_position);
