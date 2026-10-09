@@ -50,6 +50,7 @@ static constexpr double WAY_CASTER_WIDTH = 0.1;
 /* Ways in the middle distance thin toward the ground under them, from whole at these tile pixels to this share gone where they fade, so the network reads as soft lines. */
 static constexpr double NETWORK_RECEDE_PIXELS = 40.0;
 static constexpr double NETWORK_RECEDE_DEPTH = 0.5;
+static constexpr float WAY_WEATHERING = 1.0f;
 static constexpr float OFFSET_SLOPE = -1.0f;
 static constexpr float OFFSET_UNITS = -2.0f;
 
@@ -113,6 +114,7 @@ void NetworkPass::Draw(const SceneView &view)
 		UploadOverlay(*solid);
 		glUniform2f(solid->Uniform("u_fade"), static_cast<float>(NETWORK_FADE_START), static_cast<float>(NETWORK_FADE_END));
 		glUniform2f(solid->Uniform("u_recede"), static_cast<float>(NETWORK_RECEDE_PIXELS), solid == &this->span_program ? 0.0f : static_cast<float>(NETWORK_RECEDE_DEPTH));
+		glUniform1f(solid->Uniform("u_weathering"), WAY_WEATHERING);
 	}
 
 	glEnable(GL_POLYGON_OFFSET_FILL);

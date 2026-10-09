@@ -72,14 +72,13 @@ static constexpr double TRAM_RAIL_TOP = ASPHALT_TOP + 0.0025;
 static constexpr double TRAM_BED_TOP = 0.009;
 
 static constexpr uint32_t ASPHALT = COL_ASPHALT;
-static constexpr uint32_t SHOULDER = 0x3D3F43;
+static constexpr uint32_t SHOULDER = 0x3F3D3A;
 static constexpr uint32_t PAVEMENT = 0xB7B2A8;
 static constexpr uint32_t KERB = 0xCDC9C0;
 static constexpr uint32_t MARKING = 0xE8E6DE;
 static constexpr uint32_t NO_ENTRY = 0xC8463C;
 static constexpr uint32_t TRAM_BED = 0x9C998F;
 static constexpr uint32_t TRAM_RAIL = 0xBFC3C7;
-static constexpr double ASPHALT_GLOSS = 0.3;
 static constexpr double STEEL_GLOSS = 0.85;
 static constexpr double PAVEMENT_VARIETY = 0.06;
 static constexpr uint32_t PAVEMENT_SALT = 0x9A7E3E17U;
@@ -236,7 +235,7 @@ private:
 	{
 		std::vector<MapVector> outline = Outline(this->site.road);
 		std::vector<std::vector<MapVector>> borders = Borders(outline);
-		this->Lay(Plate(outline, {0.0, 0.0}, ASPHALT_TOP), ASPHALT, ASPHALT_GLOSS);
+		this->Lay(Plate(outline, {0.0, 0.0}, ASPHALT_TOP), ASPHALT);
 		if (this->site.kerbed) {
 			this->Pavement(outline);
 			for (const auto &border : borders) this->Lay(Wall(border, KERB_FOOT, PAVEMENT_TOP), KERB);
