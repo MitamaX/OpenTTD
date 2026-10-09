@@ -102,6 +102,8 @@ const vec3 ROUGH_TINT = vec3(0.55, 0.50, 0.30);
 const vec3 STRAW_TINT = vec3(1.14, 1.04, 0.78);
 const float STRAW_PATCHES_PER_TILE = 3.0;
 const float STRAW_MEAN = 0.12;
+const vec3 DEEP_SWARD = vec3(0.74, 0.88, 0.84);
+const vec2 DEEP_SWARD_EDGES = vec2(0.22, 0.48);
 const vec3 ROCK = vec3(0.50, 0.49, 0.47);
 const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
 const vec3 SCREE = vec3(0.55, 0.52, 0.47);
@@ -539,7 +541,8 @@ vec3 Grass(Ground ground, Grain grain, Climate climate)
 	vec3 straw = green * STRAW_TINT;
 	float shade = Varied(grain.local, 0.3) * Varied(grain.clump, 0.35) * Varied(grain.fine, 0.25) * Varied(grain.micro, 0.45);
 	float strawed = mix(STRAW_MEAN, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro), Resolved(STRAW_PATCHES_PER_TILE));
-	vec3 blades = mix(green, straw, strawed) * shade;
+	vec3 sward = mix(green * DEEP_SWARD, green, smoothstep(DEEP_SWARD_EDGES.x, DEEP_SWARD_EDGES.y, grain.local));
+	vec3 blades = mix(sward, straw, strawed) * shade;
 	vec3 soil = Soil() * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
