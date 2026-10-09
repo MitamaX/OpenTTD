@@ -432,6 +432,7 @@ struct Site {
 	Climate climate;
 	float ragged;
 	float trodden;
+	vec3 blades;
 };
 
 /* How the tiles' grounds meet about a point, the noise bending their seams bending the climate's edges as well. */
@@ -650,7 +651,7 @@ vec3 Bloomed(vec3 blades, vec2 p)
 
 /* Grass grows long in some patches and grazed short in others, turns to straw here and there, and its blades and seed heads fleck it light and dark up close;
  * from afar the patches too small to make out settle into one tone. */
-vec3 Grass(Ground ground, Site site)
+vec3 Blades(Site site)
 {
 	Grain grain = site.grain;
 	vec3 green = GrassTone(grain.broad, site.climate);
@@ -662,14 +663,19 @@ vec3 Grass(Ground ground, Site site)
 	float strawed = mix(STRAW_MEAN, dried * rank, Resolved(STRAW_PATCHES_PER_TILE));
 	vec3 undergrowth = green * mix(vec3(1.0), DEEP_SWARD, rank);
 	vec3 sward = mix(undergrowth, green, smoothstep(DEEP_SWARD_EDGES.x, DEEP_SWARD_EDGES.y, grain.local)) * mix(GRAZED_SWARD, LONG_SWARD, grown);
-	vec3 blades = Bloomed(mix(sward, straw, strawed) * shade * Mown(site.p), site.p);
+	return Bloomed(mix(sward, straw, strawed) * shade * Mown(site.p), site.p);
+}
+
+vec3 Grass(float density, Site site)
+{
+	Grain grain = site.grain;
 	vec3 soil = Soil() * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
-	return mix(soil, blades, Cover(ground.density, grain.local));
+	return mix(soil, site.blades, Cover(density, grain.local));
 }
 
 vec3 Meadow(Site site)
 {
-	return Grass(Ground(MAT_GRASS, 1.0, 0u), site);
+	return Grass(1.0, site);
 }
 
 /* Toyland's strata blended as they read from too far to make out one from another. */
@@ -904,7 +910,7 @@ Patch Albedo(Ground ground, Site site)
 	Grain grain = site.grain;
 	vec2 p = site.p;
 	switch (ground.material) {
-		case MAT_GRASS: return Patch(Grass(ground, site), GRASS_RUGGED);
+		case MAT_GRASS: return Patch(Grass(ground.density, site), GRASS_RUGGED);
 		case MAT_ROUGH:
 		case MAT_SNOW: return Rough(site);
 		case MAT_ROCKS: return Rocks(site);
@@ -925,6 +931,11 @@ bool IsBuilt(uint material)
 bool IsNatural(uint material)
 {
 	return material == MAT_GRASS || material == MAT_ROUGH || material == MAT_SNOW || material == MAT_DESERT || material == MAT_SHORE;
+}
+
+bool Grassed(uint material)
+{
+	return material == MAT_GRASS || material == MAT_ROCKS || material == MAT_DESERT || material == MAT_SHORE;
 }
 
 Patch Trodden(Patch ground, Site site)
@@ -1044,11 +1055,11 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, float armoured, Ground corners[4
 	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
 	bool bared = exposure.scree > 0.0 || armoured > 0.0 || rocky;
 	Bare bare = bared ? BareAt(p, relief, grain, rocky) : NO_BARE;
-	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden);
+	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden, vec3(0.0));
 }
 
 /* Each distinct ground is shaded once, in a loop the compiler keeps as one copy. */
-Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, out Site site)
+Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, bool beached, out Site site)
 {
 	vec2 q = p + seams.warp - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
@@ -1073,7 +1084,12 @@ Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, o
 	}
 
 	Patch blend = Patch(vec3(0.0), vec2(0.0));
+	bool bladed = false;
 	for (int k = 0; k < count; k++) {
+		if (!bladed && (beached || Grassed(distinct[k].material))) {
+			site.blades = Blades(site);
+			bladed = true;
+		}
 		Patch patch = Eroded(distinct[k], site);
 		blend.tone += patch.tone * weights[k];
 		blend.rugged += patch.rugged * weights[k];
@@ -1516,12 +1532,12 @@ struct Underfoot {
 	Blanket blanket;
 };
 
-Underfoot UnderfootAt(vec2 p, Grain grain, Relief relief, float armoured)
+Underfoot UnderfootAt(vec2 p, Grain grain, Relief relief, float armoured, bool beached)
 {
 	Underfoot underfoot;
 	underfoot.grain = grain;
 	underfoot.seams = SeamsAt(p);
-	underfoot.ground = Surface(p, underfoot.seams, grain, relief, armoured, underfoot.site);
+	underfoot.ground = Surface(p, underfoot.seams, grain, relief, armoured, beached, underfoot.site);
 	underfoot.blanket = BlanketOver(underfoot.site);
 	return underfoot;
 }
@@ -1596,7 +1612,7 @@ void main()
 	} else if (v_mark > WALL_MARK) {
 		shade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else {
-		Underfoot underfoot = UnderfootAt(p, grain, edge ? ReliefAt(UPRIGHT, levels_per_pixel) : relief, !edge && water.sea > 0.0 ? Armoured(p) : 0.0);
+		Underfoot underfoot = UnderfootAt(p, grain, edge ? ReliefAt(UPRIGHT, levels_per_pixel) : relief, !edge && water.sea > 0.0 ? Armoured(p) : 0.0, !edge && water.sea > SANDED_SEA);
 		if (edge) shade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(underfoot))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 		else shade = GroundShade(p, pixel, water, relief, detail, levels_per_pixel, normal, underfoot);
 	}
