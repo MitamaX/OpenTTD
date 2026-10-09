@@ -106,7 +106,7 @@ WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 	Snapshot &e = this->snapshots[v->index.base()];
 	TickTrail::Spot spot = SpotOf(v, this->tick);
 	bool turned_about = TurnedAbout(v);
-	bool continues = e.seen + 1 >= this->frames && !e.trail.Empty() && e.turned_about == turned_about && Glides(e.trail.Latest(), spot);
+	bool continues = this->SeenLately(e) && !e.trail.Empty() && e.turned_about == turned_about && Glides(e.trail.Latest(), spot);
 	e.trail.Note(spot, continues);
 	if (v->type == VEH_TRAIN) e.NotePassage({v->tile, Train::From(v)->track & TRACK_BIT_MASK}, continues);
 	e.seen = this->frames;
@@ -171,11 +171,24 @@ TrackTaken VehicleMotion::TakenBy(const Vehicle *v) const
 		TrackBits taken = GetReservedTrackbits(tile);
 		for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
 			if (unit->tile == tile) taken |= unit->track & TRACK_BIT_MASK;
-			auto known = this->snapshots.find(unit->index.base());
-			if (known != this->snapshots.end() && known->second.left.tile == tile) taken |= known->second.left.track;
+			Passage left = this->LeftBy(unit);
+			if (left.tile == tile) taken |= left.track;
 		}
 		return taken;
 	};
+}
+
+bool VehicleMotion::SeenLately(const Snapshot &e) const
+{
+	return e.seen + 1 >= this->frames;
+}
+
+/* What a unit left is known only while it is followed frame by frame, as one hidden or out of view since may have left other tiles. */
+VehicleMotion::Passage VehicleMotion::LeftBy(const Vehicle *unit) const
+{
+	auto known = this->snapshots.find(unit->index.base());
+	if (known == this->snapshots.end() || !this->SeenLately(known->second)) return {};
+	return known->second.left;
 }
 
 bool VehicleMotion::FollowsTrack(const Vehicle *v)

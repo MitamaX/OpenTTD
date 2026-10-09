@@ -62,6 +62,8 @@ private:
 
 	static TickTrail::Spot SpotOf(const Vehicle *v, uint64_t tick);
 	static bool Glides(const TickTrail::Spot &from, const TickTrail::Spot &to);
+	bool SeenLately(const Snapshot &e) const;
+	Passage LeftBy(const Vehicle *unit) const;
 	Snapshot &Turned(const Vehicle *v);
 
 	std::unordered_map<uint32_t, Snapshot> snapshots;
