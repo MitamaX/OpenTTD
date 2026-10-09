@@ -44,12 +44,16 @@ struct SceneBlock {
 };
 
 /* Seconds since the first frame by when each frame began, so everything moved by it moves alike however long the frame took to set up. */
-static double Clock()
+static double SecondsSinceFirstFrame()
 {
-	if (std::optional<double> captured = _frame_capture.SceneSeconds(); captured.has_value()) return *captured;
 	static const TickClock::Clock::time_point start = _tick_clock.FrameAt();
 	std::chrono::duration<double> elapsed = _tick_clock.FrameAt() - start;
-	return std::fmod(elapsed.count(), CLOCK_PERIOD_SECONDS);
+	return elapsed.count();
+}
+
+static double Clock()
+{
+	return std::fmod(_frame_capture.SceneSeconds().value_or(SecondsSinceFirstFrame()), CLOCK_PERIOD_SECONDS);
 }
 
 static double SnowLine()
