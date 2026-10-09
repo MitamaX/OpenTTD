@@ -98,5 +98,5 @@ void main()
 		Street street = StreetBefore(v_position, frame[2], v_pattern.y * FORM_HEIGHT_SCALE, v_seed);
 		lit = mix(lit, PaneRadiance(PaneOf(albedo, clad, material), street, normal, view, roughness, occlusion, sunlit), clad.glass);
 	}
-	frag_colour = lit;
+	frag_colour = lit + vec4(albedo * clad.glow, 0.0);
 }

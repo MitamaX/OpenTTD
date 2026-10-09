@@ -213,6 +213,9 @@ static constexpr int CINEMA_STOREYS = 2;
 static constexpr float BLADE_DEPTH = 0.03f;
 static constexpr float BLADE_LENGTH = 0.16f;
 static constexpr float BLADE_HEIGHT = 0.22f;
+static constexpr float SIGN_RIM = 0.01f;
+static constexpr float SIGN_FACE_PROUD = 0.004f;
+static constexpr uint32_t SIGN_FRAME_TINT = 0xFF33373CU;
 
 static constexpr float MALL_SETBACK = 0.05f;
 static constexpr int MALL_STOREYS = 2;
@@ -722,8 +725,16 @@ static void AddAwning(BuildingForm &form, const Solid &mass, const HouseSite &si
 {
 	Plot awning = FootprintOf(mass).Outside(site.front, AWNING_DEPTH).Narrowed(AlongEdge(site.front), length);
 	float ground = GroundStoreyTiles(mass.windows);
-	Place(form, Part::Box(awning).On(ground - AWNING_THICKNESS - AWNING_RISE).Detailed().Height(AWNING_THICKNESS).Clad(Material::Plain, AccentTint(site))
+	Place(form, Part::Box(awning).On(ground - AWNING_THICKNESS - AWNING_RISE).Detailed().Height(AWNING_THICKNESS).Clad(Material::Canvas, AccentTint(site))
 		.Roof(RoofShape::Shed, AWNING_RISE).HighSide(ReverseDiagDir(site.front)));
+}
+
+/* A lit sign facing the street: its printed face stands a little proud of a dark metal frame showing round it. */
+static void AddSign(BuildingForm &form, const Plot &plot, float base, float height, const HouseSite &site)
+{
+	Place(form, Part::Box(plot).On(base).Detailed().Height(height).Clad(Material::Metal, SIGN_FRAME_TINT));
+	Plot face = plot.Inset(AxisToDiagDirs(AlongEdge(site.front)), SIGN_RIM).Inset(AxisToDiagDirs(DiagDirToAxis(site.front)), -SIGN_FACE_PROUD);
+	Place(form, Part::Box(face).On(base + SIGN_RIM).Detailed().Height(height - 2.0f * SIGN_RIM).Clad(Material::Sign, AccentTint(site)));
 }
 
 static Solid Annex(const Solid &dwelling, const Plot &plot, DiagDirection side, const HouseSite &site)
@@ -860,7 +871,7 @@ static void BuildHotel(BuildingForm &form, const HouseSite &site)
 	Plot plot = base.Inset(AxisToDiagDirs(long_axis), SLAB_LONG_INSET).Inset(AxisToDiagDirs(OtherAxis(long_axis)), SLAB_SHORT_INSET);
 	Solid slab = AddSlab(form, plot, podium.Top(), site.storeys, site);
 	Plot sign = plot.Edge(site.front, HOTEL_SIGN_DEPTH).Narrowed(AlongEdge(site.front), HOTEL_SIGN_LENGTH);
-	Place(form, Part::Box(sign).On(LevelAbove(slab)).Detailed().Height(HOTEL_SIGN_HEIGHT).Clad(Material::Plain, AccentTint(site)));
+	AddSign(form, sign, LevelAbove(slab), HOTEL_SIGN_HEIGHT, site);
 	DressRoof(form, slab, site);
 }
 
@@ -907,7 +918,7 @@ static void BuildCinema(BuildingForm &form, const HouseSite &site)
 {
 	Solid hall = RaiseBlock(form, FootprintOf(form).SetBack(site.front, Evenly(CINEMA_SETBACK)), site, WindowGrid::Shopfront, CINEMA_STOREYS);
 	Plot blade = FootprintOf(hall).Outside(site.front, BLADE_DEPTH).Narrowed(AlongEdge(site.front), BLADE_LENGTH);
-	Place(form, Part::Box(blade).On(GroundStoreyTiles(hall.windows)).Detailed().Height(BLADE_HEIGHT).Clad(Material::Plain, AccentTint(site)));
+	AddSign(form, blade, GroundStoreyTiles(hall.windows), BLADE_HEIGHT, site);
 	DressRoof(form, hall, site);
 }
 

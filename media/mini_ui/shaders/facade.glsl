@@ -75,6 +75,14 @@ const float PAINT_ROUGHNESS = 0.6;
 const float FRAME_ROUGHNESS = 0.5;
 const float SHUTTER_ROUGHNESS = 0.45;
 const float STONE_ROUGHNESS = 0.7;
+const vec3 GOODS[6] = vec3[6](vec3(0.78, 0.22, 0.18), vec3(0.20, 0.42, 0.70), vec3(0.88, 0.74, 0.22), vec3(0.24, 0.56, 0.32), vec3(0.86, 0.84, 0.80), vec3(0.62, 0.36, 0.62));
+const vec3 SHELF_PAINT = vec3(0.32, 0.30, 0.28);
+const float SHELF_PITCH = 2.0;
+const float SHELF_BOARD = 0.15;
+const float GOODS_PITCH = 0.6;
+const float GOODS_GAPS = 0.2;
+const ivec2 GOODS_SALT = ivec2(31, 57);
+const float LETTERED_HALF_WIDTH = 5.0;
 const vec3 DOOR_PAINTS[5] = vec3[5](vec3(0.42, 0.12, 0.10), vec3(0.12, 0.28, 0.18), vec3(0.12, 0.20, 0.36), vec3(0.30, 0.20, 0.12), vec3(0.85, 0.84, 0.80));
 const vec3 FASCIA_PAINTS[4] = vec3[4](vec3(0.55, 0.12, 0.10), vec3(0.10, 0.24, 0.40), vec3(0.14, 0.32, 0.18), vec3(0.62, 0.48, 0.16));
 const float DRIP_REACH = 5.0;
@@ -404,9 +412,23 @@ vec3 Furnished(Room room, vec2 hit, float floor_height)
 	return furniture ? FURNITURE : RoomWall(room);
 }
 
+/* A shop's back wall is shelved, each shelf laid with goods of one colour or another and a few gaps between. */
+vec3 Stocked(Room room, vec2 hit, float floor_height)
+{
+	float shelf = (hit.y - floor_height) / SHELF_PITCH;
+	if (fract(shelf) < SHELF_BOARD) return SHELF_PAINT;
+	float roll = Hash(ivec2(floor(hit.x / GOODS_PITCH), floor(shelf)) + room.window * GOODS_SALT);
+	return roll < GOODS_GAPS ? RoomWall(room) : GOODS[Pick((roll - GOODS_GAPS) / (1.0 - GOODS_GAPS), GOODS.length())];
+}
+
+vec3 BackWall(Room room, Bay bay, vec2 hit, float floor_height)
+{
+	return bay.opening.kind == OPEN_SHOP ? Stocked(room, hit, floor_height) : Furnished(room, hit, floor_height);
+}
+
 Clad PaneOver(vec3 room, float daylight, vec3 lamp)
 {
-	return Clad(room, FACING_OUT, PANE_ROUGHNESS, 1.0, 1.0, 1.0, daylight, lamp);
+	return Clad(room, FACING_OUT, PANE_ROUGHNESS, 1.0, 1.0, 1.0, daylight, lamp, 0.0);
 }
 
 vec3 LampLightAt(Room room, vec3 point, vec3 lamp)
@@ -435,7 +457,7 @@ Clad RoomSeen(Room room, Bay bay, uint grid, Outlook outlook)
 	bool on_back = sunk >= depth;
 	bool level = !on_back && reach.y < reach.x;
 	bool on_ceiling = level && heading.y > 0.0;
-	vec3 surface = on_back ? Furnished(room, hit, floor_height) : on_ceiling ? ROOM_CEILING : level ? RoomFloor(room) : RoomWall(room) * ROOM_SIDE_SHADE;
+	vec3 surface = on_back ? BackWall(room, bay, hit, floor_height) : on_ceiling ? ROOM_CEILING : level ? RoomFloor(room) : RoomWall(room) * ROOM_SIDE_SHADE;
 	float lamp_depth = depth * LAMP_DEPTH_SHARE;
 	bool glowing = on_ceiling && UnderCeilingLamp(room, vec2(hit.x, sunk), half_width, lamp_depth);
 	vec3 lamp = glowing ? room.lamp * CEILING_LAMP_GLOW : LampLightAt(room, vec3(hit, sunk), vec3(0.0, ceiling, lamp_depth));
@@ -609,18 +631,31 @@ Clad FacadeWall(uint material, vec2 pattern, vec3 tint)
 	return Landscape() == LANDSCAPE_TOYLAND ? Matte(tint, TOY_PANE_ROUGHNESS) : PaneOver(SPANDREL_BACKING, 1.0, vec3(0.0));
 }
 
+bool OnFascia(uint grid, vec2 texel, bool front)
+{
+	float ground = FACADE_GROUND[grid];
+	return front && FASCIA_ROWS[grid] > 0.0 && texel.y < ground && texel.y >= ground - 1.0 - FASCIA_ROWS[grid];
+}
+
+/* A shopfront's fascia: a painted board lettered with the shop's name across each bay, on a stone string course. */
+Clad Fascia(uint grid, vec2 texel, uint seed, float pixel)
+{
+	float ground = FACADE_GROUND[grid];
+	if (texel.y >= ground - 1.0) return Matte(SILL_STONE, STONE_ROUGHNESS);
+	float pitch = FACADE_PITCH[grid];
+	float bay = floor(texel.x / pitch);
+	vec2 at = vec2(texel.x - (bay + 0.5) * pitch, texel.y - (ground - 1.0 - FASCIA_ROWS[grid] * 0.5));
+	float letters = abs(at.x) < LETTERED_HALF_WIDTH ? Lettering(at, int(bay) + int(seed), pixel) : 0.0;
+	return Matte(mix(FASCIA_PAINTS[seed % uint(FASCIA_PAINTS.length())], LETTERING, letters), PAINT_ROUGHNESS);
+}
+
 Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook outlook, float pixel)
 {
 	Bay bay = BayAt(grid, texel, front);
 	Opening opening = bay.opening;
 	Clad clad = wall;
 	clad.albedo *= Drips(bay, texel, grid);
-
-	float fascia = FASCIA_ROWS[grid];
-	float ground = FACADE_GROUND[grid];
-	if (front && fascia > 0.0 && texel.y < ground && texel.y >= ground - 1.0 - fascia) {
-		clad = texel.y >= ground - 1.0 ? Matte(SILL_STONE, STONE_ROUGHNESS) : Matte(FASCIA_PAINTS[seed % uint(FASCIA_PAINTS.length())], PAINT_ROUGHNESS);
-	}
+	if (OnFascia(grid, texel, front)) clad = Fascia(grid, texel, seed, pixel);
 	if (opening.kind == OPEN_NONE) return clad;
 
 	vec3 edge = NearestEdge(opening, bay.at);

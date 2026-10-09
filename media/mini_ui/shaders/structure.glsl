@@ -29,6 +29,22 @@ const float LICHEN_SPOT_SEED = 6.1;
 const float LICHEN_COVER = 0.45;
 const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 const vec3 DIM_ROOM = vec3(0.3, 0.29, 0.27);
+const vec3 CANVAS_STRIPE = vec3(0.92, 0.9, 0.84);
+const float CANVAS_STRIPES = 40.0;
+const float CANVAS_ROUGHNESS = 0.9;
+const vec3 LETTERING = vec3(0.95, 0.93, 0.86);
+const float LETTER_PITCH = 1.0;
+const vec2 LETTER_SIZE = vec2(0.7, 1.2);
+const vec2 LETTER_STROKES = vec2(2.0, 3.0);
+const float LETTER_SPACES = 0.2;
+const float LETTER_INK = 0.6;
+const ivec2 LETTER_SALT = ivec2(41, 23);
+const vec2 LETTERS_RESOLVED_PIXELS = vec2(0.15, 0.4);
+const float LETTERED_SHARE = LETTER_SIZE.x / LETTER_PITCH * (1.0 - LETTER_SPACES) * LETTER_INK;
+const float SIGN_LINE_PITCH = 2.0;
+const float SIGN_LETTER_SCALE = 2.0;
+const float SIGN_GLOW = 0.8;
+const float SIGN_ROUGHNESS = 0.3;
 
 /* A point of a building before light, its facing told across, up and out of its face. */
 struct Clad {
@@ -40,19 +56,20 @@ struct Clad {
 	float sunlit;
 	float daylight;
 	vec3 lamp;
+	float glow;
 };
 
 const vec3 FACING_OUT = vec3(0.0, 0.0, 1.0);
 
 Clad Matte(vec3 colour, float roughness)
 {
-	return Clad(colour, FACING_OUT, roughness, 0.0, 1.0, 1.0, 1.0, vec3(0.0));
+	return Clad(colour, FACING_OUT, roughness, 0.0, 1.0, 1.0, 1.0, vec3(0.0), 0.0);
 }
 
 Clad Mixed(Clad a, Clad b, float share)
 {
 	return Clad(mix(a.albedo, b.albedo, share), mix(a.facing, b.facing, share), mix(a.roughness, b.roughness, share), mix(a.glass, b.glass, share),
-		mix(a.occlusion, b.occlusion, share), mix(a.sunlit, b.sunlit, share), mix(a.daylight, b.daylight, share), mix(a.lamp, b.lamp, share));
+		mix(a.occlusion, b.occlusion, share), mix(a.sunlit, b.sunlit, share), mix(a.daylight, b.daylight, share), mix(a.lamp, b.lamp, share), mix(a.glow, b.glow, share));
 }
 
 /* How sharply a pattern repeating once a unit of x still shows: whole while a repeat spans a few pixels, gone once it blurs. */
@@ -209,6 +226,38 @@ float Band(float x, float low, float high)
 	return Band(x, low, high, fwidth(x));
 }
 
+/* A line of block letters along x, in texels about its middle at y = 0, as a share of the point they ink; letters too fine to show blend into the share they ink. */
+float Lettering(vec2 at, int line, float pixel)
+{
+	float shown = 1.0 - smoothstep(LETTERS_RESOLVED_PIXELS.x, LETTERS_RESOLVED_PIXELS.y, pixel);
+	if (abs(at.y) > LETTER_SIZE.y * 0.5) return 0.0;
+	if (shown <= 0.0) return LETTERED_SHARE;
+	float column = floor(at.x / LETTER_PITCH);
+	vec2 in_letter = vec2(at.x - column * LETTER_PITCH - (LETTER_PITCH - LETTER_SIZE.x) * 0.5, at.y + LETTER_SIZE.y * 0.5);
+	ivec2 letter = ivec2(column, line) * LETTER_SALT;
+	bool spaced = in_letter.x < 0.0 || in_letter.x > LETTER_SIZE.x || Hash(letter) < LETTER_SPACES;
+	ivec2 stroke = ivec2(floor(in_letter / LETTER_SIZE * LETTER_STROKES));
+	float inked = !spaced && Hash(letter + stroke + 1) < LETTER_INK ? 1.0 : 0.0;
+	return mix(LETTERED_SHARE, inked, shown);
+}
+
+/* Awning canvas runs in stripes of its own colour and a pale one. */
+Clad Striped(vec2 p, vec3 tint)
+{
+	return Matte(mix(tint, CANVAS_STRIPE, Lines(p.x * CANVAS_STRIPES, 0.5)), CANVAS_ROUGHNESS);
+}
+
+/* A lightbox's face printed with lines of lettering, glowing from within. */
+Clad Lightbox(vec2 p, vec3 tint)
+{
+	vec2 at = p * TEXELS / SIGN_LETTER_SCALE;
+	float pixel = max(fwidth(at.x), fwidth(at.y));
+	float line = floor(at.y / SIGN_LINE_PITCH);
+	Clad face = Matte(mix(tint, LETTERING, Lettering(vec2(at.x, at.y - (line + 0.5) * SIGN_LINE_PITCH), int(line), pixel)), SIGN_ROUGHNESS);
+	face.glow = SIGN_GLOW;
+	return face;
+}
+
 /* The members of a braced lattice, as a share of the point they cover. */
 float LatticeCover(vec2 p)
 {
@@ -281,6 +330,8 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_ASPHALT: return Mottled(p, tint, 60.0, 0.12, 0.9);
 		case CLAD_HEDGE: return Leafy(p, tint);
 		case CLAD_PICKETS: return Matte(tint, 0.7);
+		case CLAD_CANVAS: return Striped(p, tint);
+		case CLAD_SIGN: return Lightbox(p, tint);
 		default: return Mottled(p, tint, 10.0, 0.05, 0.85);
 	}
 }
