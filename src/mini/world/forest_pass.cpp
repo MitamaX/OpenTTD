@@ -13,6 +13,7 @@
 #include <array>
 
 #include "../gpu/gl_api.h"
+#include "laid_depth.h"
 #include "shadow_map.h"
 
 #include "../../safeguards.h"
@@ -27,7 +28,7 @@ static constexpr std::array<const char *, 8> VERTEX_SOURCES = {
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/tree.vert",
 };
-static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/sky.glsl",
@@ -35,7 +36,15 @@ static constexpr std::array<const char *, 8> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/shadow.glsl",
 	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/flora.glsl",
+	"mini_ui/shaders/leaves.glsl",
 	"mini_ui/shaders/tree.frag",
+};
+static constexpr std::array<const char *, 5> DEPTH_FRAGMENT_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
+	"mini_ui/shaders/flora.glsl",
+	"mini_ui/shaders/leaves.glsl",
+	"mini_ui/shaders/tree_depth.frag",
 };
 static constexpr double TREE_CASTER_WIDTH = 0.2;
 /* Near trees cast with simpler meshes and distant ones cast none: their shadows would only speckle the ground, which the forest tint already shades. */
@@ -47,13 +56,36 @@ static size_t DrawnMesh(size_t mesh)
 	return mesh;
 }
 
-ForestPass::ForestPass(const WorldTextures &textures) : textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
+static bool LaidFirst(size_t mesh)
+{
+	return TreeDetailOf(mesh) != TreeDetail::Crude;
+}
+
+static bool ShadedAsDrawn(size_t mesh)
+{
+	return !LaidFirst(mesh);
+}
+
+/* Each mesh's copies learn which detail they were gathered for. */
+template <class ChooseMesh>
+static auto TellingDetail(const ShaderProgram &program, ChooseMesh choose_mesh)
+{
+	program.Use();
+	int detail_uniform = program.Uniform("u_detail");
+	return [detail_uniform, choose_mesh](size_t mesh) {
+		glUniform1i(detail_uniform, static_cast<GLint>(TreeDetailOf(mesh)));
+		return choose_mesh(mesh);
+	};
+}
+
+ForestPass::ForestPass(const WorldTextures &textures) :
+	textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), depth(VERTEX_SOURCES, DEPTH_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
 {
 }
 
 std::vector<ShaderProgram *> ForestPass::Programs()
 {
-	return {&this->program, &this->caster};
+	return {&this->program, &this->depth, &this->caster};
 }
 
 void ForestPass::Load()
@@ -76,15 +108,26 @@ void ForestPass::Refresh(const SceneView &view)
 void ForestPass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready() || !view.Resolves(TREE_CASTER_WIDTH)) return;
-	this->DrawTrees(this->caster, view.camera, view.frustum, COARSEST_CAST, TreeCasterMesh);
+	this->Gather(view.camera, view.frustum, COARSEST_CAST);
+	this->DrawBatch(this->caster, TreeCasterMesh);
 }
 
-void ForestPass::Draw(const SceneView &view)
+void ForestPass::Lay(const SceneView &view)
 {
-	if (!this->program.Ready()) return;
+	if (!this->Shadeable()) return;
+	this->Gather(view, view.frustum, COARSEST_SHOWN);
+	this->batch.Draw(this->models, TellingDetail(this->depth, DrawnMesh), LaidFirst);
+}
+
+void ForestPass::Draw([[maybe_unused]] const SceneView &view)
+{
+	if (!this->Shadeable()) return;
 	WorldTextures::BindSamplers(this->program);
 	this->textures.Bind();
-	this->DrawTrees(this->program, view, view.frustum, COARSEST_SHOWN, DrawnMesh);
+	auto shade = TellingDetail(this->program, DrawnMesh);
+	this->batch.Redraw(this->models, shade, ShadedAsDrawn);
+	LaidDepthScope laid;
+	this->batch.Redraw(this->models, shade, LaidFirst);
 }
 
 void ForestPass::WarmCast()
@@ -97,32 +140,30 @@ void ForestPass::WarmCast()
 
 void ForestPass::Warm()
 {
-	if (!this->program.Ready()) return;
+	if (!this->Shadeable()) return;
 	WorldTextures::BindSamplers(this->program);
 	this->textures.Bind();
 	this->batch.Clear(TREE_DRAWN_MESHES);
 	this->batch.Add(0, TreeInstance{});
+	this->DrawBatch(this->depth, DrawnMesh);
 	this->DrawBatch(this->program, DrawnMesh);
 }
 
-template <class ChooseMesh>
-void ForestPass::DrawTrees(const ShaderProgram &program, const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, ChooseMesh choose_mesh)
+bool ForestPass::Shadeable()
+{
+	return this->program.Ready() && this->depth.Ready();
+}
+
+void ForestPass::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest)
 {
 	this->batch.Clear(TREE_DRAWN_MESHES);
 	this->forest.Gather(camera, frustum, coarsest, this->batch);
-	this->DrawBatch(program, choose_mesh);
 }
 
-/* Each mesh's copies learn which detail they were gathered for. */
 template <class ChooseMesh>
 void ForestPass::DrawBatch(const ShaderProgram &program, ChooseMesh choose_mesh)
 {
-	program.Use();
-	int detail_uniform = program.Uniform("u_detail");
-	this->batch.Draw(this->models, [&](size_t mesh) {
-		glUniform1i(detail_uniform, static_cast<GLint>(TreeDetailOf(mesh)));
-		return choose_mesh(mesh);
-	});
+	this->batch.Draw(this->models, TellingDetail(program, choose_mesh));
 }
 
 void ForestPass::Release()
@@ -130,5 +171,6 @@ void ForestPass::Release()
 	this->forest.Release();
 	this->models.Release();
 	this->program.Release();
+	this->depth.Release();
 	this->caster.Release();
 }

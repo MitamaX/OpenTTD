@@ -28,14 +28,15 @@ public:
 	void Sync(const WorldChanges &changes) override;
 	void Refresh(const SceneView &view) override;
 	void Cast(const ShadowView &view) override;
+	void Lay(const SceneView &view) override;
 	void Draw(const SceneView &view) override;
 	void WarmCast() override;
 	void Warm() override;
 	void Release() override;
 
 private:
-	template <class ChooseMesh>
-	void DrawTrees(const ShaderProgram &program, const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, ChooseMesh choose_mesh);
+	bool Shadeable();
+	void Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest);
 	template <class ChooseMesh>
 	void DrawBatch(const ShaderProgram &program, ChooseMesh choose_mesh);
 
@@ -44,6 +45,7 @@ private:
 	InstancedMeshes models;
 	TreeBatch batch;
 	ShaderProgram program;
+	ShaderProgram depth;
 	ShaderProgram caster;
 };
 

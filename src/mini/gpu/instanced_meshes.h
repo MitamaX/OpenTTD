@@ -83,16 +83,28 @@ public:
 	template <class ChooseMesh>
 	void Draw(InstancedMeshes &meshes, ChooseMesh choose_mesh)
 	{
+		this->Draw(meshes, choose_mesh, [](size_t) { return true; });
+	}
+
+	template <class ChooseMesh, class Wants>
+	void Draw(InstancedMeshes &meshes, ChooseMesh choose_mesh, Wants wants)
+	{
 		this->staged.clear();
 		for (const std::vector<Instance> &bucket : this->buckets) this->staged.insert(this->staged.end(), bucket.begin(), bucket.end());
 		if (this->staged.empty()) return;
 
 		meshes.Stream(std::as_bytes(std::span<const Instance>(this->staged)));
+		this->Redraw(meshes, choose_mesh, wants);
+	}
+
+	template <class ChooseMesh, class Wants>
+	void Redraw(const InstancedMeshes &meshes, ChooseMesh choose_mesh, Wants wants) const
+	{
 		size_t first = 0;
 		for (size_t mesh = 0; mesh < this->buckets.size(); mesh++) {
 			size_t count = this->buckets[mesh].size();
 			if (count == 0) continue;
-			meshes.Draw(choose_mesh(mesh), first, count);
+			if (wants(mesh)) meshes.Draw(choose_mesh(mesh), first, count);
 			first += count;
 		}
 	}

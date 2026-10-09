@@ -84,6 +84,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/glazing.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ground_overlay.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ground_overlay.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/leaves.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lighting.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/network.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/noise.glsl
@@ -112,6 +113,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree_depth.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vehicle.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/water.frag
