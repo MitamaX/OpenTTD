@@ -15,6 +15,7 @@
 #include <bit>
 #include <cmath>
 
+#include "../../settings_type.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
@@ -277,6 +278,7 @@ private:
 
 	bool WearsWindowBoxes() const
 	{
+		if (_settings_game.game_creation.landscape == LandscapeType::Arctic) return false;
 		return this->solid.windows == WindowGrid::Cottage || this->solid.windows == WindowGrid::Terrace || this->solid.windows == WindowGrid::Shopfront;
 	}
 

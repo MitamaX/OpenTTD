@@ -82,7 +82,7 @@ void main()
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
 	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)), Outlook(InTexels(view * frame), InTexels(SunDirection() * frame)));
 	vec3 normal = normalize(frame * clad.facing);
-	if (Has(SURFACE_ROOF)) clad.albedo = Snowed(clad.albedo, normal);
+	if (Has(SURFACE_ROOF) || Has(SURFACE_FACADE)) clad.albedo = Snowed(clad.albedo, normal);
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
