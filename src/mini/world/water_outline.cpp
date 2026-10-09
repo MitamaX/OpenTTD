@@ -21,6 +21,7 @@
 #include "../../safeguards.h"
 
 static constexpr double TEXEL_SCALE = 255.0;
+static constexpr double MIN_SPREAD = 1e-4;
 
 /* The shaders' lattice hash, bit for bit. */
 static float LatticeHash(int x, int y)
@@ -70,6 +71,7 @@ struct SheetSpan {
 	WaterTexel water;
 	double low;
 	double high;
+	double top;
 };
 
 static SheetSpan SheetSpanOf(int tx, int ty)
@@ -78,8 +80,8 @@ static SheetSpan SheetSpanOf(int tx, int ty)
 	WaterTexel water = _world_tiles.WaterAt(tile);
 	SurfaceTexel surface = _world_tiles.SurfaceAt(tile);
 	double low = std::min({surface.north, surface.west, surface.east, surface.south});
-	double high = water.level == FULL_WATER ? std::max({surface.north, surface.west, surface.east, surface.south}) : low;
-	return {water, low, high};
+	double top = std::max({surface.north, surface.west, surface.east, surface.south});
+	return {water, low, water.level == FULL_WATER ? top : low, top};
 }
 
 static double JoiningOf(const SheetSpan &span, double level)
@@ -93,10 +95,34 @@ double Joining(int tx, int ty, double level)
 	return JoiningOf(SheetSpanOf(tx, ty), level);
 }
 
-static double SheetTexel(int tx, int ty, double level)
+static double BrimShare(double level, double low, double high)
+{
+	return SmoothStep(0.0, BRIM_FADE, level - low) * (1.0 - SmoothStep(0.0, BRIM_FADE, high - level));
+}
+
+struct SheetShares {
+	double level;
+	double pooled;
+	double water;
+	double brim;
+
+	void Add(const SheetShares &other, double weight)
+	{
+		this->level += other.level * weight;
+		this->pooled += other.pooled * weight;
+		this->water += other.water * weight;
+		this->brim += other.brim * weight;
+	}
+};
+
+static SheetShares SheetTexel(int tx, int ty, double level)
 {
 	SheetSpan span = SheetSpanOf(tx, ty);
-	return span.water.level / TEXEL_SCALE * JoiningOf(span, level);
+	const WaterTexel &water = span.water;
+	double joining = JoiningOf(span, level) / TEXEL_SCALE;
+	double brim = water.level == 0 ? BrimShare(level, span.low, span.top) : 0.0;
+	double pooled = span.high > span.low ? 0.0 : water.river * joining;
+	return {water.level * joining, pooled, (water.sea + water.canal + water.river) * joining, brim};
 }
 
 double SheetWater(double x, double y, double level)
@@ -107,9 +133,9 @@ double SheetWater(double x, double y, double level)
 	double cell_y = std::floor(ty);
 	std::array<double, 4> wx = SplineWeights(tx - cell_x);
 	std::array<double, 4> wy = SplineWeights(ty - cell_y);
-	double field = 0.0;
+	SheetShares field{};
 	for (int j = 0; j < 4; j++) {
-		for (int i = 0; i < 4; i++) field += wx[i] * wy[j] * SheetTexel(static_cast<int>(cell_x) + i - 1, static_cast<int>(cell_y) + j - 1, level);
+		for (int i = 0; i < 4; i++) field.Add(SheetTexel(static_cast<int>(cell_x) + i - 1, static_cast<int>(cell_y) + j - 1, level), wx[i] * wy[j]);
 	}
-	return field;
+	return field.level - BRIM_PULL * field.brim * field.pooled / std::max(field.water, MIN_SPREAD);
 }

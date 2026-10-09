@@ -287,15 +287,25 @@ Surface Waves(vec2 p, float calm)
 	return Surface(normalize(vec3(-slope, 1.0)), normalize(vec3(-broad * steepness * 0.5, 1.0)), mix(lost / total, 1.0, ruffled * 0.4), ruffled * lost / total);
 }
 
+float BrimShare(float level, float low, float high)
+{
+	return smoothstep(0.0, BRIM_FADE, level - low) * (1.0 - smoothstep(0.0, BRIM_FADE, high - level));
+}
+
 /* A tile's water as wholly as it joins a sheet at this level, by how far the sheet stands off the levels the water spans: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
-vec4 SheetWater(ivec2 tile, float level)
+
+vec4 SheetWater(ivec2 tile, float level, out float pooled, out float brim)
 {
 	vec4 water = texelFetch(u_water, Clamped(tile), 0);
 	Corners c = SurfaceOf(tile);
 	float low = min(min(c.north, c.west), min(c.east, c.south));
-	float high = water.r >= 1.0 ? max(max(c.north, c.west), max(c.east, c.south)) : low;
+	float top = max(max(c.north, c.west), max(c.east, c.south));
+	float high = water.r >= 1.0 ? top : low;
 	float apart = max(max(low - level, level - high), 0.0);
-	return water * (1.0 - smoothstep(SHEET_HOLD, SHEET_REACH, apart));
+	vec4 joined = water * (1.0 - smoothstep(SHEET_HOLD, SHEET_REACH, apart));
+	pooled = high > low ? 0.0 : joined.a;
+	brim = water.r > 0.0 ? 0.0 : BrimShare(level, low, top);
+	return joined;
 }
 
 /* Whether the four by four tiles from one before the cell to two past it are all open sea, from the water's texels averaged four tiles to a texel;
@@ -307,7 +317,8 @@ bool OpenSeaAbout(ivec2 cell)
 }
 
 /* The water field over only the tiles whose water joins this sheet, so a pool's outline is not drawn out over the water of the pool below it;
- * a stream running down between two pools joins both. Open sea, all flat and at one level, joins every tile it weighs. */
+ * a stream running down between two pools joins both. A river lying level draws back from dry ground falling away below its sheet instead of brimming to the edge of a drop.
+ * Open sea, all flat and at one level, joins every tile it weighs. */
 vec4 SheetField(vec2 p, float level)
 {
 	vec2 t = p + ShoreWarp(p) - TILE_CENTRE;
@@ -316,9 +327,19 @@ vec4 SheetField(vec2 p, float level)
 	float wx[4] = SplineWeights(fract(t.x));
 	float wy[4] = SplineWeights(fract(t.y));
 	vec4 field = vec4(0.0);
+	float pooled = 0.0;
+	float brim = 0.0;
 	for (int j = 0; j < 4; j++) {
-		for (int i = 0; i < 4; i++) field += wx[i] * wy[j] * SheetWater(cell + ivec2(i - 1, j - 1), level);
+		for (int i = 0; i < 4; i++) {
+			float weight = wx[i] * wy[j];
+			float tile_pooled;
+			float tile_brim;
+			field += weight * SheetWater(cell + ivec2(i - 1, j - 1), level, tile_pooled, tile_brim);
+			pooled += weight * tile_pooled;
+			brim += weight * tile_brim;
+		}
 	}
+	field.r -= BRIM_PULL * brim * pooled / max(dot(field.gba, vec3(1.0)), MIN_SPREAD);
 	return Walled(field, p);
 }
 

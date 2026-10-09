@@ -21,9 +21,11 @@ inline constexpr std::array<double, 2> SHORE_WARP_SEEDS = {7.1, 93.4};
 /* How far in levels a sheet may stand from a tile's water and still join it wholly, and from how far it no longer joins it at all. */
 inline constexpr double SHEET_HOLD = 0.5;
 inline constexpr double SHEET_REACH = 1.0;
+inline constexpr double BRIM_PULL = 0.35;
+inline constexpr double BRIM_FADE = 0.45;
 
-/* How far a point lies inside the water of a level sheet, as the water shaders draw it: the water of every tile joining the sheet smoothed by a cubic B-spline,
- * read about the point frayed the way natural shores fray. */
+/* How far a point lies inside the water of a sheet, as the water shaders draw it: the water of every tile as wholly as it joins the sheet smoothed by a cubic B-spline,
+ * drawn back from dry ground falling away below a level river's sheet and read about the point frayed the way natural shores fray. */
 double SheetWater(double x, double y, double level);
 double Joining(int tx, int ty, double level);
 
