@@ -130,7 +130,14 @@ const vec3 HEDGE = vec3(0.24, 0.33, 0.16);
 const float STRATA_PER_LEVEL = 2.5;
 const float TOY_STRATA_PER_LEVEL = 1.0;
 const float STRATA_WARP = 1.8;
+const float STRATA_WARP_PER_TILE = 0.3;
 const vec2 STRATA_DIP = vec2(0.09, -0.06);
+const float STRATA_BOW = 0.35;
+const float STRATA_BOWS_PER_TILE = 1.1;
+const float STRATA_BOW_SEED = 5.3;
+const float BED_THICKNESS_PER_LEVEL = 0.7;
+const float BED_THICKNESS_SEED = 3.1;
+const vec2 SHELF_EDGES = vec2(0.7, 0.95);
 const float LAYER_VARIETY = 0.3;
 const float LEDGE_SHADE = 0.8;
 const float LEDGE_LIT = 1.08;
@@ -142,6 +149,10 @@ const int LEDGE_RUN_SEED = 23;
 const float SLABS_PER_TILE = 1.7;
 const float SLAB_VARIETY = 0.3;
 const float LEVEL_BEDDING = 0.35;
+const vec3 ROCK_WEATHERING = vec3(0.72, 0.74, 0.66);
+const float ROCK_WEATHERING_PER_TILE = 2.7;
+const vec2 ROCK_WEATHERING_EDGES = vec2(0.55, 0.8);
+const float ROCK_WEATHERING_SEED = 4.4;
 const float CRACKS_PER_TILE = 3.1;
 const float CRACK_WIDTH = 0.05;
 const float CRACK_DEPTH = 0.18;
@@ -473,8 +484,10 @@ float StrataPerLevel()
 float BeddingAt(vec2 p)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return v_world.z * TOY_STRATA_PER_LEVEL;
-	float thickness = Noise(vec2(v_world.z * 0.7, 3.1)) * STRATA_PER_LEVEL;
-	return v_world.z * STRATA_PER_LEVEL + dot(p, STRATA_DIP) + thickness + (Noise(p * 0.3) - 0.5) * STRATA_WARP + (Octave(p + 5.3, 1.1) - 0.5) * 0.35;
+	float thickness = Noise(vec2(v_world.z * BED_THICKNESS_PER_LEVEL, BED_THICKNESS_SEED)) * STRATA_PER_LEVEL;
+	float warp = (Noise(p * STRATA_WARP_PER_TILE) - 0.5) * STRATA_WARP;
+	float bow = (Octave(p + STRATA_BOW_SEED, STRATA_BOWS_PER_TILE) - 0.5) * STRATA_BOW;
+	return v_world.z * STRATA_PER_LEVEL + dot(p, STRATA_DIP) + thickness + warp + bow;
 }
 
 Relief ReliefAt(vec3 normal, float levels_per_pixel)
@@ -597,7 +610,7 @@ vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 	float slab = Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
 	vec3 slabs = mix(ROCK, ROCK_WARM, 0.3) * slab;
 	vec3 rock = mix(mix(slabs, bed, LEVEL_BEDDING), bed * ledge * slab, ledges);
-	vec3 weathered = mix(rock, rock * vec3(0.72, 0.74, 0.66), smoothstep(0.55, 0.8, Octave(p + 4.4, 2.7)));
+	vec3 weathered = mix(rock, rock * ROCK_WEATHERING, smoothstep(ROCK_WEATHERING_EDGES.x, ROCK_WEATHERING_EDGES.y, Octave(p + ROCK_WEATHERING_SEED, ROCK_WEATHERING_PER_TILE)));
 	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
 }
 
@@ -608,7 +621,7 @@ Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
 	float runs = Landscape() == LANDSCAPE_TOYLAND || standing <= 0.0 ? 1.0 : LedgeRun(p, bedding);
 	float ledges = standing * runs;
 	vec3 rock = rocky ? Rock(p, bedding, ledges, relief, grain) : vec3(0.0);
-	return Bare(Scree(grain), rock, smoothstep(0.7, 0.95, fract(bedding)) * ledges);
+	return Bare(Scree(grain), rock, smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * ledges);
 }
 
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
