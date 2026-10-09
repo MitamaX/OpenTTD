@@ -35,8 +35,8 @@ inline constexpr double TREE_CROSSFADE_OCTAVES = 0.25;
 /* How big a tree stands at each age, as a share of its model. */
 inline constexpr std::array<double, static_cast<size_t>(TreeAge::End)> TREE_AGE_SCALES = {0.45, 0.85, 1.3, 1.25};
 
-/* The tallest a tree's model stands above its ground at its largest size, in tiles, and the height its sway is measured against. */
-inline constexpr double TREE_TALLEST = 0.9;
+/* The tallest any tree's model stands above its foot before it is grown, in tiles, and the height its sway is measured against. */
+inline constexpr double TREE_MODEL_TALLEST = 0.62;
 inline constexpr double TREE_SWAY_HEIGHT = 0.5;
 
 /* The colour a canopy of each kind shows from afar, as the ground's forest tint paints it. */

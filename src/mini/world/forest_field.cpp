@@ -29,17 +29,15 @@ static constexpr int CROWN_MARGIN = 1;
 static_assert(CROWN_REACH <= CROWN_MARGIN);
 static constexpr double SLOT_JITTER = 0.15;
 static constexpr double EDGE_MARGIN = 0.08;
-static constexpr SeedRange TREE_SPREAD = {0.7, 1.25};
 static constexpr double SPARE_TREE_SCALE = 0.85;
 static constexpr uint THICK_WOOD = 3;
 static constexpr int FRINGE_MARGIN = 1;
 static constexpr double FRINGE_REACH = 0.45;
 static constexpr double FRINGE_SCALE = 0.6;
-static constexpr double TOY_SCALE = 1.4;
 static constexpr double TOY_HUDDLE = 0.3;
 static constexpr SeedRange TOY_HUDDLE_SPOT = {0.3, 0.7};
 static constexpr uint32_t PLANTING_SALT = 0x7EE5F00DU;
-static constexpr double TALLEST_GROWN = TREE_TALLEST * TREE_THICKET_SCALES[1] * TREE_STRETCHES[1];
+static constexpr double TALLEST_GROWN = TREE_MODEL_TALLEST * TREE_LARGEST_SCALE * TREE_THICKET_SCALES[1] * TREE_STRETCHES[1];
 
 /* Spots a tile's trees stand on, spread so neighbours' crowns just meet; the middle one comes last, clear of a park's paths. */
 static constexpr std::array<TilePoint, 6> SLOTS = {{
@@ -127,7 +125,7 @@ static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance
 		double fringe = toy || count < THICK_WOOD ? 1.0 : FringeDepth(tx, ty, fx, fy);
 		bool spare = tree >= count;
 		if (spare && dice.Share() > fringe) continue;
-		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(TREE_SPREAD) * std::lerp(FRINGE_SCALE, 1.0, fringe) * (spare ? SPARE_TREE_SCALE : 1.0) * (toy ? TOY_SCALE : 1.0);
+		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(TREE_SPREAD) * std::lerp(FRINGE_SCALE, 1.0, fringe) * (spare ? SPARE_TREE_SCALE : 1.0) * (toy ? TOY_TREE_SCALE : 1.0);
 		double wither = age == TreeAge::Dying ? dice.Between(0.35, 0.7) : 0.0;
 		TreeShape shape = {kind, static_cast<uint8_t>(dice.Next() % TREE_SHAPES)};
 		TreeInstance instance = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(tx, ty, x, y)), {ShareByte(dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(dice.Share()), ShareByte(wither)}};

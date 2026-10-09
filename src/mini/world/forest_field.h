@@ -10,11 +10,13 @@
 #ifndef MINI_WORLD_FOREST_FIELD_H
 #define MINI_WORLD_FOREST_FIELD_H
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <utility>
 #include <vector>
 
+#include "../core/seed.h"
 #include "../gpu/instanced_meshes.h"
 #include "chunk_grid.h"
 #include "chunk_keep.h"
@@ -34,8 +36,12 @@ inline constexpr std::array<VertexAttribute, 2> TREE_INSTANCE_LAYOUT = {{
 	{4, 4, AttributeType::NormalisedUnsignedByte, offsetof(TreeInstance, look)},
 }};
 
-/* The largest size a tree's size byte stands for, as a share of a grown tree. */
-inline constexpr double TREE_LARGEST_SCALE = 2.0;
+/* How much smaller or bigger than its age makes it a tree is planted, and how much bigger still toyland's sweets stand. */
+inline constexpr SeedRange TREE_SPREAD = {0.7, 1.25};
+inline constexpr double TOY_TREE_SCALE = 1.4;
+
+/* A tree's size byte spans its scale from nothing to the largest any tree is planted at. */
+inline constexpr double TREE_LARGEST_SCALE = std::ranges::max(TREE_AGE_SCALES) * TREE_SPREAD.high * TOY_TREE_SCALE;
 
 /* How much lower and taller trees stand between thickets and in them, and how much squatter and taller each grows than its model. */
 inline constexpr std::array<double, 2> TREE_THICKET_SCALES = {0.8, 1.2};
