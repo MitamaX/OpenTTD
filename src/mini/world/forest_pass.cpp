@@ -78,6 +78,15 @@ static auto TellingDetail(const ShaderProgram &program, ChooseMesh choose_mesh)
 	};
 }
 
+class CullingScope {
+public:
+	CullingScope() { glEnable(GL_CULL_FACE); }
+	~CullingScope() { glDisable(GL_CULL_FACE); }
+
+	CullingScope(const CullingScope &) = delete;
+	CullingScope &operator=(const CullingScope &) = delete;
+};
+
 ForestPass::ForestPass(const WorldTextures &textures) :
 	textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), depth(VERTEX_SOURCES, DEPTH_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
 {
@@ -125,9 +134,10 @@ void ForestPass::Draw([[maybe_unused]] const SceneView &view)
 	WorldTextures::BindSamplers(this->program);
 	this->textures.Bind();
 	auto shade = TellingDetail(this->program, DrawnMesh);
-	glEnable(GL_CULL_FACE);
-	this->batch.Redraw(this->models, shade, ShadedAsDrawn);
-	glDisable(GL_CULL_FACE);
+	{
+		CullingScope culling;
+		this->batch.Redraw(this->models, shade, ShadedAsDrawn);
+	}
 	LaidDepthScope laid;
 	this->batch.Redraw(this->models, shade, LaidFirst);
 }
