@@ -126,6 +126,7 @@ const vec3 CANAL_FLOOR = vec3(0.45, 0.45, 0.42);
 const vec3 HEDGE = vec3(0.24, 0.33, 0.16);
 
 const float STRATA_PER_LEVEL = 2.5;
+const float TOY_STRATA_PER_LEVEL = 1.0;
 const float STRATA_WARP = 1.8;
 const vec2 STRATA_DIP = vec2(0.09, -0.06);
 const float LAYER_VARIETY = 0.3;
@@ -461,9 +462,15 @@ float SlopeOf(vec3 normal)
 	return length(normal.xy) / max(normal.z, MIN_SPREAD) / LevelRise();
 }
 
+float StrataPerLevel()
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? TOY_STRATA_PER_LEVEL : STRATA_PER_LEVEL;
+}
+
 /* Rock is bedded in layers of uneven thickness that run nearly level through the hills, dipping gently across the map and bowed a little this way and that. */
 float BeddingAt(vec2 p)
 {
+	if (Landscape() == LANDSCAPE_TOYLAND) return v_world.z * TOY_STRATA_PER_LEVEL;
 	float thickness = Noise(vec2(v_world.z * 0.7, 3.1)) * STRATA_PER_LEVEL;
 	return v_world.z * STRATA_PER_LEVEL + dot(p, STRATA_DIP) + thickness + (Noise(p * 0.3) - 0.5) * STRATA_WARP + (Octave(p + 5.3, 1.1) - 0.5) * 0.35;
 }
@@ -471,7 +478,7 @@ float BeddingAt(vec2 p)
 Relief ReliefAt(vec3 normal, float levels_per_pixel)
 {
 	float slope = SlopeOf(normal);
-	float layer_pixels = 1.0 / (levels_per_pixel * STRATA_PER_LEVEL);
+	float layer_pixels = 1.0 / (levels_per_pixel * StrataPerLevel());
 	return Relief(slope, smoothstep(STANDARD_SLOPE, STEEPEST_SLOPE, slope), smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS * 2.0, layer_pixels), normal.xy);
 }
 
@@ -555,10 +562,9 @@ vec3 Stratum(int layer)
 }
 
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
-vec3 Scree(Grain grain, vec2 p)
+vec3 Scree(Grain grain)
 {
-	vec3 candy = mix(ToyStrataMean(), Stratum(int(Noise(p * BOULDERS_PER_TILE) * 8.0)), Resolved(BOULDERS_PER_TILE));
-	vec3 loose = Landscape() == LANDSCAPE_TOYLAND ? candy : SCREE;
+	vec3 loose = Landscape() == LANDSCAPE_TOYLAND ? ToyStrataMean() : SCREE;
 	vec3 tone = loose * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
 	return tone * mix(1.0, 1.18, grain.stones) * Hollowed(grain, STONY_HOLLOWS);
 }
@@ -582,13 +588,12 @@ float LedgeRun(vec2 p, float bedding)
 /* Bare rock in slabs a shade apart, its layers stepping out in ledges as far as they stand out, weathered and veined with cracks where it lies flat; toyland's candy layers show only where it stands steep. */
 vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 {
-	int layer = int(floor(bedding));
-	vec3 bed = Stratum(layer);
+	vec3 bed = Stratum(int(floor(bedding)));
 	float ledge = mix(LEDGE_SHADE, LEDGE_LIT, smoothstep(0.0, LEDGE_RISE, fract(bedding)));
-	bool toy = Landscape() == LANDSCAPE_TOYLAND;
+	if (Landscape() == LANDSCAPE_TOYLAND) return mix(ToyStrataMean(), bed * ledge, ledges);
 	float slab = Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
-	vec3 slabs = (toy ? ToyStrataMean() : mix(ROCK, ROCK_WARM, 0.3)) * slab;
-	vec3 rock = mix(mix(slabs, bed, toy ? 0.0 : LEVEL_BEDDING), bed * ledge * slab, ledges);
+	vec3 slabs = mix(ROCK, ROCK_WARM, 0.3) * slab;
+	vec3 rock = mix(mix(slabs, bed, LEVEL_BEDDING), bed * ledge * slab, ledges);
 	vec3 weathered = mix(rock, rock * vec3(0.72, 0.74, 0.66), smoothstep(0.55, 0.8, Octave(p + 4.4, 2.7)));
 	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
 }
@@ -596,8 +601,9 @@ vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 Bare BareAt(vec2 p, Relief relief, Grain grain)
 {
 	float bedding = BeddingAt(p);
-	float ledges = relief.steep * relief.strata * LedgeRun(p, bedding);
-	return Bare(Scree(grain, p), Rock(p, bedding, ledges, relief, grain), smoothstep(0.7, 0.95, fract(bedding)) * ledges);
+	float runs = Landscape() == LANDSCAPE_TOYLAND ? 1.0 : LedgeRun(p, bedding);
+	float ledges = relief.steep * relief.strata * runs;
+	return Bare(Scree(grain), Rock(p, bedding, ledges, relief, grain), smoothstep(0.7, 0.95, fract(bedding)) * ledges);
 }
 
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
