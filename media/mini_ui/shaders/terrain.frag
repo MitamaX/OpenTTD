@@ -601,12 +601,14 @@ vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
 }
 
-Bare BareAt(vec2 p, Relief relief, Grain grain)
+Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
 {
 	float bedding = BeddingAt(p);
-	float runs = Landscape() == LANDSCAPE_TOYLAND ? 1.0 : LedgeRun(p, bedding);
-	float ledges = relief.steep * relief.strata * runs;
-	return Bare(Scree(grain), Rock(p, bedding, ledges, relief, grain), smoothstep(0.7, 0.95, fract(bedding)) * ledges);
+	float standing = relief.steep * relief.strata;
+	float runs = Landscape() == LANDSCAPE_TOYLAND || standing <= 0.0 ? 1.0 : LedgeRun(p, bedding);
+	float ledges = standing * runs;
+	vec3 rock = rocky ? Rock(p, bedding, ledges, relief, grain) : vec3(0.0);
+	return Bare(Scree(grain), rock, smoothstep(0.7, 0.95, fract(bedding)) * ledges);
 }
 
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
@@ -857,8 +859,9 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 		climate.parched = 1.0 - smoothstep(PARCHED_MOISTURE.x, PARCHED_MOISTURE.y, moisture);
 	}
 	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
-	bool bared = exposure.scree > 0.0 || armoured || HasCorner(corners, MAT_ROCKS);
-	Bare bare = bared ? BareAt(p, relief, grain) : NO_BARE;
+	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
+	bool bared = exposure.scree > 0.0 || armoured || rocky;
+	Bare bare = bared ? BareAt(p, relief, grain, rocky) : NO_BARE;
 	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden);
 }
 
