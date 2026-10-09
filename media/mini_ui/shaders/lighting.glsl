@@ -101,7 +101,6 @@ vec3 Reflected(vec3 normal, vec3 view, Coat coat, vec3 sun, vec3 ambient, float 
 	return sun * Highlight(normal, view, SunDirection(), coat) + Sheen(normal, view, coat, ambient) * occlusion;
 }
 
-/* The light a surface point sends toward the eye, given the sun's light on its coat and the share of it its body scatters. */
 vec4 SurfaceRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlusion, vec3 sun, vec3 scattered_sun)
 {
 	vec3 ambient = AmbientLight(normal);

@@ -81,7 +81,6 @@ MapVector ShadowFall(const Vec3 &sun)
 	return {-sun.x / rise, -sun.y / rise};
 }
 
-/* How far along the sun's rays a height reaches above where its shadow lands. */
 static double Sunward(double height, const Vec3 &sun)
 {
 	return height / SunRise(sun);
@@ -187,7 +186,6 @@ bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 		centre.z - slice.radius >= this->low.z;
 }
 
-/* The sun may turn as long as the longest shadow the land casts swings by less than its softened edge hides. */
 bool ShadowMap::Cascade::Faces(const Vec3 &sun) const
 {
 	return Length(sun - this->sun) * Sunward(LandRelief(), this->sun) <= this->texel * UNSEEN_SWING_TEXELS;

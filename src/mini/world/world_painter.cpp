@@ -178,7 +178,6 @@ static void BeginWorldState()
 	glClearDepth(1.0);
 }
 
-/* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, the occlusion is found before open claddings and translucent passes draw, and the finishing steps work on the whole. */
 void WorldPainter::Render(const SceneView &view)
 {
 	this->SyncChanges();

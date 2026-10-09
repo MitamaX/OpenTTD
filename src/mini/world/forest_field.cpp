@@ -47,7 +47,6 @@ static constexpr size_t OUTER_SLOTS = SLOTS.size() - 1;
 static constexpr std::array<uint, FLORA_MOST_TREES + 1> SHOWN_TREES = {0, 1, 3, 4, 6};
 static constexpr std::array<uint, FLORA_MOST_TREES + 1> SHOWN_TOYS = {0, 3, 4, 6, 6};
 
-/* How far past its tile and how high the largest tree a climate plants reaches, leaning and swaying, and the whole tiles that reach spans. */
 struct CrownBounds {
 	double reach;
 	double tallest;
@@ -133,7 +132,6 @@ struct TreeRolls {
 	double tint;
 };
 
-/* A tile's trees, the same every time it is planted: each on a slot of its own, the slots turned, mirrored and shuffled tile by tile, all rolled off one run of dice. */
 class Grove {
 public:
 	Grove(int tx, int ty, uint8_t flora);
@@ -159,7 +157,6 @@ private:
 	double huddling = 0.0;
 };
 
-/* The slots are laid before any tree is rolled, toyland's huddling toward a spot of their own. */
 Grove::Grove(int tx, int ty, uint8_t flora) :
 	tx(tx),
 	ty(ty),
@@ -178,7 +175,6 @@ Grove::Grove(int tx, int ty, uint8_t flora) :
 	this->huddling = TOY_HUDDLE;
 }
 
-/* A thick wood thins out toward treeless ground, its spare trees dropping out and the rest growing smaller over its fringe. */
 void Grove::Plant(std::vector<ShapedTree> &planted)
 {
 	bool toy = this->kind == TreeKind::Toy;

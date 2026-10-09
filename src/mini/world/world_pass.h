@@ -24,28 +24,28 @@ enum class WorldStage : uint8_t {
 	Translucent,
 };
 
-/* A pass draws into the bound world target with depth testing on; the scene and shadow blocks are bound and every pass gets each frame's world changes.
- * A pass whose shading is dear may lay its depth in Lay, before any pass draws, so it shades only what stays in sight; it then draws its colour with depth tested equal or nearer.
- * A pass that casts shadows draws its meshes depth only in Cast, through a program made by CasterProgram from its own vertex sources.
- * A pass draws its open claddings, whose gaps screen noise cuts, in DrawOpen once the occlusion is found from the depth, so the gaps never pock what it reads.
- * Prepare runs while the game's state holds still, before the frame is drawn; a pass that reads the game's map does so there and nowhere else.
- * Refresh runs once the game goes on again, as the frame is drawn after Sync; a pass builds there what it builds from the world's tiles alone.
- * Every program a pass draws with is built before the first frame, so none is built in the frame it first comes into view; Load likewise builds the models and textures it draws with.
- * Once built, a program that draws only what is in sight is drawn with once all the same, nothing in sight, in WarmCast into the shadow map or in Warm into the target, so the driver readies it for what it draws into before it first shows anything. */
+/* A pass draws into the bound world target with depth testing on and the scene and shadow blocks bound. */
 class WorldPass {
 public:
 	virtual ~WorldPass() = default;
 
 	virtual std::string_view Name() const = 0;
+	/* Every program and, by Load, every model and texture a pass draws with is built before the first frame, so none is built in the frame it first comes into view. */
 	virtual std::vector<ShaderProgram *> Programs() = 0;
 	virtual void Load() {}
+	/* Runs while the game's state holds still, the only place a pass reads the game's map. */
 	virtual void Prepare([[maybe_unused]] const SceneView &view) {}
 	virtual void Sync([[maybe_unused]] const WorldChanges &changes) {}
+	/* Runs once the game goes on again after Sync, building what a pass builds from the world's tiles alone. */
 	virtual void Refresh([[maybe_unused]] const SceneView &view) {}
+	/* Draws depth only into a shadow cascade, through a program CasterProgram made from the pass's own vertex sources. */
 	virtual void Cast([[maybe_unused]] const ShadowView &view) {}
+	/* A pass whose shading is dear lays its depth before any pass draws, then draws its colour with depth tested equal or nearer, shading only what stays in sight. */
 	virtual void Lay([[maybe_unused]] const SceneView &view) {}
 	virtual void Draw(const SceneView &view) = 0;
+	/* Open claddings, whose gaps screen noise cuts, draw once the occlusion is found from the depth, so their gaps never pock what it reads. */
 	virtual void DrawOpen([[maybe_unused]] const SceneView &view) {}
+	/* A program that draws only what is in sight draws once with nothing in sight, so the driver readies it for its target before it first shows anything. */
 	virtual void WarmCast() {}
 	virtual void Warm() {}
 	virtual void Release() = 0;

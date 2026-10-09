@@ -451,7 +451,6 @@ vec3 SkyOnWater(vec3 way, Surface surface, vec3 view, float reflectance, out flo
 	return SkyRadiance(normalize(skyward)) * REFLECTED_SKY;
 }
 
-/* The solid world a way from the water passes behind first on screen, and how surely, fading out toward the screen's edges and the way's end. */
 vec4 MirroredWorld(vec3 from, vec3 way)
 {
 	for (int tap = 1; tap <= MIRROR_STEPS; tap++) {

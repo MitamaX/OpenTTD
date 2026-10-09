@@ -110,7 +110,6 @@ float Faded(vec2 q, float seed, vec2 edges, float mean)
 	return sharp > 0.0 ? mix(mean, smoothstep(edges.x, edges.y, Noise(q + seed)), sharp) : mean;
 }
 
-/* A roof weathers in patches broader than its courses: blotches of units fired or split a shade apart, rain streaks down the slope and patches spotted with pale lichen. */
 vec3 Weathered(vec2 p, vec3 tint, float variety)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return tint;

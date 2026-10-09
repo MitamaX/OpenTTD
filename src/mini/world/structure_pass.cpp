@@ -80,7 +80,6 @@ void StructurePass::Draw(const SceneView &view)
 	this->DrawSolidParts();
 }
 
-/* The open claddings of the blocks Draw gathered. */
 void StructurePass::DrawOpen([[maybe_unused]] const SceneView &view)
 {
 	if (!this->program.Ready()) return;

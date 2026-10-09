@@ -361,7 +361,6 @@ struct Patch {
 	vec2 rugged;
 };
 
-/* What every ground meeting at a point is shaded with: where it is, how it leans, how far it wears bare, the stone it would show, whether its shore is armoured, its climate and how far a town's feet have trodden it. */
 struct Site {
 	vec2 p;
 	Grain grain;
@@ -480,7 +479,6 @@ float StrataPerLevel()
 	return Landscape() == LANDSCAPE_TOYLAND ? TOY_STRATA_PER_LEVEL : STRATA_PER_LEVEL;
 }
 
-/* Rock is bedded in layers of uneven thickness that run nearly level through the hills, dipping gently across the map and bowed a little this way and that. */
 float BeddingAt(vec2 p)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return v_world.z * TOY_STRATA_PER_LEVEL;
@@ -599,14 +597,12 @@ float Cracks(vec2 p)
 	return (1.0 - smoothstep(0.0, CRACK_WIDTH, vein)) * smoothstep(0.4, 0.62, Noise(p * 1.9 + 8.1)) * shown;
 }
 
-/* A layer stands out as a ledge in runs that break off along the face. */
 float LedgeRun(vec2 p, float bedding)
 {
 	vec2 shift = Hash2(ivec2(int(floor(bedding)), LEDGE_RUN_SEED)) * LEDGE_RUN_SHIFT;
 	return smoothstep(LEDGE_RUN_EDGES.x, LEDGE_RUN_EDGES.y, Noise(p * LEDGE_RUNS_PER_TILE + shift));
 }
 
-/* Bare rock in slabs a shade apart, its layers stepping out in ledges as far as they stand out, weathered and veined with cracks where it lies flat; toyland's candy layers show only where it stands steep. */
 vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 {
 	vec3 bed = Stratum(int(floor(bedding)));
@@ -790,7 +786,6 @@ Patch Eroded(Ground ground, Site site)
 	return IsNatural(ground.material) ? Trodden(Exposed(patch, site), site) : patch;
 }
 
-/* Whether a tile's ground is built on, whether it is tilled, and whether it lies among a town's or an industry's tiles. */
 vec3 SettledAt(ivec2 tile)
 {
 	uvec4 codes = CodesAt(tile);
@@ -826,7 +821,6 @@ Seams SeamsAt(vec2 p)
 	return Seams(bend, bend * reach, width, settlement.z);
 }
 
-/* The grounds of the four tiles around blend across their seams; each distinct ground is shaded once, by the share all its corners hold, in a loop the compiler keeps as one copy. */
 bool HasCorner(Ground corners[4], uint material)
 {
 	return corners[0].material == material || corners[1].material == material || corners[2].material == material || corners[3].material == material;
@@ -901,6 +895,7 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden);
 }
 
+/* Each distinct ground is shaded once, in a loop the compiler keeps as one copy. */
 Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, bool armoured, out Site site)
 {
 	vec2 q = p + seams.warp - TILE_CENTRE;

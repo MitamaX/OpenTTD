@@ -71,7 +71,6 @@ vec3 Sprays()
 	return Spread(SPRAY_SPREAD * shown, smoothstep(SPRAY_EDGES.x, SPRAY_EDGES.y, Noise(v_grown * LEAF_SPRAYS_PER_TILE + SPRAY_SEED)));
 }
 
-/* Wood keeps its colour. */
 vec3 Albedo(vec3 normal)
 {
 	float leafy = Leafy();
@@ -81,7 +80,6 @@ vec3 Albedo(vec3 normal)
 	return mix(albedo, SNOW_COVER, v_snow * leafy * smoothstep(SNOW_SETTLES, SNOW_COVERS, normal.z));
 }
 
-/* The relief bends the normal by how it slopes across the screen, keeping it turned toward the eye as everything seen is. */
 vec3 Bumped(vec3 normal, float relief, vec3 view)
 {
 	vec3 across = dFdx(v_position);

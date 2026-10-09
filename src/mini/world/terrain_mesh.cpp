@@ -518,7 +518,6 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 	CloseSeaBankCorners(mesh, bed, sea_corners);
 }
 
-/* The ground under a point, down to the bed where water lies over it. */
 static double BedUnder(double x, double y)
 {
 	int tx = static_cast<int>(std::floor(x));
@@ -568,7 +567,6 @@ static void AddWingWall(TerrainMesh &mesh, std::span<const WorldPoint> line, con
 	}
 }
 
-/* A bridge head's ramp climbs on a bank of the ground's own earth, grading out over the ground on either side and down to the bed where it runs out into water, and meets the span at a stone abutment whose wing walls close the bank's end. */
 static void AddRampBank(TerrainMesh &mesh, int tx, int ty)
 {
 	TileIndex head = TileXY(tx, ty);
