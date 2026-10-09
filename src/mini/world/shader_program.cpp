@@ -46,6 +46,7 @@
 #include "seabed.h"
 #include "shadow_map.h"
 #include "structure_mesh.h"
+#include "track_models.h"
 #include "tree_models.h"
 #include "water_outline.h"
 #include "water_pass.h"
@@ -150,6 +151,7 @@ static std::string ShaderHeader()
 	DefineUnsigned(header, "FLORA_AGE_MASK", FLORA_AGE_MASK);
 	DefineUnsigned(header, "FLORA_MOST_TREES", FLORA_MOST_TREES);
 	DefineFloat(header, "DISTANT_RAIL_HALF", DISTANT_RAIL_HALF);
+	DefineFloat(header, "BALLAST_HALF", BALLAST_HALF);
 	DefineFloat(header, "BEND_STEPS_PER_TILE", BEND_STEPS_PER_TILE);
 	DefineFloat(header, "ROAD_HALF", ROAD_HALF);
 	DefineFloat(header, "TRAM_BED_HALF", TRAM_BED_HALF);
@@ -184,6 +186,7 @@ static std::string ShaderHeader()
 	DefineTones(header, "CANDY_TONES", SwatchTints(Swatch::Candy));
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
+	DefineTone(header, "DISTANT_BALLAST", COL_DISTANT_BALLAST);
 	DefineTone(header, "DISTANT_ROAD", COL_ASPHALT);
 	DefineTone(header, "PAVEMENT_TONE", COL_PAVEMENT);
 	DefineTone(header, "RAIL_ACCENT", COL_RAIL_ACCENT);
