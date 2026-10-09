@@ -64,12 +64,17 @@ float Roughened(float roughness, float unseen_slope_variance)
 }
 
 /* How much of a pixel lines of this width, one a unit, cover; lines too fine to show blend into the share they cover. */
-float Lines(float x, float width)
+float Lines(float x, float width, float sharpness)
 {
 	float pixel = fwidth(x);
 	float gap = abs(fract(x + 0.5) - 0.5);
 	float line = 1.0 - smoothstep(width * 0.5 - pixel * 0.5, width * 0.5 + pixel * 0.5, gap);
-	return mix(width, line, Sharpness(x));
+	return mix(width, line, sharpness);
+}
+
+float Lines(float x, float width)
+{
+	return Lines(x, width, Sharpness(x));
 }
 
 float Spread(vec2 cell, float variety, float sharpness)
@@ -87,18 +92,26 @@ Clad Coursed(vec2 p, vec3 tint, vec2 units, float joint, float variety, vec3 fil
 	return Matte(mix(unit, filling, joints), 0.85);
 }
 
+float Faded(vec2 q, float seed)
+{
+	float sharp = Sharpness(q);
+	return sharp > 0.0 ? mix(0.5, Noise(q + seed), sharp) : 0.5;
+}
+
+float Faded(vec2 q, float seed, vec2 edges, float mean)
+{
+	float sharp = Sharpness(q);
+	return sharp > 0.0 ? mix(mean, smoothstep(edges.x, edges.y, Noise(q + seed)), sharp) : mean;
+}
+
 /* A roof weathers in patches broader than its courses: blotches of units fired or split a shade apart, rain streaks down the slope and patches spotted with pale lichen. */
 vec3 Weathered(vec2 p, vec3 tint, float variety)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return tint;
-	vec2 blotch = p * FIRING_BLOTCHES;
-	vec2 streak = p * RAIN_STREAKS;
-	vec2 patches = p * LICHEN_PATCHES;
-	vec2 spots = p * LICHEN_SPOTS;
-	float blotches = mix(0.5, smoothstep(BLOTCH_EDGES.x, BLOTCH_EDGES.y, Noise(blotch + BLOTCH_SEED)), Sharpness(blotch));
-	float streaks = mix(0.5, Noise(streak + STREAK_SEED), Sharpness(streak));
-	float patched = smoothstep(LICHEN_PATCH_EDGES.x, LICHEN_PATCH_EDGES.y, Noise(patches + LICHEN_PATCH_SEED)) * Sharpness(patches);
-	float spotted = mix(LICHEN_SPOT_MEAN, smoothstep(LICHEN_SPOT_EDGES.x, LICHEN_SPOT_EDGES.y, Noise(spots + LICHEN_SPOT_SEED)), Sharpness(spots));
+	float blotches = Faded(p * FIRING_BLOTCHES, BLOTCH_SEED, BLOTCH_EDGES, 0.5);
+	float streaks = Faded(p * RAIN_STREAKS, STREAK_SEED);
+	float patched = Faded(p * LICHEN_PATCHES, LICHEN_PATCH_SEED, LICHEN_PATCH_EDGES, 0.0);
+	float spotted = Faded(p * LICHEN_SPOTS, LICHEN_SPOT_SEED, LICHEN_SPOT_EDGES, LICHEN_SPOT_MEAN);
 	vec3 weathered = tint * Varied(blotches, variety * BLOTCH_VARIETY) * Varied(streaks, STREAK_DEPTH);
 	return mix(weathered, LICHEN, patched * spotted * LICHEN_COVER);
 }
@@ -113,7 +126,7 @@ Clad Tiled(vec2 p, vec3 tint, vec2 units, float variety, float roughness, float 
 	float along = fract(course);
 	float shade = mix(1.0, mix(0.72, 1.06, smoothstep(0.0, 0.4, along)) * (1.0 - 0.12 * smoothstep(0.88, 1.0, along)), sharp);
 	vec3 colour = Weathered(p, tint, variety) * shade * Spread(vec2(column, course), variety, sharp);
-	float gaps = Lines(column, 0.06) * sharp;
+	float gaps = Lines(column, 0.06, rolled) * sharp;
 	float unseen_tilt = WaveSpread(roll) * (1.0 - rolled) + RampSpread(COURSE_TILT) * (1.0 - sharp);
 	Clad clad = Matte(colour * (1.0 - 0.35 * gaps), Roughened(roughness, unseen_tilt));
 	clad.tilt = vec2(roll * sin(TAU * column) * rolled, -COURSE_TILT * sharp * (along - 0.5));
