@@ -82,7 +82,7 @@ Clad CladdingSeen(uint material, vec3 view, mat3 frame)
 {
 	bool facade = Has(SURFACE_FACADE);
 	Clad clad = facade ? FacadeWall(material, v_pattern, v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
-	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(frame[2].z));
+	clad.albedo = Walled(material, v_pattern, clad.albedo, 1.0 - abs(frame[2].z));
 	if (!facade) return clad;
 	Outlook outlook = Outlook(InTexels(view * frame), InTexels(SunDirection() * frame));
 	return Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_seed, outlook);
