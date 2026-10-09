@@ -60,6 +60,15 @@ const vec2 RAPIDS_STRETCH = vec2(0.55, 9.0);
 const float RAPIDS_RUSH = 2.0;
 const vec2 RAPIDS_EDGES = vec2(0.42, 0.6);
 const float RAPIDS_AERATION = 0.5;
+const float APRON_REACH = 1.2;
+const int APRON_STEPS = 3;
+const float APRON_LEAST_FALL = 0.1;
+const float APRON_FULL_FALL = 0.8;
+const float APRON_SCALE = 2.4;
+const vec2 APRON_STRETCH = vec2(1.2, 3.0);
+const vec2 APRON_EDGES = vec2(0.78, 0.38);
+const float APRON_FEATHER = 0.15;
+const float APRON_CLOUDING = 0.6;
 const float LIP_BEND = 0.25;
 const float PLUNGE_BEND = 0.2;
 const float PLUNGE_FROTH = 0.2;
@@ -155,12 +164,13 @@ const float WAKE_STREAK_ALONG = 2.5;
 const float WAKE_STREAK_ACROSS = 14.0;
 const float WAKE_DRIFT = 0.3;
 
-/* How the water's surface falls about a point: which way is down, how steeply, how surely that reads as a drop, and how it bends, bowing over a lip and hollowing at a foot. */
+/* How the water's surface falls about a point: which way is down, how steeply, how surely that reads as a drop, how it bends, bowing over a lip and hollowing at a foot, and where it stands. */
 struct Drop {
 	vec2 down;
 	float slope;
 	float steep;
 	float bend;
+	float level;
 };
 
 struct Body {
@@ -295,6 +305,11 @@ Surface Waves(vec2 p, float calm)
 	return Surface(normalize(vec3(-slope, 1.0)), normalize(vec3(-broad * steepness * 0.5, 1.0)), mix(lost / total, 1.0, ruffled * 0.4), ruffled * lost / total);
 }
 
+vec4 TileWater(ivec2 tile)
+{
+	return texelFetch(u_water, Clamped(tile), 0);
+}
+
 float BrimShare(float level, float low, float high)
 {
 	return smoothstep(0.0, BRIM_FADE, level - low) * (1.0 - smoothstep(0.0, BRIM_FADE, high - level));
@@ -304,7 +319,7 @@ float BrimShare(float level, float low, float high)
 
 vec4 SheetWater(ivec2 tile, float level, out float pooled, out float brim)
 {
-	vec4 water = texelFetch(u_water, Clamped(tile), 0);
+	vec4 water = TileWater(tile);
 	Corners c = SurfaceOf(tile);
 	float low = min(min(c.north, c.west), min(c.east, c.south));
 	float top = max(max(c.north, c.west), max(c.east, c.south));
@@ -540,7 +555,7 @@ vec2 DepthBehind(vec2 uv, vec3 sight, float surface)
 float WaterLevelOn(ivec2 tile, vec2 f)
 {
 	Corners c = SurfaceOf(tile);
-	vec4 water = texelFetch(u_water, Clamped(tile), 0);
+	vec4 water = TileWater(tile);
 	bool inclined = (water.a > HALF_TILE || water.r <= 0.0) && c.north != c.south;
 	if (!inclined) return min(min(c.north, c.west), min(c.east, c.south));
 	return mix(mix(c.north, c.west, f.x), mix(c.east, c.south, f.x), f.y);
@@ -551,7 +566,7 @@ float WaterLevelNear(vec2 at, ivec2 home)
 {
 	ivec2 tile = ivec2(floor(at));
 	if (!OnMap(tile)) return OPEN_SEA_LEVEL;
-	ivec2 source = texelFetch(u_water, Clamped(tile), 0).r > HALF_TILE ? tile : home;
+	ivec2 source = TileWater(tile).r > HALF_TILE ? tile : home;
 	return WaterLevelOn(source, at - vec2(source));
 }
 
@@ -559,14 +574,15 @@ float WaterLevelNear(vec2 at, ivec2 home)
 Drop Descent(vec2 p)
 {
 	ivec2 home = ivec2(floor(p));
-	if (OpenSeaAbout(home)) return Drop(vec2(0.0), 0.0, 0.0, 0.0);
+	if (OpenSeaAbout(home)) return Drop(vec2(0.0), 0.0, 0.0, 0.0, OPEN_SEA_LEVEL);
 	vec2 dx = vec2(RAPIDS_REACH, 0.0);
 	vec2 dy = vec2(0.0, RAPIDS_REACH);
 	vec4 around = vec4(WaterLevelNear(p - dx, home), WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home), WaterLevelNear(p + dy, home));
 	vec2 fall = vec2(around.x - around.y, around.z - around.w) * LevelRise() / (2.0 * RAPIDS_REACH);
 	float slope = length(fall);
-	float bend = (dot(around, vec4(1.0)) - 4.0 * WaterLevelNear(p, home)) * LevelRise() / RAPIDS_REACH;
-	return Drop(slope > 0.0 ? fall / slope : vec2(0.0), slope, smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, slope), bend);
+	float level = WaterLevelNear(p, home);
+	float bend = (dot(around, vec4(1.0)) - 4.0 * level) * LevelRise() / RAPIDS_REACH;
+	return Drop(slope > 0.0 ? fall / slope : vec2(0.0), slope, smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, slope), bend, level);
 }
 
 bool Spanned(ivec2 tile)
@@ -615,8 +631,8 @@ float ShelfPath(vec2 p, vec3 sight)
 	return depth / max(-sight.z, GRAZING_SIGHT);
 }
 
-/* The water at a point: its field and body, how its surface falls and which way it runs, how glassy it runs over a lip or how full of air it races down a drop,
- * and how shut in it lies from the wind. Its outline and its fall are both read about the point frayed the way natural shores fray, so the bands over a lip and at a foot waver as a shore does. */
+/* The water at a point: its field and body, how its surface falls and which way it runs, how glassy it runs over a lip, how full of air it races down a drop
+ * or how churned it runs on below one, and how shut in it lies from the wind. Its outline and its fall are both read about the point frayed the way natural shores fray, so the bands over a lip and at a foot waver as a shore does. */
 struct Water {
 	vec2 p;
 	vec4 field;
@@ -625,8 +641,21 @@ struct Water {
 	vec2 flow;
 	float glassy;
 	float aerated;
+	float churned;
 	float enclosed;
 };
+
+/* How far the water falls on its way to a point from a reach back up the current, traced in steps that bend with it, so water a drop pours into a pool stays churned as it turns away across the pool. */
+float Churned(vec2 at, Drop drop)
+{
+	vec2 from = at;
+	for (int step = 0; step < APRON_STEPS; step++) {
+		vec2 flow = FlowAt(from);
+		if (length(flow) <= MIN_PACE) break;
+		from -= normalize(flow) * (APRON_REACH / float(APRON_STEPS));
+	}
+	return smoothstep(APRON_LEAST_FALL, APRON_FULL_FALL, WaterLevelNear(from, ivec2(floor(at))) - drop.level);
+}
 
 Water WaterAt(vec2 p)
 {
@@ -639,19 +668,31 @@ Water WaterAt(vec2 p)
 	water.flow = FlowAt(p);
 	water.glassy = smoothstep(0.0, LIP_BEND, -water.drop.bend);
 	water.aerated = water.drop.steep * (1.0 - water.glassy);
+	water.churned = Churned(warped, water.drop);
 	water.enclosed = Enclosed(p);
 	return water;
 }
 
-/* Where a river drops it breaks white: glassy over the lip, in fine streaks drawn out down the current as it races down the slope, and churned thick where it plunges into the pool at the foot. */
+float Apron(Water water)
+{
+	if (water.churned <= 0.0) return 0.0;
+	float threshold = mix(APRON_EDGES.x, APRON_EDGES.y, water.churned);
+	return smoothstep(threshold, threshold + APRON_FEATHER, StreamLace(water.p, water.flow, APRON_SCALE, APRON_STRETCH)) * water.churned;
+}
+
+/* Where a river drops it breaks white: glassy over the lip, in fine streaks drawn out down the current as it races down the slope, churned thick where it plunges into the pool at the foot,
+ * and spreading from the foot down the current in lace that thins out as the water below settles. */
 float Whitewater(Water water)
 {
 	float plunge = smoothstep(0.0, PLUNGE_BEND, water.drop.bend);
 	float broken = max(water.aerated, plunge);
-	if (broken <= 0.0) return 0.0;
-	float churn = StreamLace(water.p, water.flow * RAPIDS_RUSH, RAPIDS_SCALE, RAPIDS_STRETCH);
-	vec2 edges = (Landscape() == LANDSCAPE_TOYLAND ? TOY_WHITEWATER_EDGES : RAPIDS_EDGES) - PLUNGE_FROTH * plunge;
-	return broken * smoothstep(edges.x, edges.y, churn) * RAPIDS_FOAM;
+	float white = 0.0;
+	if (broken > 0.0) {
+		float churn = StreamLace(water.p, water.flow * RAPIDS_RUSH, RAPIDS_SCALE, RAPIDS_STRETCH);
+		vec2 edges = (Landscape() == LANDSCAPE_TOYLAND ? TOY_WHITEWATER_EDGES : RAPIDS_EDGES) - PLUNGE_FROTH * plunge;
+		white = broken * smoothstep(edges.x, edges.y, churn);
+	}
+	return max(white, Apron(water)) * RAPIDS_FOAM;
 }
 
 float Fleck(vec2 q, vec2 run, vec2 extent)
@@ -716,14 +757,15 @@ vec3 Below(vec2 uv, float path, Body body, vec3 light, vec3 ripples)
 /* A river racing down a drop runs pale with the air churned into it, under every kind of foam the water churns up, lying under any ice along the shore. */
 vec3 Frothed(vec3 colour, Water water, float flecks, float behind, vec3 light, vec3 glitter)
 {
-	float river = water.body.calm * (1.0 - water.body.canal);
-	colour = mix(colour, Linear(AERATED_WATER) * light, water.aerated * river * RAPIDS_AERATION);
+	float running = 1.0 - water.body.canal;
+	float river = water.body.calm * running;
+	colour = mix(colour, Linear(AERATED_WATER) * light, water.aerated * running * RAPIDS_AERATION);
 	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, behind);
 	float shore = Foam(water.p, max(ShoreBand(water.field.r), contact), water.body);
 	float breakers = Breakers(water.p, water.field.r, water.body) * (1.0 - water.enclosed);
 	float floes;
 	float ice = ShoreIce(water.p, water.field.r, floes);
-	float foam = max(max(shore, breakers), max(max(Whitewater(water), flecks) * river, Wake(water.p))) * (1.0 - ice);
+	float foam = max(max(shore, breakers), max(max(Whitewater(water) * running, flecks * river), Wake(water.p))) * (1.0 - ice);
 	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
 	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
 	return colour;
@@ -762,7 +804,7 @@ void main()
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
-	float filled = max(water.body.canal, water.drop.steep);
+	float filled = max(water.body.canal, max(water.drop.steep, water.churned * APRON_CLOUDING));
 	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, water.body.calm), straight.y), filled) * Outline(water.field, water.body);
 	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(ambient, sun));
 }
