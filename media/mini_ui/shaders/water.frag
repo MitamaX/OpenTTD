@@ -47,6 +47,8 @@ const float MIN_PACE = 0.01;
 const vec2 FLECK_EDGES = vec2(0.66, 0.8);
 const float FLECK_FOAM = 0.5;
 const float FLECK_SCALE = 4.0;
+const vec2 FLECK_STRETCH = vec2(1.8, 5.0);
+const float LOWEST_PITCH_SINE = 0.3;
 const float RAPIDS_TILT = 0.12;
 const float RAPIDS_REACH = 0.35;
 const float RAPIDS_SPEED = 1.3;
@@ -189,24 +191,24 @@ vec3 Stretched(vec2 q, vec2 stretch)
 }
 
 /* Noise and its slope drawn out along a run: stretched along each of the map's axes and weighed by how far the run lies along it, so a bend shows no swirl. */
-vec3 Streaked(vec2 q, vec2 run)
+vec3 Streaked(vec2 q, vec2 run, vec2 stretch)
 {
 	vec2 share = run * run;
 	vec3 streaks = vec3(0.0);
-	if (share.x > MIN_STREAK_SHARE) streaks += Stretched(q, STREAK_STRETCH) * share.x;
-	if (share.y > MIN_STREAK_SHARE) streaks += Stretched(q + STREAK_SEED, STREAK_STRETCH.yx) * share.y;
+	if (share.x > MIN_STREAK_SHARE) streaks += Stretched(q, stretch) * share.x;
+	if (share.y > MIN_STREAK_SHARE) streaks += Stretched(q + STREAK_SEED, stretch.yx) * share.y;
 	return streaks;
 }
 
 /* Streaks carried downstream: two phases half a cycle apart, each drifting with the flow for a cycle and then starting afresh, blended so neither restart shows. */
-vec3 Current(vec2 p, vec2 flow)
+vec3 Current(vec2 p, vec2 flow, vec2 stretch)
 {
 	vec2 run = normalize(flow);
 	float cycle = Clock() / FLOW_CYCLE + Noise(p * FLOW_PHASE_SPREAD);
 	float lead = fract(cycle);
 	vec2 drift = flow * FLOW_PACE * FLOW_CYCLE;
-	vec3 leading = Streaked(p - drift * lead, run);
-	vec3 trailing = Streaked(p - drift * fract(cycle + 0.5) + FLOW_PHASE_SEED, run);
+	vec3 leading = Streaked(p - drift * lead, run, stretch);
+	vec3 trailing = Streaked(p - drift * fract(cycle + 0.5) + FLOW_PHASE_SEED, run, stretch);
 	return mix(leading, trailing, abs(1.0 - 2.0 * lead));
 }
 
@@ -597,9 +599,10 @@ Water WaterAt(vec2 p)
 
 float Flecks(vec2 p, vec2 flow, float pace)
 {
-	float shown = Resolved(STREAK_STRETCH.y * FLECK_SCALE);
+	float shown = Resolved(FLECK_STRETCH.y * FLECK_SCALE);
 	if (shown <= 0.0) return 0.0;
-	return smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, Current(p * FLECK_SCALE, flow * FLECK_SCALE).x) * FLECK_FOAM * shown * pace;
+	vec2 stretch = vec2(FLECK_STRETCH.x / max(PitchSine(), LOWEST_PITCH_SINE), FLECK_STRETCH.y);
+	return smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, Current(p * FLECK_SCALE, flow * FLECK_SCALE, stretch).x) * FLECK_FOAM * shown * pace;
 }
 
 /* The waves streaked and flecked where the current runs, stilled glassy over a lip and leaning down a drop, ruffled where it races down. */
@@ -610,7 +613,7 @@ Surface Flowing(Water water, out float flecks)
 	float pace = length(flow);
 	flecks = 0.0;
 	if (pace > MIN_PACE) {
-		vec3 current = Current(water.p, flow);
+		vec3 current = Current(water.p, flow, STREAK_STRETCH);
 		float streaked = Resolved(STREAK_STRETCH.y) * pace;
 		waves = Stirred(Stilled(waves, pace * FLOW_STILLING), current.yz * mix(FLOW_STEEPNESS, RAPIDS_STEEPNESS, water.drop.steep) * streaked);
 		flecks = Flecks(water.p, flow, pace);

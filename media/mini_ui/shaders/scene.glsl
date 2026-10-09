@@ -75,6 +75,11 @@ vec3 ToEye(vec3 position)
 	return normalize(Eye() - position);
 }
 
+float PitchSine()
+{
+	return u_view[2][2];
+}
+
 /* How far the eye stands from the ground point the view turns about. */
 float FocusDistance()
 {
