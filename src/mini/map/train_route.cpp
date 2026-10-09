@@ -34,10 +34,20 @@ static std::optional<Track> StandingOn(const TileCoord &tile, const MapVector &p
 	return PickAmongTaken(tile, taken, [&](TrackBits among) { return TrackUnder(tile, point, among); });
 }
 
-/* A train runs on into a tile along the straightest piece. */
-static std::optional<Piece> OnwardAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, const TrackTaken &taken)
+static std::optional<Piece> StraightestOnwardAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, const TrackTaken &taken)
 {
 	return PickAmongTaken(tile, taken, [&](TrackBits among) { return StraightestAt(tile, joint, heading, among); });
+}
+
+static double Nearness(const Joint &joint, const MapVector &bound)
+{
+	return -Length(bound - joint.Point());
+}
+
+static std::optional<Piece> NearestOnwardAt(const TileCoord &tile, const Joint &joint, const MapVector &bound, const TrackTaken &taken)
+{
+	auto leading = [&](const Piece &onward) { return Nearness(onward.Other(joint), bound); };
+	return PickAmongTaken(tile, taken, [&](TrackBits among) { return BestPieceAt(tile, joint, leading, among); });
 }
 
 MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken)
@@ -56,7 +66,7 @@ MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, con
 		reach -= left;
 		at = exit.Point();
 		tile = exit.Beyond(tile);
-		std::optional<Piece> onward = OnwardAt(tile, exit, heading, taken);
+		std::optional<Piece> onward = StraightestOnwardAt(tile, exit, heading, taken);
 		if (!onward.has_value()) break;
 		piece = *onward;
 		exit = piece.Other(exit);
@@ -71,7 +81,7 @@ TrackRoute::TrackRoute(const MapVector &from, const MapVector &to, const TrackTa
 	this->points[this->count++] = to;
 }
 
-/* From the piece a train starts on it leaves by the end nearer where it is bound, and on through each tile by the piece leading nearest there. */
+/* A train leaves each piece by the end nearer where it is bound. */
 bool TrackRoute::Cross(const MapVector &from, const MapVector &to, const TrackTaken &taken)
 {
 	TileCoord tile = TileOf(from);
@@ -80,14 +90,13 @@ bool TrackRoute::Cross(const MapVector &from, const MapVector &to, const TrackTa
 	std::optional<Track> under = StandingOn(tile, from, taken);
 	if (!under.has_value()) return false;
 
-	auto nearness = [&to](const Joint &joint) { return -Length(to - joint.Point()); };
 	Piece piece = PieceOf(tile.first, tile.second, *under);
-	Joint exit = nearness(piece.from) >= nearness(piece.to) ? piece.from : piece.to;
+	Joint exit = Nearness(piece.from, to) >= Nearness(piece.to, to) ? piece.from : piece.to;
 	for (size_t side = 0; side < MOST_SIDES; side++) {
 		this->points[this->count++] = exit.Point();
 		tile = exit.Beyond(tile);
 		if (tile == bound) return true;
-		std::optional<Piece> next = BestPieceAt(tile, exit, [&](const Piece &onward) { return nearness(onward.Other(exit)); });
+		std::optional<Piece> next = NearestOnwardAt(tile, exit, to, taken);
 		if (!next.has_value()) return false;
 		exit = next->Other(exit);
 	}
