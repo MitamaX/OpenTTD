@@ -86,7 +86,7 @@ private:
 
 	std::pair<Vec3, Vec3> Bounds(const Cell &cell, size_t index) const;
 	void Plant(Cell &cell, const TileSpan &tiles) const;
-	void GatherCell(const Cell &cell, const SceneView &camera, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const;
+	void GatherCell(const Cell &cell, const SceneView &camera, const Frustum &frustum, bool in_sight, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const;
 	void Evict();
 
 	ChunkGrid grid{CELL_TILES};

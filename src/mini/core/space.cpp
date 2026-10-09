@@ -160,14 +160,20 @@ Frustum FrustumOf(const Mat4 &view_projection)
 	return frustum;
 }
 
+static Vec3 FarthestCorner(const Vec3 &direction, const Vec3 &low, const Vec3 &high)
+{
+	return {direction.x >= 0.0 ? high.x : low.x, direction.y >= 0.0 ? high.y : low.y, direction.z >= 0.0 ? high.z : low.z};
+}
+
 /* A box wholly outside one plane of the frustum cannot show. */
 bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high)
 {
-	for (const Plane &plane : frustum) {
-		Vec3 farthest = {plane.normal.x >= 0.0 ? high.x : low.x, plane.normal.y >= 0.0 ? high.y : low.y, plane.normal.z >= 0.0 ? high.z : low.z};
-		if (plane.Distance(farthest) < 0.0) return false;
-	}
-	return true;
+	return std::ranges::none_of(frustum, [&](const Plane &plane) { return plane.Distance(FarthestCorner(plane.normal, low, high)) < 0.0; });
+}
+
+bool BoxWithin(const Frustum &frustum, const Vec3 &low, const Vec3 &high)
+{
+	return std::ranges::none_of(frustum, [&](const Plane &plane) { return plane.Distance(FarthestCorner(plane.normal * -1.0, low, high)) < 0.0; });
 }
 
 /* The ray's span inside each pair of faces, narrowed axis by axis; a ray running parallel to a pair stays inside only between them. */

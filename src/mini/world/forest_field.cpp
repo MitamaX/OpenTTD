@@ -80,6 +80,16 @@ static const CrownBounds &Crowns()
 	return _settings_game.game_creation.landscape == LandscapeType::Toyland ? TOY_CROWNS : NATURAL_CROWNS;
 }
 
+static constexpr size_t LOOK_SCALE = 1;
+
+static std::pair<Vec3, Vec3> TreeBounds(const TreeInstance &tree, double rise)
+{
+	CrownBounds crowns = CrownBoundsOf(tree.look[LOOK_SCALE] / static_cast<double>(CHANNEL_MAX) * TREE_LARGEST_SCALE);
+	return {
+		{tree.x - crowns.reach, tree.y - crowns.reach, (tree.level - DEEPEST_SINK) * rise},
+		{tree.x + crowns.reach, tree.y + crowns.reach, tree.level * rise + crowns.tallest},
+	};
+}
 
 /* The finest and the coarsest detail a tree this many tile pixels across shows in, counting the bands where details crossfade, down to the coarsest asked for; none when first passes last. */
 struct DetailSpan {
@@ -324,12 +334,13 @@ static double FarthestDistance(const Vec3 &eye, const Vec3 &low, const Vec3 &hig
 	return Length({reach(eye.x, low.x, high.x), reach(eye.y, low.y, high.y), reach(eye.z, low.z, high.z)});
 }
 
-/* A block lying wholly within one detail hands over its runs whole; one across a crossfade sorts its trees one by one. */
-void ForestField::GatherCell(const Cell &cell, const SceneView &camera, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const
+/* A block lying wholly in sight and within one detail hands over its runs whole; one across the frustum's edge or a crossfade sorts its trees one by one. */
+void ForestField::GatherCell(const Cell &cell, const SceneView &camera, const Frustum &frustum, bool in_sight, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const
 {
 	DetailSpan near = DetailsAt(near_pixels, coarsest);
 	DetailSpan far = DetailsAt(far_pixels, coarsest);
-	if (near.first == far.last) {
+	bool one_detail = near.first == far.last;
+	if (one_detail && in_sight) {
 		TreeDetail detail = static_cast<TreeDetail>(near.first);
 		for (const Run &run : cell.runs) batch.Add(TreeMeshIndex(run.shape, detail), std::span<const TreeInstance>(cell.trees).subspan(run.first, run.count));
 		return;
@@ -339,7 +350,11 @@ void ForestField::GatherCell(const Cell &cell, const SceneView &camera, double n
 	for (const Run &run : cell.runs) {
 		for (size_t index = run.first; index < run.first + run.count; index++) {
 			const TreeInstance &tree = cell.trees[index];
-			DetailSpan span = DetailsAt(camera.TilePixelsAt(Length(camera.eye - Vec3{tree.x, tree.y, tree.level * rise})), coarsest);
+			if (!in_sight) {
+				auto [low, high] = TreeBounds(tree, rise);
+				if (!BoxMeets(frustum, low, high)) continue;
+			}
+			DetailSpan span = one_detail ? near : DetailsAt(camera.TilePixelsAt(Length(camera.eye - Vec3{tree.x, tree.y, tree.level * rise})), coarsest);
 			if (!span.Shows()) continue;
 			for (size_t detail = span.first; detail <= span.last; detail++) batch.Add(TreeMeshIndex(run.shape, static_cast<TreeDetail>(detail)), tree);
 		}
@@ -396,7 +411,7 @@ void ForestField::Gather(const SceneView &camera, const Frustum &frustum, TreeDe
 		double near_pixels = camera.NearestTilePixels(low, high);
 		if (!DetailsAt(near_pixels, coarsest).Shows()) return true;
 		cell.drawn = this->frame;
-		if (!cell.trees.empty()) this->GatherCell(cell, camera, near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
+		if (!cell.trees.empty()) this->GatherCell(cell, camera, frustum, BoxWithin(frustum, low, high), near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
 		return true;
 	});
 }
