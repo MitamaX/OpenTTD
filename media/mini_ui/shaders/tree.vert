@@ -21,7 +21,6 @@ flat out vec2 v_window;
 
 const float TAU = 6.2831853;
 const vec2 WIND_WAY = vec2(0.8, 0.6);
-const float WIND_REACH = 0.014;
 const float GUST_RATE = 1.3;
 const float FLUTTER_RATE = 2.9;
 const float FLUTTER_SHARE = 0.3;
@@ -30,7 +29,6 @@ const vec4 HIDDEN = vec4(2.0, 2.0, 2.0, 1.0);
 const float SEATS_PER_TILE = 64.0;
 const ivec2 GROWTH_SALT = ivec2(7919, 104729);
 const float THICKET_FREQUENCY = 0.45;
-const float LEAN = 0.07;
 const float STAND_FREQUENCY = 0.3;
 const float STAND_SHARE = 0.6;
 const float GRAIN_OFFSET = 37.0;
@@ -60,7 +58,7 @@ ivec2 Seat()
 Growth GrowthOf()
 {
 	float thicket = mix(TREE_THICKET_SCALES[0], TREE_THICKET_SCALES[1], Noise(i_place.xy * THICKET_FREQUENCY));
-	vec2 lean = (Hash2(Seat() + GROWTH_SALT) - 0.5) * 2.0 * LEAN;
+	vec2 lean = (Hash2(Seat() + GROWTH_SALT) - 0.5) * 2.0 * TREE_LEAN;
 	float stretch = mix(TREE_STRETCHES[0], TREE_STRETCHES[1], Hash(Seat() - GROWTH_SALT));
 	return Growth(Turn(i_look.x * TAU), lean, stretch, i_look.y * TREE_LARGEST_SCALE * thicket);
 }
@@ -83,7 +81,7 @@ vec2 Sway(float height, float scale)
 	float lift = clamp(height / TREE_SWAY_HEIGHT, 0.0, 1.0);
 	float beat = Hash(Seat()) * TAU;
 	float swing = mix(sin(Clock() * GUST_RATE + beat), sin(Clock() * FLUTTER_RATE + beat * 1.7), FLUTTER_SHARE);
-	return WIND_WAY * swing * WIND_REACH * lift * lift * scale;
+	return WIND_WAY * swing * TREE_SWAY_REACH * lift * lift * scale;
 }
 
 /* The trees of a stand share much of their hue, and each its own share besides. */

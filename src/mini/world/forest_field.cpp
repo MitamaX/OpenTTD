@@ -24,8 +24,10 @@
 
 #include "../../safeguards.h"
 
-static constexpr double CROWN_REACH = 0.4;
-static constexpr int CROWN_MARGIN = 1;
+static constexpr double LARGEST_GROWN = TREE_LARGEST_SCALE * TREE_THICKET_SCALES[1];
+static constexpr double TALLEST_GROWN = TREE_MODEL_TALLEST * LARGEST_GROWN * TREE_STRETCHES[1];
+static constexpr double CROWN_REACH = (TREE_MODEL_REACH + TREE_LEAN * TREE_MODEL_TALLEST + TREE_SWAY_REACH) * LARGEST_GROWN;
+static constexpr int CROWN_MARGIN = 2;
 static_assert(CROWN_REACH <= CROWN_MARGIN);
 static constexpr double SLOT_JITTER = 0.15;
 static constexpr double EDGE_MARGIN = 0.08;
@@ -37,7 +39,6 @@ static constexpr double FRINGE_SCALE = 0.6;
 static constexpr double TOY_HUDDLE = 0.3;
 static constexpr SeedRange TOY_HUDDLE_SPOT = {0.3, 0.7};
 static constexpr uint32_t PLANTING_SALT = 0x7EE5F00DU;
-static constexpr double TALLEST_GROWN = TREE_MODEL_TALLEST * TREE_LARGEST_SCALE * TREE_THICKET_SCALES[1] * TREE_STRETCHES[1];
 
 /* Spots a tile's trees stand on, spread so neighbours' crowns just meet; the middle one comes last, clear of a park's paths. */
 static constexpr std::array<TilePoint, 6> SLOTS = {{

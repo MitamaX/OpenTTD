@@ -46,6 +46,8 @@ inline constexpr double TREE_LARGEST_SCALE = std::ranges::max(TREE_AGE_SCALES) *
 /* How much lower and taller trees stand between thickets and in them, and how much squatter and taller each grows than its model. */
 inline constexpr std::array<double, 2> TREE_THICKET_SCALES = {0.8, 1.2};
 inline constexpr std::array<double, 2> TREE_STRETCHES = {0.85, 1.2};
+/* The most a tree leans along either map axis, as a share of its height. */
+inline constexpr double TREE_LEAN = 0.07;
 
 using TreeBatch = InstanceBatch<TreeInstance>;
 
