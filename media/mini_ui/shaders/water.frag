@@ -121,7 +121,11 @@ const float STREAM_TILT = 0.25;
 const float BREAKER_REACH = 0.38;
 const float BREAKERS_PER_REACH = 40.0;
 const float BREAKER_SPEED = 1.3;
-const float BREAKER_OPACITY = 0.7;
+const float BREAKER_OPACITY = 0.8;
+const vec2 BREAKER_CREST_EDGES = vec2(0.45, 0.85);
+const float BREAKER_FILL = 1.8;
+const float BREAKER_CREST_TOP = 0.99;
+const float BREAKER_FAR_OPACITY = 0.3;
 const float CONTACT_FOAM_REACH = 0.05;
 const float SHELF_DEPTH = 0.4;
 const float DECK_SHELTER = 0.75;
@@ -364,14 +368,20 @@ vec2 FlowAt(vec2 p)
 	return flow * max(1.0 - DistancePastEdge(p) / PAST_EDGE_FLOW_TILES, 0.0);
 }
 
-/* Foam gathers in a band along the shore, thickest at the water's edge, broken into lace and drifting with the swell. */
+/* Foam breaks into lace drifting with the swell, filling in whole the thicker it lies. */
+float Laced(vec2 p, float thickness)
+{
+	vec2 drift = vec2(Clock() * FOAM_DRIFT, -Clock() * FOAM_DRIFT * 0.7);
+	float lace = Noise(p * FOAM_SCALE + drift) * 0.6 + Noise(p * FOAM_SCALE * 2.3 - drift * 1.4) * 0.4;
+	float threshold = mix(0.75, FOAM_EDGE_THRESHOLD, thickness * thickness);
+	return smoothstep(threshold, threshold + 0.2, lace) * Resolved(FOAM_SCALE);
+}
+
+/* Foam gathers in a band along the shore, thickest at the water's edge. */
 float Foam(vec2 p, float band, Body body)
 {
 	if (band <= 0.0) return 0.0;
-	vec2 drift = vec2(Clock() * FOAM_DRIFT, -Clock() * FOAM_DRIFT * 0.7);
-	float lace = Noise(p * FOAM_SCALE + drift) * 0.6 + Noise(p * FOAM_SCALE * 2.3 - drift * 1.4) * 0.4;
-	float threshold = mix(0.75, FOAM_EDGE_THRESHOLD, band * band);
-	return band * smoothstep(threshold, threshold + 0.2, lace) * FOAM_OPACITY * mix(INLAND_FOAM, 1.0, body.sea) * Resolved(FOAM_SCALE);
+	return band * Laced(p, band) * FOAM_OPACITY * mix(INLAND_FOAM, 1.0, body.sea);
 }
 
 /* Near the shore: close inside the water's outline, which curves where the ground's own edge runs in steps. */
@@ -380,16 +390,19 @@ float ShoreBand(float level)
 	return 1.0 - smoothstep(0.0, OUTLINE_FOAM_WIDTH, level - WATERLINE);
 }
 
-/* Off the shore the swell breaks in lines that run along it and roll in toward it, broken where the waves are lower. */
+/* Off the shore the swell breaks in lines that run along it and roll in toward it, broken where the waves are lower;
+ * close in a line breaks broad and white, further out thinner and fainter, and it frays into lace about its crest. */
 float Breakers(vec2 p, float level, Body body)
 {
 	float offshore = level - WATERLINE;
 	float reach = smoothstep(0.03, 0.08, offshore) * (1.0 - smoothstep(0.15, BREAKER_REACH, offshore));
 	if (reach <= 0.0) return 0.0;
+	float far_out = smoothstep(0.03, BREAKER_REACH, offshore);
 	float phase = offshore * BREAKERS_PER_REACH + Clock() * BREAKER_SPEED + Noise(p * 0.7) * 3.0;
-	float crest = smoothstep(0.78, 0.98, 0.5 + 0.5 * sin(phase));
+	float crest = smoothstep(mix(BREAKER_CREST_EDGES.x, BREAKER_CREST_EDGES.y, far_out), BREAKER_CREST_TOP, 0.5 + 0.5 * sin(phase));
 	float broken = smoothstep(0.4, 0.75, Noise(p * 2.2 + vec2(Clock() * 0.07, 0.0)));
-	return crest * broken * reach * BREAKER_OPACITY * body.sea * Resolved(4.0);
+	float white = crest * broken;
+	return Laced(p, min(white * BREAKER_FILL, 1.0)) * white * reach * mix(1.0, BREAKER_FAR_OPACITY, far_out) * BREAKER_OPACITY * body.sea * Resolved(4.0);
 }
 
 /* Wake foam breaks into streaks drawn out the way the ship ran, lying still on the water once it has passed; thick, it fills in whole. */
