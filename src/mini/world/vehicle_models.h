@@ -129,6 +129,25 @@ inline constexpr std::array<const char *, 2> VEHICLE_VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/vehicle.vert",
 };
+inline constexpr std::array<const char *, 11> VEHICLE_FRAGMENT_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
+	"mini_ui/shaders/common.glsl",
+	"mini_ui/shaders/sky.glsl",
+	"mini_ui/shaders/cloud_field.glsl",
+	"mini_ui/shaders/shadow.glsl",
+	"mini_ui/shaders/lighting.glsl",
+	"mini_ui/shaders/overlay.glsl",
+	"mini_ui/shaders/coat.glsl",
+	"mini_ui/shaders/pane.glsl",
+	"mini_ui/shaders/vehicle.frag",
+};
+
+inline constexpr double PAINT_GLOSS = 0.6;
+inline constexpr double METAL_GLOSS = 0.7;
+inline constexpr double GLASS_GLOSS = 0.8;
+inline constexpr double PANE_GLOSS = (METAL_GLOSS + GLASS_GLOSS) * 0.5;
+static_assert(PAINT_GLOSS < PANE_GLOSS && METAL_GLOSS < PANE_GLOSS && GLASS_GLOSS > PANE_GLOSS);
 
 /* Where a steam engine's chimney stands on its model, how tall and how wide at the mouth its smoke leaves. */
 inline constexpr Vec3 STEAM_CHIMNEY_FOOT = {0.185, 0.0, 0.21};

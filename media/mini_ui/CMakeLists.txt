@@ -75,6 +75,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/climate.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cloud_field.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/clouds.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/coat.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/detail.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/composite.frag
@@ -90,6 +91,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/noise.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/occlusion.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/overlay.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/pane.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/rooms.glsl
@@ -115,6 +117,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree_depth.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vehicle.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vehicle.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/water.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/water.vert

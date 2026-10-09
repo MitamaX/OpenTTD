@@ -11,12 +11,8 @@ in float v_trait;
 
 out vec4 frag_colour;
 
-const float MATTE = 0.85;
-const float POLISHED = 0.2;
-const float GLOW_RADIANCE = 5.0;
 const float GRAIN_FREQUENCY = 9.0;
 const float GRAIN_VARIETY = 0.22;
-const vec2 MIRROR_GLOSS = vec2(0.6, 0.8);
 const vec2 PATTERN_SHEAR = vec2(0.7, -0.4);
 const vec3 STAINS_PER_TILE = vec3(0.35, 1.1, 3.2);
 const vec3 STAIN_VARIETY = vec3(0.22, 0.16, 0.12);
@@ -270,8 +266,5 @@ void main()
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, MIN_SPREAD)));
 	vec3 grained = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) * Worn(v_position, normal, gloss) : Bedded(v_colour.rgb, bed, v_position, normal);
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
-	Coat coat = Coat(mix(MATTE, POLISHED, gloss), mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss)));
-	vec4 lit = Radiance(albedo, normal, v_position, coat, v_colour.a);
-	lit.rgb += albedo * max(-v_trait, 0.0) * GLOW_RADIANCE;
-	frag_colour = lit;
+	frag_colour = Radiance(albedo, normal, v_position, CoatOf(gloss), v_colour.a) + vec4(Glowing(albedo, v_trait), 0.0);
 }

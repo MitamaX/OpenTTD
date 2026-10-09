@@ -24,8 +24,6 @@ static constexpr double CAST_PIXELS = 7.0;
 static constexpr double VEHICLE_CASTER_WIDTH = 0.15;
 /* A click this many pixels off a vehicle still picks it. */
 static constexpr double PICK_SLACK_PIXELS = 5.0;
-/* Solids never fade out, as vehicles have nothing on the ground standing in for them. */
-static constexpr float NEVER_FADES = -1.0f;
 
 /* In a view from far out, vehicles grow until a tile spans this many pixels at their scale: trains and road vehicles only across and up, as they run nose to tail. */
 static constexpr float READABLE_TILE_PIXELS = 30.0f;
@@ -64,7 +62,7 @@ static MiniLayer LayerOf(VehicleLook look)
 	return MiniLayer::None;
 }
 
-VehiclePass::VehiclePass() : program(VEHICLE_VERTEX_SOURCES, SOLID_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))
+VehiclePass::VehiclePass() : program(VEHICLE_VERTEX_SOURCES, VEHICLE_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))
 {
 }
 
@@ -109,8 +107,6 @@ void VehiclePass::Draw(const SceneView &view)
 	this->Gather(view, view.frustum, 0.0);
 	this->program.Use();
 	UploadOverlay(this->program);
-	glUniform2f(this->program.Uniform("u_fade"), NEVER_FADES * 2.0f, NEVER_FADES);
-	glUniform1i(this->program.Uniform("u_own_colours"), GL_TRUE);
 	this->DrawBatch(this->program, view);
 }
 

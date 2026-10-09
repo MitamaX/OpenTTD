@@ -44,7 +44,7 @@ static void Deckhouse(VehicleKit &kit, double back, double front, double half_wi
 	for (int tier = 0; tier < tiers; tier++) {
 		double inset = tier * 0.012;
 		double z = low + tier * TIER;
-		kit.Body(Hull({half_width - inset, z, z + TIER, 0.006}, back + inset * 2.0, front - inset).Paint(CREAM));
+		kit.Body(Hull({half_width - inset, z, z + TIER, 0.006}, back + inset * 2.0, front - inset).Paint(CREAM).Gloss(PAINT_GLOSS));
 		kit.Fine(WindowRow(back + inset * 2.0 + 0.01, front - inset - 0.01, z + 0.018, z + 0.032, half_width - inset, 6));
 	}
 	kit.Fine(Windscreen(front - (tiers - 1) * 0.012, half_width - 0.02, low + (tiers - 1) * TIER + 0.018, low + tiers * TIER - 0.01));
@@ -53,7 +53,7 @@ static void Deckhouse(VehicleKit &kit, double back, double front, double half_wi
 static void Funnel(VehicleKit &kit, double x, double base, double radius)
 {
 	kit.Body(Column(8, radius, radius * 0.85, 0.075).Transform(Mat4::Translation({x, 0.0, base})).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Fine(Column(8, radius * 0.88, radius * 0.86, 0.02).Transform(Mat4::Translation({x, 0.0, base + 0.06})).Paint(SECONDARY));
+	kit.Fine(Column(8, radius * 0.88, radius * 0.86, 0.02).Transform(Mat4::Translation({x, 0.0, base + 0.06})).Paint(SECONDARY).Gloss(PAINT_GLOSS));
 }
 
 static void MastLight(VehicleKit &kit, double x, double base, double height)
@@ -70,7 +70,7 @@ static ModelMesh Ferry(VehicleDetail detail)
 	Funnel(kit, -0.2, 0.199, 0.032);
 	MastLight(kit, 0.06, 0.199, 0.06);
 	for (double x : {-0.24, -0.12, 0.0, 0.12}) {
-		ModelMesh boat = Plank({x - 0.03, 0.105, 0.115}, {x + 0.03, 0.118, 0.13}, LIFEBOAT);
+		ModelMesh boat = Plank({x - 0.03, 0.105, 0.115}, {x + 0.03, 0.118, 0.13}, LIFEBOAT).Gloss(PAINT_GLOSS);
 		kit.Fine(boat.Append(Mirrored(boat)));
 	}
 	return kit.Done();

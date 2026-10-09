@@ -44,7 +44,7 @@ private:
 /* Hands the overlay's shown layer and how far the rest sinks to a program reading overlay.glsl. */
 void UploadOverlay(const ShaderProgram &program);
 
-inline constexpr std::array<const char *, 10> SOLID_FRAGMENT_SOURCES = {
+inline constexpr std::array<const char *, 11> SOLID_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
@@ -54,6 +54,7 @@ inline constexpr std::array<const char *, 10> SOLID_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/shadow.glsl",
 	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/overlay.glsl",
+	"mini_ui/shaders/coat.glsl",
 	"mini_ui/shaders/solid.frag",
 };
 

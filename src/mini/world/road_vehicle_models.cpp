@@ -62,7 +62,7 @@ static ModelMesh BoxTruck(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Lorry(kit);
-	kit.Body(Hull({HALF_WIDTH + 0.002, LOAD_FLOOR, 0.17, 0.008}, -FRONT, LOAD_FRONT).Paint(CREAM));
+	kit.Body(Hull({HALF_WIDTH + 0.002, LOAD_FLOOR, 0.17, 0.008}, -FRONT, LOAD_FRONT).Paint(CREAM).Gloss(PAINT_GLOSS));
 	kit.Body(SideBand(-FRONT, LOAD_FRONT, HALF_WIDTH + 0.002, 0.11, 0.135, PRIMARY));
 	return kit.Done();
 }
@@ -73,7 +73,7 @@ static ModelMesh TankerTruck(VehicleDetail detail)
 	Lorry(kit);
 	std::array<LatheRing, 4> tank = {{{0.04, -0.21}, {0.058, -0.195}, {0.058, 0.085}, {0.04, 0.1}}};
 	kit.Body(Turned(tank, 10, 0.1).Paint(STEEL).Gloss(METAL_GLOSS));
-	kit.Body(Barrel(-0.07, -0.03, 0.06, 0.1, 10).Paint(PRIMARY));
+	kit.Body(Barrel(-0.07, -0.03, 0.06, 0.1, 10).Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	return kit.Done();
 }
 
@@ -82,7 +82,7 @@ static ModelMesh OpenBin(uint32_t tone)
 	ModelMesh side = Plank({-FRONT, HALF_WIDTH - 0.008, LOAD_FLOOR}, {LOAD_FRONT, HALF_WIDTH, 0.12}, tone);
 	side.Append(Mirrored(side));
 	for (double x : {-FRONT, LOAD_FRONT - 0.008}) side.Append(Plank({x, -HALF_WIDTH, LOAD_FLOOR}, {x + 0.008, HALF_WIDTH, 0.12}, tone));
-	return side;
+	return side.Gloss(PAINT_GLOSS);
 }
 
 static ModelMesh TipperTruck(VehicleDetail detail)
@@ -103,7 +103,7 @@ static ModelMesh FlatbedTruck(VehicleDetail detail)
 	kit.Body(Plank({-FRONT, -HALF_WIDTH, LOAD_FLOOR}, {LOAD_FRONT, HALF_WIDTH, LOAD_FLOOR + 0.01}, TIMBER_DECK));
 	for (double y : {-0.035, 0.035}) kit.Body(Barrel(-0.2, 0.09, 0.03, LOAD_FLOOR + 0.04, 7).Transform(Mat4::Translation({0.0, y, 0.0})).Paint(CARGO));
 	kit.Fine(Barrel(-0.19, 0.08, 0.028, LOAD_FLOOR + 0.09, 7).Paint(BRIGHT_CARGO));
-	kit.Fine(Plank({LOAD_FRONT - 0.01, -HALF_WIDTH, LOAD_FLOOR}, {LOAD_FRONT, HALF_WIDTH, 0.15}, DARK_PRIMARY));
+	kit.Fine(Plank({LOAD_FRONT - 0.01, -HALF_WIDTH, LOAD_FLOOR}, {LOAD_FRONT, HALF_WIDTH, 0.15}, DARK_PRIMARY).Gloss(PAINT_GLOSS));
 	return kit.Done();
 }
 
@@ -111,7 +111,7 @@ static ModelMesh LivestockTruck(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Lorry(kit);
-	kit.Body(Hull({HALF_WIDTH + 0.002, LOAD_FLOOR, 0.165, 0.008}, -FRONT, LOAD_FRONT).Paint(MUTED_PRIMARY));
+	kit.Body(Hull({HALF_WIDTH + 0.002, LOAD_FLOOR, 0.165, 0.008}, -FRONT, LOAD_FRONT).Paint(MUTED_PRIMARY).Gloss(PAINT_GLOSS));
 	for (double z : {0.075, 0.11, 0.14}) kit.Fine(SideBand(-0.205, LOAD_FRONT - 0.01, HALF_WIDTH + 0.002, z, z + 0.01, SLAT_GAP));
 	return kit.Done();
 }

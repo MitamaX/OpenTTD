@@ -38,9 +38,6 @@ inline constexpr uint32_t SECONDARY = PaintworkTone(Paintwork::Secondary, 1.0);
 inline constexpr uint32_t DARK_SECONDARY = PaintworkTone(Paintwork::Secondary, 0.7);
 inline constexpr uint32_t CARGO = PaintworkTone(Paintwork::Cargo, 1.0);
 inline constexpr uint32_t BRIGHT_CARGO = PaintworkTone(Paintwork::Cargo, 1.2);
-inline constexpr double GLASS_GLOSS = 0.8;
-inline constexpr double PAINT_GLOSS = 0.45;
-inline constexpr double METAL_GLOSS = 0.7;
 inline constexpr double LAMP_GLOW = 0.8;
 
 /* A body's cross section square to its length: half its width, its foot and top, and how much its top edges are bevelled. */

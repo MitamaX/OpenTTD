@@ -1,6 +1,3 @@
-const float PANE_REFLECTANCE = 0.08;
-const float ROOM_SUNLIT_SHARE = 0.12;
-
 const int MIRRORED_CLOUD_OCTAVES = 3;
 const vec3 UPWARD = vec3(0.0, 0.0, 1.0);
 const vec2 STREET_WIDTHS = vec2(1.0, 2.4);
@@ -21,14 +18,6 @@ const vec2 FRONTAGE_RESOLVED_STOREYS = vec2(0.25, 0.6);
 const ivec2 FRONTAGE_SALT = ivec2(5923, 3301);
 const vec3 TOWN_WALL_PAINTS[] = TOWN_WALL_TONES;
 const vec3 CANDY_PAINTS[] = CANDY_TONES;
-
-struct Pane {
-	vec3 room;
-	vec3 film;
-	float reflectance;
-	float daylight;
-	vec3 lamp;
-};
 
 struct Street {
 	vec3 point;
@@ -110,15 +99,4 @@ vec3 Mirrored(Street street, vec3 way)
 	Frontage frontage = FrontageAt(along, dot(hit.xy, street.outward));
 	if (above >= frontage.height) return Beyond(street, way);
 	return FrontageSeen(frontage, above, 1.0 / TilePixelsAt(distance(Eye(), street.point) + run), street.outward);
-}
-
-vec4 PaneRadiance(Pane pane, Street street, vec3 normal, vec3 view, float roughness, float occlusion, float sunlit)
-{
-	Coat coat = Coat(roughness, pane.reflectance);
-	vec3 sun = Sunlight(normal, sunlit);
-	vec3 ambient = AmbientLight(normal);
-	float mirrored = SurroundingReflectance(coat, max(dot(normal, view), 0.0));
-	vec3 through = Diffuse(pane.room, (sun * ROOM_SUNLIT_SHARE + ambient * occlusion) * pane.daylight + pane.lamp, mirrored);
-	vec3 surroundings = Mirrored(street, reflect(-view, normal)) * mirrored * occlusion;
-	return vec4(through + pane.film * (surroundings + sun * Highlight(normal, view, SunDirection(), coat)), AmbientShare(ambient, sun));
 }
