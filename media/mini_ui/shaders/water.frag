@@ -96,11 +96,11 @@ const float INLAND_SPARKLE = 2.2;
 
 const vec3 SEA_ABSORPTION = vec3(1.6, 0.55, 0.35);
 const vec3 SEA_SCATTER = vec3(0.004, 0.022, 0.060);
-const vec3 RIVER_ABSORPTION = vec3(3.0, 1.8, 1.6);
-const vec3 RIVER_SCATTER = vec3(0.026, 0.066, 0.068);
+const vec3 RIVER_ABSORPTION = vec3(3.8, 1.3, 1.5);
+const vec3 RIVER_SCATTER = vec3(0.012, 0.055, 0.078);
 const vec3 CANAL_ABSORPTION = vec3(2.6, 1.6, 1.4);
 const vec3 CANAL_SCATTER = vec3(0.022, 0.060, 0.074);
-const float INLAND_MURK = 0.45;
+const float INLAND_MURK = 0.2;
 const float MURK_DEPTH = 0.5;
 const vec3 TOY_ABSORPTION = vec3(2.4, 0.6, 0.3);
 const vec3 TOY_SCATTER = vec3(0.012, 0.075, 0.2);
