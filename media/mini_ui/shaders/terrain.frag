@@ -1508,15 +1508,28 @@ Blanket BlanketOver(Site site)
 	return Landscape() == LANDSCAPE_ARCTIC ? Snowfield(site, cover) : Sandfield(site, cover);
 }
 
-/* The ground's own colour where it meets the map's edge, as it would lie level there. */
-vec3 EdgeTurf(Detail detail, float levels_per_pixel)
-{
-	vec2 p = v_world.xy;
-	Grain grain = GrainAt(p, detail);
+struct Underfoot {
+	Grain grain;
+	Seams seams;
 	Site site;
-	Patch ground = Surface(p, SeamsAt(p), grain, ReliefAt(UPRIGHT, levels_per_pixel), 0.0, site);
-	Blanket blanket = BlanketOver(site);
-	return mix(Altitude(ground.tone), blanket.tone, blanket.cover);
+	Patch ground;
+	Blanket blanket;
+};
+
+Underfoot UnderfootAt(vec2 p, Grain grain, Relief relief, float armoured)
+{
+	Underfoot underfoot;
+	underfoot.grain = grain;
+	underfoot.seams = SeamsAt(p);
+	underfoot.ground = Surface(p, underfoot.seams, grain, relief, armoured, underfoot.site);
+	underfoot.blanket = BlanketOver(underfoot.site);
+	return underfoot;
+}
+
+/* The ground's own colour where it meets the map's edge, as it would lie level there. */
+vec3 EdgeTurf(Underfoot underfoot)
+{
+	return mix(Altitude(underfoot.ground.tone), underfoot.blanket.tone, underfoot.blanket.cover);
 }
 
 /* Where the network's meshes stand opaque they hide its bands, which are then not worked out at all. */
@@ -1526,16 +1539,16 @@ Network BandsAt(vec2 p, mat2 pixel)
 	return NetworkAt(p, pixel);
 }
 
-Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, float levels_per_pixel, vec3 normal)
+Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail, float levels_per_pixel, vec3 normal, Underfoot underfoot)
 {
-	Grain grain = GrainAt(p, detail);
-	Seams seams = SeamsAt(p);
+	Grain grain = underfoot.grain;
+	Seams seams = underfoot.seams;
+	Site site = underfoot.site;
+	Blanket blanket = underfoot.blanket;
 	Canopy forest = Forest(p);
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
-	Site site;
-	Patch surface = Littered(Surface(p, seams, grain, relief, water.sea > 0.0 ? Armoured(p) : 0.0, site), forest, p, grain);
-	Blanket blanket = BlanketOver(site);
+	Patch surface = Littered(underfoot.ground, forest, p, grain);
 	float dry = 1.0 - water.cover;
 	float blanketed = blanket.cover * dry;
 	normal = normalize(normal - vec3(blanket.slope * blanketed, 0.0));
@@ -1574,15 +1587,18 @@ void main()
 	relief.steep *= 1.0 - clamp(v_mark / FILL_MARK, 0.0, 1.0);
 	float face_pixels = 1.0 / max(max(length(pixel[0]), length(pixel[1])), levels_per_pixel * LevelRise());
 
+	bool edge = v_mark > EDGE_MARK && v_mark <= WALL_MARK;
+	Grain grain = GrainAt(p, detail);
+
 	Shade shade;
-	if (v_mark > EDGE_MARK && v_mark <= WALL_MARK) {
-		shade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(detail, levels_per_pixel))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
-	} else if (OutsideMap(p)) {
-		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail), 1.0)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
+	if (!edge && OutsideMap(p)) {
+		shade = Shade(Greyed(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), grain, 1.0)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else if (v_mark > WALL_MARK) {
 		shade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else {
-		shade = GroundShade(p, pixel, water, relief, detail, levels_per_pixel, normal);
+		Underfoot underfoot = UnderfootAt(p, grain, edge ? ReliefAt(UPRIGHT, levels_per_pixel) : relief, !edge && water.sea > 0.0 ? Armoured(p) : 0.0);
+		if (edge) shade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(underfoot))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
+		else shade = GroundShade(p, pixel, water, relief, detail, levels_per_pixel, normal, underfoot);
 	}
 	frag_colour = Lit(shade);
 }
