@@ -454,8 +454,8 @@ vec3 SkyOnWater(vec3 way, Surface surface, vec3 view, float reflectance, out flo
 /* The solid world a way from the water passes behind first on screen, and how surely, fading out toward the screen's edges and the way's end. */
 vec4 MirroredWorld(vec3 from, vec3 way)
 {
-	for (int step = 1; step <= MIRROR_STEPS; step++) {
-		float share = float(step) / float(MIRROR_STEPS);
+	for (int tap = 1; tap <= MIRROR_STEPS; tap++) {
+		float share = float(tap) / float(MIRROR_STEPS);
 		vec4 clip = u_view_projection * vec4(from + way * MIRROR_REACH * share * share, 1.0);
 		vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
 		if (clip.w <= 0.0 || any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) break;

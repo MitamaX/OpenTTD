@@ -110,16 +110,16 @@ vec4 SurfaceRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlu
 }
 
 /* The light a surface point sends toward the eye with the share of the sun that reaches it given, and how brightly crystals in it glint in the sun. */
-vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 position, Coat coat, float occlusion, float glint, float sunlit)
+vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlusion, float glint, float sunlit)
 {
 	vec3 sun = Sunlight(normal, sunlit);
-	return SurfaceRadiance(albedo, normal, normalize(Eye() - position), coat, occlusion, sun, sun) + vec4(sun * glint, 0.0);
+	return SurfaceRadiance(albedo, normal, view, coat, occlusion, sun, sun) + vec4(sun * glint, 0.0);
 }
 
 /* The light a surface point sends toward the eye, the sun's shut out where it is shadowed, with albedo in linear light and the point and normal in render space. */
 vec4 Radiance(vec3 albedo, vec3 normal, vec3 position, Coat coat, float occlusion)
 {
-	return SunlitRadiance(albedo, normal, position, coat, occlusion, 0.0, SunVisibility(position, normal));
+	return SunlitRadiance(albedo, normal, ToEye(position), coat, occlusion, 0.0, SunVisibility(position, normal));
 }
 
 /* The sun through something thin: it wraps on past where the surface turns away from it, and glows through where it is seen against it. */

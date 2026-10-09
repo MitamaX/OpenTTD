@@ -70,6 +70,11 @@ vec3 Eye()
 	return u_eye.xyz;
 }
 
+vec3 ToEye(vec3 position)
+{
+	return normalize(Eye() - position);
+}
+
 /* How far the eye stands from the ground point the view turns about. */
 float FocusDistance()
 {

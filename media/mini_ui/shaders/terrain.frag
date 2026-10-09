@@ -466,7 +466,7 @@ vec4 Lit(Shade shade)
 	vec3 position = RenderPoint(v_world);
 	float scattered = SCATTERED_SHADOW * smoothstep(0.0, SCATTERING_LEVELS, -v_world.z);
 	float sunlit = mix(SunVisibility(position, shade.normal), 1.0, scattered);
-	return SunlitRadiance(Linear(shade.albedo), shade.normal, position, Coat(shade.roughness, DIELECTRIC_REFLECTANCE), shade.occlusion, shade.glint * GLINT_GAIN, sunlit);
+	return SunlitRadiance(Linear(shade.albedo), shade.normal, ToEye(position), Coat(shade.roughness, DIELECTRIC_REFLECTANCE), shade.occlusion, shade.glint * GLINT_GAIN, sunlit);
 }
 
 /* How steeply the ground leans at the fragment, in levels per tile. */
@@ -832,12 +832,14 @@ bool HasCorner(Ground corners[4], uint material)
 	return corners[0].material == material || corners[1].material == material || corners[2].material == material || corners[3].material == material;
 }
 
-bool GrassAmong(Ground corners[4])
+bool ShowsClimate(uint material)
 {
-	for (int i = 0; i < 4; i++) {
-		if (IsNatural(corners[i].material) || corners[i].material == MAT_ROCKS) return true;
-	}
-	return false;
+	return IsNatural(material) || material == MAT_ROCKS;
+}
+
+bool AnyShowsClimate(Ground corners[4])
+{
+	return ShowsClimate(corners[0].material) || ShowsClimate(corners[1].material) || ShowsClimate(corners[2].material) || ShowsClimate(corners[3].material);
 }
 
 float Ragged(vec2 p, Grain grain)
@@ -860,22 +862,38 @@ float Moisture(vec2 p, Relief relief)
 	return drifts + waterside - upland * UPLAND_DRYING - dot(relief.facing, SUNNY_SIDE) * SUNNY_SLOPE_DRYING;
 }
 
-/* The stone and the grass's wetness are only worked out where some ground at the point shows them. */
+bool ClimateMapped()
+{
+	return Landscape() == LANDSCAPE_ARCTIC || Landscape() == LANDSCAPE_TROPIC;
+}
+
+Climate MappedClimate(vec2 p, float ragged, vec2 warp)
+{
+	Climate climate = ClimateAt(p + warp + Drift(p, CLIMATE_SWAY_FREQUENCY, CLIMATE_SWAY) + Drift(p, CLIMATE_FRAY_FREQUENCY, CLIMATE_FRAY));
+	climate.lush = smoothstep(0.15, 0.85, climate.lush + ragged * 0.6);
+	return climate;
+}
+
+Climate WateredClimate(vec2 p, Relief relief)
+{
+	float moisture = Moisture(p, relief);
+	return Climate(0.0, smoothstep(LUSH_MOISTURE.x, LUSH_MOISTURE.y, moisture), 1.0 - smoothstep(PARCHED_MOISTURE.x, PARCHED_MOISTURE.y, moisture));
+}
+
+/* The grass's wetness is only worked out where some ground at the point shows it. */
+Climate SiteClimate(vec2 p, float ragged, Relief relief, Ground corners[4], vec2 warp)
+{
+	if (ClimateMapped()) return MappedClimate(p, ragged, warp);
+	if (Landscape() == LANDSCAPE_TOYLAND || !AnyShowsClimate(corners)) return Climate(0.0, 0.0, 0.0);
+	return WateredClimate(p, relief);
+}
+
+/* The stone is only worked out where some ground at the point shows it. */
 Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4], vec2 warp, float settled)
 {
-	Climate climate = Climate(0.0, 0.0, 0.0);
-	float ragged = 0.0;
-	float trodden = 0.0;
-	if (Landscape() == LANDSCAPE_ARCTIC || Landscape() == LANDSCAPE_TROPIC) {
-		climate = ClimateAt(p + warp + Drift(p, CLIMATE_SWAY_FREQUENCY, CLIMATE_SWAY) + Drift(p, CLIMATE_FRAY_FREQUENCY, CLIMATE_FRAY));
-		ragged = Ragged(p, grain);
-		climate.lush = smoothstep(0.15, 0.85, climate.lush + ragged * 0.6);
-		if (Landscape() == LANDSCAPE_TROPIC) trodden = smoothstep(0.05, 0.4, settled + ragged * 0.4);
-	} else if (Landscape() != LANDSCAPE_TOYLAND && GrassAmong(corners)) {
-		float moisture = Moisture(p, relief);
-		climate.lush = smoothstep(LUSH_MOISTURE.x, LUSH_MOISTURE.y, moisture);
-		climate.parched = 1.0 - smoothstep(PARCHED_MOISTURE.x, PARCHED_MOISTURE.y, moisture);
-	}
+	float ragged = ClimateMapped() ? Ragged(p, grain) : 0.0;
+	Climate climate = SiteClimate(p, ragged, relief, corners, warp);
+	float trodden = Landscape() == LANDSCAPE_TROPIC ? smoothstep(0.05, 0.4, settled + ragged * 0.4) : 0.0;
 	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
 	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
 	bool bared = exposure.scree > 0.0 || armoured || rocky;
@@ -1214,7 +1232,7 @@ float Glint(vec2 p, vec3 normal)
 	vec2 spot = Hash2(cell + ivec2(0, GLINT_LEVEL_STRIDE));
 	float point = 1.0 - smoothstep(0.08, 0.3, length(fract(q) - 0.25 - 0.5 * spot));
 	vec3 facet = normalize(normal + vec3((Hash2(cell + ivec2(GLINT_LEVEL_STRIDE, 0)) - 0.5) * GLINT_SPREAD, 0.0));
-	vec3 half_way = normalize(SunDirection() + normalize(Eye() - RenderPoint(v_world)));
+	vec3 half_way = normalize(SunDirection() + ToEye(RenderPoint(v_world)));
 	return point * pow(max(dot(facet, half_way), 0.0), GLINT_FOCUS) * smoothstep(GLINT_FROM_PIXELS, GLINT_TO_PIXELS, tile_pixels);
 }
 

@@ -102,7 +102,7 @@ void main()
 	vec3 normal = normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0);
 	float foliage = Foliage();
 	float clumps = foliage > 0.0 ? Noise(v_grown * LEAF_CLUMPS_PER_TILE) : 0.5;
-	vec3 view = normalize(Eye() - v_position);
+	vec3 view = ToEye(v_position);
 	vec3 leaves = Bumped(normal, (clumps - 0.5) * LEAF_RELIEF * foliage, view);
 	if (clumps < RAGGED_EDGE * (1.0 - smoothstep(0.0, RAGGED_FACING, abs(dot(normal, view)))) * foliage) discard;
 
