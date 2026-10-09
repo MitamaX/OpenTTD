@@ -422,6 +422,8 @@ struct Patch {
 	vec2 rugged;
 };
 
+const Patch NO_PATCH = Patch(vec3(0.0), vec2(0.0));
+
 struct Site {
 	vec2 p;
 	Grain grain;
@@ -1046,20 +1048,20 @@ Climate SiteClimate(vec2 p, float ragged, Relief relief, Ground corners[4], vec2
 	return WateredClimate(p, relief);
 }
 
-Site SiteAt(vec2 p, Grain grain, Relief relief, float armoured, Ground corners[4], vec2 warp, float settled)
+Site SiteAt(vec2 p, Grain grain, Relief relief, float armoured, Ground corners[4], vec2 warp, float settled, bool sunken)
 {
 	float ragged = ClimateMapped() ? Ragged(p, grain) : 0.0;
 	Climate climate = SiteClimate(p, ragged, relief, corners, warp);
 	float trodden = Landscape() == LANDSCAPE_TROPIC ? smoothstep(TRODDEN_EDGES.x, TRODDEN_EDGES.y, settled + ragged * TRODDEN_RAGGED) : 0.0;
 	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
 	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
-	bool bared = exposure.scree > 0.0 || armoured > 0.0 || rocky;
+	bool bared = !sunken && (exposure.scree > 0.0 || armoured > 0.0 || rocky);
 	Bare bare = bared ? BareAt(p, relief, grain, rocky) : NO_BARE;
 	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden, vec3(0.0));
 }
 
 /* Each distinct ground is shaded once, in a loop the compiler keeps as one copy. */
-Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, bool beached, out Site site)
+Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, bool beached, bool sunken, out Site site)
 {
 	vec2 q = p + seams.warp - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
@@ -1067,7 +1069,8 @@ Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, b
 
 	Ground corners[4] = Ground[4](GroundAt(cell), GroundAt(cell + ivec2(1, 0)), GroundAt(cell + ivec2(0, 1)), GroundAt(cell + ivec2(1, 1)));
 	float shares[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-	site = SiteAt(p, grain, relief, armoured, corners, seams.bend * CLIMATE_WARP, seams.settled);
+	site = SiteAt(p, grain, relief, armoured, corners, seams.bend * CLIMATE_WARP, seams.settled, sunken);
+	if (sunken) return NO_PATCH;
 	Ground distinct[4];
 	float weights[4];
 	int count = 0;
@@ -1083,7 +1086,7 @@ Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, b
 		weights[k] += shares[i];
 	}
 
-	Patch blend = Patch(vec3(0.0), vec2(0.0));
+	Patch blend = NO_PATCH;
 	bool bladed = false;
 	for (int k = 0; k < count; k++) {
 		if (!bladed && (beached || Grassed(distinct[k].material))) {
@@ -1530,14 +1533,16 @@ struct Underfoot {
 	Site site;
 	Patch ground;
 	Blanket blanket;
+	bool sunken;
 };
 
-Underfoot UnderfootAt(vec2 p, Grain grain, Relief relief, float armoured, bool beached)
+Underfoot UnderfootAt(vec2 p, Grain grain, Relief relief, float armoured, bool beached, bool sunken)
 {
 	Underfoot underfoot;
 	underfoot.grain = grain;
 	underfoot.seams = SeamsAt(p);
-	underfoot.ground = Surface(p, underfoot.seams, grain, relief, armoured, beached, underfoot.site);
+	underfoot.sunken = sunken;
+	underfoot.ground = Surface(p, underfoot.seams, grain, relief, armoured, beached, sunken, underfoot.site);
 	underfoot.blanket = BlanketOver(underfoot.site);
 	return underfoot;
 }
@@ -1549,6 +1554,16 @@ vec3 EdgeTurf(Underfoot underfoot)
 }
 
 /* Where the network's meshes stand opaque they hide its bands, which are then not worked out at all. */
+float Drowned(Water water)
+{
+	return max(clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0), water.sea * smoothstep(0.0, DROWNED_LEVELS, -v_world.z));
+}
+
+bool Sunken(Water water)
+{
+	return Drowned(water) >= 1.0 && water.cover >= 1.0;
+}
+
 Network BandsAt(vec2 p, mat2 pixel)
 {
 	if (tile_pixels > NETWORK_OPAQUE_PPT * HIDDEN_BAND_MARGIN) return Network(vec4(0.0), vec2(0.0));
@@ -1564,18 +1579,20 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	Canopy forest = Forest(p);
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
-	Patch surface = Littered(underfoot.ground, forest, p, grain);
+	Patch surface = underfoot.sunken ? underfoot.ground : Littered(underfoot.ground, forest, p, grain);
 	float dry = 1.0 - water.cover;
 	float blanketed = blanket.cover * dry;
 	normal = normalize(normal - vec3(blanket.slope * blanketed, 0.0));
 	vec2 rugged = mix(surface.rugged, blanket.rugged, blanket.cover) * dry;
 	normal = Roughened(normal, detail, rugged);
-	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
-	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p)));
-	land = mix(land, blanket.tone, blanket.cover);
-	float drowned = max(clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0), water.sea * smoothstep(0.0, DROWNED_LEVELS, -v_world.z));
+	float drowned = Drowned(water);
 	float sunk = smoothstep(0.0, RIVERBED_DEEP_MARK, -v_mark);
-	land = mix(Banks(land, water, beach), Seabed(water, grain, sunk), drowned);
+	vec3 land = Seabed(water, grain, sunk);
+	if (!underfoot.sunken) {
+		vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
+		vec3 ground = Altitude(Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p)));
+		land = mix(Banks(mix(ground, blanket.tone, blanket.cover), water, beach), land, drowned);
+	}
 	normal = normalize(mix(normal, UPRIGHT, drowned * water.sea * smoothstep(DROWNED_SHEER.x, DROWNED_SHEER.y, relief.slope)));
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 
@@ -1612,7 +1629,9 @@ void main()
 	} else if (v_mark > WALL_MARK) {
 		shade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 	} else {
-		Underfoot underfoot = UnderfootAt(p, grain, edge ? ReliefAt(UPRIGHT, levels_per_pixel) : relief, !edge && water.sea > 0.0 ? Armoured(p) : 0.0, !edge && water.sea > SANDED_SEA);
+		bool sunken = !edge && Sunken(water);
+		bool shore = !edge && !sunken;
+		Underfoot underfoot = UnderfootAt(p, grain, edge ? ReliefAt(UPRIGHT, levels_per_pixel) : relief, shore && water.sea > 0.0 ? Armoured(p) : 0.0, shore && water.sea > SANDED_SEA, sunken);
 		if (edge) shade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(underfoot))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);
 		else shade = GroundShade(p, pixel, water, relief, detail, levels_per_pixel, normal, underfoot);
 	}
