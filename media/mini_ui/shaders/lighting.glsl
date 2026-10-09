@@ -11,7 +11,6 @@ const float RESPONSE_FIT_FALLOFF = 9.28;
 const float GAMMA = 2.2;
 const float GLOW_FOCUS_POWER = 4.0;
 
-/* How a surface's coat reflects: how rough it is, and how much of the light it reflects head on. */
 struct Coat {
 	float roughness;
 	float reflectance;
@@ -42,7 +41,6 @@ vec3 AmbientLight(vec3 normal)
 	return mix(GroundBounce(), sky, normal.z * 0.5 + 0.5);
 }
 
-/* The sun's light falling on a surface facing this way, by the share of the sun that reaches it. */
 vec3 Sunlight(vec3 normal, float sunlit)
 {
 	return SunRadiance() * max(dot(normal, SunDirection()), 0.0) * sunlit;
@@ -90,7 +88,7 @@ vec3 Sheen(vec3 normal, vec3 view, Coat coat, vec3 ambient)
 	return around * SurroundingReflectance(coat, max(dot(normal, view), 0.0));
 }
 
-/* The share of the light falling on a surface that comes from the sky and the ground around, left in the alpha of what the world draws for the occlusion found over the screen to dim. */
+/* Left in the alpha of what the world draws, for the occlusion found over the screen to dim. */
 float AmbientShare(vec3 ambient, vec3 sun)
 {
 	float around = Luminance(ambient);

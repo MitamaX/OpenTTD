@@ -41,7 +41,6 @@ public:
 	void Clear();
 
 private:
-	/* A tile a train's unit stood on and the pieces it took there. */
 	struct Passage {
 		TileIndex tile = INVALID_TILE;
 		TrackBits track = TRACK_BIT_NONE;

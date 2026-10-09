@@ -358,7 +358,7 @@ struct Site {
 	float trodden;
 };
 
-/* How the tiles' grounds meet about a point: the noise bending their seams and the climate's edges, how far the seams bend off the tiles' sides and how wide they blend, and how far the point lies among a town's or an industry's tiles. */
+/* How the tiles' grounds meet about a point, the noise bending their seams bending the climate's edges as well. */
 struct Seams {
 	vec2 bend;
 	vec2 warp;
@@ -781,7 +781,7 @@ vec2 Bend(vec2 p)
 	return (vec2(Noise(p * 0.9), Noise(p * 0.9 + 41.7)) - 0.5) * 2.0;
 }
 
-/* Open land blends broadly across well bent seams, fields across narrower seams bent a little, and built ground across sharp seams hardly bent; from too far to make out its blocks it all blends as open land. */
+/* From too far to make out its blocks, all ground blends as open land does. */
 Seams SeamsAt(vec2 p)
 {
 	vec2 bend = Bend(p);
@@ -812,8 +812,7 @@ vec2 Drift(vec2 p, float frequency, float reach)
 	return (vec2(Noise(q + 3.3), Noise(q + 9.1)) - 0.5) * 2.0 * reach;
 }
 
-/* How wet temperate ground lies: in broad drifts of wetter and drier land, wetter about water, drier up on the hills and on the slopes facing the midday sun.
- * The midday sun stands on one side of the map, wherever the view's own sun is turned. */
+/* The midday sun stands on one side of the map, wherever the view's own sun is turned. */
 float Moisture(vec2 p, Relief relief)
 {
 	float drifts = (2.0 * Octave(p + 11.3, MOISTURE_FREQUENCY) + Octave(p + 4.9, MOISTURE_DRIFT_FREQUENCY)) / 3.0;

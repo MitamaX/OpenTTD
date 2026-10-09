@@ -1,6 +1,5 @@
 const float SNOW_LINE_PULL = 0.2;
 
-/* What the climate does to the ground at a point: the blanket of snow or sand over it, and how lush or how parched its grass grows. */
 struct Climate {
 	float blanket;
 	float lush;

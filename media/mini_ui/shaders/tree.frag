@@ -46,7 +46,7 @@ float Foliage()
 	return smoothstep(LEAF_TRANSLUCENCY.x, LEAF_TRANSLUCENCY.y, v_translucency) * smoothstep(LEAF_SHOWN_PIXELS.x, LEAF_SHOWN_PIXELS.y, clump_pixels);
 }
 
-/* Leaves vary from tree to tree in brightness and, stand by stand, in hue, freshen toward the tips of the crown and brown as a tree dies; snow lies on what faces up. Wood keeps its colour. */
+/* Wood keeps its colour. */
 vec3 Albedo(vec3 normal)
 {
 	float leafy = Leafy();
@@ -56,7 +56,7 @@ vec3 Albedo(vec3 normal)
 	return mix(albedo, SNOW_COVER, v_snow * leafy * smoothstep(SNOW_SETTLES, SNOW_COVERS, normal.z));
 }
 
-/* The clumps' relief bends the normal by how it slopes across the screen, so each clump is lit on its own bulge; bent, it still faces the eye, as everything seen does. */
+/* The relief bends the normal by how it slopes across the screen, keeping it turned toward the eye as everything seen is. */
 vec3 Bumped(vec3 normal, float relief, vec3 view)
 {
 	vec3 across = dFdx(v_position);

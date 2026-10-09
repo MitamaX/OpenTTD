@@ -36,14 +36,14 @@ inline constexpr std::array<VertexAttribute, 2> TREE_INSTANCE_LAYOUT = {{
 	{4, 4, AttributeType::NormalisedUnsignedByte, offsetof(TreeInstance, look)},
 }};
 
-/* How much smaller or bigger than its age makes it a tree is planted, and how much bigger still toyland's sweets stand. */
+/* How much smaller or bigger than its age alone would make it a tree is planted, and how much bigger still toyland's sweets stand. */
 inline constexpr SeedRange TREE_SPREAD = {0.7, 1.25};
 inline constexpr double TOY_TREE_SCALE = 1.4;
 
 /* A tree's size byte spans its scale from nothing to the largest any tree is planted at. */
 inline constexpr double TREE_LARGEST_SCALE = std::ranges::max(TREE_AGE_SCALES) * TREE_SPREAD.high * TOY_TREE_SCALE;
 
-/* How much lower and taller trees stand between thickets and in them, and how much squatter and taller each grows than its model. */
+/* A tree's size from between thickets to within them, and its height from squatter to taller than its model. */
 inline constexpr std::array<double, 2> TREE_THICKET_SCALES = {0.8, 1.2};
 inline constexpr std::array<double, 2> TREE_STRETCHES = {0.85, 1.2};
 /* The most a tree leans along either map axis, as a share of its height. */

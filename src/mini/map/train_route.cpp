@@ -28,7 +28,6 @@ static auto PickAmongTaken(const TileCoord &tile, const TrackTaken &taken, Pick 
 	return known.has_value() ? known : pick(TRACK_BIT_ALL);
 }
 
-/* A train stands on the nearest piece under a point. */
 static std::optional<Track> StandingOn(const TileCoord &tile, const MapVector &point, const TrackTaken &taken)
 {
 	return PickAmongTaken(tile, taken, [&](TrackBits among) { return TrackUnder(tile, point, among); });

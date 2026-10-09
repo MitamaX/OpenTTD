@@ -18,7 +18,6 @@
 #include "../../track_type.h"
 #include "../core/camera.h"
 
-/* Which of a tile's pieces of track a train is known to take. */
 using TrackTaken = std::function<TrackBits(TileIndex tile)>;
 
 /* A train's way over the game's map from one point to another a few tile sides on, through the middles of the tile sides its track crosses, or straight where none leads there. */

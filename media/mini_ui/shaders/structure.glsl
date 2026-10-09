@@ -103,7 +103,7 @@ vec3 Weathered(vec2 p, vec3 tint, float variety)
 	return mix(weathered, LICHEN, patched * spotted * LICHEN_COVER);
 }
 
-/* Overlapping courses down a weathered slope, each shaded where the course above overhangs it and lit along its own lower edge, and each unit rolled across it as far as roll asks. */
+/* Overlapping courses, each shaded under the one above it and lit along its own lower edge. */
 Clad Tiled(vec2 p, vec3 tint, vec2 units, float variety, float roughness, float roll)
 {
 	float course = p.y * units.y;
