@@ -44,10 +44,15 @@ const float FLOW_STEEPNESS = 0.02;
 const float FLOW_STILLING = 0.6;
 const float PAST_EDGE_FLOW_TILES = 5.0;
 const float MIN_PACE = 0.01;
-const vec2 FLECK_EDGES = vec2(0.66, 0.8);
-const float FLECK_FOAM = 0.5;
+const float FLECK_FOAM = 0.45;
 const float FLECK_SCALE = 4.0;
-const vec2 FLECK_STRETCH = vec2(1.8, 5.0);
+const float FLECK_SHARE = 0.5;
+const float FLECK_MARGIN = 0.25;
+const vec2 FLECK_EXTENT = vec2(0.24, 0.12);
+const float FLECK_SMALLEST = 0.5;
+const float FLECK_SOFTNESS = 0.35;
+const ivec2 FLECK_SEED = ivec2(7919, 3571);
+const vec2 FLECK_PACES = vec2(0.14, 0.3);
 const float LOWEST_PITCH_SINE = 0.3;
 const float RAPIDS_TILT = 0.12;
 const float RAPIDS_REACH = 0.35;
@@ -199,16 +204,27 @@ vec3 Streaked(vec2 q, vec2 run, vec2 stretch)
 	return streaks;
 }
 
-/* Streaks carried downstream: two phases half a cycle apart, each drifting with the flow for a cycle and then starting afresh, blended so neither restart shows. */
-vec3 Current(vec2 p, vec2 flow, vec2 stretch)
+/* Where the current has carried a point's pattern from: two phases half a cycle apart, each drifting with the flow for a cycle and then starting afresh,
+ * and how far toward the trailing one they blend so neither restart shows. */
+struct Carried {
+	vec2 leading;
+	vec2 trailing;
+	float blend;
+};
+
+Carried CarriedBy(vec2 p, vec2 flow)
 {
-	vec2 run = normalize(flow);
 	float cycle = Clock() / FLOW_CYCLE + Noise(p * FLOW_PHASE_SPREAD);
 	float lead = fract(cycle);
 	vec2 drift = flow * FLOW_PACE * FLOW_CYCLE;
-	vec3 leading = Streaked(p - drift * lead, run, stretch);
-	vec3 trailing = Streaked(p - drift * fract(cycle + 0.5) + FLOW_PHASE_SEED, run, stretch);
-	return mix(leading, trailing, abs(1.0 - 2.0 * lead));
+	return Carried(p - drift * lead, p - drift * fract(cycle + 0.5) + FLOW_PHASE_SEED, abs(1.0 - 2.0 * lead));
+}
+
+vec3 Current(vec2 p, vec2 flow, vec2 stretch)
+{
+	vec2 run = normalize(flow);
+	Carried carried = CarriedBy(p, flow);
+	return mix(Streaked(carried.leading, run, stretch), Streaked(carried.trailing, run, stretch), carried.blend);
 }
 
 Surface Stirred(Surface surface, vec2 slope)
@@ -595,12 +611,25 @@ Water WaterAt(vec2 p)
 	return water;
 }
 
+float Speck(vec2 q, vec2 run, vec2 extent)
+{
+	ivec2 cell = ivec2(floor(q));
+	vec2 roll = Hash2(cell + FLECK_SEED);
+	if (roll.x > FLECK_SHARE) return 0.0;
+	vec2 offset = fract(q) - mix(vec2(FLECK_MARGIN), vec2(1.0 - FLECK_MARGIN), Hash2(cell));
+	vec2 local = vec2(dot(offset, run), dot(offset, vec2(-run.y, run.x))) / (extent * mix(FLECK_SMALLEST, 1.0, roll.y));
+	return 1.0 - smoothstep(FLECK_SOFTNESS, 1.0, length(local));
+}
+
 float Flecks(vec2 p, vec2 flow, float pace)
 {
-	float shown = Resolved(FLECK_STRETCH.y * FLECK_SCALE);
+	float shown = Resolved(FLECK_SCALE / (2.0 * FLECK_EXTENT.x)) * smoothstep(FLECK_PACES.x, FLECK_PACES.y, pace);
 	if (shown <= 0.0) return 0.0;
-	vec2 stretch = vec2(FLECK_STRETCH.x / max(PitchSine(), LOWEST_PITCH_SINE), FLECK_STRETCH.y);
-	return smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, Current(p * FLECK_SCALE, flow * FLECK_SCALE, stretch).x) * FLECK_FOAM * shown * pace;
+	vec2 run = flow / pace;
+	vec2 extent = vec2(FLECK_EXTENT.x * max(PitchSine(), LOWEST_PITCH_SINE), FLECK_EXTENT.y);
+	Carried carried = CarriedBy(p, flow);
+	float specks = mix(Speck(carried.leading * FLECK_SCALE, run, extent), Speck(carried.trailing * FLECK_SCALE, run, extent), carried.blend);
+	return specks * FLECK_FOAM * shown;
 }
 
 /* The waves streaked and flecked where the current runs, stilled glassy over a lip and leaning down a drop, ruffled where it races down. */
@@ -655,7 +684,7 @@ vec3 Frothed(vec3 colour, Water water, float flecks, float behind, vec3 light, v
 	float river = water.body.calm * (1.0 - water.body.canal);
 	float floes;
 	float ice = ShoreIce(water.p, water.field.r, floes);
-	float foam = max(max(shore, breakers), max(max(Whitewater(water.p, water.drop, water.glassy) * river, flecks), Wake(water.p))) * (1.0 - ice);
+	float foam = max(max(shore, breakers), max(max(Whitewater(water.p, water.drop, water.glassy), flecks) * river, Wake(water.p))) * (1.0 - ice);
 	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
 	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
 	return colour;
