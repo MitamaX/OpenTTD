@@ -118,11 +118,21 @@ bool SharesBasin(int tx, int ty, int nx, int ny)
 	return WaterFormOf(tx, ty) == WaterForm::Open && WaterFormOf(nx, ny) == WaterForm::Open && SurfaceLevelOf(tx, ty) == SurfaceLevelOf(nx, ny);
 }
 
-bool IsChannel(int tx, int ty)
+static bool RunsAsRiver(int tx, int ty, WaterForm form)
 {
-	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Open) return false;
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != form) return false;
 	WaterTexel water = _world_tiles.WaterAt(TileXY(tx, ty));
 	return water.river > 0 && water.canal == 0;
+}
+
+bool IsChannel(int tx, int ty)
+{
+	return RunsAsRiver(tx, ty, WaterForm::Open);
+}
+
+bool IsRapids(int tx, int ty)
+{
+	return RunsAsRiver(tx, ty, WaterForm::Incline);
 }
 
 bool IsRiverBank(int tx, int ty)
@@ -144,7 +154,7 @@ bool IsRiverBank(int tx, int ty)
 
 bool IsRiverside(int tx, int ty)
 {
-	return IsChannel(tx, ty) || IsRiverBank(tx, ty);
+	return IsChannel(tx, ty) || IsRapids(tx, ty) || IsRiverBank(tx, ty);
 }
 
 static double CornerBedLevel(int cx, int cy)

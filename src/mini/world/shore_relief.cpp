@@ -25,6 +25,7 @@ static constexpr double CHANNEL_STRAIGHTENING_REACH = 0.2;
 /* A river's bed starts falling away just outside the water's outline and reaches the water's full depth this far inside it, in the water field's own measure. */
 static constexpr double CHANNEL_LIP = 0.03;
 static constexpr double CHANNEL_FALL = 0.15;
+static constexpr double RAPIDS_DEPTH = 0.3;
 static constexpr double SLOPE_PROBE = 0.1;
 static constexpr int SPLINE_REACH = 1;
 
@@ -135,18 +136,21 @@ double ShoreRelief::Curved(double x, double y) const
 }
 
 ChannelRelief::ChannelRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners) :
-	TileRelief(tx, ty, corners, CHANNEL_STRAIGHTENING_REACH), bed(bed), ground(tx, ty), surface(SurfaceLevelOf(tx, ty))
+	TileRelief(tx, ty, corners, CHANNEL_STRAIGHTENING_REACH), bed(bed), ground(tx, ty), sheet(tx, ty)
 {
 }
 
-/* Only riverside ground at the river's level meeting this tile's own without a step curves with it, so the two follow the same outline down to the same bed. */
+/* Only riverside ground meeting this tile's own without a step, under water standing at one level with this tile's all along where they meet, curves with it, so the two follow the same outline down to the same bed. */
 bool ChannelRelief::Curves(int nx, int ny) const
 {
-	if (!IsRiverside(nx, ny) || SurfaceLevelOf(nx, ny) != this->surface) return false;
-	TileGround other(nx, ny);
-	for (int cy = std::max(ny, this->ty); cy <= std::min(ny, this->ty) + 1; cy++) {
-		for (int cx = std::max(nx, this->tx); cx <= std::min(nx, this->tx) + 1; cx++) {
-			if (other.Level(cx, cy) != this->ground.Level(cx, cy)) return false;
+	if (!IsRiverside(nx, ny)) return false;
+	TileGround neighbour_ground(nx, ny);
+	WaterSheet neighbour_sheet(nx, ny);
+	for (int hy = 2 * std::max(ny, this->ty); hy <= 2 * (std::min(ny, this->ty) + 1); hy++) {
+		for (int hx = 2 * std::max(nx, this->tx); hx <= 2 * (std::min(nx, this->tx) + 1); hx++) {
+			double x = hx * HALF_TILE;
+			double y = hy * HALF_TILE;
+			if (neighbour_ground.Level(x, y) != this->ground.Level(x, y) || neighbour_sheet.Level(x, y) != this->sheet.Level(x, y)) return false;
 		}
 	}
 	return true;
@@ -154,12 +158,13 @@ bool ChannelRelief::Curves(int nx, int ny) const
 
 double ChannelRelief::Curved(double x, double y) const
 {
-	double inside = SmoothStep(WATERLINE - CHANNEL_LIP, WATERLINE + CHANNEL_FALL, SheetWater(x, y, this->surface));
-	return std::min(this->ground.Level(x, y), this->surface - this->Depth(x, y) * inside);
+	double level = this->sheet.Level(x, y);
+	double inside = SmoothStep(WATERLINE - CHANNEL_LIP, WATERLINE + CHANNEL_FALL, SheetWater(x, y, level));
+	return std::min(this->ground.Level(x, y), level - this->Depth(x, y, level) * inside);
 }
 
 /* How deep the water stands at a point once well inside its outline: the depth under the middles of the tiles around, spread between them. */
-double ChannelRelief::Depth(double x, double y) const
+double ChannelRelief::Depth(double x, double y, double level) const
 {
 	double qx = x - HALF_TILE;
 	double qy = y - HALF_TILE;
@@ -167,13 +172,19 @@ double ChannelRelief::Depth(double x, double y) const
 	int cy = static_cast<int>(std::floor(qy));
 	double fx = qx - cx;
 	double fy = qy - cy;
-	double north = std::lerp(this->CentreDepth(cx, cy), this->CentreDepth(cx + 1, cy), fx);
-	double south = std::lerp(this->CentreDepth(cx, cy + 1), this->CentreDepth(cx + 1, cy + 1), fx);
+	double north = std::lerp(this->CentreDepth(cx, cy, level), this->CentreDepth(cx + 1, cy, level), fx);
+	double south = std::lerp(this->CentreDepth(cx, cy + 1, level), this->CentreDepth(cx + 1, cy + 1, level), fx);
 	return std::lerp(north, south, fy);
 }
 
-double ChannelRelief::CentreDepth(int cx, int cy) const
+double ChannelRelief::CentreDepth(int cx, int cy, double level) const
 {
-	if (WaterFormOf(cx, cy) != WaterForm::Open || SurfaceLevelOf(cx, cy) != this->surface) return 0.0;
-	return this->surface - this->bed.Level(2 * cx + 1, 2 * cy + 1);
+	return this->SunkUnder(cx, cy) * Joining(cx, cy, level);
+}
+
+double ChannelRelief::SunkUnder(int cx, int cy) const
+{
+	if (IsRapids(cx, cy)) return RAPIDS_DEPTH;
+	if (WaterFormOf(cx, cy) != WaterForm::Open) return 0.0;
+	return SurfaceLevelOf(cx, cy) - this->bed.Level(2 * cx + 1, 2 * cy + 1);
 }

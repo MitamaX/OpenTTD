@@ -25,5 +25,6 @@ inline constexpr double SHEET_REACH = 1.0;
 /* How far a point lies inside the water of a level sheet, as the water shaders draw it: the water of every tile joining the sheet smoothed by a cubic B-spline,
  * read about the point frayed the way natural shores fray. */
 double SheetWater(double x, double y, double level);
+double Joining(int tx, int ty, double level);
 
 #endif /* MINI_WORLD_WATER_OUTLINE_H */

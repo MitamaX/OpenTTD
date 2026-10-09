@@ -17,6 +17,7 @@
 #include "../core/camera.h"
 #include "../map/tile_shapes.h"
 #include "seabed.h"
+#include "water_sheet.h"
 
 /* A coast tile with nothing standing on it or spanning it, whose ground may curve without lifting anything off it. */
 bool IsBareCoast(int tx, int ty);
@@ -78,12 +79,13 @@ private:
 	double Curved(double x, double y) const override;
 	bool Curves(int nx, int ny) const override;
 	double Held(double x, double y, double) const override { return this->ground.Level(x, y); }
-	double Depth(double x, double y) const;
-	double CentreDepth(int cx, int cy) const;
+	double Depth(double x, double y, double level) const;
+	double CentreDepth(int cx, int cy, double level) const;
+	double SunkUnder(int cx, int cy) const;
 
 	const Seabed &bed;
 	TileGround ground;
-	double surface;
+	WaterSheet sheet;
 };
 
 #endif /* MINI_WORLD_SHORE_RELIEF_H */

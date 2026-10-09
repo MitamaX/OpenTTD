@@ -33,6 +33,7 @@ double CentreSink(int tx, int ty);
 bool SharesBasin(int tx, int ty, int nx, int ny);
 /* A tile of level river water, whose bed may follow the water's curved outline. */
 bool IsChannel(int tx, int ty);
+bool IsRapids(int tx, int ty);
 /* A level dry tile with nothing on it beside a river at its own level, onto which the river's curved outline may reach; a sloping one would be cut down to the water in a terrace. */
 bool IsRiverBank(int tx, int ty);
 /* A river or one of its bare banks, whose ground follows the river's outline. */

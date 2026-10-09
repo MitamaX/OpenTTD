@@ -88,6 +88,11 @@ static double JoiningOf(const SheetSpan &span, double level)
 	return 1.0 - SmoothStep(SHEET_HOLD, SHEET_REACH, apart);
 }
 
+double Joining(int tx, int ty, double level)
+{
+	return JoiningOf(SheetSpanOf(tx, ty), level);
+}
+
 static double SheetTexel(int tx, int ty, double level)
 {
 	SheetSpan span = SheetSpanOf(tx, ty);
