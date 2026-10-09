@@ -76,9 +76,13 @@ const int ROLL_TONE = 0;
 const int ROLL_LAMP = 1;
 const int ROLL_BLIND = 2;
 const int ROLL_CURTAIN = 3;
-const int ROLL_PAINT = 4;
+const int ROLL_BLIND_PAINT = 4;
 const int ROLL_WARP = 5;
-const vec2 ROOM_TONES = vec2(0.55, 1.35);
+const int ROLL_DEPTH = 6;
+const int ROLL_CURTAIN_PAINT = 7;
+const int ROLL_WALL_PAINT = 8;
+const int ROLL_FLOOR_PAINT = 9;
+const vec2 ROOM_TONES = vec2(0.45, 1.15);
 const float LIT_ROOM_SHARE = 0.08;
 const float LIT_SHOP_SHARE = 0.6;
 const float LIT_STOREY_SHARE = 0.18;
@@ -103,6 +107,24 @@ const float SILL_PROJECTION = 0.8;
 const float UNDER_SILL_OPENNESS = 0.8;
 const float SASH_WIDTH = 0.4;
 const vec3 SHOPFRONT_FRAME = vec3(0.22);
+const vec3 ROOM_WALLS[4] = vec3[4](vec3(0.78, 0.74, 0.66), vec3(0.70, 0.72, 0.68), vec3(0.80, 0.75, 0.68), vec3(0.64, 0.67, 0.72));
+const vec3 ROOM_FLOORS[3] = vec3[3](vec3(0.44, 0.31, 0.20), vec3(0.38, 0.36, 0.34), vec3(0.54, 0.42, 0.30));
+const vec3 OFFICE_WALL = vec3(0.80, 0.80, 0.78);
+const vec3 OFFICE_FLOOR = vec3(0.36, 0.37, 0.39);
+const vec3 ROOM_CEILING = vec3(0.84, 0.84, 0.82);
+const vec3 FURNITURE = vec3(0.26, 0.23, 0.21);
+const vec2 HOME_DEPTHS = vec2(5.0, 10.0);
+const vec2 OFFICE_DEPTHS = vec2(9.0, 16.0);
+const float ROOM_PARTITION = 0.5;
+const float FLOOR_SLAB = 1.0;
+const float ROOM_SIDE_SHADE = 0.8;
+const float ROOM_FAR_LIGHT = 0.22;
+const float ROOM_DEEPEST = 16.0;
+const float FURNITURE_HEIGHT = 2.0;
+const float FURNITURE_PER_TEXEL = 0.45;
+const float FURNITURE_SEED = 17.0;
+const float FURNITURE_GAPS = 0.45;
+const vec2 ROOM_RESOLVED_PIXELS = vec2(0.5, 1.2);
 const vec2 COLUMNS_FADE = vec2(1.2, 2.6);
 const vec2 STOREYS_FADE = vec2(2.6, 4.5);
 
@@ -141,6 +163,16 @@ struct Outlook {
 vec3 InTexels(vec3 way)
 {
 	return vec3(way.x, way.y / FORM_HEIGHT_SCALE, way.z);
+}
+
+vec2 SightShift(Outlook outlook)
+{
+	return -outlook.eye.xy / max(outlook.eye.z, LOWEST_FACING);
+}
+
+vec2 Heading(vec2 shift)
+{
+	return sign(shift) * max(abs(shift), vec2(MIN_SPREAD));
 }
 
 /* Which way out of the opening its nearest edge faces, and how far outside it a point lies, in texels; inside is negative. */
@@ -184,11 +216,19 @@ struct Room {
 	vec3 blind;
 	float drawn;
 	vec3 curtain;
+	float depth;
+	vec3 wall;
+	vec3 floor;
 };
 
 float Roll(ivec2 window, uint seed, int roll)
 {
 	return Hash(window * WINDOW_SALT + ivec2(int(seed), roll * ROLL_STRIDE));
+}
+
+uint Picked(ivec2 window, uint seed, int roll, int count)
+{
+	return uint(min(Roll(window, seed, roll) * float(count), float(count - 1)));
 }
 
 float Chosen(float die, float share, vec2 span)
@@ -217,11 +257,39 @@ Room RoomBehind(Bay bay, uint grid, uint seed)
 	bool offices = HoldsOffices(grid);
 	bool lit_storey = offices && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
 	float lit = bay.opening.kind == OPEN_SHOP ? LIT_SHOP_SHARE : lit_storey ? LIT_IN_LIT_STOREY : LIT_ROOM_SHARE;
-	float drop = offices ? Chosen(Roll(storey, seed, ROLL_BLIND), BLINDED_STOREY_SHARE, BLIND_DROPS) : Chosen(Roll(bay.window, seed, ROLL_BLIND), BLINDED_ROOM_SHARE, BLIND_DROPS);
-	float drawn = offices ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
-	uint paint = offices ? seed : uint(Roll(bay.window, seed, ROLL_PAINT) * float(BLINDS.length() * CURTAINS.length()));
-	return Room(mix(ROOM_TONES.x, ROOM_TONES.y, Roll(bay.window, seed, ROLL_TONE)), Roll(bay.window, seed, ROLL_LAMP) < lit ? 1.0 : 0.0,
-		drop, BLINDS[paint % (offices ? OFFICE_BLINDS : uint(BLINDS.length()))], drawn, CURTAINS[paint % uint(CURTAINS.length())]);
+	vec2 depths = offices ? OFFICE_DEPTHS : HOME_DEPTHS;
+	Room room;
+	room.tone = mix(ROOM_TONES.x, ROOM_TONES.y, Roll(bay.window, seed, ROLL_TONE));
+	room.lamp = Roll(bay.window, seed, ROLL_LAMP) < lit ? 1.0 : 0.0;
+	room.drop = offices ? Chosen(Roll(storey, seed, ROLL_BLIND), BLINDED_STOREY_SHARE, BLIND_DROPS) : Chosen(Roll(bay.window, seed, ROLL_BLIND), BLINDED_ROOM_SHARE, BLIND_DROPS);
+	room.blind = BLINDS[offices ? seed % OFFICE_BLINDS : Picked(bay.window, seed, ROLL_BLIND_PAINT, BLINDS.length())];
+	room.drawn = offices ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
+	room.curtain = CURTAINS[Picked(bay.window, seed, ROLL_CURTAIN_PAINT, CURTAINS.length())];
+	room.depth = mix(depths.x, depths.y, Roll(bay.window, seed, ROLL_DEPTH));
+	room.wall = offices ? OFFICE_WALL : ROOM_WALLS[Picked(bay.window, seed, ROLL_WALL_PAINT, ROOM_WALLS.length())];
+	room.floor = offices ? OFFICE_FLOOR : ROOM_FLOORS[Picked(bay.window, seed, ROLL_FLOOR_PAINT, ROOM_FLOORS.length())];
+	return room;
+}
+
+vec3 Furnished(Room room, vec2 hit, float floor)
+{
+	bool furniture = hit.y - floor < FURNITURE_HEIGHT && Noise(vec2(hit.x * FURNITURE_PER_TEXEL, room.tone * FURNITURE_SEED)) > FURNITURE_GAPS;
+	return furniture ? FURNITURE : room.wall;
+}
+
+vec3 RoomSeen(Room room, Bay bay, uint grid, Outlook outlook)
+{
+	vec2 shift = SightShift(outlook);
+	vec2 heading = Heading(shift);
+	float half_width = FACADE_PITCH[grid] * 0.5 - ROOM_PARTITION;
+	float floor = -bay.opening.sill;
+	float ceiling = floor + (bay.window.y == 0 ? FACADE_GROUND[grid] : FACADE_STOREY[grid]) - FLOOR_SLAB;
+	vec2 reach = (vec2(heading.x > 0.0 ? half_width : -half_width, heading.y > 0.0 ? ceiling : floor) - bay.at) / heading;
+	float sunk = min(room.depth, min(reach.x, reach.y));
+	vec2 hit = bay.at + shift * sunk;
+	vec3 surface = sunk >= room.depth ? Furnished(room, hit, floor) : reach.y < reach.x ? (heading.y > 0.0 ? ROOM_CEILING : room.floor) : room.wall * ROOM_SIDE_SHADE;
+	float daylight = mix(1.0, ROOM_FAR_LIGHT, sunk / ROOM_DEEPEST);
+	return surface * room.tone * mix(daylight, 1.0, room.lamp);
 }
 
 Clad PaneOver(vec3 room, float lamp)
@@ -229,11 +297,12 @@ Clad PaneOver(vec3 room, float lamp)
 	return Clad(room, FACING_OUT, PANE_ROUGHNESS, 1.0, 1.0, 1.0, lamp);
 }
 
-Clad Glazing(Bay bay, uint grid, uint seed)
+Clad Glazing(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 {
 	Room room = RoomBehind(bay, grid, seed);
 	Opening opening = bay.opening;
-	vec3 seen = DIM_ROOM * room.tone;
+	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, pixel);
+	vec3 seen = resolved > 0.0 ? mix(DIM_ROOM * room.tone, RoomSeen(room, bay, grid, outlook), resolved) : DIM_ROOM * room.tone;
 	if (bay.at.y > opening.height * (1.0 - room.drop)) seen = room.blind;
 	else if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) seen = room.curtain;
 	Clad clad = PaneOver(seen, room.lamp);
@@ -242,7 +311,7 @@ Clad Glazing(Bay bay, uint grid, uint seed)
 }
 
 /* What fills an opening: glass behind its bars and frame, a painted door, or the slats of a shutter. */
-Clad Filling(Bay bay, uint grid, uint seed, float pixel)
+Clad Filling(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 {
 	Opening opening = bay.opening;
 	vec2 at = bay.at;
@@ -257,7 +326,7 @@ Clad Filling(Bay bay, uint grid, uint seed, float pixel)
 	bool sashed = opening.kind == OPEN_WINDOW;
 	bool rimmed = OutsideOpening(opening, at) > -max(sashed ? SASH_WIDTH : 0.6, pixel);
 	if (rimmed || OnMuntin(opening, at, pixel)) return Matte(sashed ? FramePaint(seed) : SHOPFRONT_FRAME, 0.5);
-	return Glazing(bay, grid, seed);
+	return Glazing(bay, grid, seed, outlook, pixel);
 }
 
 float RecessOpenness(float sunk)
@@ -272,15 +341,10 @@ float SunThrough(Opening opening, vec2 at, float sunk, vec3 sun)
 	return 1.0 - smoothstep(-SHADOW_SOFTNESS, SHADOW_SOFTNESS, OutsideOpening(opening, mouth));
 }
 
-vec2 SightShift(Outlook outlook)
-{
-	return -outlook.eye.xy / max(outlook.eye.z, LOWEST_FACING);
-}
-
 Clad Reveal(Clad wall, Opening opening, vec2 at, float depth, Outlook outlook)
 {
 	vec2 shift = SightShift(outlook);
-	vec2 heading = sign(shift) * max(abs(shift), vec2(MIN_SPREAD));
+	vec2 heading = Heading(shift);
 	vec2 edges = vec2(heading.x > 0.0 ? opening.width * 0.5 : -opening.width * 0.5, heading.y > 0.0 ? opening.height : 0.0);
 	vec2 reach = (edges - at) / heading;
 	float sunk = clamp(min(reach.x, reach.y), 0.0, depth);
@@ -297,7 +361,7 @@ Clad Recessed(Clad wall, Bay bay, uint grid, uint seed, Outlook outlook, float p
 	Opening opening = bay.opening;
 	float depth = Mullioned(grid) ? CURTAIN_RECESS : RECESS_DEPTH;
 	Bay sunk = Bay(opening, bay.at + SightShift(outlook) * depth, bay.window);
-	Clad filling = Filling(sunk, grid, seed, pixel);
+	Clad filling = Filling(sunk, grid, seed, outlook, pixel);
 	filling.occlusion = RecessOpenness(depth);
 	filling.sunlit = SunThrough(opening, sunk.at, depth, outlook.sun);
 	float behind = OutsideOpening(opening, sunk.at);

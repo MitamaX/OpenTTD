@@ -24,7 +24,7 @@ const float LICHEN_SPOT_MEAN = 0.25;
 const float LICHEN_SPOT_SEED = 6.1;
 const float LICHEN_COVER = 0.45;
 const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
-const vec3 DIM_ROOM = vec3(0.4, 0.38, 0.35);
+const vec3 DIM_ROOM = vec3(0.3, 0.29, 0.27);
 
 /* What a point of a building is: its colour before light, which way its surface faces across, up and out of the face,
  * how rough and how much glass it is, how open it lies to the sky and to the sun, and how brightly lamps light the room behind its glass. */
