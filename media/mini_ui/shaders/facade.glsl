@@ -107,14 +107,15 @@ const int ROLL_LAMP = 1;
 const int ROLL_BLIND = 2;
 const int ROLL_CURTAIN = 3;
 const int ROLL_BLIND_PAINT = 4;
-const int ROLL_WARP = 5;
 const int ROLL_DEPTH = 6;
 const int ROLL_CURTAIN_PAINT = 7;
 const int ROLL_WALL_PAINT = 8;
 const int ROLL_FLOOR_PAINT = 9;
 const int ROLL_LAMP_PAINT = 10;
 
-const vec2 PANE_WARP = vec2(0.03, 0.08);
+const vec2 PANE_WARP = vec2(0.015, 0.035);
+const float PANE_WARP_SPAN = 2.5;
+const vec2 PANE_WARP_SEED = vec2(5.3, 9.1);
 const float PANE_ROUGHNESS = 0.06;
 const float GLAZED_SHARE = 0.85;
 const vec2 ROOM_TONES = vec2(0.45, 1.15);
@@ -513,11 +514,18 @@ Clad SeenThrough(Room room, Bay bay, uint grid, Outlook outlook, float pixel)
 	return resolved > 0.0 ? Mixed(mean, RoomSeen(room, bay, grid, outlook), resolved) : mean;
 }
 
+/* Neighbouring panes lean alike, the lean turning slowly over a few windows across and up the facade, so what they mirror bends instead of breaking up. */
+vec3 PaneLean(ivec2 window, uint seed)
+{
+	vec2 p = vec2(window) / PANE_WARP_SPAN + float(seed) * PANE_WARP_SEED;
+	return vec3((vec2(Noise(p), Noise(p + PANE_WARP_SEED)) - 0.5) * PANE_WARP, 1.0);
+}
+
 Clad Glazing(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return Bulged(ToyPaneOf(bay, seed), bay.opening, bay.at);
 	Clad clad = SeenThrough(RoomBehind(bay, grid, seed), bay, grid, outlook, pixel);
-	clad.facing = vec3((Hash2(Die(bay.window, seed, ROLL_WARP)) - 0.5) * PANE_WARP, 1.0);
+	clad.facing = PaneLean(bay.window, seed);
 	return clad;
 }
 
