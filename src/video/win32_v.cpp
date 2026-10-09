@@ -25,6 +25,7 @@
 #include "../library_loader.h"
 #include "../core/utf8.hpp"
 #include "../mini_ui.h"
+#include "../mini/gpu/frame_profile.h"
 #include "win32_v.h"
 #include <windows.h>
 #include <imm.h>
@@ -1108,6 +1109,7 @@ void VideoDriver_Win32Base::MainLoop()
 		if (_exit_game) break;
 
 		this->Tick();
+		ProfileScope sleep_profile("tick", "sleep", ProfileClock::Cpu);
 		this->SleepTillNextTick();
 	}
 
@@ -1714,6 +1716,7 @@ void VideoDriver_Win32OpenGL::Paint()
 	OpenGLBackend::Get()->Paint();
 	if (!this->pointer.Draws()) OpenGLBackend::Get()->DrawMouseCursor();
 
+	ProfileScope swap_profile("tick", "swap", ProfileClock::Cpu);
 	SwapBuffers(this->dc);
 }
 

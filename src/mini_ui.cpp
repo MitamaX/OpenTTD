@@ -845,6 +845,13 @@ bool MiniUiHandleTextInput(std::string_view text, bool marked)
 	return _mini_active && _views.ProcessText(text, marked);
 }
 
+static void CountGameClock()
+{
+	_frame_profile.Count("tick", TimerGameTick::counter);
+	_frame_profile.Count("day", TimerGameEconomy::date.base());
+	_frame_profile.Count("month", TimerGameEconomy::month);
+}
+
 void MiniUiFrame()
 {
 	/* Entering a game activates the mini UI unless the config opts out. */
@@ -876,6 +883,7 @@ void MiniUiFrame()
 	}
 	_camera.SetPeak(_world_tiles.Peak());
 	_tick_clock.Advance(TimerGameTick::counter);
+	CountGameClock();
 	double frame_ms = _tick_clock.FrameMs();
 	_vehicle_motion.Advance(frame_ms);
 	_toast_feed.Age(frame_ms);
