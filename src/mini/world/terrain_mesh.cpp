@@ -52,6 +52,8 @@ static constexpr double GROUND_PROBE = 0.05;
 static constexpr double COPING_RISE = 0.02;
 static constexpr double COPING_DEPTH = 0.05;
 static constexpr double COPING_OVERHANG = 0.012;
+static constexpr double WING_THICKNESS = 0.035;
+static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int COAST_DIVISIONS = 4;
@@ -569,21 +571,49 @@ static CopingEnd CopingAt(const WorldPoint &at, const MapVector &facing)
 	return {Shifted(at, front, 0.0), Shifted(at, front, COPING_RISE), Shifted(at, back, 0.0), Shifted(at, back, COPING_RISE)};
 }
 
-static void AddWingWall(TerrainMesh &mesh, std::span<const WorldPoint> line, const MapVector &facing)
+/* A wing wall's top follows the bank it holds, but stands at least a little over the ground all the way, so it ends in a short upright end rather than running out to a point. */
+static std::vector<WorldPoint> WingTop(std::span<const WorldPoint> line)
 {
-	AddMasonry(mesh, line, facing);
+	std::vector<WorldPoint> top;
+	for (const WorldPoint &at : line) top.push_back({at.x, at.y, std::max(at.level, BedUnder(at.x, at.y) + WING_LEAST_RISE / LevelRise())});
+	return top;
+}
+
+static std::vector<WorldPoint> ShiftedLine(std::span<const WorldPoint> line, const MapVector &by)
+{
+	std::vector<WorldPoint> shifted;
+	for (const WorldPoint &at : line) shifted.push_back(Shifted(at, by, 0.0));
+	return shifted;
+}
+
+/* A wing wall is a slab of stone as thick as its coping, its face and back running down to the ground and its outer end closed, under a coping along its top and round its end. */
+static void AddWingWall(TerrainMesh &mesh, std::span<const WorldPoint> line, const MapVector &facing, const MapVector &onward)
+{
+	std::vector<WorldPoint> front = WingTop(line);
+	std::vector<WorldPoint> back = ShiftedLine(front, facing * -WING_THICKNESS);
+	AddMasonry(mesh, front, facing);
+	std::ranges::reverse(back);
+	AddMasonry(mesh, back, facing * -1.0);
+	std::ranges::reverse(back);
+	const WorldPoint &front_end = front.back();
+	const WorldPoint &back_end = back.back();
+	Vec3 end_facing = Upright(onward);
+	AddStoneQuad(mesh, {front_end, back_end, Grounded(back_end), Grounded(front_end)}, end_facing);
+
 	Vec3 outward = Upright(facing);
 	Vec3 inward = outward * -1.0;
-	for (size_t i = 0; i + 1 < line.size(); i++) {
-		Vec3 along = {line[i + 1].x - line[i].x, line[i + 1].y - line[i].y, (line[i + 1].level - line[i].level) * LevelRise()};
+	for (size_t i = 0; i + 1 < front.size(); i++) {
+		Vec3 along = {front[i + 1].x - front[i].x, front[i + 1].y - front[i].y, (front[i + 1].level - front[i].level) * LevelRise()};
 		Vec3 cap = Normalised(Cross(inward, along));
 		if (cap.z < 0.0) cap = cap * -1.0;
-		CopingEnd from = CopingAt(line[i], facing);
-		CopingEnd to = CopingAt(line[i + 1], facing);
+		CopingEnd from = CopingAt(front[i], facing);
+		CopingEnd to = CopingAt(front[i + 1], facing);
 		AddStoneQuad(mesh, {from.front_top, to.front_top, to.front_foot, from.front_foot}, outward);
 		AddStoneQuad(mesh, {from.back_top, to.back_top, to.front_top, from.front_top}, cap);
 		AddStoneQuad(mesh, {from.back_foot, to.back_foot, to.back_top, from.back_top}, inward);
 	}
+	CopingEnd end = CopingAt(front_end, facing);
+	AddStoneQuad(mesh, {end.front_foot, end.front_top, end.back_top, end.back_foot}, end_facing);
 }
 
 static void AddRampBank(TerrainMesh &mesh, int tx, int ty)
@@ -613,7 +643,7 @@ static void AddRampBank(TerrainMesh &mesh, int tx, int ty)
 		for (size_t i = 0; i + 1 < edges.size(); i++) AddBankStrip(mesh, edges[i], edges[i + 1], FILL_MARK);
 		const auto &end = edges.back().points;
 		abutment[side < 0.0 ? 0 : 1] = end.front();
-		AddWingWall(mesh, end, facing);
+		AddWingWall(mesh, end, facing, run.Right() * side);
 	}
 	AddMasonry(mesh, abutment, facing);
 }
