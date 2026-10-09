@@ -14,6 +14,7 @@ const float STEEP_BARING = 1.1;
 const float SHED_BARING = 0.9;
 const float ALPINE_BARING = 0.9;
 const float SCREE_EXPOSURE = 0.5;
+const float TOY_BARING = 0.55;
 const float ROCK_EXPOSURE = 0.9;
 const float EXPOSURE_BLEND = 0.14;
 const float BLANKET_SLIP_SLOPE = 1.1;
@@ -84,7 +85,7 @@ const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
 const vec3 TOY_TEAL = vec3(0.42, 0.82, 0.6);
 const vec3 TOY_MINT = vec3(0.5, 0.86, 0.48);
 const vec3 TOY_LIME = vec3(0.7, 0.9, 0.42);
-const float TOY_LAWN_CONTRAST = 0.6;
+const float TOY_LAWN_CONTRAST = 0.9;
 const float ROUGH_BARE = 0.6;
 const float TOY_ROUGH_BARE = 0.2;
 const vec3 LUSH_DARK = vec3(0.2, 0.35, 0.17);
@@ -596,11 +597,15 @@ vec3 Stratum(int layer)
 	return mix(ROCK, ROCK_WARM, Hash(ivec2(layer, 7))) * Varied(Hash(ivec2(layer, 19)), LAYER_VARIETY);
 }
 
+vec3 LooseStone()
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyStrataMean() : SCREE;
+}
+
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
 vec3 Scree(Grain grain)
 {
-	vec3 loose = Landscape() == LANDSCAPE_TOYLAND ? ToyStrataMean() : SCREE;
-	vec3 tone = loose * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
+	vec3 tone = LooseStone() * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
 	return tone * mix(1.0, 1.18, grain.stones) * Hollowed(grain, STONY_HOLLOWS);
 }
 
@@ -646,7 +651,8 @@ Exposure ExposureAt(Relief relief, Grain grain, float blanket)
 {
 	float altitude = AltitudeShare();
 	float ragged = (grain.local - 0.5) * 0.7 + (grain.fine - 0.5) * 0.3 + (grain.micro - 0.5) * 0.15;
-	float bare = relief.steep * (STEEP_BARING + blanket * SHED_BARING) + smoothstep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING + ragged;
+	float baring = Landscape() == LANDSCAPE_TOYLAND ? TOY_BARING : 1.0;
+	float bare = (relief.steep * (STEEP_BARING + blanket * SHED_BARING) + smoothstep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING) * baring + ragged;
 	float scree = smoothstep(SCREE_EXPOSURE - EXPOSURE_BLEND, SCREE_EXPOSURE + EXPOSURE_BLEND, bare);
 	float rock = smoothstep(ROCK_EXPOSURE - EXPOSURE_BLEND, ROCK_EXPOSURE + EXPOSURE_BLEND, bare);
 	return Exposure(scree, rock);
@@ -677,12 +683,12 @@ Patch Exposed(Patch ground, Site site)
 Patch Rough(Grain grain, vec2 p, Climate climate)
 {
 	vec3 green = GrassTone(grain.broad, climate) * 0.9;
-	vec3 dry = mix(green, ROUGH_TINT, 0.5);
+	vec3 dry = mix(green, Landscape() == LANDSCAPE_TOYLAND ? TOY_LIME : ROUGH_TINT, 0.5);
 	float clumps = smoothstep(0.35, 0.65, Octave(p, 2.3));
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
 	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
 	float open = smoothstep(0.58, 0.8, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
-	vec3 stony = mix(Soil(), SCREE, 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
+	vec3 stony = mix(Soil(), LooseStone(), 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
 	return Patch(mix(scrub, stony, open * (Landscape() == LANDSCAPE_TOYLAND ? TOY_ROUGH_BARE : ROUGH_BARE)), ROUGH_RUGGED);
 }
 
