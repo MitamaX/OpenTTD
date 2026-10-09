@@ -168,6 +168,9 @@ const float STONE_PATCHES_PER_TILE = 1.7;
 const float STONE_GAPS = 0.3;
 const float PALE_STONE = 1.15;
 const float BOULDERS_PER_TILE = 5.5;
+const vec2 ARMOUR_REACH = vec2(0.3, 0.7);
+const float ARMOUR_RAGS_PER_TILE = 2.3;
+const float ARMOUR_RAGGED = 0.4;
 const float MICRO_PER_TILE = 17.0;
 const float CLUMPS_PER_TILE = 3.3;
 const float LOCAL_PER_TILE = 1.3;
@@ -375,7 +378,7 @@ struct Site {
 	Relief relief;
 	Exposure exposure;
 	Bare bare;
-	bool armoured;
+	float armoured;
 	Climate climate;
 	float ragged;
 	float trodden;
@@ -723,11 +726,24 @@ bool CarriesWay(ivec2 tile)
 	return (ways.x | ways.y | ways.z) != 0u;
 }
 
-/* A shore tile carrying or beside a railway or a road is heaped with stone against the sea. */
-bool Armoured(vec2 p)
+/* A shore is heaped with stone against the sea near a tile carrying a railway or a road, giving way to the beach along a ragged edge. */
+float Armoured(vec2 p)
 {
 	ivec2 tile = ivec2(floor(p));
-	return CarriesWay(tile) || CarriesWay(tile + ivec2(1, 0)) || CarriesWay(tile - ivec2(1, 0)) || CarriesWay(tile + ivec2(0, 1)) || CarriesWay(tile - ivec2(0, 1));
+	float nearest = ARMOUR_REACH.y + ARMOUR_RAGGED;
+	for (int dy = -1; dy <= 1; dy++) {
+		for (int dx = -1; dx <= 1; dx++) {
+			ivec2 near = tile + ivec2(dx, dy);
+			if (CarriesWay(near)) nearest = min(nearest, length(max(abs(p - vec2(near) - TILE_CENTRE) - HALF_TILE, 0.0)));
+		}
+	}
+	float ragged = (Noise(p * ARMOUR_RAGS_PER_TILE) - 0.5) * ARMOUR_RAGGED;
+	return 1.0 - smoothstep(ARMOUR_REACH.x, ARMOUR_REACH.y, nearest + ragged);
+}
+
+Patch Mixed(Patch ground, Patch over, float share)
+{
+	return Patch(mix(ground.tone, over.tone, share), mix(ground.rugged, over.rugged, share));
 }
 
 /* A beach is wet sand at the water's edge drying up the shore, and grass where the shore rises well clear of the sea. */
@@ -750,7 +766,9 @@ vec3 Riprap(vec2 p, Bare bare)
 /* Beside a railway or a road the shore is armoured with heaped stone. */
 Patch Shore(Site site)
 {
-	return site.armoured ? Patch(Riprap(site.p, site.bare), SCREE_RUGGED) : Beach(site.grain, site.climate);
+	if (site.armoured <= 0.0) return Beach(site.grain, site.climate);
+	Patch stone = Patch(Riprap(site.p, site.bare), SCREE_RUGGED);
+	return site.armoured < 1.0 ? Mixed(Beach(site.grain, site.climate), stone, site.armoured) : stone;
 }
 
 vec3 Steppe(Grain grain, Climate climate)
@@ -790,7 +808,7 @@ Patch Trodden(Patch ground, Site site)
 {
 	if (site.trodden <= 0.0) return ground;
 	vec3 earth = PACKED_EARTH * Varied(site.grain.local, 0.14) * Varied(site.grain.fine, 0.08) * Varied(site.grain.micro, 0.12);
-	return Patch(mix(ground.tone, earth, site.trodden), mix(ground.rugged, PAVED_RUGGED, site.trodden));
+	return Mixed(ground, Patch(earth, PAVED_RUGGED), site.trodden);
 }
 
 Patch Eroded(Ground ground, Site site)
@@ -894,20 +912,20 @@ Climate SiteClimate(vec2 p, float ragged, Relief relief, Ground corners[4], vec2
 	return WateredClimate(p, relief);
 }
 
-Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4], vec2 warp, float settled)
+Site SiteAt(vec2 p, Grain grain, Relief relief, float armoured, Ground corners[4], vec2 warp, float settled)
 {
 	float ragged = ClimateMapped() ? Ragged(p, grain) : 0.0;
 	Climate climate = SiteClimate(p, ragged, relief, corners, warp);
 	float trodden = Landscape() == LANDSCAPE_TROPIC ? smoothstep(TRODDEN_EDGES.x, TRODDEN_EDGES.y, settled + ragged * TRODDEN_RAGGED) : 0.0;
 	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
 	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
-	bool bared = exposure.scree > 0.0 || armoured || rocky;
+	bool bared = exposure.scree > 0.0 || armoured > 0.0 || rocky;
 	Bare bare = bared ? BareAt(p, relief, grain, rocky) : NO_BARE;
 	return Site(p, grain, relief, exposure, bare, armoured, climate, ragged, trodden);
 }
 
 /* Each distinct ground is shaded once, in a loop the compiler keeps as one copy. */
-Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, bool armoured, out Site site)
+Patch Surface(vec2 p, Seams seams, Grain grain, Relief relief, float armoured, out Site site)
 {
 	vec2 q = p + seams.warp - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
@@ -1342,7 +1360,7 @@ vec3 EdgeTurf(Detail detail, float levels_per_pixel)
 	vec2 p = v_world.xy;
 	Grain grain = GrainAt(p, detail);
 	Site site;
-	Patch ground = Surface(p, SeamsAt(p), grain, ReliefAt(UPRIGHT, levels_per_pixel), false, site);
+	Patch ground = Surface(p, SeamsAt(p), grain, ReliefAt(UPRIGHT, levels_per_pixel), 0.0, site);
 	Blanket blanket = BlanketOver(site);
 	return mix(Altitude(ground.tone), blanket.tone, blanket.cover);
 }
@@ -1362,7 +1380,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
 	Site site;
-	Patch surface = Surface(p, seams, grain, relief, water.sea > 0.0 && Armoured(p), site);
+	Patch surface = Surface(p, seams, grain, relief, water.sea > 0.0 ? Armoured(p) : 0.0, site);
 	Blanket blanket = BlanketOver(site);
 	float dry = 1.0 - water.cover;
 	float blanketed = blanket.cover * dry;
