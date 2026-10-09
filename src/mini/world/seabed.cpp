@@ -165,11 +165,9 @@ bool IsRiverMouth(int tx, int ty)
 static std::optional<TileIndex> RiverAlong(int tx, int ty)
 {
 	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-	MapVector down = Downhill(tx, ty);
 	for (int ny = ty - 1; ny <= ty + 1; ny++) {
 		for (int nx = tx - 1; nx <= tx + 1; nx++) {
-			bool across = Dot(down, {static_cast<double>(nx - tx), static_cast<double>(ny - ty)}) == 0.0;
-			if (across && (IsChannel(nx, ny) || IsRapids(nx, ny)) && _world_tiles.SurfaceAt(TileXY(nx, ny)) == surface) return TileXY(nx, ny);
+			if ((IsChannel(nx, ny) || IsRapids(nx, ny)) && _world_tiles.SurfaceAt(TileXY(nx, ny)) == surface) return TileXY(nx, ny);
 		}
 	}
 	return std::nullopt;
