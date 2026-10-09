@@ -59,7 +59,7 @@ float Mended(vec2 p, float facing_up)
 float Weathered(vec3 position, vec3 normal, float gloss)
 {
 	float worn = u_weathering * (1.0 - gloss);
-	if (worn <= 0.0) return 1.0;
+	if (worn <= 0.0 || !Weathers()) return 1.0;
 	vec2 p = PatternPoint(position);
 	return mix(1.0, Stains(p) * mix(1.0, MENDED_SHADE, Mended(p, normal.z)), worn);
 }

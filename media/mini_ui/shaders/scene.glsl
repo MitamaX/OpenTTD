@@ -55,6 +55,11 @@ bool Blanketed(uint material)
 	return (Landscape() == LANDSCAPE_ARCTIC && material == MAT_SNOW) || (Landscape() == LANDSCAPE_TROPIC && material == MAT_DESERT);
 }
 
+bool Weathers()
+{
+	return Landscape() != LANDSCAPE_TOYLAND;
+}
+
 float Clock()
 {
 	return u_screen.z;

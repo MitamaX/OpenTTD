@@ -123,7 +123,7 @@ float Faded(vec2 q, float seed, vec2 edges, float mean)
 
 vec3 Weathered(vec2 p, vec3 tint, float variety)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return tint;
+	if (!Weathers()) return tint;
 	float blotches = Faded(p * FIRING_BLOTCHES, BLOTCH_SEED, BLOTCH_EDGES, 0.5);
 	float streaks = Faded(p * RAIN_STREAKS, STREAK_SEED);
 	float patched = Faded(p * LICHEN_PATCHES, LICHEN_PATCH_SEED, LICHEN_PATCH_EDGES, 0.0);
