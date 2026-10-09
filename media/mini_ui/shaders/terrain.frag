@@ -112,7 +112,6 @@ const vec2 DEEP_SWARD_EDGES = vec2(0.22, 0.48);
 const vec3 ROCK = vec3(0.50, 0.49, 0.47);
 const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
 const vec3 SCREE = vec3(0.55, 0.52, 0.47);
-const vec3 SNOW = vec3(0.87, 0.9, 0.95);
 const vec3 SCOURED_SNOW = vec3(0.76, 0.82, 0.9);
 const vec3 SAND = vec3(0.87, 0.76, 0.54);
 const vec3 RED_SAND = vec3(0.85, 0.64, 0.43);

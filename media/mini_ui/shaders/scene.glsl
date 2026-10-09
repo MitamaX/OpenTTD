@@ -11,6 +11,7 @@ layout(std140) uniform Scene {
 };
 
 const vec3 LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
+const vec3 SNOW = vec3(0.87, 0.9, 0.95);
 const float GAMMA = 2.2;
 
 layout(std140) uniform Shadows {

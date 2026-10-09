@@ -11,7 +11,6 @@ flat in uint v_seed;
 
 out vec4 frag_colour;
 
-const vec3 SNOW = vec3(0.87, 0.9, 0.95);
 const float SNOW_LINE_RAGGED = 1.2;
 const float SNOW_LINE_PER_TILE = 0.7;
 const float SNOW_SETTLES = 0.5;
