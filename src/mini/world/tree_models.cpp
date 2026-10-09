@@ -16,6 +16,7 @@
 #include <ranges>
 #include <numbers>
 
+#include "../core/camera.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../model/model_shapes.h"
@@ -33,6 +34,8 @@ static constexpr double CANDY_TRANSLUCENCY = 0.05;
 static constexpr double FACET_SPREAD = 0.07;
 static constexpr double CANOPY_ROUNDING = 0.45;
 static constexpr double SHADED_UNDERSIDE = 0.4;
+static constexpr double CROWN_HOLLOW = 0.55;
+static constexpr SeedRange CROWN_CORE_EDGES = {0.45, 0.9};
 static constexpr double SHADED_FOOT = 0.45;
 static constexpr double LIT_TRUNK = 0.8;
 static constexpr uint32_t SHAPE_SALT = 0x5EED7EE5U;
@@ -154,11 +157,21 @@ struct Crown {
 	Vec3 centre;
 	double underside;
 	double top;
+	double reach = 0.0;
+
+	double Outness(const Vec3 &at) const
+	{
+		if (this->reach <= 0.0) return 1.0;
+		double across = std::hypot(at.x - this->centre.x, at.y - this->centre.y) / this->reach;
+		double rise = at.z - this->centre.z;
+		double up = rise / (rise > 0.0 ? this->top - this->centre.z : this->centre.z - this->underside);
+		return SmoothStep(CROWN_CORE_EDGES.low, CROWN_CORE_EDGES.high, std::hypot(across, up));
+	}
 
 	double Openness(const Vec3 &at) const
 	{
-		double share = std::clamp((at.z - this->underside) / (this->top - this->underside), 0.0, 1.0);
-		return SHADED_UNDERSIDE + (1.0 - SHADED_UNDERSIDE) * share * share * (3.0 - 2.0 * share);
+		double height = std::lerp(SHADED_UNDERSIDE, 1.0, SmoothStep(this->underside, this->top, at.z));
+		return height * std::lerp(CROWN_HOLLOW, 1.0, this->Outness(at));
 	}
 };
 
@@ -251,7 +264,7 @@ static void Broadleaf(TreeBuilder &tree, TreeDetail detail)
 {
 	SeedDice &dice = tree.Dice();
 	double crown_z = dice.Between(BROADLEAF_CROWN);
-	Crown crown = {{0.0, 0.0, crown_z}, crown_z - BROADLEAF_UNDERSIDE, crown_z + BROADLEAF_TOP};
+	Crown crown = {{0.0, 0.0, crown_z}, crown_z - BROADLEAF_UNDERSIDE, crown_z + BROADLEAF_TOP, BROADLEAF_MASS.x};
 	double trunk_top = crown_z - BROADLEAF_TRUNK_INSET;
 	switch (detail) {
 		case TreeDetail::Full: {
@@ -284,8 +297,8 @@ static void Conifer(TreeBuilder &tree, TreeDetail detail)
 	SeedDice &dice = tree.Dice();
 	double girth = dice.Between(CONIFER_GIRTH);
 	double top = dice.Between(CONIFER_TOP);
-	Crown crown = {{0.0, 0.0, (CONIFER_BOUGHS_BASE + top) * 0.5}, CONIFER_BOUGHS_BASE, top};
 	double radius = CONIFER_RADIUS * girth;
+	Crown crown = {{0.0, 0.0, (CONIFER_BOUGHS_BASE + top) * 0.5}, CONIFER_BOUGHS_BASE, top, radius};
 	switch (detail) {
 		case TreeDetail::Full: {
 			tree.Trunk(5, CONIFER_TRUNK, CONIFER_TRUNK_TOP);
@@ -318,7 +331,7 @@ static void Jungle(TreeBuilder &tree, TreeDetail detail)
 	SeedDice &dice = tree.Dice();
 	double crown_z = dice.Between(JUNGLE_CROWN);
 	Vec3 lean = {dice.Between(JUNGLE_LEAN), dice.Between(JUNGLE_LEAN), 0.0};
-	Crown crown = {Vec3{0.0, 0.0, crown_z} + lean, crown_z - JUNGLE_UNDERSIDE, crown_z + JUNGLE_TOP};
+	Crown crown = {Vec3{0.0, 0.0, crown_z} + lean, crown_z - JUNGLE_UNDERSIDE, crown_z + JUNGLE_TOP, JUNGLE_MASS.x};
 	switch (detail) {
 		case TreeDetail::Full: {
 			std::array<SweepPoint, JUNGLE_BENDS.size()> spine;
