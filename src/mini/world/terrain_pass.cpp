@@ -16,6 +16,7 @@
 #include "../core/tuning.h"
 #include "../gpu/frame_capture.h"
 #include "../gpu/gl_api.h"
+#include "laid_depth.h"
 #include "shadow_map.h"
 
 #include "../../safeguards.h"
@@ -76,11 +77,8 @@ void TerrainPass::Draw(const SceneView &view)
 	this->Configure();
 	this->textures.Bind();
 	this->detail.Bind();
-	glDepthFunc(GL_LEQUAL);
-	glDepthMask(GL_FALSE);
+	LaidDepthScope laid;
 	this->field.DrawGround(view.frustum);
-	glDepthMask(GL_TRUE);
-	glDepthFunc(GL_LESS);
 }
 
 void TerrainPass::Configure() const

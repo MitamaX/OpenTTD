@@ -13,6 +13,7 @@
 #include <array>
 
 #include "../gpu/gl_api.h"
+#include "laid_depth.h"
 #include "shadow_map.h"
 
 #include "../../safeguards.h"
@@ -38,6 +39,13 @@ static constexpr std::array<const char *, 15> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/facade.glsl",
 	"mini_ui/shaders/structure.frag",
 };
+static constexpr std::array<const char *, 5> DEPTH_FRAGMENT_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
+	"mini_ui/shaders/common.glsl",
+	"mini_ui/shaders/structure.glsl",
+	"mini_ui/shaders/structure_depth.frag",
+};
 static constexpr std::array<const char *, 6> OPEN_CASTER_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/caster.glsl",
 	"mini_ui/shaders/scene.glsl",
@@ -47,13 +55,14 @@ static constexpr std::array<const char *, 6> OPEN_CASTER_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/structure_caster.frag",
 };
 
-StructurePass::StructurePass(const WorldTextures &textures) : textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), open_caster(CasterProgram(VERTEX_SOURCES, OPEN_CASTER_FRAGMENT_SOURCES))
+StructurePass::StructurePass(const WorldTextures &textures) :
+	textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), depth(VERTEX_SOURCES, DEPTH_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), open_caster(CasterProgram(VERTEX_SOURCES, OPEN_CASTER_FRAGMENT_SOURCES))
 {
 }
 
 std::vector<ShaderProgram *> StructurePass::Programs()
 {
-	return {&this->program, &this->caster, &this->open_caster};
+	return {&this->program, &this->depth, &this->caster, &this->open_caster};
 }
 
 void StructurePass::Prepare(const SceneView &view)
@@ -77,17 +86,25 @@ void StructurePass::Cast(const ShadowView &view)
 	this->DrawOpenParts();
 }
 
-void StructurePass::Draw(const SceneView &view)
+void StructurePass::Lay(const SceneView &view)
 {
-	if (!this->program.Ready()) return;
+	if (!this->Shadeable()) return;
 	this->field.Gather(view, view.frustum, this->shown);
+	this->UseDepth();
+	this->DrawSolidParts();
+}
+
+void StructurePass::Draw([[maybe_unused]] const SceneView &view)
+{
+	if (!this->Shadeable()) return;
 	this->UseLit();
+	LaidDepthScope laid;
 	this->DrawSolidParts();
 }
 
 void StructurePass::DrawOpen([[maybe_unused]] const SceneView &view)
 {
-	if (!this->program.Ready()) return;
+	if (!this->Shadeable()) return;
 	this->UseLit();
 	this->DrawOpenParts();
 }
@@ -103,9 +120,27 @@ void StructurePass::WarmCast()
 
 void StructurePass::Warm()
 {
-	if (!this->program.Ready()) return;
+	if (!this->Shadeable()) return;
+	this->UseDepth();
+	DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
 	this->UseLit();
 	DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
+}
+
+bool StructurePass::Shadeable()
+{
+	return this->program.Ready() && this->depth.Ready();
+}
+
+static void UploadFade(const ShaderProgram &program)
+{
+	glUniform2f(program.Uniform("u_fade"), static_cast<float>(STRUCTURE_FADE_START), static_cast<float>(STRUCTURE_FADE_END));
+}
+
+void StructurePass::UseDepth() const
+{
+	this->depth.Use();
+	UploadFade(this->depth);
 }
 
 /* Panes read the ground of the street before them from the world's textures. */
@@ -114,7 +149,7 @@ void StructurePass::UseLit()
 	WorldTextures::BindSamplers(this->program);
 	this->textures.Bind();
 	UploadOverlay(this->program);
-	glUniform2f(this->program.Uniform("u_fade"), static_cast<float>(STRUCTURE_FADE_START), static_cast<float>(STRUCTURE_FADE_END));
+	UploadFade(this->program);
 }
 
 void StructurePass::DrawSolidParts() const
@@ -131,6 +166,7 @@ void StructurePass::Release()
 {
 	this->field.Release();
 	this->program.Release();
+	this->depth.Release();
 	this->caster.Release();
 	this->open_caster.Release();
 }

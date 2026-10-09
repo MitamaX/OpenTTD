@@ -30,6 +30,8 @@ add_files(
     ground_detail.h
     ground_overlay.cpp
     ground_overlay.h
+    laid_depth.cpp
+    laid_depth.h
     network_field.cpp
     network_field.h
     network_mesh.cpp

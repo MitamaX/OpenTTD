@@ -14,6 +14,8 @@ out vec2 v_pattern;
 flat out uvec4 v_surface;
 flat out uint v_seed;
 
+invariant gl_Position;
+
 const float BYTE_SCALE = 255.0;
 const float LEAST_GLASS_LUMINANCE = 1e-4;
 const float FILM_TINT = 0.1;

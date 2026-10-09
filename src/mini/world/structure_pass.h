@@ -28,6 +28,7 @@ public:
 	void Prepare(const SceneView &view) override;
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;
+	void Lay(const SceneView &view) override;
 	void Draw(const SceneView &view) override;
 	void DrawOpen(const SceneView &view) override;
 	void WarmCast() override;
@@ -39,6 +40,8 @@ public:
 	std::span<const StructureChunk *const> Shown() const { return this->shown; }
 
 private:
+	bool Shadeable();
+	void UseDepth() const;
 	void UseLit();
 	void DrawSolidParts() const;
 	void DrawOpenParts() const;
@@ -47,6 +50,7 @@ private:
 	StructureField field;
 	std::vector<const StructureChunk *> shown;
 	ShaderProgram program;
+	ShaderProgram depth;
 	ShaderProgram caster;
 	ShaderProgram open_caster;
 };

@@ -1,3 +1,5 @@
+uniform vec2 u_fade;
+
 const float TAU = 6.2831853;
 const float TEXELS = float(TEXELS_PER_TILE);
 const float PLINTH_HEIGHT = 0.016;
@@ -324,6 +326,13 @@ float Cover(uint material, vec2 p)
 		case CLAD_PICKETS: return PicketCover(p);
 		default: return 1.0;
 	}
+}
+
+void DropUnseen(vec3 position, uint material, vec2 pattern)
+{
+	tile_pixels = TilePixelsAt(distance(Eye(), position));
+	float noise = ScreenNoise(gl_FragCoord.xy);
+	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) <= noise || Cover(material, pattern) < noise) discard;
 }
 
 Clad Leafy(vec2 p, vec3 tint)

@@ -1,5 +1,3 @@
-uniform vec2 u_fade;
-
 in vec3 v_position;
 in vec3 v_normal;
 in vec4 v_colour;
@@ -91,11 +89,8 @@ Clad CladdingSeen(uint material, vec3 view, mat3 frame)
 /* Buildings fade out dithered where they grow too small to show, and far off the sun's highlight spreads matte over a roof too small to make out. */
 void main()
 {
-	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
-	float noise = ScreenNoise(gl_FragCoord.xy);
-	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) <= noise) discard;
 	uint material = v_surface.x;
-	if (Cover(material, v_pattern) < noise) discard;
+	DropUnseen(v_position, material, v_pattern);
 
 	vec3 view = ToEye(v_position);
 	mat3 frame = FaceFrame(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0));
