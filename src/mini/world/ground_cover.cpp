@@ -15,6 +15,7 @@
 
 #include "../../map_func.h"
 #include "../../settings_type.h"
+#include "../core/camera.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
@@ -24,10 +25,14 @@
 static constexpr int CLEAR_REACH = 1;
 static constexpr int MEADOW_TUFTS = 10;
 static constexpr int ROUGH_TUFTS = 22;
-static constexpr int DESERT_TUFTS = 3;
-static constexpr int MOST_SHRUBS = 3;
+static constexpr int MOST_DESERT_TUFTS = 7;
+static constexpr int MOST_SHRUBS = 5;
 static constexpr SeedRange TUFT_SCALE = {1.0, 1.8};
-static constexpr SeedRange SHRUB_SCALE = {0.8, 1.8};
+static constexpr SeedRange SHRUB_SCALE = {0.6, 2.4};
+static constexpr std::array<double, 2> SCRUB_CLUMPS_PER_TILE = {0.13, 0.41};
+static constexpr std::array<double, 2> SCRUB_CLUMP_WEIGHTS = {0.65, 0.35};
+static constexpr SeedRange SCRUB_GATHERING = {0.42, 0.72};
+static constexpr double LONE_SHRUB_SCALE = 0.6;
 static constexpr SeedRange DESERT_STRAW = {0.6, 1.0};
 static constexpr double SINK = 0.003;
 static constexpr uint32_t TUFT_SALT = 0x7F1A2B3CU;
@@ -63,18 +68,46 @@ static VehicleInstance TuftOn(double x, double y, double turn, double scale, con
 	};
 }
 
+/* Value noise over the map, smooth between the hashed points of a lattice this many to a tile. */
+static double LatticeNoise(double x, double y, double frequency, uint32_t salt)
+{
+	double u = x * frequency;
+	double v = y * frequency;
+	int cx = static_cast<int>(std::floor(u));
+	int cy = static_cast<int>(std::floor(v));
+	auto corner = [&](int dx, int dy) {
+		return SeedShare(Hash32(salt ^ Hash32(static_cast<uint32_t>(cx + dx) ^ Hash32(static_cast<uint32_t>(cy + dy)))), 0, SeedDice::SHARE_BITS);
+	};
+	double fx = SmoothStep(0.0, 1.0, u - cx);
+	double fy = SmoothStep(0.0, 1.0, v - cy);
+	return std::lerp(std::lerp(corner(0, 0), corner(1, 0), fx), std::lerp(corner(0, 1), corner(1, 1), fx), fy);
+}
+
+/* How thickly scrub gathers about a point: in clumps across the desert with open sand between, and in smaller knots within them. */
+static double ScrubGathering(double x, double y)
+{
+	double noise = 0.0;
+	for (size_t octave = 0; octave < SCRUB_CLUMPS_PER_TILE.size(); octave++) {
+		noise += LatticeNoise(x, y, SCRUB_CLUMPS_PER_TILE[octave], SubSeed(SCRUB_SALT, static_cast<uint32_t>(octave))) * SCRUB_CLUMP_WEIGHTS[octave];
+	}
+	return SmoothStep(SCRUB_GATHERING.low, SCRUB_GATHERING.high, noise);
+}
+
+/* Each tuft and shrub a tile might bear stands only as often as scrub gathers where it falls, the shrubs larger where it gathers thick. */
 static void StrewScrub(int tx, int ty, const GrassGreens &greens, ScatterCopies &tufts)
 {
 	SeedDice dice(Hash32(SCRUB_SALT ^ TileXY(tx, ty).base()));
-	int shrubs = std::max(static_cast<int>(dice.Below(MOST_SHRUBS + 2)) - 1, 0);
-	for (int tuft = 0; tuft < DESERT_TUFTS + shrubs; tuft++) {
-		bool shrub = tuft >= DESERT_TUFTS;
+	for (int tuft = 0; tuft < MOST_DESERT_TUFTS + MOST_SHRUBS; tuft++) {
+		bool shrub = tuft >= MOST_DESERT_TUFTS;
 		double x = tx + dice.Share();
 		double y = ty + dice.Share();
+		double gathering = ScrubGathering(x, y);
+		if (dice.Share() >= gathering) continue;
 		std::array<uint8_t, 4> colour = shrub ? InstanceColour(SCRUB_GREENS[dice.Below(SCRUB_GREENS.size())]) : TuftGreen(greens, dice.Share(), dice.Between(DESERT_STRAW));
 		size_t shape = shrub ? BLADE_TUFTS + dice.Below(SHRUB_TUFTS) : dice.Below(BLADE_TUFTS);
 		double turn = dice.Between(0.0, 2.0 * M_PI);
-		tufts[shape].push_back(TuftOn(x, y, turn, dice.Between(shrub ? SHRUB_SCALE : TUFT_SCALE), colour));
+		double scale = shrub ? dice.Between(SHRUB_SCALE) * std::lerp(LONE_SHRUB_SCALE, 1.0, gathering) : dice.Between(TUFT_SCALE);
+		tufts[shape].push_back(TuftOn(x, y, turn, scale, colour));
 	}
 }
 
