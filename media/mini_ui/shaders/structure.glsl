@@ -41,6 +41,9 @@ const float GRIME_RAGS = 9.0;
 const float GRIME_RAGGED = 0.08;
 const float GRIME_SEED = 2.9;
 const float FLAT_ROOF_VARIETY = 0.12;
+const float CLAY_TILE_VARIETY = 0.14;
+const float SLATE_VARIETY = 0.16;
+const float SHINGLE_VARIETY = 0.22;
 const float POND_STAINS = 2.2;
 const vec2 POND_STAIN_EDGES = vec2(0.55, 0.68);
 const float POND_STAIN_MEAN = 0.2;
@@ -167,18 +170,16 @@ vec3 Stained(vec2 p, vec3 tint, float blotches_per_unit, float variety, float st
 
 vec3 Weathered(vec2 p, vec3 tint, float variety)
 {
-	if (!Weathers()) return tint;
 	float patched = Faded(p * LICHEN_PATCHES, LICHEN_PATCH_SEED, LICHEN_PATCH_EDGES, LICHEN_PATCH_MEAN);
 	float spot_sharpness = Sharpness(p * LICHEN_SPOTS);
 	float spotted = patched > 0.0 ? FadedBy(p * LICHEN_SPOTS, LICHEN_SPOT_SEED, LICHEN_SPOT_EDGES, LICHEN_SPOT_MEAN, spot_sharpness) : 0.0;
 	return mix(Stained(p, tint, FIRING_BLOTCHES, variety, STREAK_DEPTH), LICHEN, patched * spotted * LICHEN_COVER);
 }
 
-vec3 Ponded(vec2 p, vec3 tint)
+vec3 PondStains(vec2 p)
 {
-	if (!Weathers()) return tint;
 	float ponds = Faded(p * POND_STAINS, POND_STAIN_SEED, POND_STAIN_EDGES, POND_STAIN_MEAN);
-	return Weathered(p, tint, FLAT_ROOF_VARIETY) * mix(vec3(1.0), POND_STAIN, ponds);
+	return mix(vec3(1.0), POND_STAIN, ponds);
 }
 
 vec3 Grimed(vec2 p, vec3 tint)
@@ -200,7 +201,7 @@ Clad Tiled(vec2 p, vec3 tint, vec2 units, float variety, float roughness, float 
 	float lit = mix(COURSE_SHADES.x, COURSE_SHADES.y, smoothstep(COURSE_LIGHT_EDGES.x, COURSE_LIGHT_EDGES.y, along));
 	float overlapped = 1.0 - COURSE_OVERLAP_SHADE * smoothstep(COURSE_OVERLAP_EDGES.x, COURSE_OVERLAP_EDGES.y, along);
 	float shade = mix(1.0, lit * overlapped, sharp);
-	vec3 colour = Weathered(p, tint, variety) * shade * UnitVaried(vec2(column, course), variety, sharp);
+	vec3 colour = tint * shade * UnitVaried(vec2(column, course), variety, sharp);
 	float gaps = Lines(column, TILE_GAP_WIDTH, rolled) * sharp;
 	float unseen_tilt = WaveSpread(roll) * (1.0 - rolled) + RampSpread(COURSE_TILT) * (1.0 - sharp);
 	Clad clad = Matte(colour * (1.0 - TILE_GAP_SHADE * gaps), Roughened(roughness, unseen_tilt));
@@ -359,9 +360,37 @@ vec3 Walled(uint material, vec2 p, vec3 albedo, float upright)
 	return mix(albedo, walled, step(UPRIGHT_WALL, upright));
 }
 
+bool IsTiled(uint material)
+{
+	return material == CLAD_CLAY_TILE || material == CLAD_SLATE || material == CLAD_SHINGLE;
+}
+
+bool Ponds(uint material)
+{
+	return material == CLAD_GRAVEL || material == CLAD_MEMBRANE;
+}
+
+float RoofVariety(uint material)
+{
+	switch (material) {
+		case CLAD_CLAY_TILE: return CLAY_TILE_VARIETY;
+		case CLAD_SLATE: return SLATE_VARIETY;
+		case CLAD_SHINGLE: return SHINGLE_VARIETY;
+		default: return FLAT_ROOF_VARIETY;
+	}
+}
+
+vec3 Aged(uint material, vec2 p, vec3 tint)
+{
+	if (!Weathers() || !(IsTiled(material) || Ponds(material))) return tint;
+	vec3 aged = Weathered(p, tint, RoofVariety(material));
+	return Ponds(material) ? aged * PondStains(p) : aged;
+}
+
 Clad CladOf(uint material, vec2 p, vec3 tint)
 {
 	vec3 mortar = mix(tint, vec3(0.78, 0.75, 0.70), 0.7);
+	vec3 aged = Aged(material, p, tint);
 	switch (material) {
 		case CLAD_BRICK: return Coursed(p, tint, vec2(40.0, 80.0), 0.18, 0.18, mortar);
 		case CLAD_STONE: return Coursed(p, tint, vec2(16.0, 32.0), 0.1, 0.12, mortar);
@@ -374,13 +403,13 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_METAL: return Panelled(p, tint, vec2(9.0, 0.0), 0.04, 0.3);
 		case CLAD_GLASS: return Glazed(p, tint, vec2(12.0, 10.0), 0.08);
 		case CLAD_LATTICE: return Matte(tint, 0.5);
-		case CLAD_CLAY_TILE: return Tiled(p, tint, vec2(34.0, 42.0), 0.14, 0.7, 0.3);
-		case CLAD_SLATE: return Tiled(p, tint, vec2(28.0, 60.0), 0.16, 0.4, 0.0);
-		case CLAD_SHINGLE: return Tiled(p, tint, vec2(22.0, 50.0), 0.22, 0.8, 0.0);
+		case CLAD_CLAY_TILE: return Tiled(p, aged, vec2(34.0, 42.0), CLAY_TILE_VARIETY, 0.7, 0.3);
+		case CLAD_SLATE: return Tiled(p, aged, vec2(28.0, 60.0), SLATE_VARIETY, 0.4, 0.0);
+		case CLAD_SHINGLE: return Tiled(p, aged, vec2(22.0, 50.0), SHINGLE_VARIETY, 0.8, 0.0);
 		case CLAD_THATCH: return Mottled(vec2(p.x * 8.0, p.y), tint, 9.0, 0.3, 0.95);
 		case CLAD_METAL_SEAM: return Ribbed(vec2(p.x * 0.25, p.y), tint, 80.0, 0.12, 0.28);
-		case CLAD_GRAVEL: return Mottled(p, Ponded(p, tint), 110.0, 0.22, 0.95);
-		case CLAD_MEMBRANE: return Panelled(p, Ponded(p, tint), vec2(4.0, 0.0), 0.015, 0.8);
+		case CLAD_GRAVEL: return Mottled(p, aged, 110.0, 0.22, 0.95);
+		case CLAD_MEMBRANE: return Panelled(p, aged, vec2(4.0, 0.0), 0.015, 0.8);
 		case CLAD_ROOF_DECK: return Planked(p, tint, 30.0);
 		case CLAD_GLASS_ROOF: return Glazed(p, vec3(0.7), vec2(14.0, 5.0), 0.1);
 		case CLAD_ASPHALT: return Mottled(p, tint, 60.0, 0.12, 0.9);
