@@ -17,10 +17,11 @@
 #include "shader_program.h"
 #include "structure_field.h"
 #include "world_pass.h"
+#include "world_textures.h"
 
 class StructurePass final : public WorldPass {
 public:
-	StructurePass();
+	explicit StructurePass(const WorldTextures &textures);
 
 	std::string_view Name() const override { return "structures"; }
 	std::vector<ShaderProgram *> Programs() override;
@@ -42,6 +43,7 @@ private:
 	void DrawSolidParts() const;
 	void DrawOpenParts() const;
 
+	const WorldTextures &textures;
 	StructureField field;
 	std::vector<const StructureChunk *> shown;
 	ShaderProgram program;

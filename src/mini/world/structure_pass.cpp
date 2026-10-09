@@ -45,7 +45,7 @@ static constexpr std::array<const char *, 6> OPEN_CASTER_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/structure_caster.frag",
 };
 
-StructurePass::StructurePass() : program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), open_caster(CasterProgram(VERTEX_SOURCES, OPEN_CASTER_FRAGMENT_SOURCES))
+StructurePass::StructurePass(const WorldTextures &textures) : textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), open_caster(CasterProgram(VERTEX_SOURCES, OPEN_CASTER_FRAGMENT_SOURCES))
 {
 }
 
@@ -102,13 +102,15 @@ void StructurePass::WarmCast()
 void StructurePass::Warm()
 {
 	if (!this->program.Ready()) return;
-	this->program.Use();
+	this->UseLit();
 	DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
 }
 
+/* Panes read the ground of the street before them from the world's textures. */
 void StructurePass::UseLit()
 {
-	this->program.Use();
+	WorldTextures::BindSamplers(this->program);
+	this->textures.Bind();
 	UploadOverlay(this->program);
 	glUniform2f(this->program.Uniform("u_fade"), static_cast<float>(STRUCTURE_FADE_START), static_cast<float>(STRUCTURE_FADE_END));
 }

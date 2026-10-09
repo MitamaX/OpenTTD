@@ -8,6 +8,7 @@ const float STREET_SUNLIT = 0.5;
 const float PAVEMENT_WIDTH = 0.2;
 const vec3 DISTANT_TOWN = vec3(0.16, 0.17, 0.15);
 const float LEAST_RISE = 0.05;
+const float STREET_STEP = 0.05;
 const float FRONTAGE_BUILDING_WIDTH = 0.9;
 const vec2 FRONTAGE_HEIGHTS = vec2(0.25, 2.6);
 const float FRONTAGE_SHADED_SHARE = 0.5;
@@ -41,13 +42,20 @@ struct Frontage {
 	float sunlit;
 };
 
-Street StreetBefore(vec3 point, vec3 face, float height, uint seed)
+float GroundBelow(vec2 at)
+{
+	ivec2 tile = Clamped(ivec2(floor(at)));
+	return FacetLevel(SurfaceOf(tile), clamp(at - vec2(tile), 0.0, 1.0)) * LevelRise();
+}
+
+/* The street a face looks out on, its ground read just in front of the face and its width rolled for each side of the building. */
+Street StreetBefore(vec3 point, vec3 face, uint seed)
 {
 	float level = length(face.xy);
 	vec2 outward = level > LEAST_ACROSS ? face.xy / level : vec2(0.0);
 	ivec2 side = ivec2(round(outward * 2.0));
 	float width = mix(STREET_WIDTHS.x, STREET_WIDTHS.y, Hash(ivec2(int(seed), side.x + 3 * side.y)));
-	return Street(point, outward, point.z - height, width);
+	return Street(point, outward, GroundBelow(point.xy + outward * STREET_STEP), width);
 }
 
 vec3 WallPaint(float roll)

@@ -95,7 +95,7 @@ void main()
 	float occlusion = v_colour.a * clad.occlusion;
 	vec4 lit = clad.glass < 1.0 ? SunlitRadiance(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, 0.0, sunlit) : vec4(0.0);
 	if (clad.glass > 0.0) {
-		Street street = StreetBefore(v_position, frame[2], v_pattern.y * FORM_HEIGHT_SCALE, v_seed);
+		Street street = StreetBefore(v_position, frame[2], v_seed);
 		lit = mix(lit, PaneRadiance(PaneOf(albedo, clad, material), street, normal, view, roughness, occlusion, sunlit), clad.glass);
 	}
 	frag_colour = lit + vec4(albedo * clad.glow, 0.0);
