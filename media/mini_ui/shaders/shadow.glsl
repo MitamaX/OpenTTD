@@ -2,7 +2,8 @@ uniform sampler2DArrayShadow u_shadow_map;
 
 const float NORMAL_OFFSET_TEXELS = 1.2;
 const float CASCADE_BLEND = 0.12;
-const int FILTER_LOOKUPS = 3;
+const int FILTER_LOOKUPS = int(SHADOW_FILTER_SPAN) - 1;
+const ivec4 LANES = ivec4(0, 1, 2, 3);
 
 float ViewDepth(vec3 position)
 {
@@ -24,12 +25,12 @@ float[FILTER_LOOKUPS] FilterWeights(float f)
 /* A cascade's value of those the vector holds one per cascade, zero past either end, picked without indexing the vector by a variable, which some drivers misread. */
 float OfCascade(vec4 per_cascade, int cascade)
 {
-	return dot(per_cascade, vec4(equal(ivec4(cascade), ivec4(0, 1, 2, 3))));
+	return dot(per_cascade, vec4(equal(ivec4(cascade), LANES)));
 }
 
 int CascadeHolding(float depth)
 {
-	return int(dot(vec3(greaterThan(vec3(depth), u_cascade_far.xyz)), vec3(1.0)));
+	return min(int(dot(vec4(greaterThan(vec4(depth), u_cascade_far)), vec4(1.0))), CASCADES - 1);
 }
 
 /* The point is pushed off its surface by about a texel, more where the sun grazes it, so the surface never shadows itself;
