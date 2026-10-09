@@ -43,22 +43,16 @@ static constexpr uint32_t SHAPE_SALT = 0x5EED7EE5U;
 static constexpr SeedRange LUMP_SCATTER = {-0.3, 0.3};
 static constexpr double MASS_ROUGHNESS = 0.06;
 
-static constexpr SeedRange BROADLEAF_CROWN = {0.24, 0.27};
-static constexpr double BROADLEAF_UNDERSIDE = 0.13;
-static constexpr double BROADLEAF_TOP = 0.16;
-static constexpr SeedRange BROADLEAF_TRUNK = {0.032, 0.02};
-static constexpr double BROADLEAF_TRUNK_INSET = 0.04;
-static constexpr Vec3 BROADLEAF_HEART = {0.14, 0.14, 0.12};
-static constexpr double BROADLEAF_HEART_ROUGHNESS = 0.1;
-static constexpr int BROADLEAF_RING_FEWEST = 4;
-static constexpr uint32_t BROADLEAF_RING_CHOICES = 3;
-static constexpr SeedRange BROADLEAF_SQUASH = {0.65, 1.05};
-static constexpr SeedRange BROADLEAF_SPREAD = {0.85, 1.12};
-static constexpr SeedRange BROADLEAF_CREST_SCATTER = {-0.025, 0.025};
-static constexpr double BROADLEAF_CREST_RISE = 0.08;
-static constexpr Vec3 BROADLEAF_CREST = {0.085, 0.085, 0.075};
-static constexpr Vec3 BROADLEAF_MASS = {0.19, 0.19, 0.16};
-static constexpr double BROADLEAF_MASS_RISE = 0.01;
+static constexpr double TRUNK_INSET = 0.04;
+static constexpr std::array<LatheRing, 4> TRUNK_BENDS = {{{1.0, 0.0}, {0.85, 0.4}, {0.75, 0.75}, {0.65, 1.0}}};
+static constexpr SeedRange CLUSTER_HEIGHTS = {-0.3, 0.8};
+static constexpr double CLUSTER_ROUGHNESS = 0.12;
+static constexpr double HEART_SHARE = 0.55;
+static constexpr double LIMB_RADIUS = 0.008;
+static constexpr int LIMB_SIDES = 4;
+static constexpr double LIMB_REACH = 0.85;
+static constexpr double LIMB_TAPER = 0.5;
+static constexpr double LIMB_SKIP = 0.04;
 
 static constexpr SeedRange CONIFER_GIRTH = {0.9, 1.1};
 static constexpr SeedRange CONIFER_TOP = {0.5, 0.56};
@@ -82,7 +76,6 @@ static constexpr SeedRange JUNGLE_LEAN = {-0.03, 0.03};
 static constexpr double JUNGLE_UNDERSIDE = 0.06;
 static constexpr double JUNGLE_TOP = 0.08;
 static constexpr SeedRange JUNGLE_TRUNK = {0.024, 0.016};
-static constexpr std::array<LatheRing, 4> JUNGLE_BENDS = {{{1.0, 0.0}, {0.85, 0.4}, {0.75, 0.75}, {0.65, 1.0}}};
 static constexpr Vec3 JUNGLE_HEART = {0.13, 0.13, 0.06};
 static constexpr double JUNGLE_HEART_RISE = 0.03;
 static constexpr int JUNGLE_RING_LUMPS = 4;
@@ -144,13 +137,18 @@ struct TreeTones {
 
 static constexpr size_t TONE_SETS = 3;
 static constexpr std::array<std::array<TreeTones, TONE_SETS>, TREE_KINDS> TONES = {{
-	{{{0x5E8C3A, 0x5E5246}, {0x4E8034, 0x564A3E}, {0x6E9A3E, 0x665A4C}}},
+	{{{0x5E8C3A, 0x5E5246}, {0x4E8034, 0x564A3E}, {0x7EA046, 0xCFC9BA}}},
 	{{{0x3A6B38, 0x54463A}, {0x447334, 0x4E4136}, {0x356640, 0x5A4A3C}}},
 	{{{0x3B7A2E, 0x6A604E}, {0x2F6E2A, 0x625846}, {0x4C8A30, 0x72684F}}},
 	{{{0x5E9A3A, 0x8A7050}, {0x6AA040, 0x7E6649}, {0x548E36, 0x927858}}},
 	{{{0x5E8A4A, 0xE86FA8}, {0x6B9A55, 0xF2C94A}, {0x557F45, 0xF4EEE4}}},
 	{{{0xF07FB0, 0xF4EEE4}, {0x7FC8F0, 0xF4EEE4}, {0xF2B24A, 0xF4EEE4}}},
 }};
+
+static double FootOpenness(const Vec3 &at, double top)
+{
+	return std::lerp(SHADED_FOOT, LIT_TRUNK, std::clamp((at.z - FOOT) / (top - FOOT), 0.0, 1.0));
+}
 
 /* Where a canopy spans from its underside to its top, so its facets darken toward the trunk. */
 struct Crown {
@@ -175,6 +173,27 @@ struct Crown {
 	}
 };
 
+struct CrownHabit {
+	SeedRange base;
+	Vec3 hull;
+	int clusters;
+	uint32_t extra_clusters;
+	SeedRange cluster;
+	double squash;
+	bool heart;
+	SeedRange lean;
+	SeedRange trunk;
+};
+
+static constexpr std::array<CrownHabit, TREE_SHAPES> BROADLEAF_HABITS = {{
+	{{0.15, 0.18}, {0.29, 0.29, 0.13}, 5, 2, {0.075, 0.095}, 0.75, true, {0.0, 0.0}, {0.032, 0.02}},
+	{{0.11, 0.13}, {0.22, 0.22, 0.17}, 4, 2, {0.085, 0.105}, 0.95, true, {0.0, 0.0}, {0.032, 0.02}},
+	{{0.2, 0.23}, {0.18, 0.18, 0.16}, 7, 2, {0.05, 0.065}, 0.85, false, {0.0, 0.02}, {0.02, 0.014}},
+	{{0.05, 0.07}, {0.19, 0.19, 0.12}, 4, 1, {0.07, 0.085}, 0.9, true, {0.0, 0.0}, {0.032, 0.02}},
+	{{0.16, 0.18}, {0.23, 0.23, 0.12}, 4, 1, {0.07, 0.09}, 0.8, true, {0.05, 0.08}, {0.032, 0.02}},
+	{{0.07, 0.09}, {0.12, 0.12, 0.24}, 4, 1, {0.065, 0.08}, 1.15, false, {0.0, 0.0}, {0.026, 0.016}},
+}};
+
 /* Lumps set round a crown: how far out, how big and how far up or down each may lie, how flat they are and how rough. */
 struct LumpRing {
 	SeedRange reach;
@@ -184,7 +203,6 @@ struct LumpRing {
 	double roughness;
 };
 
-static constexpr LumpRing BROADLEAF_RING = {{0.085, 0.11}, {0.08, 0.105}, {-0.05, 0.03}, 0.9, 0.12};
 static constexpr LumpRing JUNGLE_RING = {{0.09, 0.12}, {0.085, 0.11}, {-0.025, 0.01}, 0.5, 0.14};
 
 /* One shape at one detail, built up part by part. */
@@ -214,17 +232,39 @@ public:
 		this->model.Append(part.Occlude([&](const Vec3 &at) { return crown.Openness(at); }));
 	}
 
+	template <class Openness>
+	void Wood(ModelMesh part, Openness openness)
+	{
+		part.Facet().Paint(this->tones.wood).Vary(FACET_SPREAD, this->dice.Next());
+		this->model.Append(part.Occlude(openness));
+	}
+
 	/* Wood darkens toward the ground it stands in. */
 	void Wood(ModelMesh part, double top)
 	{
-		part.Facet().Paint(this->tones.wood).Vary(FACET_SPREAD, this->dice.Next());
-		this->model.Append(part.Occlude([&](const Vec3 &at) { return SHADED_FOOT + (LIT_TRUNK - SHADED_FOOT) * std::clamp((at.z - FOOT) / (top - FOOT), 0.0, 1.0); }));
+		this->Wood(std::move(part), [top](const Vec3 &at) { return FootOpenness(at, top); });
 	}
 
 	/* A trunk tapering from its foot radius to its top one. */
-	void Trunk(int sides, SeedRange radii, double top)
+	void Trunk(int sides, SeedRange radii, double top, const Vec3 &lean = {})
 	{
-		this->Wood(Column(sides, radii.low, radii.high, top - FOOT).Transform(Mat4::Translation({0.0, 0.0, FOOT})), top);
+		if (lean.x == 0.0 && lean.y == 0.0) {
+			this->Wood(Column(sides, radii.low, radii.high, top - FOOT).Transform(Mat4::Translation({0.0, 0.0, FOOT})), top);
+			return;
+		}
+		std::array<SweepPoint, TRUNK_BENDS.size()> spine;
+		for (size_t bend = 0; bend < TRUNK_BENDS.size(); bend++) {
+			double share = TRUNK_BENDS[bend].z;
+			spine[bend] = {lean * share * share + Vec3{0.0, 0.0, FOOT + (top - FOOT) * share}, TRUNK_BENDS[bend].radius};
+		}
+		this->Wood(Sweep(Circle(radii.low, sides), true, spine, {1.0, 0.0, 0.0}), top);
+	}
+
+	void Limb(const Vec3 &from, const Vec3 &to, const Crown &crown)
+	{
+		Vec3 out = to - from;
+		std::array<SweepPoint, 2> path = {{{from, 1.0}, {from + out * LIMB_REACH, LIMB_TAPER}}};
+		this->Wood(Sweep(Circle(LIMB_RADIUS, LIMB_SIDES), true, path, {-out.y, out.x, 0.0}), [&](const Vec3 &at) { return crown.Openness(at); });
 	}
 
 	/* Lumps around a crown's middle, each set a little off its even place. */
@@ -260,34 +300,44 @@ private:
 	ModelMesh model;
 };
 
-static void Broadleaf(TreeBuilder &tree, TreeDetail detail)
+static ModelMesh Clusters(TreeBuilder &tree, const CrownHabit &habit, const Crown &crown, const Vec3 &trunk_top)
 {
 	SeedDice &dice = tree.Dice();
-	double crown_z = dice.Between(BROADLEAF_CROWN);
-	Crown crown = {{0.0, 0.0, crown_z}, crown_z - BROADLEAF_UNDERSIDE, crown_z + BROADLEAF_TOP, BROADLEAF_MASS.x};
-	double trunk_top = crown_z - BROADLEAF_TRUNK_INSET;
+	int count = habit.clusters + static_cast<int>(dice.Below(habit.extra_clusters + 1));
+	double turn = dice.Between(0.0, TAU);
+	ModelMesh clusters;
+	for (int cluster = 0; cluster < count; cluster++) {
+		double height = dice.Between(CLUSTER_HEIGHTS);
+		double angle = turn + TAU * cluster / count + dice.Between(LUMP_SCATTER);
+		double radius = dice.Between(habit.cluster);
+		double out = (habit.hull.x - radius) * std::sqrt(1.0 - height * height);
+		Vec3 at = crown.centre + Vec3{out * std::cos(angle), out * std::sin(angle), height * (habit.hull.z - radius * habit.squash)};
+		clusters.Append(tree.Lump(at, {radius, radius, radius * habit.squash}, 1, CLUSTER_ROUGHNESS));
+		if (std::hypot(at.x - trunk_top.x, at.y - trunk_top.y) > LIMB_SKIP) tree.Limb(trunk_top, at, crown);
+	}
+	if (habit.heart) clusters.Append(tree.Lump(crown.centre, habit.hull * HEART_SHARE, 1, CLUSTER_ROUGHNESS));
+	return clusters;
+}
+
+static void Canopy(TreeBuilder &tree, TreeDetail detail, const CrownHabit &habit)
+{
+	SeedDice &dice = tree.Dice();
+	double heading = dice.Between(0.0, TAU);
+	Vec3 lean = Vec3{std::cos(heading), std::sin(heading), 0.0} * dice.Between(habit.lean);
+	double base = dice.Between(habit.base);
+	Crown crown = {lean + Vec3{0.0, 0.0, base + habit.hull.z}, base, base + 2.0 * habit.hull.z, habit.hull.x};
+	double trunk_top = base + TRUNK_INSET;
 	switch (detail) {
-		case TreeDetail::Full: {
-			tree.Trunk(6, BROADLEAF_TRUNK, trunk_top);
-			LumpRing ring = BROADLEAF_RING;
-			double spread = dice.Between(BROADLEAF_SPREAD);
-			ring.reach = {ring.reach.low * spread, ring.reach.high * spread};
-			ring.squash = dice.Between(BROADLEAF_SQUASH);
-			int lumps = BROADLEAF_RING_FEWEST + static_cast<int>(dice.Below(BROADLEAF_RING_CHOICES));
-			Vec3 heart = {BROADLEAF_HEART.x * spread, BROADLEAF_HEART.y * spread, BROADLEAF_HEART.z * ring.squash / BROADLEAF_RING.squash};
-			ModelMesh canopy = tree.Lump(crown.centre, heart, 1, BROADLEAF_HEART_ROUGHNESS);
-			canopy.Append(tree.Ring(crown.centre, ring, lumps));
-			Vec3 crest = {dice.Between(BROADLEAF_CREST_SCATTER), dice.Between(BROADLEAF_CREST_SCATTER), crown_z + BROADLEAF_CREST_RISE};
-			canopy.Append(tree.Lump(crest, BROADLEAF_CREST, 1, BROADLEAF_RING.roughness));
-			tree.Leaves(std::move(canopy), crown);
+		case TreeDetail::Full:
+			tree.Trunk(6, habit.trunk, trunk_top, lean);
+			tree.Leaves(Clusters(tree, habit, crown, lean + Vec3{0.0, 0.0, trunk_top}), crown);
 			break;
-		}
 		case TreeDetail::Simple:
-			tree.Trunk(4, BROADLEAF_TRUNK, trunk_top);
-			tree.Leaves(tree.Lump(crown.centre + Vec3{0.0, 0.0, BROADLEAF_MASS_RISE}, BROADLEAF_MASS, 0, MASS_ROUGHNESS), crown);
+			tree.Trunk(4, habit.trunk, trunk_top, lean);
+			tree.Leaves(tree.Lump(crown.centre, habit.hull, 0, MASS_ROUGHNESS), crown);
 			break;
 		default:
-			tree.Spindle({{BROADLEAF_TRUNK.low, FOOT}, {BROADLEAF_MASS.x, crown_z}, {0.0, crown.top}}, 5, crown.underside, LEAF_TRANSLUCENCY);
+			tree.Spindle({{habit.trunk.low, FOOT}, {habit.trunk.low, base}, {habit.hull.x, crown.centre.z}, {0.0, crown.top}}, 5, base, LEAF_TRANSLUCENCY);
 			break;
 	}
 }
@@ -334,12 +384,7 @@ static void Jungle(TreeBuilder &tree, TreeDetail detail)
 	Crown crown = {Vec3{0.0, 0.0, crown_z} + lean, crown_z - JUNGLE_UNDERSIDE, crown_z + JUNGLE_TOP, JUNGLE_MASS.x};
 	switch (detail) {
 		case TreeDetail::Full: {
-			std::array<SweepPoint, JUNGLE_BENDS.size()> spine;
-			for (size_t bend = 0; bend < JUNGLE_BENDS.size(); bend++) {
-				double share = JUNGLE_BENDS[bend].z;
-				spine[bend] = {lean * share * share + Vec3{0.0, 0.0, FOOT + (crown_z - FOOT) * share}, JUNGLE_BENDS[bend].radius};
-			}
-			tree.Wood(Sweep(Circle(JUNGLE_TRUNK.low, 5), true, spine, {1.0, 0.0, 0.0}), crown_z);
+			tree.Trunk(5, JUNGLE_TRUNK, crown_z, lean);
 			ModelMesh canopy = tree.Lump(crown.centre + Vec3{0.0, 0.0, JUNGLE_HEART_RISE}, JUNGLE_HEART, 1, JUNGLE_RING.roughness);
 			canopy.Append(tree.Ring(crown.centre, JUNGLE_RING, JUNGLE_RING_LUMPS));
 			tree.Leaves(std::move(canopy), crown);
@@ -484,7 +529,7 @@ static ModelMesh BuildTree(TreeShape shape, TreeDetail detail)
 {
 	TreeBuilder tree(TONES[static_cast<size_t>(shape.kind)][shape.variant % TONE_SETS], Hash32(SHAPE_SALT + static_cast<uint32_t>(shape.Index())));
 	switch (shape.kind) {
-		case TreeKind::Broadleaf: Broadleaf(tree, detail); break;
+		case TreeKind::Broadleaf: Canopy(tree, detail, BROADLEAF_HABITS[shape.variant]); break;
 		case TreeKind::Conifer: Conifer(tree, detail); break;
 		case TreeKind::Jungle: Jungle(tree, detail); break;
 		case TreeKind::Palm: Palm(tree, detail); break;

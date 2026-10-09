@@ -43,7 +43,7 @@ inline constexpr double TREE_SWAY_REACH = 0.014;
 
 /* The colour a canopy of each kind shows from afar, as the ground's forest tint paints it. */
 inline constexpr std::array<uint32_t, TREE_KINDS> TREE_CANOPY_TONES = {
-	0x557F37, 0x3A6837, 0x3A752E, 0x5E923C, 0x5E8A4A, 0xE07EA8,
+	0x5A8139, 0x3A6837, 0x3A752E, 0x5E923C, 0x5E8A4A, 0xE07EA8,
 };
 
 inline constexpr std::array<uint32_t, TREE_KINDS> TREE_LITTER_TONES = {
