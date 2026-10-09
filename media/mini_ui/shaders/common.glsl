@@ -51,6 +51,23 @@ uint Pick(float roll, int count)
 	return uint(min(roll * float(count), float(count - 1)));
 }
 
+struct SpeckLattice {
+	ivec2 seed;
+	float margin;
+	float smallest;
+	float softness;
+};
+
+float Speck(vec2 q, float share, vec2 run, vec2 extent, SpeckLattice lattice)
+{
+	ivec2 cell = ivec2(floor(q));
+	vec2 roll = Hash2(cell + lattice.seed);
+	if (roll.x > share) return 0.0;
+	vec2 offset = fract(q) - mix(vec2(lattice.margin), vec2(1.0 - lattice.margin), Hash2(cell));
+	vec2 local = vec2(dot(offset, run), dot(offset, vec2(-run.y, run.x))) / (extent * mix(lattice.smallest, 1.0, roll.y));
+	return 1.0 - smoothstep(lattice.softness, 1.0, length(local));
+}
+
 /* Value noise with its gradient, smooth enough in both to light bumps with. */
 vec3 NoiseSlope(vec2 p)
 {

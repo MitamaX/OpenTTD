@@ -106,9 +106,32 @@ const vec2 PARCHED_MOISTURE = vec2(0.0, 0.34);
 const vec3 ROUGH_TINT = vec3(0.55, 0.50, 0.30);
 const vec3 STRAW_TINT = vec3(1.14, 1.04, 0.78);
 const float STRAW_PATCHES_PER_TILE = 3.0;
-const float STRAW_MEAN = 0.12;
+const float STRAW_MEAN = 0.09;
 const vec3 DEEP_SWARD = vec3(0.74, 0.88, 0.84);
 const vec2 DEEP_SWARD_EDGES = vec2(0.22, 0.48);
+const float SWARD_PATCHES_PER_TILE = 0.8;
+const vec2 LONG_SWARD_EDGES = vec2(0.45, 0.58);
+const float LONG_SWARD_MEAN = 0.45;
+const vec2 LONG_SWARD_SEED = vec2(27.1, 3.9);
+const vec3 LONG_SWARD = vec3(0.92, 0.9, 0.97);
+const vec3 GRAZED_SWARD = vec3(1.06, 1.08, 1.02);
+const float GRAZED_RANK = 0.4;
+const float SWARD_BLADES = 0.6;
+const float SEED_HEADS = 0.35;
+const float HERB_DRIFTS_PER_TILE = 0.6;
+const vec2 HERB_DRIFT_EDGES = vec2(0.55, 0.7);
+const vec2 HERB_DRIFT_SEED = vec2(41.3, 12.2);
+const float HERB_KINDS_PER_TILE = 0.17;
+const vec2 HERB_KIND_SEED = vec2(8.9, 30.5);
+const vec3 HERBAGE = vec3(0.88, 0.94, 0.88);
+const float FLOWERS_PER_TILE = 18.0;
+const float FLOWER_SHARE = 0.85;
+const float FLOWER_RADIUS = 0.4;
+const float FLOWER_COVER = 0.15;
+const SpeckLattice FLOWER_LATTICE = SpeckLattice(ivec2(6007, 2333), 0.15, 0.5, 0.4);
+const vec3 DAISY = vec3(0.94, 0.93, 0.88);
+const vec3 BUTTERCUP = vec3(0.96, 0.85, 0.22);
+const vec3 KNAPWEED = vec3(0.7, 0.44, 0.76);
 const vec3 ROCK = vec3(0.50, 0.49, 0.47);
 const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
 const vec3 SCREE = vec3(0.55, 0.52, 0.47);
@@ -561,22 +584,50 @@ float Cover(float density, float clump)
 	return density >= 1.0 ? 1.0 : smoothstep(-0.06, 0.06, density + clump - 1.0);
 }
 
-/* Grass turns to straw here and there, and its blades fleck it light and dark up close; from afar the straw's patches, too small to make out, settle into one tone. */
-vec3 Grass(Ground ground, Grain grain, Climate climate)
+float PatchShare(vec2 p, float frequency, vec2 edges, float mean)
 {
-	vec3 green = GrassTone(grain.broad, climate);
+	float shown = Resolved(frequency);
+	return shown > 0.0 ? mix(mean, smoothstep(edges.x, edges.y, Noise(OctaveTurn(frequency) * p * frequency)), shown) : mean;
+}
+
+vec3 HerbBloom(float kind)
+{
+	return mix(mix(DAISY, BUTTERCUP, smoothstep(0.38, 0.46, kind)), KNAPWEED, smoothstep(0.62, 0.7, kind));
+}
+
+vec3 Bloomed(vec3 blades, vec2 p)
+{
+	float drift = PatchShare(p + HERB_DRIFT_SEED, HERB_DRIFTS_PER_TILE, HERB_DRIFT_EDGES, 0.0);
+	if (drift <= 0.0) return blades;
+	float share = FLOWER_SHARE * drift;
+	float shown = Resolved(FLOWERS_PER_TILE);
+	float speck = shown > 0.0 ? Speck(OctaveTurn(FLOWERS_PER_TILE) * p * FLOWERS_PER_TILE, share, vec2(1.0, 0.0), vec2(FLOWER_RADIUS), FLOWER_LATTICE) : 0.0;
+	float flowers = mix(FLOWER_COVER * share, speck, shown);
+	return mix(blades * mix(vec3(1.0), HERBAGE, drift), HerbBloom(Octave(p + HERB_KIND_SEED, HERB_KINDS_PER_TILE)), flowers);
+}
+
+/* Grass grows long in some patches and grazed short in others, turns to straw here and there, and its blades and seed heads fleck it light and dark up close;
+ * from afar the patches too small to make out settle into one tone. */
+vec3 Grass(Ground ground, Site site)
+{
+	Grain grain = site.grain;
+	vec3 green = GrassTone(grain.broad, site.climate);
 	vec3 straw = green * STRAW_TINT;
-	float shade = Varied(grain.local, 0.3) * Varied(grain.clump, 0.35) * Varied(grain.fine, 0.25) * Varied(grain.micro, 0.45);
-	float strawed = mix(STRAW_MEAN, smoothstep(0.5, 0.85, grain.local) + 0.25 * smoothstep(0.6, 0.85, grain.micro), Resolved(STRAW_PATCHES_PER_TILE));
-	vec3 sward = mix(green * DEEP_SWARD, green, smoothstep(DEEP_SWARD_EDGES.x, DEEP_SWARD_EDGES.y, grain.local));
-	vec3 blades = mix(sward, straw, strawed) * shade;
+	float grown = PatchShare(site.p + LONG_SWARD_SEED, SWARD_PATCHES_PER_TILE, LONG_SWARD_EDGES, LONG_SWARD_MEAN);
+	float rank = mix(GRAZED_RANK, 1.0, grown);
+	float shade = Varied(grain.local, 0.3) * Varied(grain.clump, 0.35 * rank) * Varied(grain.fine, 0.25) * Varied(grain.micro, SWARD_BLADES * rank);
+	float dried = smoothstep(0.5, 0.85, grain.local) + SEED_HEADS * smoothstep(0.6, 0.85, grain.micro);
+	float strawed = mix(STRAW_MEAN, dried * rank, Resolved(STRAW_PATCHES_PER_TILE));
+	vec3 undergrowth = green * mix(vec3(1.0), DEEP_SWARD, rank);
+	vec3 sward = mix(undergrowth, green, smoothstep(DEEP_SWARD_EDGES.x, DEEP_SWARD_EDGES.y, grain.local)) * mix(GRAZED_SWARD, LONG_SWARD, grown);
+	vec3 blades = Bloomed(mix(sward, straw, strawed) * shade, site.p);
 	vec3 soil = Soil() * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
 
-vec3 Meadow(Grain grain, Climate climate)
+vec3 Meadow(Site site)
 {
-	return Grass(Ground(MAT_GRASS, 1.0, 0u), grain, climate);
+	return Grass(Ground(MAT_GRASS, 1.0, 0u), site);
 }
 
 /* Toyland's strata blended as they read from too far to make out one from another. */
@@ -679,9 +730,11 @@ Patch Exposed(Patch ground, Site site)
 }
 
 /* Rough land: tussocks of dry and green grass in clumps, opening onto patches of stony soil. */
-Patch Rough(Grain grain, vec2 p, Climate climate)
+Patch Rough(Site site)
 {
-	vec3 green = GrassTone(grain.broad, climate) * 0.9;
+	Grain grain = site.grain;
+	vec2 p = site.p;
+	vec3 green = GrassTone(grain.broad, site.climate) * 0.9;
 	vec3 dry = mix(green, Landscape() == LANDSCAPE_TOYLAND ? TOY_LIME : ROUGH_TINT, 0.5);
 	float clumps = smoothstep(0.35, 0.65, Octave(p, 2.3));
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
@@ -700,7 +753,7 @@ Patch Rocks(Site site)
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
-	vec3 strewn = mix(Meadow(grain, site.climate), bare.scree * PALE_STONE, stones);
+	vec3 strewn = mix(Meadow(site), bare.scree * PALE_STONE, stones);
 	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, patches), ROCK_RUGGED, outcrop));
 }
 
@@ -752,12 +805,13 @@ Patch Mixed(Patch ground, Patch over, float share)
 }
 
 /* A beach is wet sand at the water's edge drying up the shore, and grass where the shore rises well clear of the sea. */
-Patch Beach(Grain grain, Climate climate)
+Patch Beach(Site site)
 {
+	Grain grain = site.grain;
 	float lift = v_world.z + (grain.fine - 0.5) * 0.12 + (grain.micro - 0.5) * 0.05;
 	vec3 sand = mix(WET_SAND, DRY_SAND, smoothstep(0.03, 0.22, lift)) * Varied(grain.local, 0.12) * Varied(grain.micro, 0.12);
 	float grassed = smoothstep(0.45, 0.75, lift + (grain.local - 0.5) * 0.4);
-	return Patch(mix(sand, Meadow(grain, climate), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
+	return Patch(mix(sand, Meadow(site), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
@@ -771,14 +825,14 @@ vec3 Riprap(vec2 p, Bare bare)
 /* Beside a railway or a road the shore is armoured with heaped stone. */
 Patch Shore(Site site)
 {
-	if (site.armoured <= 0.0) return Beach(site.grain, site.climate);
+	if (site.armoured <= 0.0) return Beach(site);
 	Patch stone = Patch(Riprap(site.p, site.bare), SCREE_RUGGED);
-	return site.armoured < 1.0 ? Mixed(Beach(site.grain, site.climate), stone, site.armoured) : stone;
+	return site.armoured < 1.0 ? Mixed(Beach(site), stone, site.armoured) : stone;
 }
 
-vec3 Steppe(Grain grain, Climate climate)
+vec3 Steppe(Site site)
 {
-	return mix(Meadow(grain, climate) * STRAW_TINT, DRY_SAND * Varied(grain.micro, 0.15), 0.4);
+	return mix(Meadow(site) * STRAW_TINT, DRY_SAND * Varied(site.grain.micro, 0.15), 0.4);
 }
 
 Patch Albedo(Ground ground, Site site)
@@ -786,12 +840,12 @@ Patch Albedo(Ground ground, Site site)
 	Grain grain = site.grain;
 	vec2 p = site.p;
 	switch (ground.material) {
-		case MAT_GRASS: return Patch(Grass(ground, grain, site.climate), GRASS_RUGGED);
+		case MAT_GRASS: return Patch(Grass(ground, site), GRASS_RUGGED);
 		case MAT_ROUGH:
-		case MAT_SNOW: return Rough(grain, p, site.climate);
+		case MAT_SNOW: return Rough(site);
 		case MAT_ROCKS: return Rocks(site);
 		case MAT_FIELDS: return Fields(ground, grain, p);
-		case MAT_DESERT: return Patch(Steppe(grain, site.climate), SAND_RUGGED);
+		case MAT_DESERT: return Patch(Steppe(site), SAND_RUGGED);
 		case MAT_SHORE: return Shore(site);
 		case MAT_PAVED: return Patch(Paving() * (0.94 + 0.08 * grain.local) * Varied(grain.fine, 0.06) * Varied(grain.micro, 0.08), PAVED_RUGGED);
 		case MAT_DIRT: return Patch(YARD * Varied(grain.local, 0.15) * Varied(grain.fine, 0.1) * Varied(grain.micro, 0.2), ROUGH_RUGGED);

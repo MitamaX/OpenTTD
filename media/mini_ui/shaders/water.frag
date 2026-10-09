@@ -46,11 +46,8 @@ const float MIN_PACE = 0.01;
 const float FLECK_FOAM = 0.45;
 const float FLECK_SCALE = 4.0;
 const float FLECK_SHARE = 0.5;
-const float FLECK_MARGIN = 0.25;
 const vec2 FLECK_EXTENT = vec2(0.24, 0.12);
-const float FLECK_SMALLEST = 0.5;
-const float FLECK_SOFTNESS = 0.35;
-const ivec2 FLECK_SEED = ivec2(7919, 3571);
+const SpeckLattice FLECK_LATTICE = SpeckLattice(ivec2(7919, 3571), 0.25, 0.5, 0.35);
 const vec2 FLECK_PACES = vec2(0.14, 0.3);
 const float LOWEST_PITCH_SINE = 0.3;
 const float RAPIDS_TILT = 0.12;
@@ -626,14 +623,9 @@ Water WaterAt(vec2 p)
 	return water;
 }
 
-float Speck(vec2 q, vec2 run, vec2 extent)
+float Fleck(vec2 q, vec2 run, vec2 extent)
 {
-	ivec2 cell = ivec2(floor(q));
-	vec2 roll = Hash2(cell + FLECK_SEED);
-	if (roll.x > FLECK_SHARE) return 0.0;
-	vec2 offset = fract(q) - mix(vec2(FLECK_MARGIN), vec2(1.0 - FLECK_MARGIN), Hash2(cell));
-	vec2 local = vec2(dot(offset, run), dot(offset, vec2(-run.y, run.x))) / (extent * mix(FLECK_SMALLEST, 1.0, roll.y));
-	return 1.0 - smoothstep(FLECK_SOFTNESS, 1.0, length(local));
+	return Speck(q, FLECK_SHARE, run, extent, FLECK_LATTICE);
 }
 
 float Flecks(vec2 p, vec2 flow, float pace)
@@ -643,7 +635,7 @@ float Flecks(vec2 p, vec2 flow, float pace)
 	vec2 run = flow / pace;
 	vec2 extent = vec2(FLECK_EXTENT.x * max(PitchSine(), LOWEST_PITCH_SINE), FLECK_EXTENT.y);
 	Carried carried = CarriedBy(p, flow);
-	float specks = mix(Speck(carried.leading * FLECK_SCALE, run, extent), Speck(carried.trailing * FLECK_SCALE, run, extent), carried.blend);
+	float specks = mix(Fleck(carried.leading * FLECK_SCALE, run, extent), Fleck(carried.trailing * FLECK_SCALE, run, extent), carried.blend);
 	return specks * FLECK_FOAM * shown;
 }
 
