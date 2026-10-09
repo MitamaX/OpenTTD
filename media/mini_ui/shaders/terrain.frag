@@ -86,6 +86,10 @@ const vec3 TOY_TEAL = vec3(0.42, 0.82, 0.6);
 const vec3 TOY_MINT = vec3(0.5, 0.86, 0.48);
 const vec3 TOY_LIME = vec3(0.7, 0.9, 0.42);
 const float TOY_LAWN_CONTRAST = 0.9;
+const float TOY_LAWN_PLOT_TILES = 3.0;
+const float MOWN_STRIPES_PER_TILE = 4.0;
+const float MOWN_SHADE = 0.06;
+const vec2 MOWN_EDGES = vec2(0.35, 0.65);
 const float ROUGH_BARE = 0.6;
 const float TOY_ROUGH_BARE = 0.2;
 const vec3 LUSH_DARK = vec3(0.2, 0.35, 0.17);
@@ -584,6 +588,16 @@ float Cover(float density, float clump)
 	return density >= 1.0 ? 1.0 : smoothstep(-0.06, 0.06, density + clump - 1.0);
 }
 
+float Mown(vec2 p)
+{
+	if (Landscape() != LANDSCAPE_TOYLAND) return 1.0;
+	float shown = Resolved(MOWN_STRIPES_PER_TILE);
+	if (shown <= 0.0) return 1.0;
+	bool along_x = Hash(ivec2(floor(p / TOY_LAWN_PLOT_TILES))) < 0.5;
+	float stripe = abs(fract((along_x ? p.y : p.x) * MOWN_STRIPES_PER_TILE * 0.5) - 0.5) * 2.0;
+	return 1.0 + MOWN_SHADE * shown * (2.0 * smoothstep(MOWN_EDGES.x, MOWN_EDGES.y, stripe) - 1.0);
+}
+
 float PatchShare(vec2 p, float frequency, vec2 edges, float mean)
 {
 	float shown = Resolved(frequency);
@@ -620,7 +634,7 @@ vec3 Grass(Ground ground, Site site)
 	float strawed = mix(STRAW_MEAN, dried * rank, Resolved(STRAW_PATCHES_PER_TILE));
 	vec3 undergrowth = green * mix(vec3(1.0), DEEP_SWARD, rank);
 	vec3 sward = mix(undergrowth, green, smoothstep(DEEP_SWARD_EDGES.x, DEEP_SWARD_EDGES.y, grain.local)) * mix(GRAZED_SWARD, LONG_SWARD, grown);
-	vec3 blades = Bloomed(mix(sward, straw, strawed) * shade, site.p);
+	vec3 blades = Bloomed(mix(sward, straw, strawed) * shade * Mown(site.p), site.p);
 	vec3 soil = Soil() * Varied(grain.local, 0.2) * Varied(grain.micro, 0.25) * mix(1.0, 1.25, grain.stones);
 	return mix(soil, blades, Cover(ground.density, grain.local));
 }
