@@ -18,7 +18,9 @@ const float SNOW_SETTLES = 0.5;
 const float SNOW_EDGE_SOFTNESS = 0.04;
 const vec2 SNOW_FACING_EDGES = vec2(0.4, 0.7);
 const float SNOW_PATCHES_PER_TILE = 6.0;
-const float SNOW_DRIFTS_PER_TILE = 2.3;
+const float SNOW_DRIFTS_PER_TILE = 3.0;
+const float SNOW_RAGS_PER_TILE = 9.0;
+const float SNOW_RAGGEDNESS = 0.25;
 const vec2 SWEPT_EDGES = vec2(0.6, 0.85);
 const float SWEPT_THINNING = 0.6;
 const float SNOW_RELIEF = 0.6;
@@ -51,9 +53,10 @@ float RoofSnow(vec3 normal)
 	float lying = clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * SNOW_LINE_PER_TILE) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
 	if (lying <= 0.0) return 0.0;
 	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying) * lying;
-	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Noise(v_position.xy * SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
+	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Layered(v_position.xy, SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
+	float ragged = (Octave(v_position.xy, SNOW_RAGS_PER_TILE) - 0.5) * SNOW_RAGGEDNESS;
 	float soft = max(SNOW_EDGE_SOFTNESS, SNOW_PATCHES_PER_TILE / tile_pixels);
-	return smoothstep(SNOW_SETTLES - soft, SNOW_SETTLES + soft, lying + patchy - swept) * upward;
+	return smoothstep(SNOW_SETTLES - soft, SNOW_SETTLES + soft, lying + patchy - swept + ragged) * upward;
 }
 
 vec3 Snowed(vec3 cladding, vec3 normal)
@@ -87,7 +90,8 @@ void main()
 	mat3 frame = FaceFrame(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0));
 	Clad clad = CladdingSeen(material, view, frame);
 	vec3 normal = normalize(frame * clad.facing);
-	if (Has(SURFACE_ROOF) || Has(SURFACE_FACADE)) clad.albedo = Snowed(clad.albedo, normal);
+	if (Has(SURFACE_ROOF)) clad.albedo = Snowed(clad.albedo, frame[2]);
+	else if (Has(SURFACE_FACADE)) clad.albedo = Snowed(clad.albedo, normal);
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
