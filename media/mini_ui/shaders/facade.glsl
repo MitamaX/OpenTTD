@@ -227,9 +227,8 @@ float Drips(Bay bay, vec2 texel, uint grid)
 	return mix(1.0, DRIP_SHADE, under * runs * fade);
 }
 
-Clad FacadeWall(uint material, vec2 pattern, vec3 tint)
+Clad Spandrel(vec3 tint)
 {
-	if (material != CLAD_GLASS) return CladOf(material, pattern, tint);
 	return Landscape() == LANDSCAPE_TOYLAND ? Matte(tint, TOY_PANE_ROUGHNESS) : PaneOver(SPANDREL_BACKING, 1.0, vec3(0.0));
 }
 

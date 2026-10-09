@@ -81,7 +81,7 @@ vec3 Snowed(vec3 cladding, vec3 normal)
 Clad CladdingSeen(uint material, vec3 view, mat3 frame)
 {
 	bool facade = Has(SURFACE_FACADE);
-	Clad clad = facade ? FacadeWall(material, v_pattern, v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
+	Clad clad = facade && material == CLAD_GLASS ? Spandrel(v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
 	clad.albedo = Walled(material, v_pattern, clad.albedo, 1.0 - abs(frame[2].z));
 	if (!facade) return clad;
 	Outlook outlook = Outlook(InTexels(view * frame), InTexels(SunDirection() * frame));
