@@ -10,7 +10,11 @@
 #ifndef MINI_WORLD_WATER_SHEET_H
 #define MINI_WORLD_WATER_SHEET_H
 
+#include <optional>
+
 #include "../map/world_tiles.h"
+
+inline constexpr int CHANNEL_DIVISIONS = 6;
 
 class WaterSheet {
 public:
@@ -20,18 +24,19 @@ public:
 	int Divisions() const;
 
 private:
-	enum class Shape : uint8_t {
-		Level,
-		Plane,
+	struct FallEnds {
+		double foot;
+		double lip;
 	};
 
-	static Shape ShapeOf(int tx, int ty);
+	static FallEnds FallEndsOf(int tx, int ty);
 
 	int tx;
 	int ty;
 	SurfaceTexel surface;
 	double low;
-	Shape shape;
+	bool lies_level;
+	std::optional<FallEnds> fall;
 };
 
 #endif /* MINI_WORLD_WATER_SHEET_H */

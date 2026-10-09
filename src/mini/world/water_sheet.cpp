@@ -10,30 +10,73 @@
 #include "../../stdafx.h"
 #include "water_sheet.h"
 
+#include <algorithm>
+
 #include "../../map_func.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
 
-WaterSheet::WaterSheet(int tx, int ty) : tx(tx), ty(ty), surface(_world_tiles.SurfaceAt(TileXY(tx, ty))), low(SurfaceLevelOf(tx, ty)), shape(ShapeOf(tx, ty))
+static bool LiesLevel(int tx, int ty)
 {
+	WaterForm form = WaterFormOf(tx, ty);
+	return form == WaterForm::Open || form == WaterForm::Shore;
 }
 
-WaterSheet::Shape WaterSheet::ShapeOf(int tx, int ty)
+static std::optional<TileIndex> RapidsFollowed(int tx, int ty)
 {
-	switch (WaterFormOf(tx, ty)) {
-		case WaterForm::Open:
-		case WaterForm::Shore: return Shape::Level;
-		default: return Shape::Plane;
-	}
+	if (IsRapids(tx, ty)) return TileXY(tx, ty);
+	std::optional<TileIndex> river = RiverOfBank(tx, ty);
+	return river.has_value() && IsRapids(TileX(*river), TileY(*river)) ? river : std::nullopt;
+}
+
+static double TopLevelOf(int tx, int ty)
+{
+	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
+	return std::max({surface.north, surface.west, surface.east, surface.south});
+}
+
+static double FallShare(double u, double foot, double lip)
+{
+	if (u < 0.0) return u * foot;
+	if (u > 1.0) return 1.0 + (u - 1.0) * lip;
+	double square = u * u;
+	double cube = square * u;
+	return 3.0 * square - 2.0 * cube + (cube - 2.0 * square + u) * foot + (cube - square) * lip;
+}
+
+WaterSheet::WaterSheet(int tx, int ty) : tx(tx), ty(ty), surface(_world_tiles.SurfaceAt(TileXY(tx, ty))), low(SurfaceLevelOf(tx, ty)), lies_level(LiesLevel(tx, ty))
+{
+	std::optional<TileIndex> rapids = RapidsFollowed(tx, ty);
+	if (rapids.has_value()) this->fall = FallEndsOf(TileX(*rapids), TileY(*rapids));
+}
+
+WaterSheet::FallEnds WaterSheet::FallEndsOf(int tx, int ty)
+{
+	TileIndexDiffC down = FallStep(tx, ty);
+	int below_x = tx + down.x;
+	int below_y = ty + down.y;
+	int above_x = tx - down.x;
+	int above_y = ty - down.y;
+	bool runs_on_below = IsRapids(below_x, below_y) && TopLevelOf(below_x, below_y) == SurfaceLevelOf(tx, ty);
+	bool runs_on_above = IsRapids(above_x, above_y) && SurfaceLevelOf(above_x, above_y) == TopLevelOf(tx, ty);
+	return {runs_on_below ? 1.0 : 0.0, runs_on_above ? 1.0 : 0.0};
 }
 
 double WaterSheet::Level(double x, double y) const
 {
-	return this->shape == Shape::Plane ? FacetLevel(this->surface, x - this->tx, y - this->ty) : this->low;
+	if (this->lies_level) return this->low;
+	double plane = FacetLevel(this->surface, x - this->tx, y - this->ty);
+	if (!this->fall.has_value()) return plane;
+	return this->low + FallShare(plane - this->low, this->fall->foot, this->fall->lip);
 }
 
 int WaterSheet::Divisions() const
 {
-	return 1;
+	bool beside_fall = false;
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		TileIndexDiffC step = TileIndexDiffCByDiagDir(side);
+		beside_fall = beside_fall || RapidsFollowed(this->tx + step.x, this->ty + step.y).has_value();
+	}
+	return this->fall.has_value() || beside_fall ? CHANNEL_DIVISIONS : 1;
 }

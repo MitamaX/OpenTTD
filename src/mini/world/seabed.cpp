@@ -166,7 +166,7 @@ bool IsRiverMouth(int tx, int ty)
 	return false;
 }
 
-std::optional<TileIndex> RiverAlong(int tx, int ty)
+static std::optional<TileIndex> RiverAlong(int tx, int ty)
 {
 	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
 	MapVector down = Downhill(tx, ty);
@@ -179,14 +179,19 @@ std::optional<TileIndex> RiverAlong(int tx, int ty)
 	return std::nullopt;
 }
 
-bool IsRiverBank(int tx, int ty)
+std::optional<TileIndex> RiverOfBank(int tx, int ty)
 {
-	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Dry) return false;
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Dry) return std::nullopt;
 	TileIndex tile = TileXY(tx, ty);
 	GroundTexel ground = _world_tiles.GroundAt(tile);
 	NetworkTexel network = _world_tiles.NetworkAt(tile);
-	if (ground.flora != 0 || (network.style & NETWORK_BRIDGE_BIT) != 0 || GroundworkOf(ground, network) != Groundwork::Open) return false;
-	return RiverAlong(tx, ty).has_value();
+	if (ground.flora != 0 || (network.style & NETWORK_BRIDGE_BIT) != 0 || GroundworkOf(ground, network) != Groundwork::Open) return std::nullopt;
+	return RiverAlong(tx, ty);
+}
+
+bool IsRiverBank(int tx, int ty)
+{
+	return RiverOfBank(tx, ty).has_value();
 }
 
 bool IsRiverside(int tx, int ty)

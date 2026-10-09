@@ -59,7 +59,6 @@ static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int COAST_DIVISIONS = 4;
-static constexpr int CHANNEL_DIVISIONS = 6;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -238,15 +237,18 @@ static Vec3 FacetedNormal(const TerrainMesh &mesh, const std::array<uint32_t, CO
 	return Lerp(north, south, fy);
 }
 
-/* A tile whose ground curves is laid as a fine grid over it, sharing the tile's own corners wherever a neighbour keeps them and shading as its facets would between them. */
+/* A tile whose ground curves is laid as a fine grid over it, sharing the tile's own corners wherever a neighbour keeps them and shading as its facets would between them;
+ * it is marked sunk as far as it lies under the water, where the water stands no higher than the tile's own ground. */
 static void AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty, int divisions)
 {
 	WaterSheet sheet(tx, ty);
+	TileGround ground(tx, ty);
 	LayTileGrid(mesh, tx, ty, divisions, [&](int i, int j, double x, double y) {
 		bool on_corner = (i % divisions == 0) && (j % divisions == 0);
 		if (on_corner && relief.Pinned(x, y)) return corners[CornerAt(i / divisions, j / divisions)];
 		double level = relief.Level(x, y);
-		return mesh.Add({x, y, level}, relief.Normal(x, y, FacetedNormal(mesh, corners, x - tx, y - ty)), SunkMark(std::max(sheet.Level(x, y) - level, 0.0)));
+		double water = std::min(sheet.Level(x, y), ground.Level(x, y));
+		return mesh.Add({x, y, level}, relief.Normal(x, y, FacetedNormal(mesh, corners, x - tx, y - ty)), SunkMark(std::max(water - level, 0.0)));
 	});
 }
 

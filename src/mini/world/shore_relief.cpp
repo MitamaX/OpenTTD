@@ -163,7 +163,8 @@ double ChannelRelief::Curved(double x, double y) const
 {
 	double level = this->sheet.Level(x, y);
 	double inside = SmoothStep(WATERLINE - CHANNEL_LIP, WATERLINE + CHANNEL_FALL, SheetWater(x, y, level));
-	return std::min(this->ground.Level(x, y), level - this->Depth(x, y, level) * inside);
+	double ground = this->ground.Level(x, y);
+	return std::lerp(ground, std::min(ground, level - this->Depth(x, y, level)), inside);
 }
 
 /* How deep the water stands at a point once well inside its outline: the depth under the middles of the tiles around, spread between them. */
