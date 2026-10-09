@@ -10,8 +10,7 @@ float ViewDepth(vec3 position)
 	return -(u_view * vec4(position, 1.0)).z;
 }
 
-/* A box of filtered lookups SHADOW_FILTER_SPAN texels wide weighs the five texels it covers along each axis by 1 - f, 1, 1, 1 and f, f being how far the point lies into its texel;
- * FILTER_LOOKUPS filtered lookups along the axis weigh them just so, the outer two each blending a pair: where each reads, counted from the first texel's centre, and how much it counts. */
+/* Filtered lookups weighing the texels a box SHADOW_FILTER_SPAN wide covers by 1 - f, 1, 1, 1 and f, for a point f into its texel. */
 float[FILTER_LOOKUPS] FilterOffsets(float f)
 {
 	return float[FILTER_LOOKUPS](1.0 / (2.0 - f), 2.0, 3.0 + f / (1.0 + f));

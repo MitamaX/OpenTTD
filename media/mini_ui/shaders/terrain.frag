@@ -466,8 +466,7 @@ vec3 Soil()
 	return Landscape() == LANDSCAPE_TOYLAND ? TOY_SOIL : SOIL;
 }
 
-/* The ground's colours are picked on screen; they are lit as the light they reflect.
- * Below the sea the waves scatter the sunlight, so the shadows falling on the bed lighten with the depth of the water over it. */
+/* Below the sea the waves scatter the sunlight, so the shadows falling on the bed lighten with the depth of the water over it. */
 vec4 Lit(Shade shade)
 {
 	vec3 position = RenderPoint(v_world);
@@ -882,7 +881,6 @@ Climate WateredClimate(vec2 p, Relief relief)
 	return Climate(0.0, smoothstep(LUSH_MOISTURE.x, LUSH_MOISTURE.y, moisture), 1.0 - smoothstep(PARCHED_MOISTURE.x, PARCHED_MOISTURE.y, moisture));
 }
 
-/* The grass's wetness is only worked out where some ground at the point shows it. */
 Climate SiteClimate(vec2 p, float ragged, Relief relief, Ground corners[4], vec2 warp)
 {
 	if (ClimateMapped()) return MappedClimate(p, ragged, warp);
@@ -890,7 +888,6 @@ Climate SiteClimate(vec2 p, float ragged, Relief relief, Ground corners[4], vec2
 	return WateredClimate(p, relief);
 }
 
-/* The stone is only worked out where some ground at the point shows it. */
 Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4], vec2 warp, float settled)
 {
 	float ragged = ClimateMapped() ? Ragged(p, grain) : 0.0;

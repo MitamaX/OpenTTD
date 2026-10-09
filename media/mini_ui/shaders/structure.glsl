@@ -26,8 +26,7 @@ const float LICHEN_COVER = 0.45;
 const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 const vec3 DIM_ROOM = vec3(0.3, 0.29, 0.27);
 
-/* What a point of a building is: its colour before light, which way its surface faces across, up and out of the face,
- * how rough and how much glass it is, how open it lies to the sky and to the sun, and how brightly lamps light the room behind its glass. */
+/* A point of a building before light, its facing told across, up and out of its face. */
 struct Clad {
 	vec3 albedo;
 	vec3 facing;

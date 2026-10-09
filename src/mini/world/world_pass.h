@@ -30,22 +30,21 @@ public:
 	virtual ~WorldPass() = default;
 
 	virtual std::string_view Name() const = 0;
-	/* Every program and, by Load, every model and texture a pass draws with is built before the first frame, so none is built in the frame it first comes into view. */
+	/* Built before the first frame, so nothing a pass draws with is built in the frame it first comes into view. */
 	virtual std::vector<ShaderProgram *> Programs() = 0;
 	virtual void Load() {}
 	/* Runs while the game's state holds still, the only place a pass reads the game's map. */
 	virtual void Prepare([[maybe_unused]] const SceneView &view) {}
 	virtual void Sync([[maybe_unused]] const WorldChanges &changes) {}
-	/* Runs once the game goes on again after Sync, building what a pass builds from the world's tiles alone. */
+	/* Runs once the game goes on again after Sync, building only from the world's tiles. */
 	virtual void Refresh([[maybe_unused]] const SceneView &view) {}
-	/* Draws depth only into a shadow cascade, through a program CasterProgram made from the pass's own vertex sources. */
 	virtual void Cast([[maybe_unused]] const ShadowView &view) {}
-	/* A pass whose shading is dear lays its depth before any pass draws, then draws its colour with depth tested equal or nearer, shading only what stays in sight. */
+	/* A pass whose shading is dear lays its depth before any pass draws, so its colour shades only what stays in sight. */
 	virtual void Lay([[maybe_unused]] const SceneView &view) {}
 	virtual void Draw(const SceneView &view) = 0;
-	/* Open claddings, whose gaps screen noise cuts, draw once the occlusion is found from the depth, so their gaps never pock what it reads. */
+	/* Open claddings draw once the occlusion is found, so the gaps screen noise cuts in them never pock the depth it reads. */
 	virtual void DrawOpen([[maybe_unused]] const SceneView &view) {}
-	/* A program that draws only what is in sight draws once with nothing in sight, so the driver readies it for its target before it first shows anything. */
+	/* Each program draws once with nothing in sight, so the driver readies it for its target before it first shows anything. */
 	virtual void WarmCast() {}
 	virtual void Warm() {}
 	virtual void Release() = 0;

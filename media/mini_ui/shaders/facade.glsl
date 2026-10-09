@@ -208,7 +208,7 @@ vec3 RoundedEdge(vec2 half_size, vec2 from_centre)
 	return vec3(outward * SideOf(from_centre), outside);
 }
 
-/* Which way out of the opening its nearest edge faces, and how far outside it a point lies, in texels; inside is negative. */
+/* Which way out of the opening its nearest edge faces, and how far outside it a point lies in texels, negative inside. */
 vec3 NearestEdge(Opening opening, vec2 at)
 {
 	float half_width = opening.width * 0.5;
@@ -519,8 +519,7 @@ Clad Banded(Clad wall, Clad glazed, uint grid, float height, float pixel)
 	return Mixed(wall, glazed, Band(within, opening.sill, opening.sill + opening.height, pixel) * across * GLAZED_SHARE);
 }
 
-/* The windows, doors and frames of a facade over the wall it is cut into; seen from too far for them to show, the wall blends toward its windows' glass,
- * the storeys' bands of windows outlasting the windows along them. */
+/* A facade's windows, doors and frames over its wall, settling from afar into its storeys' bands of glass and then into one glazed wall. */
 Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed, Outlook outlook)
 {
 	vec2 texel = pattern * TEXELS;
