@@ -57,6 +57,9 @@ const float SURROUND_WIDTH = 1.0;
 const float SURROUND_BEVEL = 0.5;
 const float MULLION_WIDTH = 0.4;
 const float SASH_WIDTH = 0.4;
+const float SHOPFRONT_RIM_WIDTH = 0.6;
+const float SILL_HEIGHT = 1.0;
+const float SILL_OVERHANG = 1.0;
 const float SILL_LEDGE_TILT = 1.2;
 const float SILL_PROJECTION = 0.8;
 const float UNDER_SILL_OPENNESS = 0.8;
@@ -79,6 +82,7 @@ const float CURTAIN_RECESS = 0.3;
 const float RECESS_OPENNESS = 0.55;
 const float LOWEST_FACING = 0.05;
 const float SHADOW_SOFTNESS = 0.3;
+const float LEAST_PIXEL = 1e-3;
 
 const ivec2 WINDOW_SALT = ivec2(7, 13);
 const int ROLL_STRIDE = 7919;
@@ -364,17 +368,21 @@ Clad MeanGlazing()
 	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane() : PaneOver(DIM_ROOM, LampShare(LIT_ROOM_SHARE));
 }
 
+vec3 SeenThrough(Room room, Bay bay, uint grid, Outlook outlook, float pixel)
+{
+	Opening opening = bay.opening;
+	if (bay.at.y > opening.height * (1.0 - room.drop)) return room.blind;
+	if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) return room.curtain;
+	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, pixel);
+	vec3 dim = DIM_ROOM * room.tone;
+	return resolved > 0.0 ? mix(dim, RoomSeen(room, bay, grid, outlook), resolved) : dim;
+}
+
 Clad Glazing(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return ToyPane();
 	Room room = RoomBehind(bay, grid, seed);
-	Opening opening = bay.opening;
-	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, pixel);
-	vec3 dim = DIM_ROOM * room.tone;
-	vec3 seen = resolved > 0.0 ? mix(dim, RoomSeen(room, bay, grid, outlook), resolved) : dim;
-	if (bay.at.y > opening.height * (1.0 - room.drop)) seen = room.blind;
-	else if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) seen = room.curtain;
-	Clad clad = PaneOver(seen, room.lamp);
+	Clad clad = PaneOver(SeenThrough(room, bay, grid, outlook, pixel), room.lamp);
 	clad.facing = vec3((Hash2(Die(bay.window, seed, ROLL_WARP)) - 0.5) * PANE_WARP, 1.0);
 	return clad;
 }
@@ -390,9 +398,14 @@ Clad Filling(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 	}
 	if (opening.kind == OPEN_SHUTTER) return Matte(at.y > opening.height - 1.0 ? SHUTTER_GROOVE * 0.8 : InGroove(at.y) ? SHUTTER_GROOVE : SHUTTER_SLAT, 0.45);
 	bool sashed = opening.kind == OPEN_WINDOW;
-	bool rimmed = OutsideOpening(opening, at) > -max(sashed ? SASH_WIDTH : 0.6, pixel);
+	bool rimmed = OutsideOpening(opening, at) > -max(sashed ? SASH_WIDTH : SHOPFRONT_RIM_WIDTH, pixel);
 	if (rimmed || OnMuntin(opening, at, pixel)) return Matte(sashed ? FramePaint(seed) : SHOPFRONT_FRAME, 0.5);
 	return Glazing(bay, grid, seed, outlook, pixel);
+}
+
+float InsideShare(float outside, float pixel)
+{
+	return clamp(0.5 - outside / max(pixel, LEAST_PIXEL), 0.0, 1.0);
 }
 
 float RecessOpenness(float sunk)
@@ -429,9 +442,9 @@ Clad Recessed(Clad wall, Bay bay, uint grid, uint seed, Outlook outlook, float p
 	Clad filling = Filling(sunk, grid, seed, outlook, pixel);
 	filling.occlusion = RecessOpenness(depth);
 	filling.sunlit = SunThrough(opening, sunk.at, depth, outlook.sun);
-	float behind = OutsideOpening(opening, sunk.at);
-	if (behind <= -pixel) return filling;
-	return Mixed(Reveal(wall, opening, bay.at, depth, outlook), filling, clamp(0.5 - behind / max(pixel, 1e-3), 0.0, 1.0));
+	float behind = InsideShare(OutsideOpening(opening, sunk.at), pixel);
+	if (behind >= 1.0) return filling;
+	return Mixed(Reveal(wall, opening, bay.at, depth, outlook), filling, behind);
 }
 
 bool BesideWindow(Opening opening, vec2 at)
@@ -446,10 +459,15 @@ Clad Louvre(vec2 at, uint seed)
 	return Matte(InGroove(at.y) ? paint * LOUVRE_GROOVE_SHADE : paint, 0.6);
 }
 
+bool AlongSill(Opening opening, vec2 at)
+{
+	return abs(at.x) < opening.width * 0.5 + SILL_OVERHANG;
+}
+
 Clad UnderSill(Clad wall, Opening opening, vec2 at, vec3 sun)
 {
-	float below = -1.0 - at.y;
-	if (below < 0.0 || abs(at.x) > opening.width * 0.5 + 1.0 || sun.y <= 0.0) return wall;
+	float below = -SILL_HEIGHT - at.y;
+	if (below < 0.0 || !AlongSill(opening, at) || sun.y <= 0.0) return wall;
 	float shadow = SILL_PROJECTION * sun.y / max(sun.z, LOWEST_FACING);
 	wall.sunlit *= smoothstep(shadow - SHADOW_SOFTNESS, shadow + SHADOW_SOFTNESS, below);
 	wall.occlusion *= mix(UNDER_SILL_OPENNESS, 1.0, smoothstep(0.0, 1.0, below));
@@ -492,7 +510,7 @@ Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook o
 	bool sills = !Mullioned(grid) && (opening.kind == OPEN_WINDOW || opening.kind == OPEN_SHOP);
 	float springline = opening.arch ? opening.height - opening.width * 0.5 : opening.height;
 	bool framed = edge.z < (Mullioned(grid) ? MULLION_WIDTH : SURROUND_WIDTH) && (!sills || bay.at.y >= springline);
-	bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -1.0 && abs(bay.at.x) < opening.width * 0.5 + 1.0;
+	bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -SILL_HEIGHT && AlongSill(opening, bay.at);
 	bool louvred = Landscape() == LANDSCAPE_TROPIC && HoldsHomes(grid) && opening.kind == OPEN_WINDOW && BesideWindow(opening, bay.at);
 	if (sills) clad = UnderSill(clad, opening, bay.at, outlook.sun);
 	if (on_sill) {
@@ -504,7 +522,7 @@ Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook o
 		clad = Matte(Mullioned(grid) ? FramePaint(seed) : mix(wall.albedo, SILL_STONE, SURROUND_SHARE), 0.7);
 		clad.facing = vec3(-edge.xy * SURROUND_BEVEL, 1.0);
 	}
-	float inside = clamp(0.5 - edge.z / max(pixel, 1e-3), 0.0, 1.0);
+	float inside = InsideShare(edge.z, pixel);
 	if (inside <= 0.0) return clad;
 	return Mixed(clad, Recessed(wall, bay, grid, seed, outlook, pixel), inside);
 }
