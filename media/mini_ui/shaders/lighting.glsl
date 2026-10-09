@@ -1,4 +1,4 @@
-const vec3 SKY_LIGHT = vec3(0.38, 0.47, 0.58);
+const vec3 SKY_LIGHT = vec3(0.49, 0.58, 0.69);
 const vec3 GROUND_ALBEDO = vec3(0.155, 0.135, 0.098);
 const float SKY_TOWARD_SUN = 0.15;
 const float DIELECTRIC_REFLECTANCE = 0.04;
