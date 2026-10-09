@@ -17,6 +17,7 @@
 
 #include "../../vehicle_type.h"
 #include "../core/camera.h"
+#include "../map/train_route.h"
 #include "scene_view.h"
 #include "smoke_vent.h"
 #include "vehicle_models.h"
@@ -81,7 +82,7 @@ private:
 
 	bool MayShow(const SceneView &view, const Vehicle *head, double reach) const;
 	void LayConsist(const Vehicle *head);
-	void ExtendPath(const Vehicle *unit, const WorldPoint &to);
+	void ExtendPath(const Vehicle *unit, const WorldPoint &to, const TrackTaken &taken);
 	void LayShip(const Vehicle *ship);
 	void LayAircraft(const Vehicle *aircraft);
 	void Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length);

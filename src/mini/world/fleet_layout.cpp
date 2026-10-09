@@ -157,16 +157,21 @@ void FleetLayout::LayConsist(const Vehicle *head)
 {
 	this->links.clear();
 	for (const Vehicle *unit = head; unit != nullptr; unit = unit->Next()) {
-		if (IsShown(unit)) this->links.push_back({unit, _vehicle_motion.Gliding(unit), UnitTiles(unit)});
+		if (!IsShown(unit)) continue;
+		_vehicle_motion.Note(unit);
+		this->links.push_back({unit, {}, UnitTiles(unit)});
 	}
 	if (this->links.empty()) return;
+
+	TrackTaken taken = _vehicle_motion.TakenBy(head);
+	for (Link &link : this->links) link.centre = _vehicle_motion.Gliding(link.unit, taken);
 
 	const Link &first = this->links.front();
 	const Link &last = this->links.back();
 	this->path.clear();
-	this->ExtendPath(first.unit, _vehicle_motion.Onward(first.unit, first.centre, first.length * 0.5));
-	for (const Link &link : this->links) this->ExtendPath(link.unit, link.centre);
-	this->ExtendPath(last.unit, _vehicle_motion.Onward(last.unit, last.centre, -last.length * 0.5));
+	this->ExtendPath(first.unit, _vehicle_motion.Onward(first.unit, first.centre, first.length * 0.5, taken), taken);
+	for (const Link &link : this->links) this->ExtendPath(link.unit, link.centre, taken);
+	this->ExtendPath(last.unit, _vehicle_motion.Onward(last.unit, last.centre, -last.length * 0.5, taken), taken);
 
 	double arc = 0.0;
 	for (const Link &link : this->links) {
@@ -184,11 +189,11 @@ void FleetLayout::LayConsist(const Vehicle *head)
 }
 
 /* The path runs on to a point as a unit there runs, a train along its track through the middles of the tile sides between. */
-void FleetLayout::ExtendPath(const Vehicle *unit, const WorldPoint &to)
+void FleetLayout::ExtendPath(const Vehicle *unit, const WorldPoint &to, const TrackTaken &taken)
 {
 	auto pass = [&](const WorldPoint &at) { this->path.push_back({at, VehicleMotion::Grounded(unit, at)}); };
 	if (!this->path.empty() && VehicleMotion::FollowsTrack(unit)) {
-		TrackRoute route(Flat(this->path.back().game), Flat(to), _vehicle_motion.TakenBy(unit));
+		TrackRoute route(Flat(this->path.back().game), Flat(to), taken);
 		for (const MapVector &side : route.Sides()) pass({side.x, side.y, to.level});
 	}
 	pass(to);

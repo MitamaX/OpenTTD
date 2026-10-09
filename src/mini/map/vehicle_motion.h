@@ -24,19 +24,21 @@ struct Vehicle;
 class VehicleMotion {
 public:
 	void Advance(double delta_ms);
-	/* Where a unit stands on the game's own map, in tiles and height levels, and where it is drawn. */
-	WorldPoint Gliding(const Vehicle *v);
+	/* A unit is noted once a frame before it is placed, so every unit of a train is known before any of its ways is laid. */
+	void Note(const Vehicle *v);
+	/* Where a noted unit stands on the game's own map, in tiles and height levels, and where a unit noted afresh is drawn. */
+	WorldPoint Gliding(const Vehicle *v, const TrackTaken &taken);
 	WorldPoint Position(const Vehicle *v);
 	/* Where a unit's path over the game's map runs to a reach ahead of a point, or behind it for a negative reach:
 	 * along its track for a train on the ground, else straight on the way it faces. */
-	WorldPoint Onward(const Vehicle *v, const WorldPoint &from, double reach);
+	WorldPoint Onward(const Vehicle *v, const WorldPoint &from, double reach, const TrackTaken &taken);
 	/* The way a unit faces in radians from map X toward map Y, eased through its turns, and how fast it is turning. */
 	double Bearing(const Vehicle *v);
 	double TurnRate(const Vehicle *v);
 	/* Whether a unit runs along the track as it is drawn: a train out of tunnels and off bridges. */
 	static bool FollowsTrack(const Vehicle *v);
 	static WorldPoint Grounded(const Vehicle *v, const WorldPoint &point);
-	/* The pieces of a tile's track a train's units stand on or stood on last before, and any the game has reserved there for a train's way ahead. */
+	/* The pieces of a tile's track a train's units stand on or stood on last before as they are noted now, and any the game has reserved there for a train's way ahead. */
 	TrackTaken TakenBy(const Vehicle *v) const;
 	void Clear();
 

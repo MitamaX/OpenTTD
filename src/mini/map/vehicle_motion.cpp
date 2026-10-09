@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <vector>
 
 #include "../../bridge_map.h"
 #include "../../map_func.h"
@@ -100,8 +101,8 @@ void VehicleMotion::Advance(double delta_ms)
 	}
 }
 
-/* A unit stands where its trail passes the tick the clock shows, a train along its track; one new to view, jumping or turned about starts its trail afresh. */
-WorldPoint VehicleMotion::Gliding(const Vehicle *v)
+/* One new to view, jumping or turned about starts its trail afresh. */
+void VehicleMotion::Note(const Vehicle *v)
 {
 	Snapshot &e = this->snapshots[v->index.base()];
 	TickTrail::Spot spot = SpotOf(v, this->tick);
@@ -111,28 +112,33 @@ WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 	if (v->type == VEH_TRAIN) e.NotePassage({v->tile, Train::From(v)->track & TRACK_BIT_MASK}, continues);
 	e.seen = this->frames;
 	e.turned_about = turned_about;
+}
 
-	TickTrail::Bracket bracket = e.trail.About(_tick_clock.Shown());
+/* A unit stands where its trail passes the tick the clock shows, a train along its track. */
+WorldPoint VehicleMotion::Gliding(const Vehicle *v, const TrackTaken &taken)
+{
+	TickTrail::Bracket bracket = this->snapshots[v->index.base()].trail.About(_tick_clock.Shown());
 	WorldPoint from = InTiles(bracket.from);
 	WorldPoint to = InTiles(bracket.to);
 	if (!FollowsTrack(v)) return Between(from, to, bracket.share);
-	MapVector at = TrackRoute(Flat(from), Flat(to), this->TakenBy(v)).At(bracket.share);
+	MapVector at = TrackRoute(Flat(from), Flat(to), taken).At(bracket.share);
 	return {at.x, at.y, std::lerp(from.level, to.level, bracket.share)};
 }
 
 WorldPoint VehicleMotion::Position(const Vehicle *v)
 {
-	return Grounded(v, this->Gliding(v));
+	this->Note(v);
+	return Grounded(v, this->Gliding(v, this->TakenBy(v)));
 }
 
-WorldPoint VehicleMotion::Onward(const Vehicle *v, const WorldPoint &from, double reach)
+WorldPoint VehicleMotion::Onward(const Vehicle *v, const WorldPoint &from, double reach, const TrackTaken &taken)
 {
 	if (!FollowsTrack(v)) {
 		double bearing = this->Bearing(v);
 		return {from.x + std::cos(bearing) * reach, from.y + std::sin(bearing) * reach, from.level};
 	}
 	MapVector facing = FacingOf(v->direction);
-	MapVector at = TrainAhead(Flat(from), reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), this->TakenBy(v));
+	MapVector at = TrainAhead(Flat(from), reach < 0.0 ? facing * -1.0 : facing, std::abs(reach), taken);
 	return {at.x, at.y, from.level};
 }
 
@@ -167,12 +173,17 @@ double VehicleMotion::TurnRate(const Vehicle *v)
 
 TrackTaken VehicleMotion::TakenBy(const Vehicle *v) const
 {
-	return [this, v](TileIndex tile) {
-		TrackBits taken = GetReservedTrackbits(tile);
+	std::vector<Passage> passages;
+	if (v->type == VEH_TRAIN) {
 		for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
-			if (unit->tile == tile) taken |= unit->track & TRACK_BIT_MASK;
-			Passage left = this->LeftBy(unit);
-			if (left.tile == tile) taken |= left.track;
+			passages.push_back({unit->tile, unit->track & TRACK_BIT_MASK});
+			passages.push_back(this->LeftBy(unit));
+		}
+	}
+	return [passages = std::move(passages)](TileIndex tile) {
+		TrackBits taken = GetReservedTrackbits(tile);
+		for (const Passage &passage : passages) {
+			if (passage.tile == tile) taken |= passage.track;
 		}
 		return taken;
 	};
