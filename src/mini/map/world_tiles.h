@@ -87,6 +87,11 @@ inline constexpr uint8_t NETWORK_BRIDGE_BIT = 0x80;
 inline constexpr uint8_t FULL_WATER = 0xFF;
 inline constexpr uint8_t HALF_WATER = 0x80;
 
+constexpr uint TreeCount(uint8_t flora)
+{
+	return flora & FLORA_COUNT_MASK;
+}
+
 struct SurfaceTexel {
 	uint8_t north;
 	uint8_t west;

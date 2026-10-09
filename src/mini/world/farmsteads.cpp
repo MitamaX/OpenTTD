@@ -112,7 +112,7 @@ static bool NearFields(int tx, int ty)
 static bool IsBare(int tx, int ty, const GroundTexel &ground)
 {
 	TileIndex tile = TileXY(tx, ty);
-	return (ground.flora & FLORA_COUNT_MASK) == 0 && (_world_tiles.NetworkAt(tile).style & NETWORK_BRIDGE_BIT) == 0 && IsOpenLand(tx, ty);
+	return TreeCount(ground.flora) == 0 && (_world_tiles.NetworkAt(tile).style & NETWORK_BRIDGE_BIT) == 0 && IsOpenLand(tx, ty);
 }
 
 static bool IsBareGrass(int tx, int ty)

@@ -497,9 +497,14 @@ Relief ReliefAt(vec3 normal, float levels_per_pixel)
 	return Relief(slope, smoothstep(STANDARD_SLOPE, STEEPEST_SLOPE, slope), smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS * 2.0, layer_pixels), normal.xy);
 }
 
-vec3 Altitude(vec3 colour, float height)
+float AltitudeShare()
 {
-	float t = clamp(height / max(Peak(), MIN_RELIEF_SPAN), 0.0, 1.0);
+	return clamp(v_world.z / max(Peak(), MIN_RELIEF_SPAN), 0.0, 1.0);
+}
+
+vec3 Altitude(vec3 colour)
+{
+	float t = AltitudeShare();
 	vec3 tint = t < 0.5 ? mix(LOWLAND, vec3(1.0), t * 2.0) : mix(vec3(1.0), HIGHLAND, t * 2.0 - 1.0);
 	return colour * tint;
 }
@@ -627,7 +632,7 @@ Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
 Exposure ExposureAt(Relief relief, Grain grain, float blanket)
 {
-	float altitude = clamp(v_world.z / max(Peak(), MIN_RELIEF_SPAN), 0.0, 1.0);
+	float altitude = AltitudeShare();
 	float ragged = (grain.local - 0.5) * 0.7 + (grain.fine - 0.5) * 0.3 + (grain.micro - 0.5) * 0.15;
 	float bare = relief.steep * (STEEP_BARING + blanket * SHED_BARING) + smoothstep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING + ragged;
 	float scree = smoothstep(SCREE_EXPOSURE - EXPOSURE_BLEND, SCREE_EXPOSURE + EXPOSURE_BLEND, bare);
@@ -851,7 +856,7 @@ float Moisture(vec2 p, Relief relief)
 {
 	float drifts = (2.0 * Octave(p + 11.3, MOISTURE_FREQUENCY) + Octave(p + 4.9, MOISTURE_DRIFT_FREQUENCY)) / 3.0;
 	float waterside = min(textureLod(u_water, p / MapSize(), WATERSIDE_LOD).r * WATERSIDE_WETTING, WATERSIDE_MOST);
-	float upland = clamp(v_world.z / max(Peak(), MIN_RELIEF_SPAN), 0.0, 1.0);
+	float upland = AltitudeShare();
 	return drifts + waterside - upland * UPLAND_DRYING - dot(relief.facing, SUNNY_SIDE) * SUNNY_SLOPE_DRYING;
 }
 
@@ -1142,7 +1147,7 @@ vec3 WallFace(vec3 normal)
 	float mortar = smoothstep(0.5 - MORTAR_SHARE, 0.5, max(joint.x, joint.y));
 	float detail = Resolved(COURSES_PER_TILE);
 	vec3 stone = MASONRY * Varied(Hash(ivec2(floor(block), floor(course))), 0.18 * detail) * (1.0 - 0.3 * mortar * detail);
-	return Altitude(stone, v_world.z);
+	return Altitude(stone);
 }
 
 vec3 EarthStratum(int layer)
@@ -1315,7 +1320,7 @@ vec3 EdgeTurf(Detail detail, float levels_per_pixel)
 	Site site;
 	Patch ground = Surface(p, SeamsAt(p), grain, ReliefAt(UPRIGHT, levels_per_pixel), false, site);
 	Blanket blanket = BlanketOver(site);
-	return mix(Altitude(ground.tone, v_world.z), blanket.tone, blanket.cover);
+	return mix(Altitude(ground.tone), blanket.tone, blanket.cover);
 }
 
 /* Where the network's meshes stand opaque they hide its bands, which are then not worked out at all. */
@@ -1341,7 +1346,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	vec2 rugged = mix(surface.rugged, blanket.rugged, blanket.cover) * dry;
 	normal = Roughened(normal, detail, rugged);
 	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
-	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p)), v_world.z);
+	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p)));
 	land = mix(land, blanket.tone, blanket.cover);
 	float drowned = max(clamp(-v_mark / SUBMERGED_MARK, 0.0, 1.0), water.sea * smoothstep(0.0, DROWNED_LEVELS, -v_world.z));
 	float sunk = smoothstep(0.0, RIVERBED_DEEP_MARK, -v_mark);

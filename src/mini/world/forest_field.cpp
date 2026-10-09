@@ -108,7 +108,7 @@ static uint8_t ShareByte(double share)
 
 static bool Treeless(int tx, int ty)
 {
-	return !OnMap(tx, ty) || (_world_tiles.GroundAt(TileXY(tx, ty)).flora & FLORA_COUNT_MASK) == 0;
+	return !OnMap(tx, ty) || TreeCount(_world_tiles.GroundAt(TileXY(tx, ty)).flora) == 0;
 }
 
 /* How deep within a thick wood a spot of its tile lies, from nothing on a side that opens onto treeless ground to whole a fringe's reach in. */
@@ -155,7 +155,7 @@ Grove::Grove(int tx, int ty, uint8_t flora) :
 	ty(ty),
 	kind(static_cast<TreeKind>(flora >> FLORA_KIND_SHIFT)),
 	age(static_cast<TreeAge>((flora >> FLORA_AGE_SHIFT) & FLORA_AGE_MASK)),
-	count(std::min<uint>(flora & FLORA_COUNT_MASK, FLORA_MOST_TREES)),
+	count(std::min<uint>(TreeCount(flora), FLORA_MOST_TREES)),
 	dice(Hash32(PLANTING_SALT + TileXY(tx, ty).base()))
 {
 	this->mirror_x = (this->dice.Next() & 1) != 0;
@@ -219,7 +219,7 @@ void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			uint8_t flora = _world_tiles.GroundAt(TileXY(tx, ty)).flora;
-			if ((flora & FLORA_COUNT_MASK) != 0) Grove(tx, ty, flora).Plant(planted);
+			if (TreeCount(flora) != 0) Grove(tx, ty, flora).Plant(planted);
 		}
 	}
 	std::ranges::stable_sort(planted, {}, [](const auto &entry) { return entry.first; });

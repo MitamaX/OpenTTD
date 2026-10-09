@@ -70,16 +70,21 @@ ShaderProgram DepthProgram(std::span<const char *const> vertex_sources)
 	return ShaderProgram(vertex_sources, CASTER_FRAGMENT_SOURCES);
 }
 
+static double SunRise(const Vec3 &sun)
+{
+	return std::max(sun.z, LOWEST_SUN_RISE);
+}
+
 MapVector ShadowFall(const Vec3 &sun)
 {
-	double rise = std::max(sun.z, LOWEST_SUN_RISE);
+	double rise = SunRise(sun);
 	return {-sun.x / rise, -sun.y / rise};
 }
 
 /* How far along the sun's rays a height reaches above where its shadow lands. */
 static double Sunward(double height, const Vec3 &sun)
 {
-	return height / std::max(sun.z, LOWEST_SUN_RISE);
+	return height / SunRise(sun);
 }
 
 static double LandRelief()
