@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <numeric>
 #include <ranges>
 #include <numbers>
 
@@ -168,15 +169,16 @@ struct CrownHabit {
 	bool heart;
 	SeedRange lean;
 	SeedRange trunk;
+	std::array<uint8_t, NUM_LANDSCAPE> habitat;
 };
 
 static constexpr std::array<CrownHabit, TREE_SHAPES> BROADLEAF_HABITS = {{
-	{{0.15, 0.18}, {0.29, 0.29, 0.13}, 5, 2, {0.075, 0.095}, 0.75, true, {0.0, 0.0}, {0.032, 0.02}},
-	{{0.11, 0.13}, {0.22, 0.22, 0.17}, 4, 2, {0.085, 0.105}, 0.95, true, {0.0, 0.0}, {0.032, 0.02}},
-	{{0.2, 0.23}, {0.18, 0.18, 0.16}, 7, 2, {0.05, 0.065}, 0.85, false, {0.0, 0.02}, {0.02, 0.014}},
-	{{0.05, 0.07}, {0.19, 0.19, 0.12}, 4, 1, {0.07, 0.085}, 0.9, true, {0.0, 0.0}, {0.032, 0.02}},
-	{{0.16, 0.18}, {0.23, 0.23, 0.12}, 4, 1, {0.07, 0.09}, 0.8, true, {0.05, 0.08}, {0.032, 0.02}},
-	{{0.07, 0.09}, {0.12, 0.12, 0.24}, 4, 1, {0.065, 0.08}, 1.15, false, {0.0, 0.0}, {0.026, 0.016}},
+	{{0.15, 0.18}, {0.29, 0.29, 0.13}, 5, 2, {0.075, 0.095}, 0.75, true, {0.0, 0.0}, {0.032, 0.02}, {4, 1, 1, 1}},
+	{{0.11, 0.13}, {0.22, 0.22, 0.17}, 4, 2, {0.085, 0.105}, 0.95, true, {0.0, 0.0}, {0.032, 0.02}, {3, 1, 1, 1}},
+	{{0.2, 0.23}, {0.18, 0.18, 0.16}, 7, 2, {0.05, 0.065}, 0.85, false, {0.0, 0.02}, {0.02, 0.014}, {1, 6, 1, 1}},
+	{{0.05, 0.07}, {0.19, 0.19, 0.12}, 4, 1, {0.07, 0.085}, 0.9, true, {0.0, 0.0}, {0.032, 0.02}, {1, 2, 1, 1}},
+	{{0.16, 0.18}, {0.23, 0.23, 0.12}, 4, 1, {0.07, 0.09}, 0.8, true, {0.05, 0.08}, {0.032, 0.02}, {1, 1, 1, 1}},
+	{{0.07, 0.09}, {0.12, 0.12, 0.24}, 4, 1, {0.065, 0.08}, 1.15, false, {0.0, 0.0}, {0.026, 0.016}, {2, 0, 1, 1}},
 }};
 
 struct ConiferHabit {
@@ -189,25 +191,62 @@ struct ConiferHabit {
 	int tips;
 	double notch;
 	double droop;
+	std::array<uint8_t, NUM_LANDSCAPE> habitat;
 };
 
 static constexpr std::array<ConiferHabit, TREE_SHAPES> CONIFER_HABITS = {{
-	{{0.48, 0.54}, 0.06, 0.18, 4, 0, 0.7, 7, 0.72, 0.22},
-	{{0.52, 0.58}, 0.05, 0.145, 5, 0, 0.75, 7, 0.62, 0.38},
-	{{0.48, 0.54}, 0.28, 0.16, 2, 0, 0.35, 6, 0.55, 0.08},
-	{{0.28, 0.34}, 0.03, 0.13, 3, 0, 0.7, 7, 0.7, 0.28},
-	{{0.5, 0.58}, 0.04, 0.1, 6, 0, 0.6, 6, 0.75, 0.45},
-	{{0.46, 0.52}, 0.08, 0.135, 4, 0, 0.7, 6, 0.5, 0.18},
+	{{0.48, 0.54}, 0.06, 0.18, 4, 0, 0.7, 7, 0.72, 0.22, {4, 1, 1, 1}},
+	{{0.52, 0.58}, 0.05, 0.145, 5, 0, 0.75, 7, 0.62, 0.38, {2, 4, 1, 1}},
+	{{0.48, 0.54}, 0.28, 0.16, 2, 0, 0.35, 6, 0.55, 0.08, {3, 1, 1, 1}},
+	{{0.28, 0.34}, 0.03, 0.13, 3, 0, 0.7, 7, 0.7, 0.28, {1, 2, 1, 1}},
+	{{0.5, 0.58}, 0.04, 0.1, 6, 0, 0.6, 6, 0.75, 0.45, {0, 4, 1, 1}},
+	{{0.46, 0.52}, 0.08, 0.135, 4, 0, 0.7, 6, 0.5, 0.18, {1, 2, 1, 1}},
 }};
 
 static constexpr std::array<CrownHabit, TREE_SHAPES> JUNGLE_HABITS = {{
-	{{0.4, 0.44}, {0.26, 0.26, 0.065}, 6, 2, {0.07, 0.09}, 0.55, true, {0.0, 0.03}, {0.024, 0.016}},
-	{{0.2, 0.24}, {0.22, 0.22, 0.12}, 5, 2, {0.08, 0.1}, 0.75, true, {0.0, 0.02}, {0.024, 0.016}},
-	{{0.16, 0.2}, {0.18, 0.18, 0.17}, 6, 1, {0.06, 0.075}, 0.5, false, {0.0, 0.02}, {0.024, 0.016}},
-	{{0.28, 0.32}, {0.2, 0.2, 0.09}, 5, 1, {0.07, 0.09}, 0.6, true, {0.06, 0.09}, {0.024, 0.016}},
-	{{0.05, 0.07}, {0.17, 0.17, 0.12}, 5, 1, {0.07, 0.085}, 0.85, true, {0.0, 0.0}, {0.024, 0.016}},
-	{{0.3, 0.34}, {0.13, 0.13, 0.1}, 4, 1, {0.06, 0.075}, 0.7, false, {0.0, 0.03}, {0.018, 0.012}},
+	{{0.4, 0.44}, {0.26, 0.26, 0.065}, 6, 2, {0.07, 0.09}, 0.55, true, {0.0, 0.03}, {0.024, 0.016}, {1, 1, 1, 1}},
+	{{0.2, 0.24}, {0.22, 0.22, 0.12}, 5, 2, {0.08, 0.1}, 0.75, true, {0.0, 0.02}, {0.024, 0.016}, {1, 1, 1, 1}},
+	{{0.16, 0.2}, {0.18, 0.18, 0.17}, 6, 1, {0.06, 0.075}, 0.5, false, {0.0, 0.02}, {0.024, 0.016}, {1, 1, 1, 1}},
+	{{0.28, 0.32}, {0.2, 0.2, 0.09}, 5, 1, {0.07, 0.09}, 0.6, true, {0.06, 0.09}, {0.024, 0.016}, {1, 1, 1, 1}},
+	{{0.05, 0.07}, {0.17, 0.17, 0.12}, 5, 1, {0.07, 0.085}, 0.85, true, {0.0, 0.0}, {0.024, 0.016}, {1, 1, 2, 1}},
+	{{0.3, 0.34}, {0.13, 0.13, 0.1}, 4, 1, {0.06, 0.075}, 0.7, false, {0.0, 0.03}, {0.018, 0.012}, {1, 1, 1, 1}},
 }};
+
+static constexpr std::array<uint8_t, TREE_SHAPES> EVEN_WEIGHTS = {1, 1, 1, 1, 1, 1};
+
+template <class Habit>
+static std::array<uint8_t, TREE_SHAPES> Weights(const std::array<Habit, TREE_SHAPES> &habits, LandscapeType landscape)
+{
+	std::array<uint8_t, TREE_SHAPES> weights;
+	std::ranges::transform(habits, weights.begin(), [&](const Habit &habit) { return habit.habitat[to_underlying(landscape)]; });
+	return weights;
+}
+
+static std::array<uint8_t, TREE_SHAPES> WeightsOf(TreeKind kind, LandscapeType landscape)
+{
+	switch (kind) {
+		case TreeKind::Broadleaf: return Weights(BROADLEAF_HABITS, landscape);
+		case TreeKind::Conifer: return Weights(CONIFER_HABITS, landscape);
+		case TreeKind::Jungle: return Weights(JUNGLE_HABITS, landscape);
+		default: return EVEN_WEIGHTS;
+	}
+}
+
+uint8_t PickTreeShape(TreeKind kind, LandscapeType landscape, double roll)
+{
+	std::array<uint8_t, TREE_SHAPES> weights = WeightsOf(kind, landscape);
+	if (std::reduce(weights.begin(), weights.end(), 0U) == 0) weights = EVEN_WEIGHTS;
+	double reach = roll * std::reduce(weights.begin(), weights.end(), 0U);
+	uint8_t picked = 0;
+	uint passed = 0;
+	for (uint8_t shape = 0; shape < TREE_SHAPES; shape++) {
+		if (weights[shape] == 0) continue;
+		picked = shape;
+		passed += weights[shape];
+		if (reach < passed) break;
+	}
+	return picked;
+}
 
 enum class LeafSurface : uint8_t {
 	Soft,

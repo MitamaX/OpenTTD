@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 #include "../../map_func.h"
@@ -36,6 +37,11 @@ static constexpr double TOY_HUDDLE = 0.3;
 static constexpr SeedRange TOY_HUDDLE_SPOT = {0.3, 0.7};
 static constexpr SeedRange DYING_WITHER = {0.35, 0.7};
 static constexpr uint32_t PLANTING_SALT = 0x7EE5F00DU;
+static constexpr int STAND_TILES = 6;
+static constexpr double STAND_MIDDLE = 0.5;
+static constexpr double STAND_JITTER = 0.35;
+static constexpr double STAND_LOYALTY = 0.6;
+static constexpr uint32_t STAND_SALT = 0x57A2D5EEU;
 
 /* Spots a tile's trees stand on, spread so neighbours' crowns just meet; the middle one comes last, clear of a park's paths. */
 static constexpr std::array<TilePoint, 6> SLOTS = {{
@@ -123,6 +129,37 @@ static double FringeDepth(int tx, int ty, double fx, double fy)
 
 using ShapedTree = std::pair<size_t, TreeInstance>;
 
+struct Stand {
+	MapVector centre;
+	double roll;
+};
+
+static Stand StandOf(int bx, int by)
+{
+	SeedDice dice(SubSeed(Hash32(STAND_SALT + static_cast<uint32_t>(bx)), static_cast<uint32_t>(by)));
+	double x = (bx + STAND_MIDDLE + dice.Between(-STAND_JITTER, STAND_JITTER)) * STAND_TILES;
+	double y = (by + STAND_MIDDLE + dice.Between(-STAND_JITTER, STAND_JITTER)) * STAND_TILES;
+	return {{x, y}, dice.Share()};
+}
+
+static double StandRoll(int tx, int ty)
+{
+	int bx = tx / STAND_TILES;
+	int by = ty / STAND_TILES;
+	double nearest = std::numeric_limits<double>::infinity();
+	double roll = 0.0;
+	for (int dy = -1; dy <= 1; dy++) {
+		for (int dx = -1; dx <= 1; dx++) {
+			Stand stand = StandOf(bx + dx, by + dy);
+			double apart = std::hypot(stand.centre.x - (tx + HALF_TILE), stand.centre.y - (ty + HALF_TILE));
+			if (apart >= nearest) continue;
+			nearest = apart;
+			roll = stand.roll;
+		}
+	}
+	return roll;
+}
+
 /* The dice a tree rolls, in the order it rolls them, so every tree planted again is the same. */
 struct TreeRolls {
 	double spread;
@@ -148,6 +185,7 @@ private:
 	TreeKind kind;
 	TreeAge age;
 	uint count;
+	double stand;
 	SeedDice dice;
 	bool mirror_x = false;
 	bool mirror_y = false;
@@ -163,6 +201,7 @@ Grove::Grove(int tx, int ty, uint8_t flora) :
 	kind(static_cast<TreeKind>(flora >> FLORA_KIND_SHIFT)),
 	age(static_cast<TreeAge>((flora >> FLORA_AGE_SHIFT) & FLORA_AGE_MASK)),
 	count(std::min<uint>(TreeCount(flora), FLORA_MOST_TREES)),
+	stand(StandRoll(tx, ty)),
 	dice(Hash32(PLANTING_SALT + TileXY(tx, ty).base()))
 {
 	this->mirror_x = (this->dice.Next() & 1) != 0;
@@ -205,7 +244,9 @@ TreeRolls Grove::Roll()
 	TreeRolls rolls;
 	rolls.spread = this->dice.Between(TREE_SPREAD);
 	rolls.wither = this->age == TreeAge::Dying && this->kind != TreeKind::Toy ? this->dice.Between(DYING_WITHER) : 0.0;
-	rolls.shape = static_cast<uint8_t>(this->dice.Below(TREE_SHAPES));
+	double loyal = this->dice.Share();
+	double own = this->dice.Share();
+	rolls.shape = PickTreeShape(this->kind, _settings_game.game_creation.landscape, loyal < STAND_LOYALTY ? this->stand : own);
 	rolls.turn = this->dice.Share();
 	rolls.tint = this->dice.Share();
 	return rolls;

@@ -13,6 +13,7 @@
 #include <array>
 #include <vector>
 
+#include "../../landscape_type.h"
 #include "../map/world_tiles.h"
 #include "../model/model_mesh.h"
 
@@ -77,6 +78,8 @@ constexpr size_t TreeCasterMesh(size_t mesh)
 {
 	return TREE_DRAWN_MESHES + (TreeDetailOf(mesh) == TreeDetail::Crude ? mesh : mesh + 1);
 }
+
+uint8_t PickTreeShape(TreeKind kind, LandscapeType landscape, double roll);
 
 std::vector<ModelMesh> BuildTreeModels();
 
