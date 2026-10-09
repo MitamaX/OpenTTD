@@ -12,7 +12,8 @@ out vec4 frag_colour;
 const vec3 SNOW = vec3(0.87, 0.9, 0.95);
 const float SNOW_LINE_RAGGED = 1.2;
 const float SNOW_LINE_PER_TILE = 0.7;
-const vec2 SNOW_EDGES = vec2(0.35, 0.65);
+const float SNOW_SETTLES = 0.5;
+const float SNOW_EDGE_SOFTNESS = 0.04;
 const vec2 SNOW_FACING_EDGES = vec2(0.4, 0.7);
 const float SNOW_PATCHES_PER_TILE = 6.0;
 const float SNOW_DRIFTS_PER_TILE = 2.3;
@@ -55,7 +56,8 @@ float RoofSnow(vec3 normal)
 	if (lying <= 0.0) return 0.0;
 	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying) * lying;
 	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Noise(v_position.xy * SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
-	return smoothstep(SNOW_EDGES.x, SNOW_EDGES.y, lying + patchy) * upward * (1.0 - swept);
+	float soft = max(SNOW_EDGE_SOFTNESS, SNOW_PATCHES_PER_TILE / tile_pixels);
+	return smoothstep(SNOW_SETTLES - soft, SNOW_SETTLES + soft, lying + patchy - swept) * upward;
 }
 
 vec3 Snowed(vec3 cladding, vec3 normal)
