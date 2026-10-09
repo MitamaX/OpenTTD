@@ -6,6 +6,7 @@ in float v_size;
 in float v_age;
 in float v_seed;
 in float v_cloud_light;
+in float v_spray;
 
 out vec4 frag_colour;
 
@@ -13,6 +14,8 @@ const vec3 SMOKE = vec3(0.88, 0.87, 0.85);
 const vec3 SOOT = vec3(0.55, 0.54, 0.52);
 const float SOOT_CLEARS = 0.35;
 const float DENSITY = 0.75;
+const vec3 SPRAY_WHITE = vec3(0.92, 0.95, 0.96);
+const float SPRAY_DENSITY = 0.12;
 const float BILLOWS = 2.3;
 const float RAGGEDNESS = 0.55;
 const float TRANSLUCENCY = 0.8;
@@ -37,12 +40,12 @@ float Softened(float density)
 	return density * clamp((behind - own) / v_size, 0.0, 1.0);
 }
 
-/* A puff is a soft ball, lit from the sun through its thinner edges, sooty as it leaves the stack and clearing as it thins out. */
+/* A puff is a soft ball, lit from the sun through its thinner edges, sooty as it leaves the stack and clearing as it thins out; spray is a thinner white mist throughout. */
 void main()
 {
 	float reach = length(v_corner) + (Billowing(v_corner) - 0.5) * RAGGEDNESS;
 	float body = 1.0 - smoothstep(0.35, 1.0, reach);
-	float density = Softened(body * DENSITY * (1.0 - v_age) * smoothstep(0.0, 0.08, v_age));
+	float density = Softened(body * mix(DENSITY, SPRAY_DENSITY, v_spray) * (1.0 - v_age) * smoothstep(0.0, 0.08, v_age));
 	if (density <= 1e-3) discard;
 
 	vec3 right = vec3(u_view[0][0], u_view[1][0], u_view[2][0]);
@@ -50,7 +53,7 @@ void main()
 	vec3 back = vec3(u_view[0][2], u_view[1][2], u_view[2][2]);
 	vec2 bulge = v_corner * 0.8;
 	vec3 normal = normalize(right * bulge.x + up * bulge.y + back * sqrt(max(1.0 - dot(bulge, bulge), 0.0)));
-	vec3 albedo = Linear(mix(SOOT, SMOKE, smoothstep(0.0, SOOT_CLEARS, v_age)));
+	vec3 albedo = Linear(mix(mix(SOOT, SMOKE, smoothstep(0.0, SOOT_CLEARS, v_age)), SPRAY_WHITE, v_spray));
 	vec3 through = SunlightThrough(normal, ToEye(v_centre), TRANSLUCENCY, SunVisibility(v_centre, normal, v_cloud_light));
 	vec3 lit = Diffuse(albedo, through + AmbientLight(normal), DIELECTRIC_REFLECTANCE);
 	frag_colour = vec4(lit * density, density);

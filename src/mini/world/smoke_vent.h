@@ -5,19 +5,21 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file smoke_vent.h Where smoke or steam leaves a stack or a funnel. */
+/** @file smoke_vent.h Where smoke or steam leaves a stack or a funnel, or spray rises off falling water. */
 
 #ifndef MINI_WORLD_SMOKE_VENT_H
 #define MINI_WORLD_SMOKE_VENT_H
 
 #include "../core/space.h"
 
-/* The mouth of a stack or funnel in render space, how wide it is, how fast it moves along in render units a second, and the seed that times its puffs. */
+/* The mouth of a stack or funnel in render space, how wide it is, how fast it moves along in render units a second, the seed that times its puffs,
+ * and whether it throws up spray off falling water instead of smoke. */
 struct SmokeVent {
 	Vec3 at;
 	double radius;
 	Vec3 motion;
 	uint32_t seed;
+	bool spray = false;
 };
 
 #endif /* MINI_WORLD_SMOKE_VENT_H */

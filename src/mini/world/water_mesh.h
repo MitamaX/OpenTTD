@@ -5,17 +5,19 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file water_mesh.h The water's surface as triangles: level sheets over open water and shores, sloping ones down streams, and the sea beyond the edge. */
+/** @file water_mesh.h The water's surface as triangles: level sheets over open water and shores, sloping ones down streams, and the sea beyond the edge; and the spray off its falls. */
 
 #ifndef MINI_WORLD_WATER_MESH_H
 #define MINI_WORLD_WATER_MESH_H
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
 #include "../gpu/mesh_buffer.h"
+#include "smoke_vent.h"
 
 /* Positions run in tiles and height levels. */
 struct WaterVertex {
@@ -32,5 +34,7 @@ using WaterMesh = TriangleList<WaterVertex>;
 
 WaterMesh BuildWaterSurface(const TileSpan &tiles);
 WaterMesh BuildOuterWater(Dimension map, double reach);
+/* Spray rising off the foot of every fall, where the last of a run of rapids pours into still water, drifting away downstream. */
+std::vector<SmokeVent> BuildFallSprays(const TileSpan &tiles);
 
 #endif /* MINI_WORLD_WATER_MESH_H */

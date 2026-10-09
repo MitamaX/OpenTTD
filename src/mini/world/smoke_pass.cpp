@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file smoke_pass.cpp Smoke and steam rising from industry stacks and steam engines in soft puffs that swell, drift off on the wind and thin away. */
+/** @file smoke_pass.cpp Smoke and steam rising from industry stacks and steam engines, and spray off falling water, in soft puffs that swell, drift off on the wind and thin away. */
 
 #include "../../stdafx.h"
 #include "smoke_pass.h"
@@ -16,6 +16,7 @@
 #include "../gpu/gl_api.h"
 #include "../model/model_mesh.h"
 #include "structure_pass.h"
+#include "terrain_field.h"
 #include "vehicle_pass.h"
 
 #include "../../safeguards.h"
@@ -50,8 +51,8 @@ static ModelMesh PuffCard()
 	return card;
 }
 
-SmokePass::SmokePass(const StructurePass &structures, const VehiclePass &vehicles) :
-	structures(structures), vehicles(vehicles), program(VERTEX_SOURCES, FRAGMENT_SOURCES)
+SmokePass::SmokePass(const StructurePass &structures, const VehiclePass &vehicles, const TerrainField &terrain) :
+	structures(structures), vehicles(vehicles), terrain(terrain), program(VERTEX_SOURCES, FRAGMENT_SOURCES)
 {
 }
 
@@ -83,7 +84,7 @@ void SmokePass::Add(const SmokeVent &vent)
 		this->puffs.push_back({
 			static_cast<float>(vent.at.x), static_cast<float>(vent.at.y), static_cast<float>(vent.at.z), static_cast<float>(vent.radius),
 			(puff + offset) / PUFFS_PER_PLUME, static_cast<float>(vent.motion.x), static_cast<float>(vent.motion.y),
-			SeedShare(SubSeed(vent.seed, puff), 0, SeedDice::SHARE_BITS),
+			SeedShare(SubSeed(vent.seed, puff), 0, SeedDice::SHARE_BITS), vent.spray ? 1.0f : 0.0f,
 		});
 	}
 }
@@ -94,6 +95,7 @@ void SmokePass::Draw(const SceneView &view)
 	this->plumes.clear();
 	for (const StructureChunk *chunk : this->structures.Shown()) this->Gather(view, chunk->vents);
 	this->Gather(view, this->vehicles.Funnels());
+	this->terrain.ForEachSprays(view, [&](std::span<const SmokeVent> sprays) { this->Gather(view, sprays); });
 	if (this->plumes.empty()) return;
 
 	std::ranges::sort(this->plumes, std::greater{}, &Plume::distance);

@@ -79,7 +79,7 @@ WorldPainter::WorldPainter()
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));
-	this->passes.push_back(std::make_unique<SmokePass>(*this->structures, *this->vehicles));
+	this->passes.push_back(std::make_unique<SmokePass>(*this->structures, *this->vehicles, this->field));
 	for (const auto &pass : this->passes) std::ranges::copy(pass->Programs(), std::back_inserter(this->programs));
 }
 

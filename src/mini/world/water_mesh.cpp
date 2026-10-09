@@ -5,17 +5,22 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file water_mesh.cpp The water's surface as triangles: level sheets over open water and shores, sloping ones down streams, and the sea beyond the edge. */
+/** @file water_mesh.cpp The water's surface as triangles: level sheets over open water and shores, sloping ones down streams, and the sea beyond the edge; and the spray off its falls. */
 
 #include "../../stdafx.h"
 #include "water_mesh.h"
 
+#include "../../map_func.h"
+#include "../map/tile_shapes.h"
 #include "sea_frame.h"
 #include "seabed.h"
 #include "tile_grid.h"
 #include "water_sheet.h"
 
 #include "../../safeguards.h"
+
+static constexpr double SPRAY_RADIUS = 0.18;
+static constexpr double SPRAY_DRIFT_PACE = 0.15;
 
 static uint32_t Add(WaterMesh &mesh, double x, double y, double level)
 {
@@ -44,6 +49,31 @@ WaterMesh BuildWaterSurface(const TileSpan &tiles)
 		}
 	}
 	return mesh;
+}
+
+static bool FootOfFall(int tx, int ty)
+{
+	if (!IsRapids(tx, ty)) return false;
+	TileIndexDiffC fall = FallStep(tx, ty);
+	int below_x = tx + fall.x;
+	int below_y = ty + fall.y;
+	return WaterFormOf(below_x, below_y) != WaterForm::Dry && !IsRapids(below_x, below_y);
+}
+
+std::vector<SmokeVent> BuildFallSprays(const TileSpan &tiles)
+{
+	std::vector<SmokeVent> sprays;
+	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
+		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
+			if (!FootOfFall(tx, ty)) continue;
+			MapVector down = Downhill(tx, ty);
+			TileIndexDiffC fall = FallStep(tx, ty);
+			WorldPoint foot = {tx + HALF_TILE * (1 + fall.x), ty + HALF_TILE * (1 + fall.y), SurfaceLevelOf(tx, ty)};
+			Vec3 drift = Vec3{down.x, down.y, 0.0} * -SPRAY_DRIFT_PACE;
+			sprays.push_back({RenderPoint(foot), SPRAY_RADIUS, drift, TileXY(tx, ty).base(), true});
+		}
+	}
+	return sprays;
 }
 
 WaterMesh BuildOuterWater(Dimension map, double reach)

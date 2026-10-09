@@ -11,6 +11,7 @@
 #define MINI_WORLD_TERRAIN_FIELD_H
 
 #include <optional>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -20,6 +21,7 @@
 #include "chunk_grid.h"
 #include "chunk_keep.h"
 #include "scene_view.h"
+#include "smoke_vent.h"
 #include "terrain_mesh.h"
 
 class TerrainField {
@@ -32,14 +34,24 @@ public:
 	void DrawWater(const SceneView &camera);
 	void Release();
 
+	/* The spray off the falls of every block the water is drawn over in the camera's view. */
+	template <typename Visit>
+	void ForEachSprays(const SceneView &camera, Visit visit) const
+	{
+		for (const Nearby &near : this->nearby) {
+			if (this->Shows(near, camera)) visit(std::span<const SmokeVent>(this->chunks[near.index].sprays));
+		}
+	}
+
 private:
 	static constexpr int DRAFT_STEP = 2;
 
-	/* A block of tiles: the meshes it shows, the step its ground was built at and whether the world changed under them since, the build that will replace them,
+	/* A block of tiles: the meshes it shows and the spray off its falls, the step its ground was built at and whether the world changed under them since, the build that will replace them,
 	 * the frame since which they have waited for it, and the height range its ground spans. */
 	struct Chunk {
 		MeshBuffer ground;
 		MeshBuffer water;
+		std::vector<SmokeVent> sprays;
 		std::optional<Rebuild<TerrainBuild>> rebuild;
 		int step = 0;
 		bool stale = true;
@@ -68,6 +80,7 @@ private:
 		double distance;
 	};
 
+	bool Shows(const Nearby &near, const SceneView &camera) const;
 	void Lay(Dimension map);
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
 	std::pair<Vec3, Vec3> Bounds(size_t index);

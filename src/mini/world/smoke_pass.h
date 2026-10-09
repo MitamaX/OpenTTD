@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file smoke_pass.h Smoke and steam rising from industry stacks and steam engines in soft puffs that swell, drift off on the wind and thin away. */
+/** @file smoke_pass.h Smoke and steam rising from industry stacks and steam engines, and spray off falling water, in soft puffs that swell, drift off on the wind and thin away. */
 
 #ifndef MINI_WORLD_SMOKE_PASS_H
 #define MINI_WORLD_SMOKE_PASS_H
@@ -21,9 +21,10 @@
 #include "world_pass.h"
 
 class StructurePass;
+class TerrainField;
 class VehiclePass;
 
-/* One puff: the vent it rises from and the vent's radius, how far through its rise it starts, how the vent moves along and its own seed. */
+/* One puff: the vent it rises from and the vent's radius, how far through its rise it starts, how the vent moves along, its own seed and how far it is spray. */
 struct PuffInstance {
 	float x;
 	float y;
@@ -33,20 +34,23 @@ struct PuffInstance {
 	float motion_x;
 	float motion_y;
 	float seed;
+	float spray;
 };
 
-inline constexpr std::array<VertexAttribute, 5> PUFF_INSTANCE_LAYOUT = {{
+inline constexpr std::array<VertexAttribute, 6> PUFF_INSTANCE_LAYOUT = {{
 	{3, 3, AttributeType::Float, offsetof(PuffInstance, x)},
 	{4, 1, AttributeType::Float, offsetof(PuffInstance, radius)},
 	{5, 1, AttributeType::Float, offsetof(PuffInstance, phase)},
 	{6, 2, AttributeType::Float, offsetof(PuffInstance, motion_x)},
 	{7, 1, AttributeType::Float, offsetof(PuffInstance, seed)},
+	{8, 1, AttributeType::Float, offsetof(PuffInstance, spray)},
 }};
 
-/* Puffs are drawn over the whole solid world, blended in from the farthest to the nearest, and show only where a vent spans enough pixels for its smoke to read. */
+/* Puffs are drawn over the whole solid world, blended in from the farthest to the nearest, and show only where a vent spans enough pixels for its smoke to read;
+ * spray rises off the foot of every fall the water is drawn over. */
 class SmokePass final : public WorldPass {
 public:
-	SmokePass(const StructurePass &structures, const VehiclePass &vehicles);
+	SmokePass(const StructurePass &structures, const VehiclePass &vehicles, const TerrainField &terrain);
 
 	std::string_view Name() const override { return "smoke"; }
 	std::vector<ShaderProgram *> Programs() override;
@@ -69,6 +73,7 @@ private:
 
 	const StructurePass &structures;
 	const VehiclePass &vehicles;
+	const TerrainField &terrain;
 	std::vector<Plume> plumes;
 	std::vector<PuffInstance> puffs;
 	InstancedMeshes card;

@@ -179,7 +179,11 @@ void TerrainField::Finish(size_t index)
 	_frame_profile.Count("terrain_builds");
 	chunk.ground.Upload(chunk.rebuild->build.Finish(), TERRAIN_LAYOUT);
 	this->keep.Hold(index);
-	if (chunk.stale) chunk.water.Upload(BuildWaterSurface(this->grid.TilesOf(index)), WATER_LAYOUT);
+	if (chunk.stale) {
+		TileSpan tiles = this->grid.TilesOf(index);
+		chunk.water.Upload(BuildWaterSurface(tiles), WATER_LAYOUT);
+		chunk.sprays = BuildFallSprays(tiles);
+	}
 	chunk.step = chunk.rebuild->build.Step();
 	chunk.stale = chunk.rebuild->outdated;
 	chunk.due_since = 0;
@@ -199,13 +203,17 @@ void TerrainField::DrawGround(const Frustum &frustum)
 	this->outer_bed.Draw();
 }
 
+bool TerrainField::Shows(const Nearby &near, const SceneView &camera) const
+{
+	return !this->chunks[near.index].ground.Empty() && BoxMeets(camera.frustum, near.low, near.high);
+}
+
 void TerrainField::DrawWater(const SceneView &camera)
 {
 	if (this->chunks.empty()) return;
 	this->outer_water.Draw();
 	for (const Nearby &near : this->nearby) {
-		const Chunk &chunk = this->chunks[near.index];
-		if (!chunk.ground.Empty() && BoxMeets(camera.frustum, near.low, near.high)) chunk.water.Draw();
+		if (this->Shows(near, camera)) this->chunks[near.index].water.Draw();
 	}
 }
 
@@ -216,6 +224,7 @@ void TerrainField::Evict()
 	this->keep.Trim(this->chunks, this->frame, bytes, &Chunk::drawn, [](Chunk &chunk) {
 		chunk.ground.Release();
 		chunk.water.Release();
+		chunk.sprays.clear();
 		chunk.rebuild.reset();
 		chunk.stale = true;
 	});
