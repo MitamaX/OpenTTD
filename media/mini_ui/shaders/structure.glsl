@@ -332,7 +332,8 @@ void DropUnseen(vec3 position, uint material, vec2 pattern)
 {
 	tile_pixels = TilePixelsAt(distance(Eye(), position));
 	float noise = ScreenNoise(gl_FragCoord.xy);
-	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) <= noise || Cover(material, pattern) < noise) discard;
+	float cover = Cover(material, pattern);
+	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) <= noise || cover < noise) discard;
 }
 
 Clad Leafy(vec2 p, vec3 tint)
