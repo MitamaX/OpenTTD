@@ -291,7 +291,7 @@ static GroundTexel PackGround(TileIndex tile)
 	if (IsTileType(tile, MP_VOID)) return BorderGround(tile);
 	std::optional<FloraPatch> flora = FloraOf(tile);
 	Cover cover = CoverOf(tile, flora.has_value());
-	uint8_t detail = static_cast<uint8_t>((cover.density & GROUND_DENSITY_MASK) | (IsLush(tile) ? GROUND_LUSH_BIT : 0) | (IsBuiltOn(tile) ? GROUND_BUILT_BIT : 0));
+	uint8_t detail = static_cast<uint8_t>((cover.density & GROUND_DENSITY_MASK) | (IsLush(tile) ? GROUND_LUSH_BIT : 0) | (IsBuiltOn(tile) ? GROUND_BUILT_BIT : 0) | (IsTileType(tile, MP_HOUSE) ? GROUND_GARDEN_BIT : 0));
 	return {cover.material, detail, PackFlora(flora), static_cast<uint8_t>(cover.variant)};
 }
 

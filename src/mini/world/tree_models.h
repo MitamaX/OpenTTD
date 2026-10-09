@@ -46,6 +46,11 @@ inline constexpr std::array<uint32_t, TREE_KINDS> TREE_CANOPY_TONES = {
 	0x557F37, 0x3A6837, 0x3A752E, 0x5E923C, 0x5E8A4A, 0xE07EA8,
 };
 
+inline constexpr std::array<uint32_t, TREE_KINDS> TREE_LITTER_TONES = {
+	0x5E5434, 0x6B4E35, 0x3E4528, 0x000000, 0x000000, 0x000000,
+};
+inline constexpr std::array<double, TREE_KINDS> TREE_LITTER_COVERS = {0.75, 0.9, 0.8, 0.0, 0.0, 0.0};
+
 /* A tree's shape: one of its kind's few. Meshes are listed shape by shape, each at every detail, then again welded for casting shadows. */
 struct TreeShape {
 	TreeKind kind;

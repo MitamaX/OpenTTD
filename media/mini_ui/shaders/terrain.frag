@@ -313,6 +313,16 @@ const float RIPENING_SEED = 3.7;
 const float FOREST_COVER = 0.9;
 const float CANOPY_OCCLUSION = 0.45;
 const float CANOPY_VARIETY = 0.2;
+const vec2 LITTER_DENSITY = vec2(0.3, 0.8);
+const vec2 LITTER_PATCH_EDGES = vec2(0.3, 0.7);
+const float LITTER_PATCHINESS = 0.45;
+const float LITTER_VARIETY = 0.2;
+const vec3 LITTER_MOSS = vec3(0.29, 0.35, 0.17);
+const float MOSS_PATCHES_PER_TILE = 1.6;
+const vec2 MOSS_EDGES = vec2(0.55, 0.8);
+const float MOSS_SEED = 4.3;
+const vec2 LITTER_SHOWN_PIXELS = vec2(8.0, 24.0);
+const float FAR_FLOOR_SHADE = 0.7;
 const float GRID_DEPTH = 0.6;
 const float HIDDEN_BAND_MARGIN = 1.1;
 
@@ -470,7 +480,12 @@ struct Water {
 
 struct Canopy {
 	vec4 paint;
-	float shade;
+	float density;
+};
+
+struct ForestFloor {
+	float cover;
+	vec4 litter;
 };
 
 /* The ground one screen pixel steps over across and down the screen; lines on the ground fade by how far apart it puts them. */
@@ -1159,25 +1174,56 @@ vec3 Seabed(Water water, Grain grain, float sunk)
 	return bed * (0.92 + 0.16 * grain.local) * Varied(grain.micro, 0.12);
 }
 
-float TileCover(ivec2 tile)
+ForestFloor FloorAt(ivec2 tile)
 {
-	return FloraCover(CodesAt(tile));
+	uvec4 codes = CodesAt(tile);
+	float cover = FloraCover(codes);
+	if (cover <= 0.0 || (codes.g & GARDEN_BIT) != 0u) return ForestFloor(cover, vec4(0.0));
+	uint kind = codes.b >> FLORA_KIND_SHIFT;
+	return ForestFloor(cover, vec4(TREE_LITTER[kind], 1.0) * TREE_LITTER_COVERS[kind] * cover);
+}
+
+ForestFloor Mixed(ForestFloor a, ForestFloor b, float share)
+{
+	return ForestFloor(mix(a.cover, b.cover, share), mix(a.litter, b.litter, share));
+}
+
+ForestFloor FloorAround(vec2 p)
+{
+	vec2 q = p - TILE_CENTRE;
+	ivec2 cell = ivec2(floor(q));
+	vec2 f = smoothstep(0.0, 1.0, fract(q));
+	return Mixed(Mixed(FloorAt(cell), FloorAt(cell + ivec2(1, 0)), f.x), Mixed(FloorAt(cell + ivec2(0, 1)), FloorAt(cell + ivec2(1, 1)), f.x), f.y);
+}
+
+vec3 CanopyTone(vec2 p)
+{
+	uvec4 home = CodesAt(ivec2(floor(p)));
+	uint kind = TreeCount(home) > 0 ? home.b >> FLORA_KIND_SHIFT : TREE_BROADLEAF;
+	return TREE_CANOPY[kind] * Varied(Octave(p, 1.1), CANOPY_VARIETY);
 }
 
 /* The ground under a forest: kept from the sky by the crowns, and painted their colour where distance has thinned the trees themselves away. */
 Canopy Forest(vec2 p)
 {
-	vec2 q = p - TILE_CENTRE;
-	ivec2 cell = ivec2(floor(q));
-	vec2 f = smoothstep(0.0, 1.0, fract(q));
-	float density = mix(mix(TileCover(cell), TileCover(cell + ivec2(1, 0)), f.x), mix(TileCover(cell + ivec2(0, 1)), TileCover(cell + ivec2(1, 1)), f.x), f.y);
+	float density = FloorAround(p).cover;
 	if (density <= 0.0) return Canopy(vec4(0.0), 0.0);
 
-	uvec4 home = CodesAt(ivec2(floor(p)));
-	uint kind = TreeCount(home) > 0 ? home.b >> FLORA_KIND_SHIFT : TREE_BROADLEAF;
 	float tint = ForestTint(TilePixelsAt(distance(Eye(), RenderPoint(v_world))));
-	vec3 tone = TREE_CANOPY[kind] * Varied(Octave(p, 1.1), CANOPY_VARIETY);
-	return Canopy(vec4(tone, 1.0) * density * FOREST_COVER * tint, density * CANOPY_OCCLUSION);
+	return Canopy(vec4(CanopyTone(p), 1.0) * density * FOREST_COVER * tint, density);
+}
+
+Patch Littered(Patch ground, Canopy forest, vec2 p, Grain grain)
+{
+	if (forest.density <= 0.0) return ground;
+	vec4 litter = FloorAround(p).litter;
+	if (litter.a <= 0.0) return ground;
+
+	float patches = mix(1.0 - LITTER_PATCHINESS, 1.0, smoothstep(LITTER_PATCH_EDGES.x, LITTER_PATCH_EDGES.y, grain.local));
+	vec3 leaves = litter.rgb / litter.a * Varied(grain.fine, LITTER_VARIETY) * Varied(grain.micro, LITTER_VARIETY);
+	vec3 tone = mix(leaves, LITTER_MOSS, smoothstep(MOSS_EDGES.x, MOSS_EDGES.y, Octave(p + MOSS_SEED, MOSS_PATCHES_PER_TILE)));
+	tone = mix(CanopyTone(p) * FAR_FLOOR_SHADE, tone, smoothstep(LITTER_SHOWN_PIXELS.x, LITTER_SHOWN_PIXELS.y, tile_pixels));
+	return Mixed(ground, Patch(tone, ROUGH_RUGGED), smoothstep(LITTER_DENSITY.x, LITTER_DENSITY.y, litter.a) * patches);
 }
 
 float GridLine(vec2 p, mat2 pixel)
@@ -1488,7 +1534,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	Network network = BandsAt(p, pixel);
 	float grid = clamp((tile_pixels - INFRASTRUCTURE_PPT) / GRID_FADE_PPT, 0.0, 1.0);
 	Site site;
-	Patch surface = Surface(p, seams, grain, relief, water.sea > 0.0 ? Armoured(p) : 0.0, site);
+	Patch surface = Littered(Surface(p, seams, grain, relief, water.sea > 0.0 ? Armoured(p) : 0.0, site), forest, p, grain);
 	Blanket blanket = BlanketOver(site);
 	float dry = 1.0 - water.cover;
 	float blanketed = blanket.cover * dry;
@@ -1509,7 +1555,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	colour = Composite(colour, forest.paint);
 	float roughness = mix(GroundRoughness(), blanket.roughness, blanket.cover);
 	float glint = blanket.glint > 0.0 ? Glint(p, normal) * blanketed * (1.0 - forest.paint.a) : 0.0;
-	return Shade(Overlay(clamp(colour, 0.0, 1.0), network), normal, roughness, (1.0 - forest.shade) * CavityOpenness(grain, rugged), glint);
+	return Shade(Overlay(clamp(colour, 0.0, 1.0), network), normal, roughness, (1.0 - forest.density * CANOPY_OCCLUSION) * CavityOpenness(grain, rugged), glint);
 }
 
 /* Everything read through screen derivatives is read before the fragment branches, where neighbouring pixels may part ways.

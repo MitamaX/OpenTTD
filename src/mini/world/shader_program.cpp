@@ -147,6 +147,7 @@ static std::string ShaderHeader()
 	DefineUnsigned(header, "DENSITY_MASK", GROUND_DENSITY_MASK);
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
 	DefineUnsigned(header, "BUILT_BIT", GROUND_BUILT_BIT);
+	DefineUnsigned(header, "GARDEN_BIT", GROUND_GARDEN_BIT);
 	DefineUnsigned(header, "NETWORK_KERB_BIT", NETWORK_KERB_BIT);
 	DefineUnsigned(header, "NETWORK_BRIDGE_BIT", NETWORK_BRIDGE_BIT);
 	DefineUnsigned(header, "FLORA_COUNT_MASK", FLORA_COUNT_MASK);
@@ -188,6 +189,8 @@ static std::string ShaderHeader()
 	DefineFloat(header, "TREE_LEAN", TREE_LEAN);
 	DefineFloat(header, "TREE_MODEL_TALLEST", TREE_MODEL_TALLEST);
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
+	DefineTones(header, "TREE_LITTER", TREE_LITTER_TONES);
+	DefineFloats(header, "TREE_LITTER_COVERS", TREE_LITTER_COVERS);
 	DefineTones(header, "FRAME_TONES", SwatchTints(Swatch::Frame));
 	DefineTones(header, "MULLION_TONES", SwatchTints(Swatch::Mullion));
 	DefineTones(header, "TOWN_WALL_TONES", TownWallTints());
