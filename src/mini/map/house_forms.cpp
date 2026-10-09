@@ -179,6 +179,9 @@ static constexpr float PENTHOUSE_HEIGHT = 0.10f;
 static constexpr float PODIUM_SETBACK = 0.04f;
 static constexpr int TOWER_PODIUM_STOREYS = 2;
 static constexpr float SHAFT_INSET = 0.10f;
+static constexpr int SETBACK_FROM_STOREYS = 9;
+static constexpr float SETBACK_SHARE = 2.0f / 3.0f;
+static constexpr float SETBACK_INSET = 0.07f;
 static constexpr float GLASS_TOWER_SETBACK = 0.14f;
 static constexpr float CROWN_INSET = 0.2f;
 static constexpr float CROWN_HEIGHT = 0.06f;
@@ -817,19 +820,25 @@ static Solid AddPodium(BuildingForm &form, const HouseSite &site, int storeys)
 	return podium;
 }
 
-static Solid AddSlab(BuildingForm &form, const Plot &plot, const Solid &podium, const HouseSite &site)
+static Solid AddSlab(BuildingForm &form, const Plot &plot, float base, int storeys, const HouseSite &site)
 {
-	float base = podium.Top();
-	float top = WallTiles(WearableGrid(site.wall.material, site.grid), site.storeys);
-	Solid slab = Roofed(Storeyed(plot, site, site.grid, site.storeys).On(base).Height(top - base), site, RoofShape::Parapet);
+	float top = WallTiles(WearableGrid(site.wall.material, site.grid), storeys);
+	Solid slab = Roofed(Storeyed(plot, site, site.grid, storeys).On(base).Height(top - base), site, RoofShape::Parapet);
 	Place(form, slab);
 	return slab;
+}
+
+static Solid AddShaft(BuildingForm &form, const Plot &plot, const Solid &podium, const HouseSite &site)
+{
+	if (site.storeys < SETBACK_FROM_STOREYS) return AddSlab(form, plot, podium.Top(), site.storeys, site);
+	Solid trunk = AddSlab(form, plot, podium.Top(), static_cast<int>(std::lround(site.storeys * SETBACK_SHARE)), site);
+	return AddSlab(form, plot.Inset(SETBACK_INSET), trunk.Top(), site.storeys, site);
 }
 
 static void BuildTower(BuildingForm &form, const HouseSite &site)
 {
 	Solid podium = AddPodium(form, site, std::min(TOWER_PODIUM_STOREYS, site.storeys));
-	Solid shaft = AddSlab(form, FootprintOf(podium).Inset(SHAFT_INSET), podium, site);
+	Solid shaft = AddShaft(form, FootprintOf(podium).Inset(SHAFT_INSET), podium, site);
 	DressRoof(form, shaft, site);
 }
 
@@ -846,7 +855,7 @@ static void BuildHotel(BuildingForm &form, const HouseSite &site)
 	Plot base = FootprintOf(podium);
 	Axis long_axis = LongAxis(base);
 	Plot plot = base.Inset(AxisToDiagDirs(long_axis), SLAB_LONG_INSET).Inset(AxisToDiagDirs(OtherAxis(long_axis)), SLAB_SHORT_INSET);
-	Solid slab = AddSlab(form, plot, podium, site);
+	Solid slab = AddSlab(form, plot, podium.Top(), site.storeys, site);
 	Plot sign = plot.Edge(site.front, HOTEL_SIGN_DEPTH).Narrowed(AlongEdge(site.front), HOTEL_SIGN_LENGTH);
 	Place(form, Part::Box(sign).On(LevelAbove(slab)).Detailed().Height(HOTEL_SIGN_HEIGHT).Clad(Material::Plain, AccentTint(site)));
 	DressRoof(form, slab, site);
