@@ -54,12 +54,17 @@ const vec3 FRAME_PAINTS[] = FRAME_TONES;
 const vec3 SILL_STONE = vec3(0.80, 0.78, 0.74);
 const float SURROUND_SHARE = 0.55;
 const float SURROUND_WIDTH = 1.0;
+const float SURROUND_BEVEL = 0.5;
 const float MULLION_WIDTH = 0.4;
-const vec3 BLINDS[3] = vec3[3](vec3(0.88, 0.87, 0.84), vec3(0.58, 0.58, 0.56), vec3(0.86, 0.80, 0.66));
-const uint OFFICE_BLINDS = 2u;
-const vec3 CURTAINS[4] = vec3[4](vec3(0.62, 0.20, 0.16), vec3(0.78, 0.66, 0.42), vec3(0.30, 0.42, 0.30), vec3(0.70, 0.62, 0.58));
+const float SASH_WIDTH = 0.4;
+const float SILL_LEDGE_TILT = 1.2;
+const float SILL_PROJECTION = 0.8;
+const float UNDER_SILL_OPENNESS = 0.8;
+const vec3 SHOPFRONT_FRAME = vec3(0.22);
+const vec3 SPANDREL_BACKING = vec3(0.16, 0.17, 0.18);
 const vec3 SHUTTER_SLAT = vec3(0.62, 0.64, 0.66);
 const vec3 SHUTTER_GROOVE = vec3(0.50, 0.52, 0.54);
+const float SLATS_PER_TEXEL = 0.5;
 const vec3 DOOR_PAINTS[5] = vec3[5](vec3(0.42, 0.12, 0.10), vec3(0.12, 0.28, 0.18), vec3(0.12, 0.20, 0.36), vec3(0.30, 0.20, 0.12), vec3(0.85, 0.84, 0.80));
 const vec3 FASCIA_PAINTS[4] = vec3[4](vec3(0.55, 0.12, 0.10), vec3(0.10, 0.24, 0.40), vec3(0.14, 0.32, 0.18), vec3(0.62, 0.48, 0.16));
 const float DRIP_REACH = 5.0;
@@ -68,6 +73,12 @@ const float DRIPS_PER_TEXEL = 0.5;
 const vec2 DRIP_EDGES = vec2(0.25, 0.85);
 const float DRIP_VARIETY = 0.8;
 const vec2 DRIP_WINDOW_SEED = vec2(7.0, 13.0);
+
+const float RECESS_DEPTH = 1.5;
+const float CURTAIN_RECESS = 0.3;
+const float RECESS_OPENNESS = 0.55;
+const float LOWEST_FACING = 0.05;
+const float SHADOW_SOFTNESS = 0.3;
 
 const ivec2 WINDOW_SALT = ivec2(7, 13);
 const int ROLL_STRIDE = 7919;
@@ -82,31 +93,23 @@ const int ROLL_DEPTH = 6;
 const int ROLL_CURTAIN_PAINT = 7;
 const int ROLL_WALL_PAINT = 8;
 const int ROLL_FLOOR_PAINT = 9;
+
+const vec2 PANE_WARP = vec2(0.03, 0.08);
+const float PANE_ROUGHNESS = 0.06;
+const float GLAZED_SHARE = 0.85;
 const vec2 ROOM_TONES = vec2(0.45, 1.15);
 const float LIT_ROOM_SHARE = 0.08;
 const float LIT_SHOP_SHARE = 0.6;
 const float LIT_STOREY_SHARE = 0.18;
 const float LIT_IN_LIT_STOREY = 0.75;
+const vec3 BLINDS[3] = vec3[3](vec3(0.88, 0.87, 0.84), vec3(0.58, 0.58, 0.56), vec3(0.86, 0.80, 0.66));
+const uint OFFICE_BLINDS = 2u;
 const float BLINDED_STOREY_SHARE = 0.3;
 const float BLINDED_ROOM_SHARE = 0.22;
 const vec2 BLIND_DROPS = vec2(0.15, 0.85);
+const vec3 CURTAINS[4] = vec3[4](vec3(0.62, 0.20, 0.16), vec3(0.78, 0.66, 0.42), vec3(0.30, 0.42, 0.30), vec3(0.70, 0.62, 0.58));
 const float CURTAINED_ROOM_SHARE = 0.35;
 const vec2 CURTAIN_REACHES = vec2(0.1, 0.32);
-const vec2 PANE_WARP = vec2(0.03, 0.08);
-const float PANE_ROUGHNESS = 0.06;
-const float GLAZED_SHARE = 0.85;
-const vec3 SPANDREL_BACKING = vec3(0.16, 0.17, 0.18);
-const float RECESS_DEPTH = 1.5;
-const float CURTAIN_RECESS = 0.3;
-const float RECESS_OPENNESS = 0.55;
-const float LOWEST_FACING = 0.05;
-const float SHADOW_SOFTNESS = 0.3;
-const float SURROUND_BEVEL = 0.5;
-const float SILL_LEDGE_TILT = 1.2;
-const float SILL_PROJECTION = 0.8;
-const float UNDER_SILL_OPENNESS = 0.8;
-const float SASH_WIDTH = 0.4;
-const vec3 SHOPFRONT_FRAME = vec3(0.22);
 const vec3 ROOM_WALLS[4] = vec3[4](vec3(0.78, 0.74, 0.66), vec3(0.70, 0.72, 0.68), vec3(0.80, 0.75, 0.68), vec3(0.64, 0.67, 0.72));
 const vec3 ROOM_FLOORS[3] = vec3[3](vec3(0.44, 0.31, 0.20), vec3(0.38, 0.36, 0.34), vec3(0.54, 0.42, 0.30));
 const vec3 OFFICE_WALL = vec3(0.80, 0.80, 0.78);
@@ -119,22 +122,22 @@ const float ROOM_PARTITION = 0.5;
 const float FLOOR_SLAB = 1.0;
 const float ROOM_SIDE_SHADE = 0.8;
 const float ROOM_FAR_LIGHT = 0.22;
-const float ROOM_DEEPEST = 16.0;
 const float FURNITURE_HEIGHT = 2.0;
 const float FURNITURE_PER_TEXEL = 0.45;
 const float FURNITURE_SEED = 17.0;
 const float FURNITURE_GAPS = 0.45;
 const vec2 ROOM_RESOLVED_PIXELS = vec2(0.5, 1.2);
+
 const float ARCTIC_LAMPS = 2.5;
 const float TROPIC_ROOM_SHADE = 0.7;
 const vec3 LOUVRE_PAINTS[4] = vec3[4](vec3(0.20, 0.42, 0.30), vec3(0.22, 0.38, 0.55), vec3(0.18, 0.50, 0.50), vec3(0.86, 0.84, 0.78));
 const float LOUVRE_GROOVE_SHADE = 0.72;
-const float SLATS_PER_TEXEL = 0.5;
 const float TOY_ROUNDING = 0.6;
 const vec3 TOY_GLASS = vec3(0.62, 0.86, 0.96);
 const vec3 TOY_FRAME = vec3(0.95, 0.95, 0.93);
 const float TOY_PANE_ROUGHNESS = 0.3;
 const float TOY_GLAZING = 0.45;
+
 const vec2 COLUMNS_FADE = vec2(1.2, 2.6);
 const vec2 STOREYS_FADE = vec2(2.6, 4.5);
 
@@ -183,6 +186,11 @@ vec2 SightShift(Outlook outlook)
 vec2 Heading(vec2 shift)
 {
 	return sign(shift) * max(abs(shift), vec2(MIN_SPREAD));
+}
+
+vec2 ReachOut(vec2 from, vec2 heading, vec2 low, vec2 high)
+{
+	return (mix(low, high, step(0.0, heading)) - from) / heading;
 }
 
 vec3 RoundedEdge(vec2 half_size, vec2 from_centre)
@@ -242,9 +250,14 @@ struct Room {
 	vec3 floor;
 };
 
+ivec2 Die(ivec2 window, uint seed, int roll)
+{
+	return window * WINDOW_SALT + ivec2(int(seed), roll * ROLL_STRIDE);
+}
+
 float Roll(ivec2 window, uint seed, int roll)
 {
-	return Hash(window * WINDOW_SALT + ivec2(int(seed), roll * ROLL_STRIDE));
+	return Hash(Die(window, seed, roll));
 }
 
 uint Picked(ivec2 window, uint seed, int roll, int count)
@@ -320,11 +333,12 @@ vec3 RoomSeen(Room room, Bay bay, uint grid, Outlook outlook)
 	float half_width = FACADE_PITCH[grid] * 0.5 - ROOM_PARTITION;
 	float floor = -bay.opening.sill;
 	float ceiling = floor + (bay.window.y == 0 ? FACADE_GROUND[grid] : FACADE_STOREY[grid]) - FLOOR_SLAB;
-	vec2 reach = (vec2(heading.x > 0.0 ? half_width : -half_width, heading.y > 0.0 ? ceiling : floor) - bay.at) / heading;
+	vec2 reach = ReachOut(bay.at, heading, vec2(-half_width, floor), vec2(half_width, ceiling));
 	float sunk = min(room.depth, min(reach.x, reach.y));
 	vec2 hit = bay.at + shift * sunk;
-	vec3 surface = sunk >= room.depth ? Furnished(room, hit, floor) : reach.y < reach.x ? (heading.y > 0.0 ? ROOM_CEILING : room.floor) : room.wall * ROOM_SIDE_SHADE;
-	float daylight = mix(1.0, ROOM_FAR_LIGHT, sunk / ROOM_DEEPEST);
+	vec3 flat_surface = heading.y > 0.0 ? ROOM_CEILING : room.floor;
+	vec3 surface = sunk >= room.depth ? Furnished(room, hit, floor) : reach.y < reach.x ? flat_surface : room.wall * ROOM_SIDE_SHADE;
+	float daylight = mix(1.0, ROOM_FAR_LIGHT, sunk / OFFICE_DEPTHS.y);
 	return surface * room.tone * mix(daylight, 1.0, room.lamp);
 }
 
@@ -351,11 +365,12 @@ Clad Glazing(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 	Room room = RoomBehind(bay, grid, seed);
 	Opening opening = bay.opening;
 	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, pixel);
-	vec3 seen = resolved > 0.0 ? mix(DIM_ROOM * room.tone, RoomSeen(room, bay, grid, outlook), resolved) : DIM_ROOM * room.tone;
+	vec3 dim = DIM_ROOM * room.tone;
+	vec3 seen = resolved > 0.0 ? mix(dim, RoomSeen(room, bay, grid, outlook), resolved) : dim;
 	if (bay.at.y > opening.height * (1.0 - room.drop)) seen = room.blind;
 	else if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) seen = room.curtain;
 	Clad clad = PaneOver(seen, room.lamp);
-	clad.facing = vec3((Hash2(bay.window * WINDOW_SALT + ivec2(int(seed), ROLL_WARP * ROLL_STRIDE)) - 0.5) * PANE_WARP, 1.0);
+	clad.facing = vec3((Hash2(Die(bay.window, seed, ROLL_WARP)) - 0.5) * PANE_WARP, 1.0);
 	return clad;
 }
 
@@ -391,8 +406,7 @@ Clad Reveal(Clad wall, Opening opening, vec2 at, float depth, Outlook outlook)
 {
 	vec2 shift = SightShift(outlook);
 	vec2 heading = Heading(shift);
-	vec2 edges = vec2(heading.x > 0.0 ? opening.width * 0.5 : -opening.width * 0.5, heading.y > 0.0 ? opening.height : 0.0);
-	vec2 reach = (edges - at) / heading;
+	vec2 reach = ReachOut(at, heading, vec2(-opening.width * 0.5, 0.0), vec2(opening.width * 0.5, opening.height));
 	float sunk = clamp(min(reach.x, reach.y), 0.0, depth);
 	vec2 hit = at + shift * sunk;
 	Clad reveal = Matte(wall.albedo, wall.roughness);

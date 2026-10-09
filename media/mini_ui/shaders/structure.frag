@@ -66,6 +66,16 @@ vec3 Snowed(vec3 cladding, vec3 normal)
 	return mix(cladding, SNOW * mix(1.0, relief, SNOW_RELIEF), snow);
 }
 
+Clad CladdingSeen(uint material, vec3 view, mat3 frame)
+{
+	bool facade = Has(SURFACE_FACADE);
+	Clad clad = facade ? FacadeWall(material, v_pattern, v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
+	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(frame[2].z));
+	if (!facade) return clad;
+	Outlook outlook = Outlook(InTexels(view * frame), InTexels(SunDirection() * frame));
+	return Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)), outlook);
+}
+
 /* Buildings fade out where they grow too small to show, dithered; open claddings show only what they are made of, and glass mirrors the sky.
  * Far off the sun's highlight spreads matte, as a roof too small to make out would flash its whole face in a single pixel. */
 void main()
@@ -78,9 +88,7 @@ void main()
 
 	vec3 view = ToEye(v_position);
 	mat3 frame = FaceFrame(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0));
-	Clad clad = Has(SURFACE_FACADE) ? FacadeWall(material, v_pattern, v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
-	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
-	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)), Outlook(InTexels(view * frame), InTexels(SunDirection() * frame)));
+	Clad clad = CladdingSeen(material, view, frame);
 	vec3 normal = normalize(frame * clad.facing);
 	if (Has(SURFACE_ROOF) || Has(SURFACE_FACADE)) clad.albedo = Snowed(clad.albedo, normal);
 
