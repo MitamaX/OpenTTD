@@ -328,7 +328,7 @@ Body BodyOf(vec4 field)
 	body.sea = share.x;
 	body.canal = share.y;
 	body.sheen = toy ? 0.0 : body.calm;
-	body.mirror = body.sheen;
+	body.mirror = body.calm;
 	return body;
 }
 
