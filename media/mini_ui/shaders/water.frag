@@ -46,6 +46,7 @@ const float PAST_EDGE_FLOW_TILES = 5.0;
 const float MIN_PACE = 0.01;
 const vec2 FLECK_EDGES = vec2(0.66, 0.8);
 const float FLECK_FOAM = 0.5;
+const float FLECK_SCALE = 4.0;
 const float RAPIDS_TILT = 0.12;
 const float RAPIDS_REACH = 0.35;
 const float RAPIDS_SPEED = 1.3;
@@ -588,6 +589,13 @@ Water WaterAt(vec2 p)
 	return water;
 }
 
+float Flecks(vec2 p, vec2 flow, float pace)
+{
+	float shown = Resolved(STREAK_STRETCH.y * FLECK_SCALE);
+	if (shown <= 0.0) return 0.0;
+	return smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, Current(p * FLECK_SCALE, flow * FLECK_SCALE).x) * FLECK_FOAM * shown * pace;
+}
+
 /* The waves streaked and flecked where the current runs, stilled glassy over a lip and leaning down a drop, ruffled where it races down. */
 Surface Flowing(Water water, out float flecks)
 {
@@ -599,7 +607,7 @@ Surface Flowing(Water water, out float flecks)
 		vec3 current = Current(water.p, flow);
 		float streaked = Resolved(STREAK_STRETCH.y) * pace;
 		waves = Stirred(Stilled(waves, pace * FLOW_STILLING), current.yz * mix(FLOW_STEEPNESS, RAPIDS_STEEPNESS, water.drop.steep) * streaked);
-		flecks = smoothstep(FLECK_EDGES.x, FLECK_EDGES.y, current.x) * FLECK_FOAM * streaked;
+		flecks = Flecks(water.p, flow, pace);
 	}
 	waves = Tilted(Stilled(waves, water.glassy), water.drop.down * water.drop.slope);
 	waves.ruffled = max(waves.ruffled * (1.0 - water.glassy), water.drop.steep * (1.0 - water.glassy) * RAPIDS_RUFFLE);
