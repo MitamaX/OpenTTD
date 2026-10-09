@@ -289,8 +289,8 @@ vec4 SheetField(vec2 p, float level)
 	vec2 t = p + ShoreWarp(p) - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(t));
 	if (OpenSeaAbout(cell)) return OPEN_SEA;
-	vec4 wx = SplineWeights(fract(t.x));
-	vec4 wy = SplineWeights(fract(t.y));
+	float wx[4] = SplineWeights(fract(t.x));
+	float wy[4] = SplineWeights(fract(t.y));
 	vec4 field = vec4(0.0);
 	for (int j = 0; j < 4; j++) {
 		for (int i = 0; i < 4; i++) field += wx[i] * wy[j] * SheetWater(cell + ivec2(i - 1, j - 1), level, reach);

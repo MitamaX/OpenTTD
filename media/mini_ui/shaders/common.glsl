@@ -143,13 +143,13 @@ vec4 WaterTexels(vec2 p)
 }
 
 /* The weights a cubic B-spline gives the four texels around a point, f of the way from the second to the third. */
-vec4 SplineWeights(float f)
+float[4] SplineWeights(float f)
 {
 	float g = 1.0 - f;
 	float w0 = g * g * g / 6.0;
 	float w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
 	float w3 = f * f * f / 6.0;
-	return vec4(w0, w1, 1.0 - w0 - w1 - w3, w3);
+	return float[4](w0, w1, 1.0 - w0 - w1 - w3, w3);
 }
 
 /* The water texels smoothed by a cubic B-spline, so outlines curve through the tiles instead of running along their edges; four filtered taps stand in for the sixteen texels the spline weighs. */
@@ -157,12 +157,12 @@ vec4 SplineWater(vec2 p)
 {
 	vec2 t = p - TILE_CENTRE;
 	vec2 cell = floor(t);
-	vec4 wx = SplineWeights(t.x - cell.x);
-	vec4 wy = SplineWeights(t.y - cell.y);
-	vec2 low = vec2(wx.x + wx.y, wy.x + wy.y);
-	vec2 high = vec2(wx.z + wx.w, wy.z + wy.w);
-	vec2 a = cell - 1.0 + vec2(wx.y, wy.y) / low + TILE_CENTRE;
-	vec2 b = cell + 1.0 + vec2(wx.w, wy.w) / high + TILE_CENTRE;
+	float wx[4] = SplineWeights(t.x - cell.x);
+	float wy[4] = SplineWeights(t.y - cell.y);
+	vec2 low = vec2(wx[0] + wx[1], wy[0] + wy[1]);
+	vec2 high = vec2(wx[2] + wx[3], wy[2] + wy[3]);
+	vec2 a = cell - 1.0 + vec2(wx[1], wy[1]) / low + TILE_CENTRE;
+	vec2 b = cell + 1.0 + vec2(wx[3], wy[3]) / high + TILE_CENTRE;
 	vec4 top = low.x * WaterTexels(vec2(a.x, a.y)) + high.x * WaterTexels(vec2(b.x, a.y));
 	vec4 bottom = low.x * WaterTexels(vec2(a.x, b.y)) + high.x * WaterTexels(vec2(b.x, b.y));
 	return low.y * top + high.y * bottom;
