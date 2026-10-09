@@ -125,7 +125,9 @@ void ForestPass::Draw([[maybe_unused]] const SceneView &view)
 	WorldTextures::BindSamplers(this->program);
 	this->textures.Bind();
 	auto shade = TellingDetail(this->program, DrawnMesh);
+	glEnable(GL_CULL_FACE);
 	this->batch.Redraw(this->models, shade, ShadedAsDrawn);
+	glDisable(GL_CULL_FACE);
 	LaidDepthScope laid;
 	this->batch.Redraw(this->models, shade, LaidFirst);
 }
