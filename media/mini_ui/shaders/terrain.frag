@@ -64,6 +64,10 @@ const float CLIMATE_SWAY = 1.1;
 const float CLIMATE_SWAY_FREQUENCY = 0.19;
 const float CLIMATE_FRAY = 1.0;
 const float CLIMATE_FRAY_FREQUENCY = 0.33;
+const vec2 MAPPED_LUSH_EDGES = vec2(0.15, 0.85);
+const float MAPPED_LUSH_RAGGED = 0.6;
+const vec2 TRODDEN_EDGES = vec2(0.05, 0.4);
+const float TRODDEN_RAGGED = 0.4;
 const float BUILT_WARP = 0.06;
 const float FIELD_WARP = 0.18;
 const float FIELD_BLEND_WIDTH = 0.05;
@@ -148,6 +152,9 @@ const float LEDGE_RUN_SHIFT = 40.0;
 const int LEDGE_RUN_SEED = 23;
 const float SLABS_PER_TILE = 1.7;
 const float SLAB_VARIETY = 0.3;
+const float SLAB_SEED = 2.0;
+const float SLAB_WARMTH = 0.3;
+const vec2 ROCK_GRAIN_VARIETY = vec2(0.22, 0.3);
 const float LEVEL_BEDDING = 0.35;
 const vec3 ROCK_WEATHERING = vec3(0.72, 0.74, 0.66);
 const float ROCK_WEATHERING_PER_TILE = 2.7;
@@ -609,11 +616,11 @@ vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 	vec3 bed = Stratum(int(floor(bedding)));
 	float ledge = mix(LEDGE_SHADE, LEDGE_LIT, smoothstep(0.0, LEDGE_RISE, fract(bedding)));
 	if (Landscape() == LANDSCAPE_TOYLAND) return mix(ToyStrataMean(), bed * ledge, ledges);
-	float slab = Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
-	vec3 slabs = mix(ROCK, ROCK_WARM, 0.3) * slab;
+	float slab = Varied(Octave(p + SLAB_SEED, SLABS_PER_TILE), SLAB_VARIETY);
+	vec3 slabs = mix(ROCK, ROCK_WARM, SLAB_WARMTH) * slab;
 	vec3 rock = mix(mix(slabs, bed, LEVEL_BEDDING), bed * ledge * slab, ledges);
 	vec3 weathered = mix(rock, rock * ROCK_WEATHERING, smoothstep(ROCK_WEATHERING_EDGES.x, ROCK_WEATHERING_EDGES.y, Octave(p + ROCK_WEATHERING_SEED, ROCK_WEATHERING_PER_TILE)));
-	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
+	return weathered * Varied(grain.fine, ROCK_GRAIN_VARIETY.x) * Varied(grain.micro, ROCK_GRAIN_VARIETY.y) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
 }
 
 Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
@@ -865,7 +872,7 @@ bool ClimateMapped()
 Climate MappedClimate(vec2 p, float ragged, vec2 warp)
 {
 	Climate climate = ClimateAt(p + warp + Drift(p, CLIMATE_SWAY_FREQUENCY, CLIMATE_SWAY) + Drift(p, CLIMATE_FRAY_FREQUENCY, CLIMATE_FRAY));
-	climate.lush = smoothstep(0.15, 0.85, climate.lush + ragged * 0.6);
+	climate.lush = smoothstep(MAPPED_LUSH_EDGES.x, MAPPED_LUSH_EDGES.y, climate.lush + ragged * MAPPED_LUSH_RAGGED);
 	return climate;
 }
 
@@ -888,7 +895,7 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 {
 	float ragged = ClimateMapped() ? Ragged(p, grain) : 0.0;
 	Climate climate = SiteClimate(p, ragged, relief, corners, warp);
-	float trodden = Landscape() == LANDSCAPE_TROPIC ? smoothstep(0.05, 0.4, settled + ragged * 0.4) : 0.0;
+	float trodden = Landscape() == LANDSCAPE_TROPIC ? smoothstep(TRODDEN_EDGES.x, TRODDEN_EDGES.y, settled + ragged * TRODDEN_RAGGED) : 0.0;
 	Exposure exposure = ExposureAt(relief, grain, climate.blanket);
 	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
 	bool bared = exposure.scree > 0.0 || armoured || rocky;
