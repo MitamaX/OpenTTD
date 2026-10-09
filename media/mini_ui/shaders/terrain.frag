@@ -167,6 +167,7 @@ const float LOCAL_PER_TILE = 1.3;
 const float RELIEF_DEPTH = 0.035;
 const float STONY_HOLLOWS = 1.0;
 const vec2 BUMP_HEIGHT_SHARES = vec2(0.65, 0.35);
+const float BUMP_MEAN_HEIGHT = 0.5;
 const vec2 CAVITY_OCCLUSION = vec2(1.6, 0.9);
 
 const vec2 GRASS_RUGGED = vec2(0.45, 0.0);
@@ -966,8 +967,8 @@ vec3 Roughened(vec3 normal, Detail detail, vec2 rugged)
 
 float CavityOpenness(Grain grain, vec2 rugged)
 {
-	float bump_hollow = max(0.5 - dot(vec2(grain.fine, grain.micro), BUMP_HEIGHT_SHARES), 0.0);
-	return 1.0 - dot(vec2(bump_hollow, max(grain.hollow, 0.0)) * rugged, CAVITY_OCCLUSION);
+	float bump_hollow = max(BUMP_MEAN_HEIGHT - dot(vec2(grain.fine, grain.micro), BUMP_HEIGHT_SHARES), 0.0);
+	return max(1.0 - dot(vec2(bump_hollow, max(grain.hollow, 0.0)) * rugged, CAVITY_OCCLUSION), 0.0);
 }
 
 /* Whether no tile within the reach the water's field weighs about a tile holds any water, from the water's texels eight tiles to a texel, each of which keeps any water under it however little. */
