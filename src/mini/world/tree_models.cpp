@@ -42,7 +42,7 @@ static constexpr double MASS_ROUGHNESS = 0.06;
 static constexpr SeedRange BROADLEAF_CROWN = {0.24, 0.27};
 static constexpr double BROADLEAF_UNDERSIDE = 0.13;
 static constexpr double BROADLEAF_TOP = 0.16;
-static constexpr SeedRange BROADLEAF_TRUNK = {0.026, 0.016};
+static constexpr SeedRange BROADLEAF_TRUNK = {0.032, 0.02};
 static constexpr double BROADLEAF_TRUNK_INSET = 0.04;
 static constexpr Vec3 BROADLEAF_HEART = {0.14, 0.14, 0.12};
 static constexpr double BROADLEAF_HEART_ROUGHNESS = 0.1;
@@ -133,9 +133,9 @@ struct TreeTones {
 };
 
 static constexpr std::array<std::array<TreeTones, TREE_SHAPES>, TREE_KINDS> TONES = {{
-	{{{0x5E8C3A, 0x6B4A2F}, {0x4E8034, 0x634329}, {0x6E9A3E, 0x705036}}},
-	{{{0x3A6B38, 0x5A3E28}, {0x447334, 0x553A26}, {0x356640, 0x5E432C}}},
-	{{{0x3B7A2E, 0x6E5A3F}, {0x2F6E2A, 0x665238}, {0x4C8A30, 0x76603F}}},
+	{{{0x5E8C3A, 0x5E5246}, {0x4E8034, 0x564A3E}, {0x6E9A3E, 0x665A4C}}},
+	{{{0x3A6B38, 0x54463A}, {0x447334, 0x4E4136}, {0x356640, 0x5A4A3C}}},
+	{{{0x3B7A2E, 0x6A604E}, {0x2F6E2A, 0x625846}, {0x4C8A30, 0x72684F}}},
 	{{{0x5E9A3A, 0x8A7050}, {0x6AA040, 0x7E6649}, {0x548E36, 0x927858}}},
 	{{{0x5E8A4A, 0xE86FA8}, {0x6B9A55, 0xF2C94A}, {0x557F45, 0xF4EEE4}}},
 	{{{0xF07FB0, 0xF4EEE4}, {0x7FC8F0, 0xF4EEE4}, {0xF2B24A, 0xF4EEE4}}},

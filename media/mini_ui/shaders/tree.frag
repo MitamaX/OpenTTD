@@ -24,6 +24,10 @@ const float SNOW_COVERS = 0.5;
 const float LEAFY = 0.01;
 const vec2 LEAF_TRANSLUCENCY = vec2(0.2, 0.4);
 const float LEAF_CLUMPS_PER_TILE = 24.0;
+const float LEAF_SPRAYS_PER_TILE = 7.0;
+const vec3 SPRAY_SPREAD = vec3(0.16, 0.12, 0.04);
+const vec2 SPRAY_EDGES = vec2(0.25, 0.75);
+const float SPRAY_SEED = 2.3;
 const vec2 LEAF_SHOWN_PIXELS = vec2(1.5, 4.0);
 const float LEAF_POCKETS = 0.3;
 const vec2 LEAF_POCKET_EDGES = vec2(0.25, 0.75);
@@ -39,18 +43,39 @@ float Leafy()
 	return step(LEAFY, v_translucency);
 }
 
+vec3 Spread(vec3 spread, float share)
+{
+	return 1.0 + spread * (share * 2.0 - 1.0);
+}
+
+float Shown(float per_tile)
+{
+	return smoothstep(LEAF_SHOWN_PIXELS.x, LEAF_SHOWN_PIXELS.y, TilePixelsAt(distance(Eye(), v_position)) / per_tile);
+}
+
+float LeafShare()
+{
+	return smoothstep(LEAF_TRANSLUCENCY.x, LEAF_TRANSLUCENCY.y, v_translucency);
+}
+
 /* How far a surface is foliage, clumped into sprays of leaves, rather than flesh, sweets or wood, and how far its clumps are still big enough to show. */
 float Foliage()
 {
-	float clump_pixels = TilePixelsAt(distance(Eye(), v_position)) / LEAF_CLUMPS_PER_TILE;
-	return smoothstep(LEAF_TRANSLUCENCY.x, LEAF_TRANSLUCENCY.y, v_translucency) * smoothstep(LEAF_SHOWN_PIXELS.x, LEAF_SHOWN_PIXELS.y, clump_pixels);
+	return LeafShare() * Shown(LEAF_CLUMPS_PER_TILE);
+}
+
+vec3 Sprays()
+{
+	float shown = LeafShare() * Shown(LEAF_SPRAYS_PER_TILE);
+	if (shown <= 0.0) return vec3(1.0);
+	return Spread(SPRAY_SPREAD * shown, smoothstep(SPRAY_EDGES.x, SPRAY_EDGES.y, Noise(v_grown * LEAF_SPRAYS_PER_TILE + SPRAY_SEED)));
 }
 
 /* Wood keeps its colour. */
 vec3 Albedo(vec3 normal)
 {
 	float leafy = Leafy();
-	vec3 albedo = v_colour * (1.0 + leafy * TINT_SPREAD * (v_tint * 2.0 - 1.0)) * (1.0 + leafy * HUE_SPREAD * (v_hue * 2.0 - 1.0));
+	vec3 albedo = v_colour * Spread(TINT_SPREAD * leafy, v_tint) * Spread(HUE_SPREAD * leafy, v_hue) * Sprays();
 	albedo *= mix(vec3(1.0), FRESH_TIPS, smoothstep(TIP_REACH.x, TIP_REACH.y, v_reach) * leafy);
 	albedo = mix(albedo, WITHERED * dot(albedo, LUMA_WEIGHTS) * 2.0, v_wither * leafy);
 	return mix(albedo, SNOW_COVER, v_snow * leafy * smoothstep(SNOW_SETTLES, SNOW_COVERS, normal.z));
