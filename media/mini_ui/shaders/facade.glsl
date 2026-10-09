@@ -279,7 +279,7 @@ float Roll(ivec2 window, uint seed, int roll)
 
 uint Picked(ivec2 window, uint seed, int roll, int count)
 {
-	return uint(min(Roll(window, seed, roll) * float(count), float(count - 1)));
+	return Pick(Roll(window, seed, roll), count);
 }
 
 float Chosen(float die, float share, vec2 span)

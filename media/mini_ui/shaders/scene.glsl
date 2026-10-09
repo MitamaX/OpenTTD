@@ -26,6 +26,11 @@ float Luminance(vec3 colour)
 	return dot(colour, LUMINANCE);
 }
 
+vec3 Saturated(vec3 colour, float share)
+{
+	return mix(vec3(Luminance(colour)), colour, share);
+}
+
 /* Colours picked on screen to the light they reflect. */
 vec3 Linear(vec3 display)
 {

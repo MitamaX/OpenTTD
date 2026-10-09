@@ -3,15 +3,6 @@ const vec3 GROUND_ALBEDO = vec3(0.155, 0.135, 0.098);
 const float SKY_TOWARD_SUN = 0.15;
 const float DIELECTRIC_REFLECTANCE = 0.04;
 const float GLASS_REFLECTANCE = 0.2;
-const float PANE_REFLECTANCE = 0.08;
-const float PANE_SKY_LIFT = 0.04;
-const float ROOM_SUNLIT_SHARE = 0.12;
-const vec3 LAMP_LIGHT = vec3(1.6, 1.15, 0.67);
-const float SKYLINE_FLATTENING = 0.5;
-const float SKYLINE_SHARE = 0.6;
-const float SKYLINE_SATURATION = 0.45;
-const vec3 TOWN_ALBEDO = vec3(0.26, 0.25, 0.23);
-const float TOWN_REACH = 5.0;
 const float SMOOTHEST = 0.04;
 const vec4 RESPONSE_FIT_SLOPE = vec4(-1.0, -0.0275, -0.572, 0.022);
 const vec4 RESPONSE_FIT_BASE = vec4(1.0, 0.0425, 1.04, -0.04);
@@ -22,13 +13,6 @@ const float GLOW_FOCUS_POWER = 4.0;
 struct Coat {
 	float roughness;
 	float reflectance;
-};
-
-struct Pane {
-	vec3 room;
-	vec3 film;
-	float reflectance;
-	float lamp;
 };
 
 float Fresnel(float cosine, float reflectance)
@@ -128,32 +112,6 @@ vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlus
 vec4 Radiance(vec3 albedo, vec3 normal, vec3 position, Coat coat, float occlusion)
 {
 	return SunlitRadiance(albedo, normal, ToEye(position), coat, occlusion, 0.0, SunVisibility(position, normal));
-}
-
-vec3 Town(vec3 way)
-{
-	float sunward_walls = max(-dot(Across(way), SunDirection().xy), 0.0);
-	return TOWN_ALBEDO * (SunRadiance() * sunward_walls + SKY_LIGHT);
-}
-
-vec3 PaneSurroundings(vec3 way, float height)
-{
-	if (way.z >= 0.0) return MirroredSky(way, PANE_SKY_LIFT);
-	float reach = height * length(way.xy) / -way.z;
-	vec3 sky = MirroredSky(vec3(way.xy, way.z * SKYLINE_FLATTENING), PANE_SKY_LIFT);
-	vec3 skyline = mix(vec3(Luminance(sky)), sky, SKYLINE_SATURATION);
-	return mix(Town(way), skyline, SKYLINE_SHARE * smoothstep(0.0, TOWN_REACH, reach));
-}
-
-vec4 PaneRadiance(Pane pane, vec3 normal, vec3 view, float roughness, float occlusion, float sunlit, float height)
-{
-	Coat coat = Coat(roughness, pane.reflectance);
-	vec3 sun = Sunlight(normal, sunlit);
-	vec3 ambient = AmbientLight(normal);
-	float mirrored = SurroundingReflectance(coat, max(dot(normal, view), 0.0));
-	vec3 through = Diffuse(pane.room, sun * ROOM_SUNLIT_SHARE + ambient * occlusion + LAMP_LIGHT * pane.lamp, mirrored);
-	vec3 surroundings = PaneSurroundings(reflect(-view, normal), height) * mirrored * occlusion;
-	return vec4(through + pane.film * (surroundings + sun * Highlight(normal, view, SunDirection(), coat)), AmbientShare(ambient, sun));
 }
 
 /* The sun through something thin: it wraps on past where the surface turns away from it, and glows through where it is seen against it. */

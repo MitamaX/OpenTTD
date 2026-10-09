@@ -13,11 +13,14 @@
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/FileInterface.h>
 
+#include <algorithm>
 #include <array>
+#include <iterator>
 #include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "../../3rdparty/fmt/ranges.h"
 #include "../../core/format.hpp"
@@ -50,6 +53,7 @@
 #include "../../safeguards.h"
 
 static constexpr double GRID_FADE_PPT = INFRASTRUCTURE_PPT / 2.0;
+static constexpr std::array<Swatch, 4> TOWN_WALL_SWATCHES = {Swatch::Brick, Swatch::Render, Swatch::Concrete, Swatch::Stone};
 
 template <size_t N>
 static void DefineCodes(std::string &header, std::string_view prefix, const std::array<std::string_view, N> &names)
@@ -95,6 +99,13 @@ static void DefineTone(std::string &header, std::string_view name, uint32_t argb
 static void DefineTones(std::string &header, std::string_view name, std::span<const uint32_t> tones)
 {
 	header += fmt::format("#define {} vec3[{}]({})\n", name, tones.size(), fmt::join(tones | std::views::transform(Tone), ", "));
+}
+
+static std::vector<uint32_t> TownWallTints()
+{
+	std::vector<uint32_t> tints;
+	for (Swatch swatch : TOWN_WALL_SWATCHES) std::ranges::copy(SwatchTints(swatch), std::back_inserter(tints));
+	return tints;
 }
 
 template <size_t N>
@@ -169,9 +180,12 @@ static std::string ShaderHeader()
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
 	DefineTones(header, "FRAME_TONES", SwatchTints(Swatch::Frame));
 	DefineTones(header, "MULLION_TONES", SwatchTints(Swatch::Mullion));
+	DefineTones(header, "TOWN_WALL_TONES", TownWallTints());
+	DefineTones(header, "CANDY_TONES", SwatchTints(Swatch::Candy));
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
 	DefineTone(header, "DISTANT_ROAD", COL_ASPHALT);
+	DefineTone(header, "PAVEMENT_TONE", COL_PAVEMENT);
 	DefineTone(header, "RAIL_ACCENT", COL_RAIL_ACCENT);
 	DefineTone(header, "ROAD_ACCENT", COL_ROAD_ACCENT);
 	DefineVector(header, "LUMA_WEIGHTS", Vector(LumaShare(LUMA_RED), LumaShare(LUMA_GREEN), LumaShare(LUMA_BLUE)));

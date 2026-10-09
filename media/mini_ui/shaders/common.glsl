@@ -46,6 +46,11 @@ float Hash(ivec2 cell)
 	return Hash2(cell).x;
 }
 
+uint Pick(float roll, int count)
+{
+	return uint(min(roll * float(count), float(count - 1)));
+}
+
 /* Value noise with its gradient, smooth enough in both to light bumps with. */
 vec3 NoiseSlope(vec2 p)
 {

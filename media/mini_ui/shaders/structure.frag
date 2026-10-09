@@ -74,8 +74,7 @@ Clad CladdingSeen(uint material, vec3 view, mat3 frame)
 	return Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_seed, outlook);
 }
 
-/* Buildings fade out where they grow too small to show, dithered; open claddings show only what they are made of, and glass mirrors the sky.
- * Far off the sun's highlight spreads matte, as a roof too small to make out would flash its whole face in a single pixel. */
+/* Buildings fade out dithered where they grow too small to show, and far off the sun's highlight spreads matte over a roof too small to make out. */
 void main()
 {
 	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
@@ -95,6 +94,9 @@ void main()
 	float sunlit = SunVisibility(v_position, normal) * clad.sunlit;
 	float occlusion = v_colour.a * clad.occlusion;
 	vec4 lit = clad.glass < 1.0 ? SunlitRadiance(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, 0.0, sunlit) : vec4(0.0);
-	if (clad.glass > 0.0) lit = mix(lit, PaneRadiance(PaneOf(albedo, clad.lamp, material), normal, view, roughness, occlusion, sunlit, v_pattern.y), clad.glass);
+	if (clad.glass > 0.0) {
+		Street street = StreetBefore(v_position, frame[2], v_pattern.y * FORM_HEIGHT_SCALE, v_seed);
+		lit = mix(lit, PaneRadiance(PaneOf(albedo, clad.lamp, material), street, normal, view, roughness, occlusion, sunlit), clad.glass);
+	}
 	frag_colour = lit;
 }

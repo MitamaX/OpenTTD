@@ -15,21 +15,26 @@ const float CLOUD_SILVER = 1.4;
 const float CLOUD_SILVER_FOCUS = 0.6;
 
 /* A thin layer of fair weather cloud drifting overhead, thinning out toward the horizon, lit on its tops and silvered toward the sun. */
-vec3 Clouded(vec3 sky, vec3 sight)
+vec3 Clouded(vec3 sky, vec3 sight, int octaves)
 {
 	if (sight.z <= 0.0) return sky;
 	vec2 p = sight.xy / (sight.z + CLOUD_CURVE) * CLOUD_SCALE + CLOUD_WIND * Clock();
-	float body = Billow(p, CLOUD_OCTAVES);
+	float body = Billow(p, octaves);
 	float cover = smoothstep(CLOUD_COVER_FROM, CLOUD_COVER_TO, body) * smoothstep(0.0, CLOUD_HORIZON_FADE, sight.z) * CLOUD_OPACITY;
-	float toward_sun = Billow(p + normalize(SunDirection().xy) * CLOUD_LIGHT_STEP, CLOUD_OCTAVES);
+	float toward_sun = Billow(p + normalize(SunDirection().xy) * CLOUD_LIGHT_STEP, octaves);
 	float sunlit = clamp(0.5 + (body - toward_sun) * CLOUD_RELIEF, 0.0, 1.0);
 	vec3 lit = (CLOUD_SHADE * CLOUD_AMBIENT + CLOUD_LIT * CLOUD_SUNLIT * sunlit) * SunRadiance();
 	lit += SunRadiance() * HenyeyGreenstein(dot(sight, SunDirection()), CLOUD_SILVER_FOCUS) * CLOUD_SILVER * (1.0 - cover);
 	return mix(sky, lit, cover);
 }
 
+vec3 CloudedSky(vec3 sight, int octaves)
+{
+	return sight.z > HAZE_LIFT ? Clouded(OpenSky(sight), sight, octaves) : Haze(sight);
+}
+
 /* The sky as seen straight on, with its clouds; rippled water mirrors only the clear sky, as it would smear any cloud in it beyond telling. */
 vec3 CloudedSky(vec3 sight)
 {
-	return sight.z > HAZE_LIFT ? Clouded(OpenSky(sight), sight) : Haze(sight);
+	return CloudedSky(sight, CLOUD_OCTAVES);
 }

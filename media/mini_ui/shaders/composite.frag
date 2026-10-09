@@ -49,8 +49,7 @@ vec3 Tonemap(vec3 radiance)
 	vec3 inset = AGX_INSET * max(radiance, 1e-10);
 	vec3 encoded = AgxCurve((clamp(log2(inset), AGX_LOWEST_EV, AGX_HIGHEST_EV) - AGX_LOWEST_EV) / (AGX_HIGHEST_EV - AGX_LOWEST_EV));
 	encoded = pow(max(encoded, 0.0), vec3(LOOK_POWER));
-	float luma = Luminance(encoded);
-	encoded = luma + mix(LOOK_SATURATION.x, LOOK_SATURATION.y, smoothstep(SATURATING_LUMA.x, SATURATING_LUMA.y, luma)) * (encoded - luma);
+	encoded = Saturated(encoded, mix(LOOK_SATURATION.x, LOOK_SATURATION.y, smoothstep(SATURATING_LUMA.x, SATURATING_LUMA.y, Luminance(encoded))));
 	return pow(max(AGX_OUTSET * encoded, 0.0), vec3(1.0 / DISPLAY_GAMMA));
 }
 
@@ -60,7 +59,7 @@ vec3 Fitted(vec3 display_light)
 	float brightest = max(display_light.r, max(display_light.g, display_light.b));
 	if (brightest <= 1.0) return display_light;
 	float luma = Luminance(display_light);
-	return luma >= 1.0 ? vec3(1.0) : luma + (display_light - luma) * ((1.0 - luma) / (brightest - luma));
+	return luma >= 1.0 ? vec3(1.0) : Saturated(display_light, (1.0 - luma) / (brightest - luma));
 }
 
 /* Shadows lean a touch cool and highlights a touch warm, as a sunny afternoon reads. */
