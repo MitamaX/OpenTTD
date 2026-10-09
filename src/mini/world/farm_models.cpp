@@ -130,20 +130,58 @@ static ModelMesh BaleStack()
 	return stack.Paint(WALLS);
 }
 
-/* Timber posts along a tile's side carrying two rails; like a wall, it is lit half as the ground about it is, so it reads as part of the ground rather than a dark line drawn on it. */
+static constexpr int FENCE_POSTS = 7;
+static constexpr double FENCE_POST = 0.014;
+static constexpr double FENCE_HEIGHT = 0.055;
+static constexpr double FENCE_RAIL = 0.009;
+static constexpr std::array<double, 2> FENCE_RAIL_SHARES = {0.42, 0.82};
+static constexpr double FENCE_RAIL_STANDOFF = 0.004;
+static constexpr double FENCE_CAP_REACH = 0.003;
+static constexpr double FENCE_CAP_HEIGHT = 0.005;
+static constexpr double FENCE_POST_SHIFT = 0.2;
+static constexpr double FENCE_LEAN = 0.006;
+static constexpr SeedRange FENCE_TONES = {0.7, 1.15};
+static constexpr uint32_t FENCE_SEED = 0xFE7CE;
+
+static ModelMesh &Leaned(ModelMesh &piece, double along, double across, double height)
+{
+	for (ModelVertex &vertex : piece.vertices) {
+		double share = std::max(static_cast<double>(vertex.z), 0.0) / height;
+		vertex.x += static_cast<float>(along * share);
+		vertex.y += static_cast<float>(across * share);
+	}
+	return piece;
+}
+
+static ModelMesh FencePost(double x, SeedDice &dice)
+{
+	double half = FENCE_POST / 2.0;
+	double cap = half + FENCE_CAP_REACH;
+	ModelMesh post = Box({x - half, -half, -FOOT_SINK}, {x + half, half, FENCE_HEIGHT});
+	post.Append(Box({x - cap, -cap, FENCE_HEIGHT}, {x + cap, cap, FENCE_HEIGHT + FENCE_CAP_HEIGHT}));
+	post.Paint(ScaledRgb(TIMBER, dice.Between(FENCE_TONES)));
+	double along = dice.Between(-FENCE_LEAN, FENCE_LEAN);
+	double across = dice.Between(-FENCE_LEAN, FENCE_LEAN);
+	return Leaned(post, along, across, FENCE_HEIGHT);
+}
+
+/* Timber posts along a tile's side carrying two rails nailed to their face; like a wall, it is lit half as the ground about it is, so it reads as part of the ground rather than a dark line drawn on it. */
 static ModelMesh Fence()
 {
-	constexpr int POSTS = 5;
-	constexpr double POST = 0.01;
-	constexpr double HEIGHT = 0.05;
-	constexpr double RAIL = 0.006;
+	SeedDice dice(FENCE_SEED);
+	double spacing = 2.0 * HALF_SIDE / (FENCE_POSTS - 1);
 	ModelMesh fence;
-	for (int post = 0; post < POSTS; post++) {
-		double x = -HALF_SIDE + post * (2.0 * HALF_SIDE) / (POSTS - 1);
-		fence.Append(Box({x - POST / 2.0, -POST / 2.0, -FOOT_SINK}, {x + POST / 2.0, POST / 2.0, HEIGHT}));
+	for (int post = 0; post < FENCE_POSTS; post++) {
+		bool end = post == 0 || post == FENCE_POSTS - 1;
+		double shift = end ? 0.0 : dice.Between(-FENCE_POST_SHIFT, FENCE_POST_SHIFT) * spacing;
+		fence.Append(FencePost(-HALF_SIDE + post * spacing + shift, dice));
 	}
-	for (double z : {HEIGHT * 0.45, HEIGHT * 0.85}) fence.Append(Box({-HALF_SIDE, -RAIL / 2.0, z - RAIL / 2.0}, {HALF_SIDE, RAIL / 2.0, z + RAIL / 2.0}));
-	return fence.Paint(TIMBER).Round(DEEP_BELOW, GROUND_LIGHTING);
+	double front = -FENCE_POST / 2.0 - FENCE_RAIL_STANDOFF;
+	for (double share : FENCE_RAIL_SHARES) {
+		double z = FENCE_HEIGHT * share;
+		fence.Append(Box({-HALF_SIDE, front - FENCE_RAIL / 2.0, z - FENCE_RAIL / 2.0}, {HALF_SIDE, front + FENCE_RAIL / 2.0, z + FENCE_RAIL / 2.0}).Paint(ScaledRgb(TIMBER, dice.Between(FENCE_TONES))));
+	}
+	return fence.Round(DEEP_BELOW, GROUND_LIGHTING);
 }
 
 /* One course of a dry stone wall: stones of uneven length and height, set a little off the line and tipped this way and that, narrowing toward the top. */
