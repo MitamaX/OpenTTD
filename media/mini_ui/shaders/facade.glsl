@@ -53,7 +53,12 @@ const float FASCIA_ROWS[10] = float[10](0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 
 const vec3 FRAME_PAINTS[] = FRAME_TONES;
 const vec3 MULLION_PAINTS[] = MULLION_TONES;
 const vec3 SILL_STONE = vec3(0.80, 0.78, 0.74);
-const float SURROUND_SHARE = 0.55;
+const float STONE_GRAIN_PER_TEXEL = 1.3;
+const float STONE_GRAIN_VARIETY = 0.14;
+const vec2 STONE_RESOLVED_PIXELS = vec2(0.4, 1.0);
+const float STONE_JOINT_PITCH = 3.0;
+const float STONE_JOINT_HALF_WIDTH = 0.08;
+const float STONE_JOINT_SHADE = 0.35;
 const float SURROUND_WIDTH = 1.0;
 const float SURROUND_BEVEL = 0.5;
 const float MULLION_WIDTH = 0.3;
@@ -639,6 +644,15 @@ Clad FacadeWall(uint material, vec2 pattern, vec3 tint)
 	return Landscape() == LANDSCAPE_TOYLAND ? Matte(tint, TOY_PANE_ROUGHNESS) : PaneOver(SPANDREL_BACKING, 1.0, vec3(0.0));
 }
 
+/* Dressed stone about an opening: its own fine grain, and joints across it every few texels along the edge it follows. */
+Clad DressedStone(vec2 at, float along, float pixel)
+{
+	float shown = 1.0 - smoothstep(STONE_RESOLVED_PIXELS.x, STONE_RESOLVED_PIXELS.y, pixel);
+	float grain = mix(0.5, Noise(at * STONE_GRAIN_PER_TEXEL), shown);
+	float joint = Stroke(abs(fract(along / STONE_JOINT_PITCH + 0.5) - 0.5) * STONE_JOINT_PITCH, STONE_JOINT_HALF_WIDTH, pixel);
+	return Matte(SILL_STONE * Varied(grain, STONE_GRAIN_VARIETY) * (1.0 - STONE_JOINT_SHADE * joint), STONE_ROUGHNESS);
+}
+
 bool OnFascia(uint grid, vec2 texel, bool front)
 {
 	float ground = FACADE_GROUND[grid];
@@ -649,7 +663,7 @@ bool OnFascia(uint grid, vec2 texel, bool front)
 Clad Fascia(uint grid, vec2 texel, uint seed, float pixel)
 {
 	float ground = FACADE_GROUND[grid];
-	if (texel.y >= ground - 1.0) return Matte(SILL_STONE, STONE_ROUGHNESS);
+	if (texel.y >= ground - 1.0) return DressedStone(texel, texel.x, pixel);
 	float pitch = FACADE_PITCH[grid];
 	float bay = floor(texel.x / pitch);
 	vec2 at = vec2(texel.x - (bay + 0.5) * pitch, texel.y - (ground - 1.0 - FASCIA_ROWS[grid] * 0.5));
@@ -675,12 +689,12 @@ Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook o
 	bool louvred = Landscape() == LANDSCAPE_TROPIC && HoldsHomes(grid) && opening.kind == OPEN_WINDOW && BesideWindow(opening, bay.at);
 	if (sills) clad = UnderSill(clad, opening, bay.at, outlook.sun);
 	if (on_sill) {
-		clad = Matte(SILL_STONE, STONE_ROUGHNESS);
+		clad = DressedStone(bay.at, bay.at.x, pixel);
 		clad.facing = vec3(0.0, SILL_LEDGE_TILT, 1.0);
 	} else if (louvred) {
 		clad = Louvre(bay.at, seed);
 	} else if (framed) {
-		clad = Mullioned(grid) ? FrameOf(grid, seed) : Matte(mix(wall.albedo, SILL_STONE, SURROUND_SHARE), STONE_ROUGHNESS);
+		clad = Mullioned(grid) ? FrameOf(grid, seed) : DressedStone(bay.at, dot(bay.at, vec2(-edge.y, edge.x)), pixel);
 		clad.facing = vec3(-edge.xy * SURROUND_BEVEL, 1.0);
 	}
 	float inside = InsideShare(edge.z, pixel);
