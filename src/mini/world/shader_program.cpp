@@ -15,6 +15,7 @@
 
 #include <array>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -29,6 +30,7 @@
 #include "../gpu/gl_api.h"
 #include "../map/airfield_marks.h"
 #include "../map/map_overlay.h"
+#include "../map/material_palette.h"
 #include "../map/network_style.h"
 #include "../map/way_bends.h"
 #include "../map/world_tiles.h"
@@ -90,10 +92,9 @@ static void DefineTone(std::string &header, std::string_view name, uint32_t argb
 	DefineVector(header, name, Tone(argb));
 }
 
-template <size_t N>
-static void DefineTones(std::string &header, std::string_view name, const std::array<uint32_t, N> &tones)
+static void DefineTones(std::string &header, std::string_view name, std::span<const uint32_t> tones)
 {
-	header += fmt::format("#define {} vec3[{}]({})\n", name, N, fmt::join(tones | std::views::transform(Tone), ", "));
+	header += fmt::format("#define {} vec3[{}]({})\n", name, tones.size(), fmt::join(tones | std::views::transform(Tone), ", "));
 }
 
 template <size_t N>
@@ -166,6 +167,7 @@ static std::string ShaderHeader()
 	DefineFloats(header, "TREE_STRETCHES", TREE_STRETCHES);
 	DefineFloat(header, "TREE_LEAN", TREE_LEAN);
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
+	DefineTones(header, "FRAME_TONES", SwatchTints(Swatch::Frame));
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
 	DefineTone(header, "DISTANT_ROAD", COL_ASPHALT);

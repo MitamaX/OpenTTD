@@ -6,6 +6,7 @@ const float GLASS_REFLECTANCE = 0.2;
 const float PANE_REFLECTANCE = 0.08;
 const float PANE_SKY_LIFT = 0.04;
 const float ROOM_SUNLIT_SHARE = 0.12;
+const vec3 LAMP_LIGHT = vec3(1.6, 1.15, 0.67);
 const float SKYLINE_FLATTENING = 0.5;
 const float SKYLINE_SHARE = 0.6;
 const float SKYLINE_SATURATION = 0.45;
@@ -28,6 +29,7 @@ struct Pane {
 	vec3 room;
 	vec3 film;
 	float reflectance;
+	float lamp;
 };
 
 /* Colours picked on screen to the light they reflect. */
@@ -157,7 +159,7 @@ vec4 PaneRadiance(Pane pane, vec3 normal, vec3 view, float roughness, float occl
 	vec3 sun = Sunlight(normal, sunlit);
 	vec3 ambient = AmbientLight(normal);
 	float mirrored = SurroundingReflectance(coat, max(dot(normal, view), 0.0));
-	vec3 through = Diffuse(pane.room, sun * ROOM_SUNLIT_SHARE + ambient * occlusion, mirrored);
+	vec3 through = Diffuse(pane.room, sun * ROOM_SUNLIT_SHARE + ambient * occlusion + LAMP_LIGHT * pane.lamp, mirrored);
 	vec3 surroundings = PaneSurroundings(reflect(-view, normal), height) * mirrored * occlusion;
 	return vec4(through + pane.film * (surroundings + sun * Highlight(normal, view, SunDirection(), coat)), AmbientShare(ambient, sun));
 }

@@ -50,9 +50,10 @@ const Opening GROUND_OPENINGS[10] = Opening[10](NO_OPENING, COTTAGE_WINDOW, TERR
 const Opening ENTRANCES[10] = Opening[10](NO_OPENING, COTTAGE_DOOR, TERRACE_DOOR, FLAT_ENTRANCE, SHOP_DOOR, OFFICE_ENTRANCE, CURTAIN_ENTRANCE, ARCHED_DOOR, LOADING_SHUTTER, NO_OPENING);
 const float FASCIA_ROWS[10] = float[10](0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
-const vec3 FRAME_PAINT = vec3(0.86, 0.85, 0.82);
+const vec3 FRAME_PAINTS[] = FRAME_TONES;
 const vec3 SILL_STONE = vec3(0.80, 0.78, 0.74);
-const vec3 BLIND = vec3(0.86, 0.80, 0.66);
+const float SURROUND_SHARE = 0.55;
+const vec3 BLINDS[3] = vec3[3](vec3(0.86, 0.80, 0.66), vec3(0.88, 0.87, 0.84), vec3(0.58, 0.58, 0.56));
 const vec3 CURTAINS[4] = vec3[4](vec3(0.62, 0.20, 0.16), vec3(0.78, 0.66, 0.42), vec3(0.30, 0.42, 0.30), vec3(0.70, 0.62, 0.58));
 const vec3 SHUTTER_SLAT = vec3(0.62, 0.64, 0.66);
 const vec3 SHUTTER_GROOVE = vec3(0.50, 0.52, 0.54);
@@ -64,6 +65,29 @@ const float DRIPS_PER_TEXEL = 0.5;
 const vec2 DRIP_EDGES = vec2(0.25, 0.85);
 const float DRIP_VARIETY = 0.8;
 const vec2 DRIP_WINDOW_SEED = vec2(7.0, 13.0);
+
+const ivec2 WINDOW_SALT = ivec2(7, 13);
+const int ROLL_STRIDE = 7919;
+const int STOREY_COLUMN = -4099;
+const int ROLL_TONE = 0;
+const int ROLL_LAMP = 1;
+const int ROLL_BLIND = 2;
+const int ROLL_CURTAIN = 3;
+const int ROLL_PAINT = 4;
+const int ROLL_WARP = 5;
+const vec2 ROOM_TONES = vec2(0.55, 1.35);
+const float LIT_ROOM_SHARE = 0.08;
+const float LIT_SHOP_SHARE = 0.6;
+const float LIT_STOREY_SHARE = 0.18;
+const float LIT_IN_LIT_STOREY = 0.75;
+const float BLINDED_STOREY_SHARE = 0.3;
+const float BLINDED_ROOM_SHARE = 0.22;
+const vec2 BLIND_DROPS = vec2(0.15, 0.85);
+const float CURTAINED_ROOM_SHARE = 0.35;
+const vec2 CURTAIN_REACHES = vec2(0.1, 0.32);
+const vec2 PANE_WARP = vec2(0.03, 0.08);
+const float PANE_ROUGHNESS = 0.06;
+const float GLAZED_SHARE = 0.85;
 
 /* Where a point of a facade lies: the opening of its bay, the point measured from that opening's foot at its middle, and which window it is. */
 struct Bay {
@@ -115,13 +139,71 @@ bool OnMuntin(Opening opening, vec2 at, float pixel)
 	}
 }
 
+struct Room {
+	float tone;
+	float lamp;
+	float drop;
+	vec3 blind;
+	float drawn;
+	vec3 curtain;
+};
+
+float Roll(ivec2 window, uint seed, int roll)
+{
+	return Hash(window * WINDOW_SALT + ivec2(int(seed), roll * ROLL_STRIDE));
+}
+
+float Chosen(float die, float share, vec2 span)
+{
+	return die < share ? mix(span.x, span.y, die / share) : 0.0;
+}
+
+bool HoldsOffices(uint grid)
+{
+	return grid == WINDOWS_OFFICE || grid == WINDOWS_CURTAIN;
+}
+
+vec3 FramePaint(uint seed)
+{
+	return FRAME_PAINTS[seed % uint(FRAME_PAINTS.length())];
+}
+
+Room RoomBehind(Bay bay, uint grid, uint seed)
+{
+	ivec2 storey = ivec2(STOREY_COLUMN, bay.window.y);
+	bool offices = HoldsOffices(grid);
+	bool lit_storey = offices && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
+	float lit = bay.opening.kind == OPEN_SHOP ? LIT_SHOP_SHARE : lit_storey ? LIT_IN_LIT_STOREY : LIT_ROOM_SHARE;
+	float drop = offices ? Chosen(Roll(storey, seed, ROLL_BLIND), BLINDED_STOREY_SHARE, BLIND_DROPS) : Chosen(Roll(bay.window, seed, ROLL_BLIND), BLINDED_ROOM_SHARE, BLIND_DROPS);
+	float drawn = offices ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
+	uint paint = offices ? seed : uint(Roll(bay.window, seed, ROLL_PAINT) * float(BLINDS.length() * CURTAINS.length()));
+	return Room(mix(ROOM_TONES.x, ROOM_TONES.y, Roll(bay.window, seed, ROLL_TONE)), Roll(bay.window, seed, ROLL_LAMP) < lit ? 1.0 : 0.0,
+		drop, BLINDS[paint % uint(BLINDS.length())], drawn, CURTAINS[paint % uint(CURTAINS.length())]);
+}
+
+Clad PaneOver(vec3 room, float lamp)
+{
+	return Clad(room, vec2(0.0), PANE_ROUGHNESS, 1.0, 1.0, lamp);
+}
+
+Clad Glazing(Bay bay, uint grid, uint seed, float reveal)
+{
+	Room room = RoomBehind(bay, grid, seed);
+	Opening opening = bay.opening;
+	vec3 seen = DIM_ROOM * room.tone;
+	if (bay.at.y > opening.height * (1.0 - room.drop)) seen = room.blind;
+	else if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) seen = room.curtain;
+	Clad clad = PaneOver(seen * reveal, room.lamp);
+	clad.tilt = (Hash2(bay.window * WINDOW_SALT + ivec2(int(seed), ROLL_WARP * ROLL_STRIDE)) - 0.5) * PANE_WARP;
+	return clad;
+}
+
 /* What fills an opening: glass behind its bars and frame, a painted door, or the slats of a shutter; the head of every opening lies in the shade of its reveal. */
-Clad Filling(Bay bay, uint seed, float pixel)
+Clad Filling(Bay bay, uint grid, uint seed, float pixel)
 {
 	Opening opening = bay.opening;
 	vec2 at = bay.at;
 	float reveal = mix(1.0, 0.6, smoothstep(opening.height - 1.6, opening.height - 0.4, at.y));
-	float pane = Hash(ivec2(bay.window) * ivec2(7, 13) + ivec2(int(seed), 0));
 	if (opening.kind == OPEN_DOOR) {
 		vec3 paint = DOOR_PAINTS[(seed + uint(bay.window.y)) % 5u];
 		return Matte(paint * reveal * (OnMuntin(opening, at, pixel) ? 0.7 : 1.0), 0.6);
@@ -131,12 +213,8 @@ Clad Filling(Bay bay, uint seed, float pixel)
 		return Matte((at.y > opening.height - 1.0 ? SHUTTER_GROOVE * 0.8 : groove ? SHUTTER_GROOVE : SHUTTER_SLAT) * reveal, 0.45);
 	}
 	bool rimmed = opening.kind != OPEN_WINDOW && OutsideOpening(opening, at) > -max(0.6, pixel);
-	if (rimmed || OnMuntin(opening, at, pixel)) return Matte((rimmed ? vec3(0.22) : FRAME_PAINT) * reveal, 0.5);
-	if (opening.kind == OPEN_WINDOW && pane < 0.18 && at.y > opening.height * 0.5) return Matte(BLIND * reveal, 0.8);
-	if (opening.kind == OPEN_WINDOW && pane > 0.72 && abs(at.x) > opening.width * (0.92 - pane * 0.5)) return Matte(CURTAINS[uint(pane * 37.0) % 4u] * reveal, 0.9);
-	Clad clad = Matte(DIM_ROOM * (0.5 + 0.3 * pane) * reveal, 0.06);
-	clad.glass = reveal;
-	return clad;
+	if (rimmed || OnMuntin(opening, at, pixel)) return Matte((rimmed ? vec3(0.22) : FramePaint(seed)) * reveal, 0.5);
+	return Glazing(bay, grid, seed, reveal);
 }
 
 float Drips(Bay bay, vec2 texel, uint grid)
@@ -173,14 +251,12 @@ Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed)
 		float springline = opening.arch ? opening.height - opening.width * 0.5 : opening.height;
 		bool framed = outside < 1.0 && (!sills || bay.at.y >= springline);
 		bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -1.0 && abs(bay.at.x) < opening.width * 0.5 + 1.0;
-		if (framed || on_sill) clad = Matte(on_sill ? SILL_STONE : mix(wall.albedo, FRAME_PAINT, 0.55), 0.7);
+		if (framed || on_sill) clad = Matte(on_sill ? SILL_STONE : mix(wall.albedo, SILL_STONE, SURROUND_SHARE), 0.7);
 		float inside = clamp(0.5 - outside / max(pixel, 1e-3), 0.0, 1.0);
-		Clad filling = Filling(bay, seed, pixel);
-		clad = Clad(mix(clad.albedo, filling.albedo, inside), clad.tilt * (1.0 - inside), mix(clad.roughness, filling.roughness, inside), filling.glass * inside, clad.occlusion);
+		clad = Mixed(clad, Filling(bay, grid, seed, pixel), inside);
 	}
 
 	Opening upper = UPPER_OPENINGS[grid];
 	float open_share = upper.width * upper.height / (FACADE_PITCH[grid] * FACADE_STOREY[grid]);
-	Clad distant = Clad(mix(wall.albedo, DIM_ROOM, open_share), vec2(0.0), mix(wall.roughness, 0.1, open_share), open_share * 0.7, wall.occlusion);
-	return Clad(mix(distant.albedo, clad.albedo, detail), clad.tilt * detail, mix(distant.roughness, clad.roughness, detail), mix(distant.glass, clad.glass, detail), clad.occlusion);
+	return Mixed(Mixed(wall, PaneOver(DIM_ROOM, LIT_ROOM_SHARE), open_share * GLAZED_SHARE), clad, detail);
 }

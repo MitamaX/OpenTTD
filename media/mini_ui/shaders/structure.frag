@@ -28,12 +28,12 @@ bool Has(uint flag)
 	return (v_surface.z & flag) != 0u;
 }
 
-Pane PaneOf(vec3 room, uint material)
+Pane PaneOf(vec3 room, float lamp, uint material)
 {
 	bool coated = material == CLAD_GLASS;
 	vec3 tint = Linear(v_glass.rgb);
 	vec3 film = mix(vec3(1.0), tint / max(Luminance(tint), MIN_SPREAD), coated ? COATED_FILM_TINT : FILM_TINT);
-	return Pane(room, film, coated ? GLASS_REFLECTANCE : PANE_REFLECTANCE);
+	return Pane(room, film, coated ? GLASS_REFLECTANCE : PANE_REFLECTANCE, lamp);
 }
 
 /* A surface tilted off its face across it, to the right as seen from outside, and up it. */
@@ -79,6 +79,6 @@ void main()
 	float sunlit = SunVisibility(v_position, normal);
 	float occlusion = v_colour.a * clad.occlusion;
 	vec4 lit = clad.glass < 1.0 ? SunlitRadiance(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, 0.0, sunlit) : vec4(0.0);
-	if (clad.glass > 0.0) lit = mix(lit, PaneRadiance(PaneOf(albedo, material), normal, view, roughness, occlusion, sunlit, v_pattern.y), clad.glass);
+	if (clad.glass > 0.0) lit = mix(lit, PaneRadiance(PaneOf(albedo, clad.lamp, material), normal, view, roughness, occlusion, sunlit, v_pattern.y), clad.glass);
 	frag_colour = lit;
 }

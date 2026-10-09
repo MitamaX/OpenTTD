@@ -27,18 +27,24 @@ const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 const vec3 DIM_ROOM = vec3(0.4, 0.38, 0.35);
 
 /* What a point of a building is: its colour before light, how its surface tilts off the face across and up it,
- * how rough and how much glass it is, and how open it lies to the sky. */
+ * how rough and how much glass it is, how open it lies to the sky, and how brightly lamps light the room behind its glass. */
 struct Clad {
 	vec3 albedo;
 	vec2 tilt;
 	float roughness;
 	float glass;
 	float occlusion;
+	float lamp;
 };
 
 Clad Matte(vec3 colour, float roughness)
 {
-	return Clad(colour, vec2(0.0), roughness, 0.0, 1.0);
+	return Clad(colour, vec2(0.0), roughness, 0.0, 1.0, 0.0);
+}
+
+Clad Mixed(Clad a, Clad b, float share)
+{
+	return Clad(mix(a.albedo, b.albedo, share), mix(a.tilt, b.tilt, share), mix(a.roughness, b.roughness, share), mix(a.glass, b.glass, share), mix(a.occlusion, b.occlusion, share), mix(a.lamp, b.lamp, share));
 }
 
 /* How sharply a pattern repeating once a unit of x still shows: whole while a repeat spans a few pixels, gone once it blurs. */

@@ -42,7 +42,7 @@ inline constexpr uint32_t PLASTER_SWATCH[] = {0xFFD8CDB8U, 0xFFCDBF9FU};
 inline constexpr uint32_t COPPER_SWATCH[] = {0xFF6E9C8AU};
 inline constexpr uint32_t CORRUGATED_SWATCH[] = {0xFF8C9399U, 0xFF9A7B5CU};
 inline constexpr uint32_t CANDY_ROOF_SWATCH[] = {0xFFE0464EU, 0xFF3F7FE0U, 0xFFF28C38U, 0xFF8E5BD8U, 0xFF4CC26AU, 0xFFF2C94CU};
-inline constexpr uint32_t FRAME_SWATCH[] = {0xFF8A9096U, 0xFF4A4E54U};
+inline constexpr uint32_t FRAME_SWATCH[] = {0xFFDBD9D1U, 0xFFE4DDCBU, 0xFF8A9096U, 0xFF4A4E54U};
 inline constexpr uint32_t AWNING_SWATCH[] = {0xFFB8463CU, 0xFF3F6E9AU, 0xFF4F8A4BU, 0xFFD9A441U};
 
 inline constexpr std::array<std::span<const uint32_t>, to_underlying(Swatch::End)> SWATCH_TINTS = {{
