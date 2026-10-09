@@ -19,7 +19,7 @@ const float LEAST_GLASS_LUMINANCE = 1e-4;
 const float FILM_TINT = 0.1;
 const float COATED_FILM_TINT = 0.2;
 const float TRANSMISSION_TINT = 0.3;
-const float COATED_TRANSMISSION_TINT = 0.6;
+const float COATED_TRANSMISSION_TINT = 0.4;
 
 vec3 Tinted(vec3 hue, float share)
 {

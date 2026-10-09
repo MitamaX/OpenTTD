@@ -38,20 +38,21 @@ struct Clad {
 	float glass;
 	float occlusion;
 	float sunlit;
-	float lamp;
+	float daylight;
+	vec3 lamp;
 };
 
 const vec3 FACING_OUT = vec3(0.0, 0.0, 1.0);
 
 Clad Matte(vec3 colour, float roughness)
 {
-	return Clad(colour, FACING_OUT, roughness, 0.0, 1.0, 1.0, 0.0);
+	return Clad(colour, FACING_OUT, roughness, 0.0, 1.0, 1.0, 1.0, vec3(0.0));
 }
 
 Clad Mixed(Clad a, Clad b, float share)
 {
 	return Clad(mix(a.albedo, b.albedo, share), mix(a.facing, b.facing, share), mix(a.roughness, b.roughness, share), mix(a.glass, b.glass, share),
-		mix(a.occlusion, b.occlusion, share), mix(a.sunlit, b.sunlit, share), mix(a.lamp, b.lamp, share));
+		mix(a.occlusion, b.occlusion, share), mix(a.sunlit, b.sunlit, share), mix(a.daylight, b.daylight, share), mix(a.lamp, b.lamp, share));
 }
 
 /* How sharply a pattern repeating once a unit of x still shows: whole while a repeat spans a few pixels, gone once it blurs. */

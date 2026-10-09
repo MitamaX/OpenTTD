@@ -104,6 +104,7 @@ const int ROLL_DEPTH = 6;
 const int ROLL_CURTAIN_PAINT = 7;
 const int ROLL_WALL_PAINT = 8;
 const int ROLL_FLOOR_PAINT = 9;
+const int ROLL_LAMP_PAINT = 10;
 
 const vec2 PANE_WARP = vec2(0.03, 0.08);
 const float PANE_ROUGHNESS = 0.06;
@@ -129,6 +130,7 @@ const vec3 ROOM_CEILING = vec3(0.84, 0.84, 0.82);
 const vec3 FURNITURE = vec3(0.26, 0.23, 0.21);
 const vec2 HOME_DEPTHS = vec2(5.0, 10.0);
 const vec2 OFFICE_DEPTHS = vec2(9.0, 16.0);
+const float DEEPEST_ROOM = OFFICE_DEPTHS.y;
 const float ROOM_PARTITION = 0.5;
 const float FLOOR_SLAB = 1.0;
 const float ROOM_SIDE_SHADE = 0.8;
@@ -138,6 +140,21 @@ const float FURNITURE_PER_TEXEL = 0.45;
 const float FURNITURE_SEED = 17.0;
 const float FURNITURE_GAPS = 0.45;
 const vec2 ROOM_RESOLVED_PIXELS = vec2(0.5, 1.2);
+const vec3 HOME_LAMPS[2] = vec3[2](vec3(1.0, 0.76, 0.50), vec3(1.0, 0.83, 0.60));
+const vec3 OFFICE_LAMPS[2] = vec3[2](vec3(1.0, 0.90, 0.76), vec3(1.0, 0.95, 0.86));
+const float LAMP_LIGHT = 1.5;
+const float LAMP_REACH = 8.0;
+const float LAMP_DEPTH_SHARE = 0.45;
+const float CEILING_LAMP_GLOW = 4.0;
+const float OFFICE_PANEL_PITCH = 4.0;
+const float PANEL_HALF_LENGTH = 0.6;
+const float PANEL_SPREAD = 0.6;
+const float HOME_FIXTURE_RADIUS = 0.8;
+const float DRAPE_GLOW = 0.4;
+const float ROOM_MEAN_DAYLIGHT = 0.6;
+const float ROOM_MEAN_LAMP = 0.5;
+const float ROOM_MEAN_FLAT_SHARE = 0.5;
+const vec3 TYPICAL_LAMP = mix(HOME_LAMPS[0], OFFICE_LAMPS[0], 0.5) * LAMP_LIGHT * ROOM_MEAN_LAMP;
 
 const float ARCTIC_LAMPS = 2.5;
 const float TROPIC_ROOM_SHADE = 0.7;
@@ -256,15 +273,13 @@ bool OnMuntin(Opening opening, vec2 at, float pixel)
 }
 
 struct Room {
+	ivec2 window;
+	uint seed;
+	bool offices;
 	float tone;
-	float lamp;
+	vec3 lamp;
 	float drop;
-	vec3 blind;
 	float drawn;
-	vec3 curtain;
-	float depth;
-	vec3 wall;
-	vec3 floor;
 };
 
 ivec2 Die(ivec2 window, uint seed, int roll)
@@ -323,51 +338,108 @@ bool InGroove(float y)
 	return fract(y * SLATS_PER_TEXEL) < 0.5;
 }
 
+vec3 LampPaint(ivec2 window, uint seed, bool offices)
+{
+	float roll = Roll(window, seed, ROLL_LAMP_PAINT);
+	return offices ? OFFICE_LAMPS[Pick(roll, OFFICE_LAMPS.length())] : HOME_LAMPS[Pick(roll, HOME_LAMPS.length())];
+}
+
 Room RoomBehind(Bay bay, uint grid, uint seed)
 {
 	ivec2 storey = ivec2(STOREY_COLUMN, bay.window.y);
 	bool offices = HoldsOffices(grid);
 	bool lit_storey = offices && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
 	float lit = LampShare(bay.opening.kind == OPEN_SHOP ? LIT_SHOP_SHARE : lit_storey ? LIT_IN_LIT_STOREY : LIT_ROOM_SHARE);
-	vec2 depths = offices ? OFFICE_DEPTHS : HOME_DEPTHS;
 	Room room;
+	room.window = bay.window;
+	room.seed = seed;
+	room.offices = offices;
 	room.tone = mix(ROOM_TONES.x, ROOM_TONES.y, Roll(bay.window, seed, ROLL_TONE)) * (Landscape() == LANDSCAPE_TROPIC ? TROPIC_ROOM_SHADE : 1.0);
-	room.lamp = Roll(bay.window, seed, ROLL_LAMP) < lit ? 1.0 : 0.0;
+	room.lamp = Roll(bay.window, seed, ROLL_LAMP) < lit ? LampPaint(bay.window, seed, offices) * LAMP_LIGHT : vec3(0.0);
 	room.drop = offices ? Chosen(Roll(storey, seed, ROLL_BLIND), BLINDED_STOREY_SHARE, BLIND_DROPS) : Chosen(Roll(bay.window, seed, ROLL_BLIND), BLINDED_ROOM_SHARE, BLIND_DROPS);
-	room.blind = BLINDS[offices ? seed % OFFICE_BLINDS : Picked(bay.window, seed, ROLL_BLIND_PAINT, BLINDS.length())];
 	room.drawn = offices ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
-	room.curtain = CURTAINS[Picked(bay.window, seed, ROLL_CURTAIN_PAINT, CURTAINS.length())];
-	room.depth = mix(depths.x, depths.y, Roll(bay.window, seed, ROLL_DEPTH));
-	room.wall = offices ? OFFICE_WALL : ROOM_WALLS[Picked(bay.window, seed, ROLL_WALL_PAINT, ROOM_WALLS.length())];
-	room.floor = offices ? OFFICE_FLOOR : ROOM_FLOORS[Picked(bay.window, seed, ROLL_FLOOR_PAINT, ROOM_FLOORS.length())];
 	return room;
 }
 
-vec3 Furnished(Room room, vec2 hit, float floor)
+float RoomDepth(Room room)
 {
-	bool furniture = hit.y - floor < FURNITURE_HEIGHT && Noise(vec2(hit.x * FURNITURE_PER_TEXEL, room.tone * FURNITURE_SEED)) > FURNITURE_GAPS;
-	return furniture ? FURNITURE : room.wall;
+	vec2 depths = room.offices ? OFFICE_DEPTHS : HOME_DEPTHS;
+	return mix(depths.x, depths.y, Roll(room.window, room.seed, ROLL_DEPTH));
 }
 
-vec3 RoomSeen(Room room, Bay bay, uint grid, Outlook outlook)
+vec3 RoomWall(Room room)
+{
+	return room.offices ? OFFICE_WALL : ROOM_WALLS[Picked(room.window, room.seed, ROLL_WALL_PAINT, ROOM_WALLS.length())];
+}
+
+vec3 RoomFloor(Room room)
+{
+	return room.offices ? OFFICE_FLOOR : ROOM_FLOORS[Picked(room.window, room.seed, ROLL_FLOOR_PAINT, ROOM_FLOORS.length())];
+}
+
+vec3 BlindPaint(Room room)
+{
+	return BLINDS[room.offices ? room.seed % OFFICE_BLINDS : Picked(room.window, room.seed, ROLL_BLIND_PAINT, BLINDS.length())];
+}
+
+vec3 CurtainPaint(Room room)
+{
+	return CURTAINS[Picked(room.window, room.seed, ROLL_CURTAIN_PAINT, CURTAINS.length())];
+}
+
+vec3 Furnished(Room room, vec2 hit, float floor_height)
+{
+	bool furniture = hit.y - floor_height < FURNITURE_HEIGHT && Noise(vec2(hit.x * FURNITURE_PER_TEXEL, room.tone * FURNITURE_SEED)) > FURNITURE_GAPS;
+	return furniture ? FURNITURE : RoomWall(room);
+}
+
+Clad PaneOver(vec3 room, float daylight, vec3 lamp)
+{
+	return Clad(room, FACING_OUT, PANE_ROUGHNESS, 1.0, 1.0, 1.0, daylight, lamp);
+}
+
+vec3 LampLightAt(Room room, vec3 point, vec3 lamp)
+{
+	vec3 from_lamp = point - lamp;
+	return room.lamp / (1.0 + dot(from_lamp, from_lamp) / (LAMP_REACH * LAMP_REACH));
+}
+
+bool UnderCeilingLamp(Room room, vec2 spot, float half_width, float lamp_depth)
+{
+	if (room.offices) return abs(spot.x) < half_width * PANEL_SPREAD && abs(fract(spot.y / OFFICE_PANEL_PITCH) - 0.5) * OFFICE_PANEL_PITCH < PANEL_HALF_LENGTH;
+	return length(spot - vec2(0.0, lamp_depth)) < HOME_FIXTURE_RADIUS;
+}
+
+Clad RoomSeen(Room room, Bay bay, uint grid, Outlook outlook)
 {
 	vec2 shift = SightShift(outlook);
 	vec2 heading = Heading(shift);
 	float half_width = FACADE_PITCH[grid] * 0.5 - ROOM_PARTITION;
-	float floor = -bay.opening.sill;
-	float ceiling = floor + (bay.window.y == 0 ? FACADE_GROUND[grid] : FACADE_STOREY[grid]) - FLOOR_SLAB;
-	vec2 reach = ReachOut(bay.at, heading, vec2(-half_width, floor), vec2(half_width, ceiling));
-	float sunk = min(room.depth, min(reach.x, reach.y));
+	float floor_height = -bay.opening.sill;
+	float ceiling = floor_height + (bay.window.y == 0 ? FACADE_GROUND[grid] : FACADE_STOREY[grid]) - FLOOR_SLAB;
+	float depth = RoomDepth(room);
+	vec2 reach = ReachOut(bay.at, heading, vec2(-half_width, floor_height), vec2(half_width, ceiling));
+	float sunk = min(depth, min(reach.x, reach.y));
 	vec2 hit = bay.at + shift * sunk;
-	vec3 flat_surface = heading.y > 0.0 ? ROOM_CEILING : room.floor;
-	vec3 surface = sunk >= room.depth ? Furnished(room, hit, floor) : reach.y < reach.x ? flat_surface : room.wall * ROOM_SIDE_SHADE;
-	float daylight = mix(1.0, ROOM_FAR_LIGHT, sunk / OFFICE_DEPTHS.y);
-	return surface * room.tone * mix(daylight, 1.0, room.lamp);
+	bool on_back = sunk >= depth;
+	bool level = !on_back && reach.y < reach.x;
+	bool on_ceiling = level && heading.y > 0.0;
+	vec3 surface = on_back ? Furnished(room, hit, floor_height) : on_ceiling ? ROOM_CEILING : level ? RoomFloor(room) : RoomWall(room) * ROOM_SIDE_SHADE;
+	float lamp_depth = depth * LAMP_DEPTH_SHARE;
+	bool glowing = on_ceiling && UnderCeilingLamp(room, vec2(hit.x, sunk), half_width, lamp_depth);
+	vec3 lamp = glowing ? room.lamp * CEILING_LAMP_GLOW : LampLightAt(room, vec3(hit, sunk), vec3(0.0, ceiling, lamp_depth));
+	return PaneOver(surface * room.tone, mix(1.0, ROOM_FAR_LIGHT, sunk / DEEPEST_ROOM), lamp);
 }
 
-Clad PaneOver(vec3 room, float lamp)
+Clad RoomMean(Room room)
 {
-	return Clad(room, FACING_OUT, PANE_ROUGHNESS, 1.0, 1.0, 1.0, lamp);
+	vec3 surfaces = mix(RoomWall(room) * ROOM_SIDE_SHADE, RoomFloor(room), ROOM_MEAN_FLAT_SHARE);
+	return PaneOver(surfaces * room.tone, ROOM_MEAN_DAYLIGHT, room.lamp * ROOM_MEAN_LAMP);
+}
+
+Clad Drape(vec3 paint, Room room)
+{
+	return PaneOver(paint, 1.0, room.lamp * DRAPE_GLOW);
 }
 
 Clad ToyPane()
@@ -379,24 +451,23 @@ Clad ToyPane()
 
 Clad MeanGlazing()
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane() : PaneOver(DIM_ROOM, LampShare(LIT_ROOM_SHARE));
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane() : PaneOver(DIM_ROOM, 1.0, TYPICAL_LAMP * LampShare(LIT_ROOM_SHARE));
 }
 
-vec3 SeenThrough(Room room, Bay bay, uint grid, Outlook outlook, float pixel)
+Clad SeenThrough(Room room, Bay bay, uint grid, Outlook outlook, float pixel)
 {
 	Opening opening = bay.opening;
-	if (bay.at.y > opening.height * (1.0 - room.drop)) return room.blind;
-	if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) return room.curtain;
+	if (bay.at.y > opening.height * (1.0 - room.drop)) return Drape(BlindPaint(room), room);
+	if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) return Drape(CurtainPaint(room), room);
 	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, pixel);
-	vec3 dim = DIM_ROOM * room.tone;
-	return resolved > 0.0 ? mix(dim, RoomSeen(room, bay, grid, outlook), resolved) : dim;
+	Clad mean = RoomMean(room);
+	return resolved > 0.0 ? Mixed(mean, RoomSeen(room, bay, grid, outlook), resolved) : mean;
 }
 
 Clad Glazing(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return ToyPane();
-	Room room = RoomBehind(bay, grid, seed);
-	Clad clad = PaneOver(SeenThrough(room, bay, grid, outlook, pixel), room.lamp);
+	Clad clad = SeenThrough(RoomBehind(bay, grid, seed), bay, grid, outlook, pixel);
 	clad.facing = vec3((Hash2(Die(bay.window, seed, ROLL_WARP)) - 0.5) * PANE_WARP, 1.0);
 	return clad;
 }
@@ -505,7 +576,7 @@ float Drips(Bay bay, vec2 texel, uint grid)
 Clad FacadeWall(uint material, vec2 pattern, vec3 tint)
 {
 	if (material != CLAD_GLASS) return CladOf(material, pattern, tint);
-	return Landscape() == LANDSCAPE_TOYLAND ? Matte(tint, TOY_PANE_ROUGHNESS) : PaneOver(SPANDREL_BACKING, 0.0);
+	return Landscape() == LANDSCAPE_TOYLAND ? Matte(tint, TOY_PANE_ROUGHNESS) : PaneOver(SPANDREL_BACKING, 1.0, vec3(0.0));
 }
 
 Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook outlook, float pixel)

@@ -1,6 +1,5 @@
 const float PANE_REFLECTANCE = 0.08;
 const float ROOM_SUNLIT_SHARE = 0.12;
-const vec3 LAMP_LIGHT = vec3(1.6, 1.15, 0.67);
 
 const int MIRRORED_CLOUD_OCTAVES = 3;
 const vec3 UPWARD = vec3(0.0, 0.0, 1.0);
@@ -25,7 +24,8 @@ struct Pane {
 	vec3 room;
 	vec3 film;
 	float reflectance;
-	float lamp;
+	float daylight;
+	vec3 lamp;
 };
 
 struct Street {
@@ -109,7 +109,7 @@ vec4 PaneRadiance(Pane pane, Street street, vec3 normal, vec3 view, float roughn
 	vec3 sun = Sunlight(normal, sunlit);
 	vec3 ambient = AmbientLight(normal);
 	float mirrored = SurroundingReflectance(coat, max(dot(normal, view), 0.0));
-	vec3 through = Diffuse(pane.room, sun * ROOM_SUNLIT_SHARE + ambient * occlusion + LAMP_LIGHT * pane.lamp, mirrored);
+	vec3 through = Diffuse(pane.room, (sun * ROOM_SUNLIT_SHARE + ambient * occlusion) * pane.daylight + pane.lamp, mirrored);
 	vec3 surroundings = Mirrored(street, reflect(-view, normal)) * mirrored * occlusion;
 	return vec4(through + pane.film * (surroundings + sun * Highlight(normal, view, SunDirection(), coat)), AmbientShare(ambient, sun));
 }

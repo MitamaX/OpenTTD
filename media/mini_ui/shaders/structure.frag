@@ -31,9 +31,9 @@ bool Has(uint flag)
 	return (v_surface.z & flag) != 0u;
 }
 
-Pane PaneOf(vec3 room, float lamp, uint material)
+Pane PaneOf(vec3 room, Clad clad, uint material)
 {
-	return Pane(room * v_transmission, v_film, material == CLAD_GLASS ? GLASS_REFLECTANCE : PANE_REFLECTANCE, lamp);
+	return Pane(room * v_transmission, v_film, material == CLAD_GLASS ? GLASS_REFLECTANCE : PANE_REFLECTANCE, clad.daylight, clad.lamp);
 }
 
 /* A face's axes: across it, to the right as seen from outside, up it, and out of it. */
@@ -96,7 +96,7 @@ void main()
 	vec4 lit = clad.glass < 1.0 ? SunlitRadiance(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, 0.0, sunlit) : vec4(0.0);
 	if (clad.glass > 0.0) {
 		Street street = StreetBefore(v_position, frame[2], v_pattern.y * FORM_HEIGHT_SCALE, v_seed);
-		lit = mix(lit, PaneRadiance(PaneOf(albedo, clad.lamp, material), street, normal, view, roughness, occlusion, sunlit), clad.glass);
+		lit = mix(lit, PaneRadiance(PaneOf(albedo, clad, material), street, normal, view, roughness, occlusion, sunlit), clad.glass);
 	}
 	frag_colour = lit;
 }
