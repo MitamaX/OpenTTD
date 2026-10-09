@@ -152,6 +152,8 @@ const float CLUMPS_PER_TILE = 3.3;
 const float LOCAL_PER_TILE = 1.3;
 const float RELIEF_DEPTH = 0.035;
 const float STONY_HOLLOWS = 1.0;
+const vec2 BUMP_HEIGHT_SHARES = vec2(0.65, 0.35);
+const vec2 CAVITY_OCCLUSION = vec2(1.6, 0.9);
 
 const vec2 GRASS_RUGGED = vec2(0.45, 0.0);
 const vec2 ROUGH_RUGGED = vec2(0.7, 0.25);
@@ -919,6 +921,12 @@ vec3 Roughened(vec3 normal, Detail detail, vec2 rugged)
 	return normalize(normal - (detail.slope * rugged.x + detail.stone_slope * rugged.y) * RELIEF_DEPTH);
 }
 
+float CavityOpenness(Grain grain, vec2 rugged)
+{
+	float bump_hollow = max(0.5 - dot(vec2(grain.fine, grain.micro), BUMP_HEIGHT_SHARES), 0.0);
+	return 1.0 - dot(vec2(bump_hollow, max(grain.hollow, 0.0)) * rugged, CAVITY_OCCLUSION);
+}
+
 /* Whether no tile within the reach the water's field weighs about a tile holds any water, from the water's texels eight tiles to a texel, each of which keeps any water under it however little. */
 bool DryAbout(ivec2 tile)
 {
@@ -1305,7 +1313,8 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	float dry = 1.0 - water.cover;
 	float blanketed = blanket.cover * dry;
 	normal = normalize(normal - vec3(blanket.slope * blanketed, 0.0));
-	normal = Roughened(normal, detail, mix(surface.rugged, blanket.rugged, blanket.cover) * dry);
+	vec2 rugged = mix(surface.rugged, blanket.rugged, blanket.cover) * dry;
+	normal = Roughened(normal, detail, rugged);
 	vec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);
 	vec3 land = Altitude(Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p)), v_world.z);
 	land = mix(land, blanket.tone, blanket.cover);
@@ -1319,7 +1328,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Relief relief, Detail detail,
 	colour = Composite(colour, forest.paint);
 	float roughness = mix(GroundRoughness(), blanket.roughness, blanket.cover);
 	float glint = blanket.glint > 0.0 ? Glint(p, normal) * blanketed * (1.0 - forest.paint.a) : 0.0;
-	return Shade(Overlay(clamp(colour, 0.0, 1.0), network), normal, roughness, 1.0 - forest.shade, glint);
+	return Shade(Overlay(clamp(colour, 0.0, 1.0), network), normal, roughness, (1.0 - forest.shade) * CavityOpenness(grain, rugged), glint);
 }
 
 /* Everything read through screen derivatives is read before the fragment branches, where neighbouring pixels may part ways.
