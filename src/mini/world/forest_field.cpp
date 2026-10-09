@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "../../map_func.h"
+#include "../../settings_type.h"
 #include "../core/seed.h"
 #include "../gpu/draw_list.h"
 #include "../gpu/frame_profile.h"
@@ -24,11 +25,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr double LARGEST_GROWN = TREE_LARGEST_SCALE * TREE_THICKET_SCALES[1];
-static constexpr double TALLEST_GROWN = TREE_MODEL_TALLEST * LARGEST_GROWN * TREE_STRETCHES[1];
-static constexpr double CROWN_REACH = (TREE_MODEL_REACH + TREE_LEAN * TREE_MODEL_TALLEST + TREE_SWAY_REACH) * LARGEST_GROWN;
-static constexpr int CROWN_MARGIN = 2;
-static_assert(CROWN_REACH <= CROWN_MARGIN);
 static constexpr double SLOT_JITTER = 0.15;
 static constexpr double EDGE_MARGIN = 0.08;
 static constexpr double SPARE_TREE_SCALE = 0.85;
@@ -50,6 +46,34 @@ static constexpr size_t OUTER_SLOTS = SLOTS.size() - 1;
 /* How many trees show for the game's count of one to four on a tile: a full tile reads as woodland, not as an orchard. */
 static constexpr std::array<uint, FLORA_MOST_TREES + 1> SHOWN_TREES = {0, 1, 3, 4, 6};
 static constexpr std::array<uint, FLORA_MOST_TREES + 1> SHOWN_TOYS = {0, 3, 4, 6, 6};
+
+/* How far past its tile and how high the largest tree a climate plants reaches, leaning and swaying, and the whole tiles that reach spans. */
+struct CrownBounds {
+	double reach;
+	double tallest;
+	int margin;
+};
+
+static constexpr int WholeTiles(double reach)
+{
+	int tiles = static_cast<int>(reach);
+	return tiles < reach ? tiles + 1 : tiles;
+}
+
+static constexpr CrownBounds CrownBoundsOf(double largest_scale)
+{
+	double grown = largest_scale * TREE_THICKET_SCALES[1];
+	double reach = (TREE_MODEL_REACH + TREE_LEAN * TREE_MODEL_TALLEST + TREE_SWAY_REACH) * grown;
+	return {reach, TREE_MODEL_TALLEST * grown * TREE_STRETCHES[1], WholeTiles(reach)};
+}
+
+static constexpr CrownBounds NATURAL_CROWNS = CrownBoundsOf(TREE_LARGEST_NATURAL_SCALE);
+static constexpr CrownBounds TOY_CROWNS = CrownBoundsOf(TREE_LARGEST_SCALE);
+
+static const CrownBounds &Crowns()
+{
+	return _settings_game.game_creation.landscape == LandscapeType::Toyland ? TOY_CROWNS : NATURAL_CROWNS;
+}
 
 
 /* The finest and the coarsest detail a tree this many tile pixels across shows in, counting the bands where details crossfade, down to the coarsest asked for; none when first passes last. */
@@ -268,9 +292,10 @@ std::pair<Vec3, Vec3> ForestField::Bounds(const Cell &cell, size_t index) const
 	TileSpan tiles = this->grid.TilesOf(index);
 	double low = cell.planted ? cell.low : 0.0;
 	double high = cell.planted ? cell.high : _world_tiles.Peak();
+	const CrownBounds &crowns = Crowns();
 	return {
-		{tiles.tx0 - CROWN_REACH, tiles.ty0 - CROWN_REACH, low * rise - DEEPEST_SINK * rise},
-		{tiles.tx1 + 1.0 + CROWN_REACH, tiles.ty1 + 1.0 + CROWN_REACH, high * rise + TALLEST_GROWN},
+		{tiles.tx0 - crowns.reach, tiles.ty0 - crowns.reach, low * rise - DEEPEST_SINK * rise},
+		{tiles.tx1 + 1.0 + crowns.reach, tiles.ty1 + 1.0 + crowns.reach, high * rise + crowns.tallest},
 	};
 }
 
@@ -279,7 +304,7 @@ std::pair<Vec3, Vec3> ForestField::Bounds(const Cell &cell, size_t index) const
 void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast)
 {
 	this->due.clear();
-	this->grid.ForEachWithin(camera, FewestPixels(coarsest_shown), CROWN_MARGIN, [&](size_t index) {
+	this->grid.ForEachWithin(camera, FewestPixels(coarsest_shown), Crowns().margin, [&](size_t index) {
 		const Cell &cell = this->cells[index];
 		if (!cell.stale) return true;
 		auto [low, high] = this->Bounds(cell, index);
@@ -301,7 +326,7 @@ void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, Tr
 /* Only the blocks near enough for a tile to span the coarsest detail's fewest pixels are looked at. */
 void ForestField::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, TreeBatch &batch)
 {
-	this->grid.ForEachWithin(camera, FewestPixels(coarsest), CROWN_MARGIN, [&](size_t index) {
+	this->grid.ForEachWithin(camera, FewestPixels(coarsest), Crowns().margin, [&](size_t index) {
 		Cell &cell = this->cells[index];
 		if (!cell.planted) return true;
 		auto [low, high] = this->Bounds(cell, index);

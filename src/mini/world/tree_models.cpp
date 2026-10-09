@@ -467,6 +467,13 @@ static ModelMesh BuildTree(TreeShape shape, TreeDetail detail)
 	return tree.Finish();
 }
 
+static bool WithinModelBounds(const ModelMesh &mesh)
+{
+	return std::ranges::all_of(mesh.vertices, [](const ModelVertex &vertex) {
+		return std::hypot(vertex.x, vertex.y) <= TREE_MODEL_REACH && vertex.z <= TREE_MODEL_TALLEST;
+	});
+}
+
 std::vector<ModelMesh> BuildTreeModels()
 {
 	std::vector<ModelMesh> meshes;
@@ -475,6 +482,7 @@ std::vector<ModelMesh> BuildTreeModels()
 			for (size_t detail = 0; detail < TREE_DETAILS; detail++) meshes.push_back(BuildTree({static_cast<TreeKind>(kind), variant}, static_cast<TreeDetail>(detail)));
 		}
 	}
+	assert(std::ranges::all_of(meshes, WithinModelBounds));
 	for (size_t mesh = 0; mesh < TREE_DRAWN_MESHES; mesh++) meshes.push_back(ModelMesh(meshes[mesh]).Weld());
 	return meshes;
 }

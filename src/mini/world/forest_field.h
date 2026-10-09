@@ -41,7 +41,8 @@ inline constexpr SeedRange TREE_SPREAD = {0.7, 1.25};
 inline constexpr double TOY_TREE_SCALE = 1.4;
 
 /* A tree's size byte spans its scale from nothing to the largest any tree is planted at. */
-inline constexpr double TREE_LARGEST_SCALE = std::ranges::max(TREE_AGE_SCALES) * TREE_SPREAD.high * TOY_TREE_SCALE;
+inline constexpr double TREE_LARGEST_NATURAL_SCALE = std::ranges::max(TREE_AGE_SCALES) * TREE_SPREAD.high;
+inline constexpr double TREE_LARGEST_SCALE = TREE_LARGEST_NATURAL_SCALE * TOY_TREE_SCALE;
 
 /* A tree's size from between thickets to within them, and its height from squatter to taller than its model. */
 inline constexpr std::array<double, 2> TREE_THICKET_SCALES = {0.8, 1.2};
