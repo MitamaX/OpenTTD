@@ -166,7 +166,6 @@ struct Body {
 	float sea;
 	float canal;
 	float sheen;
-	float mirror;
 };
 
 /* The water's normal from every wave the pixels show, the normal its broadest wave alone gives, the share of the waves too fine to show,
@@ -330,7 +329,6 @@ Body BodyOf(vec4 field)
 	body.sea = share.x;
 	body.canal = share.y;
 	body.sheen = toy ? 0.0 : body.calm;
-	body.mirror = body.calm;
 	return body;
 }
 
@@ -468,10 +466,10 @@ vec4 MirroredWorld(vec3 from, vec3 way)
 	return vec4(0.0);
 }
 
-vec3 WorldOver(vec3 sky, vec3 way, float mirror)
+vec3 WorldOver(vec3 sky, vec3 from, vec3 way, float mirror)
 {
 	if (mirror <= 0.0) return sky;
-	vec4 world = MirroredWorld(v_position, way);
+	vec4 world = MirroredWorld(from, way);
 	return mix(sky, world.rgb, world.a * mirror);
 }
 
@@ -690,7 +688,7 @@ void main()
 	float reflected;
 	vec3 way = reflect(sight, waves.normal);
 	vec3 sky = SkyOnWater(way, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
-	vec3 mirrored = WorldOver(sky, Skyward(way, REFLECTED_LIFT), water.body.mirror * (1.0 - waves.ruffled));
+	vec3 mirrored = WorldOver(sky, v_position, Skyward(way, REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
