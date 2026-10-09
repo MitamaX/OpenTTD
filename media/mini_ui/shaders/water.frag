@@ -20,7 +20,6 @@ const float WAVE_TURN = 1.17;
 const float WAVE_SPEED = 0.32;
 const float WAVE_STEEPNESS = 0.38;
 const float CALM_STEEPNESS = 0.16;
-const float CALM_FREQUENCY = 1.8;
 const float RESOLVED_WAVE_PIXELS = 14.0;
 const float UNRESOLVED_WAVE_PIXELS = 4.0;
 const float GUSTS_PER_TILE = 0.04;
@@ -262,8 +261,9 @@ Surface Waves(vec2 p, float calm)
 	float gust = smoothstep(0.25, 0.75, Noise(p * GUSTS_PER_TILE + Clock() * GUST_DRIFT));
 	vec2 slope = vec2(0.0);
 	vec2 broad = vec2(0.0);
-	float height = 1.0;
-	float frequency = WAVE_FREQUENCY * mix(1.0, CALM_FREQUENCY, calm);
+	float open_height = 1.0;
+	float calm_height = 0.0;
+	float frequency = WAVE_FREQUENCY;
 	float lost = 0.0;
 	float total = 0.0;
 	for (int octave = 0; octave < WAVE_OCTAVES; octave++) {
@@ -271,13 +271,15 @@ Surface Waves(vec2 p, float calm)
 		mat2 turn = mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
 		vec2 drift = vec2(cos(angle), sin(angle)) * WAVE_SPEED * Clock() / sqrt(frequency);
 		float shown = smoothstep(UNRESOLVED_WAVE_PIXELS, RESOLVED_WAVE_PIXELS, tile_pixels / frequency);
+		float height = mix(open_height, calm_height, calm);
 		vec2 rise = vec2(0.0);
-		if (octave == 0 || shown > 0.0) rise = (NoiseSlope(turn * p * frequency + drift + float(octave) * 17.3).yz * turn) * frequency * height;
-		slope += rise * shown;
+		if (octave == 0 || shown > 0.0) rise = (NoiseSlope(turn * p * frequency + drift + float(octave) * 17.3).yz * turn) * frequency;
+		slope += rise * height * shown;
 		if (octave == 0) broad = rise;
 		lost += height * (1.0 - shown);
 		total += height;
-		height *= WAVE_PERSISTENCE;
+		calm_height = open_height;
+		open_height *= WAVE_PERSISTENCE;
 		frequency *= WAVE_LACUNARITY;
 	}
 	float steepness = mix(WAVE_STEEPNESS * mix(LULL_STEEPNESS, GUST_STEEPNESS, mix(gust, 0.5, calm)), CALM_STEEPNESS, calm) / total;
