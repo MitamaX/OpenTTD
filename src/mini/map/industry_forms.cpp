@@ -71,7 +71,7 @@ static SiteLivery IndustryLivery(TileIndex tile, const SiteLook &look)
 	const IndustrySpec *spec = GetIndustrySpec(industry->type);
 	uint32_t seed = IndustrySeed(tile);
 	SiteLivery livery = LiveryFor(look.finish, SiteRoof(look), seed, _company_rgb[industry->random_colour]);
-	livery.roof = Mix(livery.roof, Muted(PaletteRgb(spec->map_colour), PAINT_SATURATION), MAP_COLOUR_SHARE);
+	livery.roof = Mix(livery.roof, PaintOf(PaletteRgb(spec->map_colour)), MAP_COLOUR_SHARE);
 	livery.bulk = BulkTint(*spec);
 	if (_settings_game.game_creation.landscape == LandscapeType::Toyland) {
 		livery.wall = Mix(COL_PAPER, livery.trim, TOY_TRIM_SHARE);

@@ -225,7 +225,7 @@ static constexpr std::array<WallFinish, FINISH_COUNT> WALL_FINISHES = {{
 	{Material::Stone, WindowGrid::Arched, Swatch::Stone},
 	{Material::Glass, WindowGrid::Curtain, Swatch::Glass},
 	{Material::Brick, WindowGrid::Cottage, Swatch::Brick},
-	{Material::Timber, WindowGrid::None, Swatch::Timber},
+	{Material::Corrugated, WindowGrid::Doors, Swatch::Timber},
 }};
 
 static constexpr std::array<float Plot::*, DIAGDIR_END> SIDE_EDGES = {&Plot::x0, &Plot::y1, &Plot::x1, &Plot::y0};
@@ -534,7 +534,7 @@ uint32_t RoofTint(Material roof, uint32_t seed)
 
 SiteLivery LiveryFor(Finish finish, Material roof, uint32_t seed, uint32_t trim)
 {
-	uint32_t wall = finish == Finish::Painted ? Muted(trim, PAINT_SATURATION) : FinishTint(finish, seed);
+	uint32_t wall = finish == Finish::Painted ? PaintOf(trim) : FinishTint(finish, seed);
 	return {wall, RoofTint(roof, seed), trim, BULK_TINT};
 }
 

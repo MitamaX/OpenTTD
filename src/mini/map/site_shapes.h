@@ -14,6 +14,7 @@
 
 #include "../../map_func.h"
 #include "../../tilearea_type.h"
+#include "../core/tones.h"
 #include "building_form.h"
 #include "material_palette.h"
 
@@ -27,6 +28,17 @@ inline constexpr float SAWTOOTH_RISE = 0.12f;
 inline constexpr float ROOFTOP_MARGIN = 0.06f;
 inline constexpr uint32_t BULK_TINT = 0xFF6B5E50U;
 inline constexpr double PAINT_SATURATION = 0.5;
+inline constexpr uint PAINT_LUMA_FLOOR = 110;
+inline constexpr uint32_t PAINT_LIFT = 0xFFB4B2AEU;
+
+constexpr uint32_t PaintOf(uint32_t colour)
+{
+	uint luma = Luminance(colour);
+	uint lift = Luminance(PAINT_LIFT);
+	uint share = luma < PAINT_LUMA_FLOOR ? (PAINT_LUMA_FLOOR - luma) * CHANNEL_MAX / (lift - luma) : 0;
+	return Muted(Mix(colour, PAINT_LIFT, share), PAINT_SATURATION);
+}
+
 inline constexpr uint32_t SOOT_TINT = 0xFF2A2D30U;
 inline constexpr DiagDirections LOT_SIDES{DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_NW};
 
