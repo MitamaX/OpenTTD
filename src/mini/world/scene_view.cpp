@@ -19,6 +19,7 @@
 #include "../../settings_type.h"
 #include "../core/sunlight.h"
 #include "../core/tick_clock.h"
+#include "../gpu/frame_capture.h"
 #include "../gpu/gl_api.h"
 #include "../map/world_tiles.h"
 
@@ -45,6 +46,7 @@ struct SceneBlock {
 /* Seconds since the first frame by when each frame began, so everything moved by it moves alike however long the frame took to set up. */
 static double Clock()
 {
+	if (std::optional<double> captured = _frame_capture.SceneSeconds(); captured.has_value()) return *captured;
 	static const TickClock::Clock::time_point start = _tick_clock.FrameAt();
 	std::chrono::duration<double> elapsed = _tick_clock.FrameAt() - start;
 	return std::fmod(elapsed.count(), CLOCK_PERIOD_SECONDS);

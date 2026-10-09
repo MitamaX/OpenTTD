@@ -30,6 +30,7 @@ public:
 	static constexpr const char MAP_ONLY_VARIABLE[] = "OTTD_MINI_CAPTURE_NOHUD";
 	static constexpr const char CLEAN_VARIABLE[] = "OTTD_MINI_CAPTURE_CLEAN";
 	static constexpr const char SPEED_VARIABLE[] = "OTTD_MINI_CAPTURE_SPEED";
+	static constexpr const char STEP_VARIABLE[] = "OTTD_MINI_CAPTURE_STEP";
 
 	FrameCapture();
 
@@ -39,6 +40,7 @@ public:
 	bool HidesGuides() const { return this->clean; }
 	std::optional<ViewAim> Aim() const;
 	std::optional<uint16_t> GameSpeed() const { return this->Active() ? this->speed : std::nullopt; }
+	std::optional<double> SceneSeconds() const;
 	void Grab(Dimension screen);
 
 private:
@@ -47,9 +49,11 @@ private:
 	std::vector<CaptureShot> shots;
 	size_t next = 0;
 	uint frames = 0;
+	uint composed = 0;
 	bool map_only = false;
 	bool clean = false;
 	std::optional<uint16_t> speed;
+	std::optional<uint16_t> step_ms;
 };
 
 extern FrameCapture _frame_capture;

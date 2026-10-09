@@ -34,6 +34,7 @@ static constexpr std::string_view COMMENT_MARK = "#";
 static constexpr std::string_view PNG_PROVIDER = "png";
 static constexpr std::string_view PNG_EXTENSION = ".png";
 static constexpr int CAPTURE_DEPTH = 32;
+static constexpr double MILLISECONDS_PER_SECOND = 1000.0;
 
 FrameCapture _frame_capture;
 
@@ -107,6 +108,13 @@ FrameCapture::FrameCapture()
 	this->map_only = GetEnv(MAP_ONLY_VARIABLE) == "1";
 	this->clean = GetEnv(CLEAN_VARIABLE) == "1";
 	if (std::optional<std::string_view> speed = GetEnv(SPEED_VARIABLE); speed.has_value()) this->speed = ParseInteger<uint16_t>(*speed);
+	if (std::optional<std::string_view> step = GetEnv(STEP_VARIABLE); step.has_value()) this->step_ms = ParseInteger<uint16_t>(*step);
+}
+
+std::optional<double> FrameCapture::SceneSeconds() const
+{
+	if (!this->Active() || !this->step_ms.has_value()) return std::nullopt;
+	return this->composed * *this->step_ms / MILLISECONDS_PER_SECOND;
 }
 
 std::optional<ViewAim> FrameCapture::Aim() const
@@ -126,7 +134,9 @@ std::optional<ViewAim> FrameCapture::Aim() const
 /* Every composed frame counts toward the shot in hand; the game ends once the last shot is written. */
 void FrameCapture::Grab(Dimension screen)
 {
-	if (!this->Active() || ++this->frames < this->shots[this->next].wait_frames) return;
+	if (!this->Active()) return;
+	++this->composed;
+	if (++this->frames < this->shots[this->next].wait_frames) return;
 
 	const CaptureShot &shot = this->shots[this->next];
 	if (!shot.from.has_value()) {
