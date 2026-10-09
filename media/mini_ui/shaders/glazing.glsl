@@ -4,6 +4,7 @@ const float ROOM_SUNLIT_SHARE = 0.12;
 const int MIRRORED_CLOUD_OCTAVES = 3;
 const vec3 UPWARD = vec3(0.0, 0.0, 1.0);
 const vec2 STREET_WIDTHS = vec2(1.0, 2.4);
+const int SIDE_KEY_STRIDE = 3;
 const float STREET_SUNLIT = 0.5;
 const float PAVEMENT_WIDTH = 0.2;
 const vec3 DISTANT_TOWN = vec3(0.16, 0.17, 0.15);
@@ -53,8 +54,8 @@ Street StreetBefore(vec3 point, vec3 face, uint seed)
 {
 	float level = length(face.xy);
 	vec2 outward = level > LEAST_ACROSS ? face.xy / level : vec2(0.0);
-	ivec2 side = ivec2(round(outward * 2.0));
-	float width = mix(STREET_WIDTHS.x, STREET_WIDTHS.y, Hash(ivec2(int(seed), side.x + 3 * side.y)));
+	ivec2 side = ivec2(round(outward));
+	float width = mix(STREET_WIDTHS.x, STREET_WIDTHS.y, Hash(ivec2(int(seed), side.x + SIDE_KEY_STRIDE * side.y)));
 	return Street(point, outward, GroundBelow(point.xy + outward * STREET_STEP), width);
 }
 
