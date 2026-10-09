@@ -53,6 +53,35 @@ const vec2 DRIFT_EDGES = vec2(0.35, 0.65);
 const vec2 DRIFT_REACH = vec2(0.6, 1.0);
 const vec2 DRIFT_FACING = vec2(0.5, 0.85);
 const vec2 DRIFT_SEED = vec2(3.3, 8.8);
+const float ASPHALT_GRAIN_PER_TILE = 48.0;
+const float ASPHALT_GRAIN_VARIETY = 0.16;
+const uint ALONG_Y_ENDS = 5u;
+const uint ALONG_X_ENDS = 10u;
+const float LANE_CENTRE = ROAD_HALF * 0.5;
+const float WHEEL_HALF_GAUGE = 0.05;
+const float WHEEL_TRACK_HALF = 0.022;
+const float WHEEL_TRACK_SHADE = 0.9;
+const float WHEEL_TRACK_BREAKS_PER_TILE = 2.5;
+const vec2 WHEEL_TRACK_BREAK_EDGES = vec2(0.25, 0.55);
+const float VERGE_DUST_REACH = 0.06;
+const vec3 VERGE_DUST = vec3(1.14, 1.1, 1.02);
+const float ROAD_CRACKS_PER_TILE = 3.5;
+const float ROAD_CRACK_WIDTH = 0.02;
+const vec2 ROAD_CRACK_RUN_EDGES = vec2(0.55, 0.65);
+const float ROAD_CRACK_SHADE = 0.75;
+const vec2 ROAD_CRACK_SEED = vec2(8.1, 1.7);
+const float ROAD_CRACK_JAGS = 7.0;
+const float ROAD_CRACK_JAGGED = 0.35;
+const float MARK_WEAR_PER_TILE = 6.0;
+const float MARK_FLAKES_PER_TILE = 40.0;
+const float MARK_FLAKING = 0.3;
+const vec2 MARK_WEAR_EDGES = vec2(0.4, 0.62);
+const float MARK_WEAR = 0.75;
+const vec2 MARK_WEAR_SEED = vec2(4.2, 6.9);
+const float SLABS_PER_TILE = 7.0;
+const float SLAB_JOINT = 0.06;
+const float SLAB_JOINT_SHADE = 0.78;
+const float SLAB_VARIETY = 0.12;
 
 vec2 PatternPoint(vec3 position)
 {
@@ -132,6 +161,70 @@ vec3 Drifted(vec3 ground, uint bed, vec2 at, vec2 p, vec3 normal)
 	return mix(ground, Landscape() == LANDSCAPE_ARCTIC ? SNOW : SAND, lying * smoothstep(DRIFT_FACING.x, DRIFT_FACING.y, normal.z));
 }
 
+float Fades(float frequency)
+{
+	return Weathers() ? Resolved(frequency) : 0.0;
+}
+
+float PixelSpan(float x)
+{
+	return max(fwidth(x), MIN_SPREAD);
+}
+
+vec3 Trafficked(vec2 p)
+{
+	ivec2 tile = ivec2(floor(p));
+	uint ends = texelFetch(u_network, Clamped(tile), 0).y;
+	bool along_x = ends == ALONG_X_ENDS;
+	if (!along_x && ends != ALONG_Y_ENDS) return vec3(1.0);
+	vec2 f = p - vec2(tile) - TILE_CENTRE;
+	float lateral = along_x ? f.y : f.x;
+	float along = along_x ? p.x : p.y;
+	float wheel = abs(abs(abs(lateral) - LANE_CENTRE) - WHEEL_HALF_GAUGE);
+	float unbroken = smoothstep(WHEEL_TRACK_BREAK_EDGES.x, WHEEL_TRACK_BREAK_EDGES.y, Noise(vec2(along * WHEEL_TRACK_BREAKS_PER_TILE, lateral * ROAD_CRACKS_PER_TILE)));
+	float tracks = Stroke(wheel, WHEEL_TRACK_HALF, PixelSpan(lateral)) * unbroken * Fades(1.0 / WHEEL_TRACK_HALF);
+	float dust = smoothstep(ROAD_HALF - VERGE_DUST_REACH, ROAD_HALF, abs(lateral)) * Fades(1.0 / VERGE_DUST_REACH);
+	return mix(vec3(1.0), VERGE_DUST, dust) * mix(1.0, WHEEL_TRACK_SHADE, tracks);
+}
+
+float RoadCracks(vec2 p)
+{
+	float shown = Fades(ROAD_CRACKS_PER_TILE * 8.0);
+	if (shown <= 0.0) return 1.0;
+	vec2 q = p * ROAD_CRACKS_PER_TILE;
+	vec2 jag = (vec2(Noise(q * ROAD_CRACK_JAGS), Noise(q * ROAD_CRACK_JAGS + ROAD_CRACK_SEED)) - 0.5) * ROAD_CRACK_JAGGED;
+	vec3 crack = NoiseSlope(q + jag);
+	float vein = abs(crack.x - 0.5) / max(length(crack.yz), MIN_SPREAD);
+	float runs = smoothstep(ROAD_CRACK_RUN_EDGES.x, ROAD_CRACK_RUN_EDGES.y, Noise(p * ROAD_CRACKS_PER_TILE * 0.8 + ROAD_CRACK_SEED));
+	return mix(1.0, ROAD_CRACK_SHADE, Stroke(vein, ROAD_CRACK_WIDTH, PixelSpan(vein)) * runs * shown);
+}
+
+vec3 Asphalted(vec3 tone, vec3 position, vec3 normal)
+{
+	vec2 p = PatternPoint(position);
+	vec3 asphalt = tone * Varied(Layered(p, ASPHALT_GRAIN_PER_TILE), ASPHALT_GRAIN_VARIETY) * Worn(position, normal, 0.0);
+	return asphalt * Trafficked(position.xy) * RoadCracks(p);
+}
+
+vec3 Marked(vec3 tone, vec3 position)
+{
+	vec2 p = PatternPoint(position) + MARK_WEAR_SEED;
+	float flaking = (Octave(p, MARK_FLAKES_PER_TILE) - 0.5) * MARK_FLAKING;
+	float worn = smoothstep(MARK_WEAR_EDGES.x, MARK_WEAR_EDGES.y, Octave(p, MARK_WEAR_PER_TILE) + flaking) * Fades(MARK_WEAR_PER_TILE);
+	return mix(tone, DISTANT_ROAD, worn * MARK_WEAR);
+}
+
+vec3 Paved(vec3 tone, vec3 position, vec3 normal)
+{
+	vec2 q = position.xy * SLABS_PER_TILE;
+	q.x += 0.5 * floor(q.y);
+	vec2 joint = 0.5 - abs(fract(q) - 0.5);
+	float shown = Resolved(SLABS_PER_TILE * 2.0);
+	float joints = max(Stroke(joint.x, SLAB_JOINT, PixelSpan(q.x)), Stroke(joint.y, SLAB_JOINT, PixelSpan(q.y))) * shown;
+	float slab = Varied(Hash(ivec2(floor(q))), SLAB_VARIETY * shown);
+	return tone * slab * mix(1.0, SLAB_JOINT_SHADE, joints) * Worn(position, normal, 0.0);
+}
+
 vec3 Ballasted(vec3 tone, uint bed, vec3 position, vec3 normal)
 {
 	vec2 p = PatternPoint(position);
@@ -143,6 +236,18 @@ vec3 Ballasted(vec3 tone, uint bed, vec3 position, vec3 normal)
 		ballast = mix(ballast * mix(vec3(1.0), OIL_STAIN, stained), WEEDS * Varied(Octave(p, BALLAST_CLUMPS_PER_TILE), WEED_VARIETY), weedy);
 	}
 	return Drifted(ballast, bed, position.xy, p, normal);
+}
+
+vec3 Bedded(vec3 tone, uint bed, vec3 position, vec3 normal)
+{
+	switch (bed) {
+		case BED_BALLAST:
+		case BED_SHOULDER: return Ballasted(tone, bed, position, normal);
+		case BED_ASPHALT: return Asphalted(tone, position, normal);
+		case BED_MARKING: return Marked(tone, position);
+		case BED_PAVING: return Paved(tone, position, normal);
+	}
+	return tone;
 }
 
 /* How far a solid has sunk into the ground it stands on: from where it stands whole at the first pixels per tile given, by the second's share by the time it fades. */
@@ -163,7 +268,7 @@ void main()
 	uint bed = BedOf(v_trait);
 	float gloss = bed == BED_PLAIN ? max(v_trait, 0.0) : 0.0;
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, MIN_SPREAD)));
-	vec3 grained = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) * Worn(v_position, normal, gloss) : Ballasted(v_colour.rgb, bed, v_position, normal);
+	vec3 grained = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) * Worn(v_position, normal, gloss) : Bedded(v_colour.rgb, bed, v_position, normal);
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	Coat coat = Coat(mix(MATTE, POLISHED, gloss), mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss)));
 	vec4 lit = Radiance(albedo, normal, v_position, coat, v_colour.a);

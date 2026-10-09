@@ -219,6 +219,11 @@ private:
 		this->Lay(std::move(part.Paint(tone).Gloss(gloss)));
 	}
 
+	void Lay(ModelMesh part, uint32_t tone, WayBed bed)
+	{
+		this->Lay(std::move(Bedded(part.Paint(tone), bed)));
+	}
+
 	/* The direction a plain road runs in, toward higher map coordinates. */
 	static MapVector Along(RoadBits bits)
 	{
@@ -236,7 +241,7 @@ private:
 	{
 		std::vector<MapVector> outline = Outline(this->site.road);
 		std::vector<std::vector<MapVector>> borders = Borders(outline);
-		this->Lay(Plate(outline, {0.0, 0.0}, ASPHALT_TOP), ASPHALT);
+		this->Lay(Plate(outline, {0.0, 0.0}, ASPHALT_TOP), ASPHALT, WayBed::Asphalt);
 		if (this->site.kerbed) {
 			this->Pavement(outline);
 			for (const auto &border : borders) this->Lay(Wall(border, KERB_FOOT, PAVEMENT_TOP), KERB);
@@ -248,7 +253,7 @@ private:
 		}
 		if (!this->Full()) return;
 		if (!this->site.kerbed && !this->site.crossing) {
-			for (const auto &border : borders) this->Lay(Ribbon(Offset(border, EDGE_INSET), MARK_HALF, MARK_TOP), MARKING);
+			for (const auto &border : borders) this->Lay(Ribbon(Offset(border, EDGE_INSET), MARK_HALF, MARK_TOP), MARKING, WayBed::Marking);
 		}
 		this->CentreLine();
 		this->OneWay();
@@ -269,7 +274,7 @@ private:
 			MapVector across = RightOf(out);
 			for (double lateral = -ROAD_HALF + ZEBRA_MARGIN; lateral + ZEBRA_STRIPE <= ROAD_HALF - ZEBRA_MARGIN; lateral += ZEBRA_PITCH) {
 				std::array<MapVector, 4> stripe = {out * ZEBRA_NEAR + across * lateral, out * ZEBRA_FAR + across * lateral, out * ZEBRA_FAR + across * (lateral + ZEBRA_STRIPE), out * ZEBRA_NEAR + across * (lateral + ZEBRA_STRIPE)};
-				this->Lay(Plate(stripe, out * ((ZEBRA_NEAR + ZEBRA_FAR) * 0.5) + across * (lateral + ZEBRA_STRIPE * 0.5), MARK_TOP), MARKING);
+				this->Lay(Plate(stripe, out * ((ZEBRA_NEAR + ZEBRA_FAR) * 0.5) + across * (lateral + ZEBRA_STRIPE * 0.5), MARK_TOP), MARKING, WayBed::Marking);
 			}
 		}
 	}
@@ -349,7 +354,7 @@ private:
 			pavement.Triangle(first, rim_last, point(next));
 		}
 		uint32_t seed = Hash32(PAVEMENT_SALT + static_cast<uint32_t>(this->site.tx * 4099 + this->site.ty));
-		this->Lay(std::move(pavement.Vary(PAVEMENT_VARIETY, seed)), PAVEMENT);
+		this->Lay(std::move(pavement.Vary(PAVEMENT_VARIETY, seed)), PAVEMENT, WayBed::Paving);
 	}
 
 	/* Dashes run down the middle of a plain road or round a bend, in step with the tiles either side. */
@@ -362,7 +367,7 @@ private:
 			for (int dash = 0; dash < DASHES; dash++) {
 				double middle = (dash + 0.5) / DASHES - EDGE;
 				std::array<MapVector, 2> line = {along * (middle - DASH_SHARE * EDGE / DASHES), along * (middle + DASH_SHARE * EDGE / DASHES)};
-				this->Lay(Ribbon(line, MARK_HALF, MARK_TOP), MARKING);
+				this->Lay(Ribbon(line, MARK_HALF, MARK_TOP), MARKING, WayBed::Marking);
 			}
 			return;
 		}
@@ -374,7 +379,7 @@ private:
 		for (int dash = 0; dash < DASHES; dash++) {
 			size_t first = static_cast<size_t>(std::lround(BEND_STEPS * (dash + 0.5 - DASH_SHARE * 0.5) / DASHES));
 			size_t last = static_cast<size_t>(std::lround(BEND_STEPS * (dash + 0.5 + DASH_SHARE * 0.5) / DASHES));
-			this->Lay(Ribbon(std::span<const MapVector>(arc).subspan(first, last - first + 1), MARK_HALF, MARK_TOP), MARKING);
+			this->Lay(Ribbon(std::span<const MapVector>(arc).subspan(first, last - first + 1), MARK_HALF, MARK_TOP), MARKING, WayBed::Marking);
 		}
 	}
 
@@ -394,8 +399,8 @@ private:
 		MapVector side = RightOf(heading);
 		std::array<MapVector, 4> shaft = {heading * -ARROW_TAIL - side * ARROW_SHAFT_HALF, heading * ARROW_NECK - side * ARROW_SHAFT_HALF, heading * ARROW_NECK + side * ARROW_SHAFT_HALF, heading * -ARROW_TAIL + side * ARROW_SHAFT_HALF};
 		std::array<MapVector, 3> head = {heading * ARROW_NECK - side * ARROW_HEAD_HALF, heading * ARROW_TIP, heading * ARROW_NECK + side * ARROW_HEAD_HALF};
-		this->Lay(Plate(shaft, heading * ((ARROW_NECK - ARROW_TAIL) * 0.5), MARK_TOP), MARKING);
-		this->Lay(Plate(head, heading * ((2.0 * ARROW_NECK + ARROW_TIP) / 3.0), MARK_TOP), MARKING);
+		this->Lay(Plate(shaft, heading * ((ARROW_NECK - ARROW_TAIL) * 0.5), MARK_TOP), MARKING, WayBed::Marking);
+		this->Lay(Plate(head, heading * ((2.0 * ARROW_NECK + ARROW_TIP) / 3.0), MARK_TOP), MARKING, WayBed::Marking);
 	}
 
 	/* A tram runs between every pair of its ends, round the shared corner between neighbouring ones, and up to the middle from a lone end. */

@@ -59,7 +59,7 @@ double Stretch::ShareOf(const MapVector &point) const
 static ModelMesh &Finished(ModelMesh &face, const SectionPoint &point)
 {
 	face.Paint(point.tone);
-	return point.bed == WayBed::Plain ? face.Gloss(point.gloss) : face.Coded(to_underlying(point.bed));
+	return point.bed == WayBed::Plain ? face.Gloss(point.gloss) : Bedded(face, point.bed);
 }
 
 ModelMesh EndCap(const WayLine &line, Section section, bool last)
