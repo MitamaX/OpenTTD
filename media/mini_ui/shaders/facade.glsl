@@ -53,7 +53,10 @@ const float FASCIA_ROWS[10] = float[10](0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 
 const vec3 FRAME_PAINTS[] = FRAME_TONES;
 const vec3 SILL_STONE = vec3(0.80, 0.78, 0.74);
 const float SURROUND_SHARE = 0.55;
-const vec3 BLINDS[3] = vec3[3](vec3(0.86, 0.80, 0.66), vec3(0.88, 0.87, 0.84), vec3(0.58, 0.58, 0.56));
+const float SURROUND_WIDTH = 1.0;
+const float MULLION_WIDTH = 0.4;
+const vec3 BLINDS[3] = vec3[3](vec3(0.88, 0.87, 0.84), vec3(0.58, 0.58, 0.56), vec3(0.86, 0.80, 0.66));
+const uint OFFICE_BLINDS = 2u;
 const vec3 CURTAINS[4] = vec3[4](vec3(0.62, 0.20, 0.16), vec3(0.78, 0.66, 0.42), vec3(0.30, 0.42, 0.30), vec3(0.70, 0.62, 0.58));
 const vec3 SHUTTER_SLAT = vec3(0.62, 0.64, 0.66);
 const vec3 SHUTTER_GROOVE = vec3(0.50, 0.52, 0.54);
@@ -88,6 +91,9 @@ const vec2 CURTAIN_REACHES = vec2(0.1, 0.32);
 const vec2 PANE_WARP = vec2(0.03, 0.08);
 const float PANE_ROUGHNESS = 0.06;
 const float GLAZED_SHARE = 0.85;
+const vec3 SPANDREL_BACKING = vec3(0.16, 0.17, 0.18);
+const vec2 COLUMNS_FADE = vec2(1.2, 2.6);
+const vec2 STOREYS_FADE = vec2(2.6, 4.5);
 
 /* Where a point of a facade lies: the opening of its bay, the point measured from that opening's foot at its middle, and which window it is. */
 struct Bay {
@@ -163,6 +169,11 @@ bool HoldsOffices(uint grid)
 	return grid == WINDOWS_OFFICE || grid == WINDOWS_CURTAIN;
 }
 
+bool Mullioned(uint grid)
+{
+	return grid == WINDOWS_CURTAIN;
+}
+
 vec3 FramePaint(uint seed)
 {
 	return FRAME_PAINTS[seed % uint(FRAME_PAINTS.length())];
@@ -178,7 +189,7 @@ Room RoomBehind(Bay bay, uint grid, uint seed)
 	float drawn = offices ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
 	uint paint = offices ? seed : uint(Roll(bay.window, seed, ROLL_PAINT) * float(BLINDS.length() * CURTAINS.length()));
 	return Room(mix(ROOM_TONES.x, ROOM_TONES.y, Roll(bay.window, seed, ROLL_TONE)), Roll(bay.window, seed, ROLL_LAMP) < lit ? 1.0 : 0.0,
-		drop, BLINDS[paint % uint(BLINDS.length())], drawn, CURTAINS[paint % uint(CURTAINS.length())]);
+		drop, BLINDS[paint % (offices ? OFFICE_BLINDS : uint(BLINDS.length()))], drawn, CURTAINS[paint % uint(CURTAINS.length())]);
 }
 
 Clad PaneOver(vec3 room, float lamp)
@@ -228,35 +239,59 @@ float Drips(Bay bay, vec2 texel, uint grid)
 	return mix(1.0, DRIP_SHADE, under * runs * fade);
 }
 
-/* The windows, doors and frames of a facade over the wall it is cut into; seen from too far for them to show, the wall blends toward its windows' glass. */
-Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed)
+Clad FacadeWall(uint material, vec2 pattern, vec3 tint)
 {
-	vec2 texel = pattern * TEXELS;
-	float pixel = max(fwidth(texel.x), fwidth(texel.y));
+	return material == CLAD_GLASS ? PaneOver(SPANDREL_BACKING, 0.0) : CladOf(material, pattern, tint);
+}
+
+Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, float pixel)
+{
 	Bay bay = BayAt(grid, texel, front);
 	Opening opening = bay.opening;
-	float detail = 1.0 - smoothstep(1.2, 2.6, pixel);
 	Clad clad = wall;
-	clad.albedo *= mix(1.0, Drips(bay, texel, grid), detail);
+	clad.albedo *= Drips(bay, texel, grid);
 
 	float fascia = FASCIA_ROWS[grid];
 	float ground = FACADE_GROUND[grid];
 	if (front && fascia > 0.0 && texel.y < ground && texel.y >= ground - 1.0 - fascia) {
 		clad = Matte(texel.y >= ground - 1.0 ? SILL_STONE : FASCIA_PAINTS[seed % 4u], 0.6);
 	}
+	if (opening.kind == OPEN_NONE) return clad;
 
-	if (opening.kind != OPEN_NONE) {
-		float outside = OutsideOpening(opening, bay.at);
-		bool sills = opening.kind == OPEN_WINDOW || opening.kind == OPEN_SHOP;
-		float springline = opening.arch ? opening.height - opening.width * 0.5 : opening.height;
-		bool framed = outside < 1.0 && (!sills || bay.at.y >= springline);
-		bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -1.0 && abs(bay.at.x) < opening.width * 0.5 + 1.0;
-		if (framed || on_sill) clad = Matte(on_sill ? SILL_STONE : mix(wall.albedo, SILL_STONE, SURROUND_SHARE), 0.7);
-		float inside = clamp(0.5 - outside / max(pixel, 1e-3), 0.0, 1.0);
-		clad = Mixed(clad, Filling(bay, grid, seed, pixel), inside);
-	}
+	float outside = OutsideOpening(opening, bay.at);
+	bool sills = !Mullioned(grid) && (opening.kind == OPEN_WINDOW || opening.kind == OPEN_SHOP);
+	float springline = opening.arch ? opening.height - opening.width * 0.5 : opening.height;
+	bool framed = outside < (Mullioned(grid) ? MULLION_WIDTH : SURROUND_WIDTH) && (!sills || bay.at.y >= springline);
+	bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -1.0 && abs(bay.at.x) < opening.width * 0.5 + 1.0;
+	vec3 surround = Mullioned(grid) ? FramePaint(seed) : mix(wall.albedo, SILL_STONE, SURROUND_SHARE);
+	if (framed || on_sill) clad = Matte(on_sill ? SILL_STONE : surround, 0.7);
+	float inside = clamp(0.5 - outside / max(pixel, 1e-3), 0.0, 1.0);
+	return Mixed(clad, Filling(bay, grid, seed, pixel), inside);
+}
 
+Clad Banded(Clad wall, Clad glazed, uint grid, float height, float pixel)
+{
+	float ground = FACADE_GROUND[grid];
+	float storey = FACADE_STOREY[grid];
+	Opening opening = height < ground ? GROUND_OPENINGS[grid] : UPPER_OPENINGS[grid];
+	float within = height < ground ? height : mod(height - ground, storey);
+	float across = opening.width / FACADE_PITCH[grid];
+	return Mixed(wall, glazed, Band(within, opening.sill, opening.sill + opening.height, pixel) * across * GLAZED_SHARE);
+}
+
+/* The windows, doors and frames of a facade over the wall it is cut into; seen from too far for them to show, the wall blends toward its windows' glass,
+ * the storeys' bands of windows outlasting the windows along them. */
+Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed)
+{
+	vec2 texel = pattern * TEXELS;
+	vec2 pixel = vec2(fwidth(texel.x), fwidth(texel.y));
+	float columns = 1.0 - smoothstep(COLUMNS_FADE.x, COLUMNS_FADE.y, max(pixel.x, pixel.y));
+	float storeys = 1.0 - smoothstep(STOREYS_FADE.x, STOREYS_FADE.y, pixel.y);
 	Opening upper = UPPER_OPENINGS[grid];
-	float open_share = upper.width * upper.height / (FACADE_PITCH[grid] * FACADE_STOREY[grid]);
-	return Mixed(Mixed(wall, PaneOver(DIM_ROOM, LIT_ROOM_SHARE), open_share * GLAZED_SHARE), clad, detail);
+	Clad glazed = PaneOver(DIM_ROOM, LIT_ROOM_SHARE);
+	Clad far = Mixed(wall, glazed, upper.width * upper.height / (FACADE_PITCH[grid] * FACADE_STOREY[grid]) * GLAZED_SHARE);
+	if (storeys <= 0.0) return far;
+	Clad banded = Mixed(far, Banded(wall, glazed, grid, texel.y, pixel.y), storeys);
+	if (columns <= 0.0) return banded;
+	return Mixed(banded, Windowed(wall, grid, texel, front, seed, max(pixel.x, pixel.y)), columns);
 }

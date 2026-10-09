@@ -67,7 +67,7 @@ void main()
 	uint material = v_surface.x;
 	if (Cover(material, v_pattern) < noise) discard;
 
-	Clad clad = CladOf(material, v_pattern, v_colour.rgb);
+	Clad clad = Has(SURFACE_FACADE) ? FacadeWall(material, v_pattern, v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
 	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)));
 	vec3 normal = Tilted(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0), clad.tilt);

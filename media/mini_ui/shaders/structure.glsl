@@ -197,10 +197,14 @@ Clad Glazed(vec2 p, vec3 frame, vec2 panes, float bar)
 	return clad;
 }
 
+float Band(float x, float low, float high, float pixel)
+{
+	return smoothstep(low - pixel, low + pixel, x) - smoothstep(high - pixel, high + pixel, x);
+}
+
 float Band(float x, float low, float high)
 {
-	float pixel = fwidth(x);
-	return smoothstep(low - pixel, low + pixel, x) - smoothstep(high - pixel, high + pixel, x);
+	return Band(x, low, high, fwidth(x));
 }
 
 /* The members of a braced lattice, as a share of the point they cover. */
