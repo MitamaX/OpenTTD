@@ -67,6 +67,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/map.rml
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rcss
         ${CMAKE_CURRENT_SOURCE_DIR}/panel.rml
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bays.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bloom_down.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bloom_up.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/caster.frag
@@ -90,6 +91,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/overlay.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/rooms.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/scene.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/screen.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shade.frag
