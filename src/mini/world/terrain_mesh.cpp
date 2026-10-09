@@ -29,7 +29,9 @@
 #include "sea_frame.h"
 #include "seabed.h"
 #include "shore_relief.h"
+#include "tile_grid.h"
 #include "track_models.h"
+#include "water_sheet.h"
 #include "way_shapes.h"
 
 #include "../../safeguards.h"
@@ -226,25 +228,13 @@ static TileCorner CornerAt(int dx, int dy)
 /* A tile whose ground curves is laid as a fine grid over it, sharing the tile's own corners wherever a neighbour keeps them. */
 static void AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty, int divisions)
 {
-	double water = SurfaceLevelOf(tx, ty);
-	int side = divisions + 1;
-	std::vector<uint32_t> grid(static_cast<size_t>(side) * side);
-	for (int j = 0; j < side; j++) {
-		for (int i = 0; i < side; i++) {
-			double x = tx + static_cast<double>(i) / divisions;
-			double y = ty + static_cast<double>(j) / divisions;
-			bool on_corner = (i % divisions == 0) && (j % divisions == 0);
-			if (on_corner && relief.Pinned(x, y)) {
-				grid[j * side + i] = corners[CornerAt(i / divisions, j / divisions)];
-				continue;
-			}
-			double level = relief.Level(x, y);
-			grid[j * side + i] = mesh.Add({x, y, level}, relief.Normal(x, y), SunkMark(std::max(water - level, 0.0)));
-		}
-	}
-	for (int j = 0; j < divisions; j++) {
-		for (int i = 0; i < divisions; i++) mesh.Quad(grid[j * side + i], grid[j * side + i + 1], grid[(j + 1) * side + i + 1], grid[(j + 1) * side + i]);
-	}
+	WaterSheet sheet(tx, ty);
+	LayTileGrid(mesh, tx, ty, divisions, [&](int i, int j, double x, double y) {
+		bool on_corner = (i % divisions == 0) && (j % divisions == 0);
+		if (on_corner && relief.Pinned(x, y)) return corners[CornerAt(i / divisions, j / divisions)];
+		double level = relief.Level(x, y);
+		return mesh.Add({x, y, level}, relief.Normal(x, y), SunkMark(std::max(sheet.Level(x, y) - level, 0.0)));
+	});
 }
 
 static std::array<double, CORNER_COUNT> CornerLevels(const TerrainMesh &mesh, const std::array<uint32_t, CORNER_COUNT> &corners)

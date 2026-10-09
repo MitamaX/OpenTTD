@@ -90,6 +90,7 @@ add_files(
     terrain_mesh.h
     terrain_pass.cpp
     terrain_pass.h
+    tile_grid.h
     track_models.cpp
     track_models.h
     tree_models.cpp
@@ -112,6 +113,8 @@ add_files(
     water_outline.h
     water_pass.cpp
     water_pass.h
+    water_sheet.cpp
+    water_sheet.h
     way_shapes.cpp
     way_shapes.h
     world_painter.cpp
