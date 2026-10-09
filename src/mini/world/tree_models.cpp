@@ -222,7 +222,7 @@ static std::array<uint8_t, TREE_SHAPES> Weights(const std::array<Habit, TREE_SHA
 	return weights;
 }
 
-static std::array<uint8_t, TREE_SHAPES> WeightsOf(TreeKind kind, LandscapeType landscape)
+static std::array<uint8_t, TREE_SHAPES> HabitatWeights(TreeKind kind, LandscapeType landscape)
 {
 	switch (kind) {
 		case TreeKind::Broadleaf: return Weights(BROADLEAF_HABITS, landscape);
@@ -232,10 +232,15 @@ static std::array<uint8_t, TREE_SHAPES> WeightsOf(TreeKind kind, LandscapeType l
 	}
 }
 
+static std::array<uint8_t, TREE_SHAPES> WeightsOf(TreeKind kind, LandscapeType landscape)
+{
+	std::array<uint8_t, TREE_SHAPES> weights = HabitatWeights(kind, landscape);
+	return std::ranges::all_of(weights, [](uint8_t weight) { return weight == 0; }) ? EVEN_WEIGHTS : weights;
+}
+
 uint8_t PickTreeShape(TreeKind kind, LandscapeType landscape, double roll)
 {
 	std::array<uint8_t, TREE_SHAPES> weights = WeightsOf(kind, landscape);
-	if (std::reduce(weights.begin(), weights.end(), 0U) == 0) weights = EVEN_WEIGHTS;
 	double reach = roll * std::reduce(weights.begin(), weights.end(), 0U);
 	uint8_t picked = 0;
 	uint passed = 0;
