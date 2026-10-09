@@ -34,7 +34,6 @@ using WaterMesh = TriangleList<WaterVertex>;
 
 WaterMesh BuildWaterSurface(const TileSpan &tiles);
 WaterMesh BuildOuterWater(Dimension map, double reach);
-/* Spray rising off the foot of every fall, where the last of a run of rapids pours into still water, drifting away downstream. */
 std::vector<SmokeVent> BuildFallSprays(const TileSpan &tiles);
 
 #endif /* MINI_WORLD_WATER_MESH_H */

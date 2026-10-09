@@ -34,7 +34,6 @@ public:
 	void DrawWater(const SceneView &camera);
 	void Release();
 
-	/* The spray off the falls of every block the water is drawn over in the camera's view. */
 	template <typename Visit>
 	void ForEachSprays(const SceneView &camera, Visit visit) const
 	{

@@ -56,7 +56,6 @@ Rect TilesNear(const Rect &area, int reach);
 Rect TakingIn(const Rect &area, int tx, int ty);
 MapVector Outward(DiagDirection side);
 
-/* Whether any of the four tiles sharing a side with a tile passes a test. */
 template <typename Test>
 bool AnySideTile(int tx, int ty, Test test)
 {

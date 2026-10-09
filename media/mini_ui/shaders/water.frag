@@ -645,7 +645,6 @@ struct Water {
 	float enclosed;
 };
 
-/* How far the water falls on its way to a point from a reach back up the current, traced in steps that bend with it, so water a drop pours into a pool stays churned as it turns away across the pool. */
 float Churned(vec2 at, Drop drop)
 {
 	vec2 from = at;
