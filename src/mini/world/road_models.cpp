@@ -71,8 +71,9 @@ static constexpr double TRAM_RAIL_HALF = 0.011;
 static constexpr double TRAM_RAIL_TOP = ASPHALT_TOP + 0.0025;
 static constexpr double TRAM_BED_TOP = 0.009;
 
+static constexpr double SHOULDER_SHADE = 0.8;
 static constexpr uint32_t ASPHALT = COL_ASPHALT;
-static constexpr uint32_t SHOULDER = 0x3F3D3A;
+static constexpr uint32_t SHOULDER = ScaledRgb(ASPHALT, SHOULDER_SHADE);
 static constexpr uint32_t PAVEMENT = 0xB7B2A8;
 static constexpr uint32_t KERB = 0xCDC9C0;
 static constexpr uint32_t MARKING = 0xE8E6DE;

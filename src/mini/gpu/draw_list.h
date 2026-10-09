@@ -66,6 +66,19 @@ constexpr uint Luminance(uint32_t c)
 	return (LUMA_RED * Red(c) + LUMA_GREEN * Green(c) + LUMA_BLUE * Blue(c)) >> LUMA_SHIFT;
 }
 
+constexpr uint32_t ScaledRgb(uint32_t argb, double factor)
+{
+	auto scaled = [factor](uint channel) { return static_cast<uint>(std::clamp(channel * factor + 0.5, 0.0, static_cast<double>(CHANNEL_MAX))); };
+	return PackArgb(Alpha(argb), scaled(Red(argb)), scaled(Green(argb)), scaled(Blue(argb)));
+}
+
+constexpr uint32_t Muted(uint32_t argb, double kept)
+{
+	double grey = Luminance(argb);
+	auto muted = [grey, kept](uint channel) { return static_cast<uint>(grey + (channel - grey) * kept + 0.5); };
+	return PackArgb(Alpha(argb), muted(Red(argb)), muted(Green(argb)), muted(Blue(argb)));
+}
+
 /* The alpha that keeps this share of a full alpha, from none at 0 to all of it at 1. */
 inline uint FadedAlpha(double share, uint alpha = CHANNEL_MAX)
 {

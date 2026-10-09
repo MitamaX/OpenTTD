@@ -175,19 +175,6 @@ struct FloraPatch {
 	uint8_t count;
 };
 
-constexpr uint32_t ScaledRgb(uint32_t argb, double factor)
-{
-	auto scaled = [factor](uint channel) { return static_cast<uint>(std::clamp(channel * factor + 0.5, 0.0, static_cast<double>(CHANNEL_MAX))); };
-	return PackArgb(Alpha(argb), scaled(Red(argb)), scaled(Green(argb)), scaled(Blue(argb)));
-}
-
-constexpr uint32_t Muted(uint32_t argb, double kept)
-{
-	double grey = Luminance(argb);
-	auto muted = [grey, kept](uint channel) { return static_cast<uint>(grey + (channel - grey) * kept + 0.5); };
-	return PackArgb(Alpha(argb), muted(Red(argb)), muted(Green(argb)), muted(Blue(argb)));
-}
-
 constexpr uint32_t TintJitter(uint32_t argb, uint32_t seed, uint first)
 {
 	return ScaledRgb(argb, TINT_JITTER_BASE + TINT_JITTER_SPAN * SeedShare(seed, first, TINT_JITTER_BITS));
