@@ -139,8 +139,7 @@ vec4 Radiance(vec3 albedo, vec3 normal, vec3 position, Coat coat, float occlusio
 
 vec3 Town(vec3 way)
 {
-	vec2 across = way.xy / max(length(way.xy), 1e-4);
-	float sunward_walls = max(-dot(across, SunDirection().xy), 0.0);
+	float sunward_walls = max(-dot(Across(way), SunDirection().xy), 0.0);
 	return TOWN_ALBEDO * (SunRadiance() * sunward_walls + SKY_LIGHT);
 }
 

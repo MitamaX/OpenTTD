@@ -11,6 +11,7 @@ const float GLOW_STRENGTH = 0.8;
 const float HORIZON_GLOW = 0.6;
 const float HORIZON_GLOW_FOCUS = 5.0;
 const float HAZE_LIFT = 0.015;
+const float LEAST_ACROSS = 1e-4;
 
 const vec3 SUN_COLOUR = vec3(1.0, 0.89, 0.75);
 const float SUN_ILLUMINANCE = 6.0;
@@ -44,11 +45,15 @@ vec3 OpenSky(vec3 sight)
 	return (gradient + aureole + band) * SKY_BRIGHTNESS;
 }
 
+vec2 Across(vec3 way)
+{
+	return way.xy / max(length(way.xy), LEAST_ACROSS);
+}
+
 /* The light the air scatters toward the eye along a sight line: the sky just over the horizon in that direction, so distant ground fades into it. */
 vec3 Haze(vec3 sight)
 {
-	vec2 across = sight.xy / max(length(sight.xy), 1e-4);
-	return OpenSky(normalize(vec3(across, HAZE_LIFT)));
+	return OpenSky(normalize(vec3(Across(sight), HAZE_LIFT)));
 }
 
 vec3 SkyRadiance(vec3 sight)
