@@ -101,10 +101,15 @@ void VehicleMotion::Advance(double delta_ms)
 	}
 }
 
-/* One new to view, jumping or turned about starts its trail afresh. */
 void VehicleMotion::Note(const Vehicle *v)
 {
+	this->Noted(v);
+}
+
+VehicleMotion::Snapshot &VehicleMotion::Noted(const Vehicle *v)
+{
 	Snapshot &e = this->snapshots[v->index.base()];
+	if (e.seen == this->frames && !e.trail.Empty()) return e;
 	TickTrail::Spot spot = SpotOf(v, this->tick);
 	bool turned_about = TurnedAbout(v);
 	bool continues = this->SeenLately(e) && !e.trail.Empty() && e.turned_about == turned_about && Glides(e.trail.Latest(), spot);
@@ -112,12 +117,13 @@ void VehicleMotion::Note(const Vehicle *v)
 	if (v->type == VEH_TRAIN) e.NotePassage({v->tile, Train::From(v)->track & TRACK_BIT_MASK}, continues);
 	e.seen = this->frames;
 	e.turned_about = turned_about;
+	return e;
 }
 
 /* A unit stands where its trail passes the tick the clock shows, a train along its track. */
 WorldPoint VehicleMotion::Gliding(const Vehicle *v, const TrackTaken &taken)
 {
-	TickTrail::Bracket bracket = this->snapshots[v->index.base()].trail.About(_tick_clock.Shown());
+	TickTrail::Bracket bracket = this->Noted(v).trail.About(_tick_clock.Shown());
 	WorldPoint from = InTiles(bracket.from);
 	WorldPoint to = InTiles(bracket.to);
 	if (!FollowsTrack(v)) return Between(from, to, bracket.share);
@@ -173,12 +179,11 @@ double VehicleMotion::TurnRate(const Vehicle *v)
 
 TrackTaken VehicleMotion::TakenBy(const Vehicle *v) const
 {
+	if (v->type != VEH_TRAIN) return {};
 	std::vector<Passage> passages;
-	if (v->type == VEH_TRAIN) {
-		for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
-			passages.push_back({unit->tile, unit->track & TRACK_BIT_MASK});
-			passages.push_back(this->LeftBy(unit));
-		}
+	for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
+		passages.push_back({unit->tile, unit->track & TRACK_BIT_MASK});
+		passages.push_back(this->LeftBy(unit));
 	}
 	return [passages = std::move(passages)](TileIndex tile) {
 		TrackBits taken = GetReservedTrackbits(tile);

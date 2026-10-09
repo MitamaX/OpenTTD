@@ -24,7 +24,7 @@ struct Vehicle;
 class VehicleMotion {
 public:
 	void Advance(double delta_ms);
-	/* A unit is noted once a frame before it is placed, so every unit of a train is known before any of its ways is laid. */
+	/* Every unit of a train is noted before any of its ways is laid, any other unit as it is placed. */
 	void Note(const Vehicle *v);
 	/* Where a noted unit stands on the game's own map, in tiles and height levels, and where a unit noted afresh is drawn. */
 	WorldPoint Gliding(const Vehicle *v, const TrackTaken &taken);
@@ -38,7 +38,7 @@ public:
 	/* Whether a unit runs along the track as it is drawn: a train out of tunnels and off bridges. */
 	static bool FollowsTrack(const Vehicle *v);
 	static WorldPoint Grounded(const Vehicle *v, const WorldPoint &point);
-	/* The pieces of a tile's track a train's units stand on or stood on last before as they are noted now, and any the game has reserved there for a train's way ahead. */
+	/* The pieces of a tile's track a train's units stand on or last stood on, with those the game holds reserved. */
 	TrackTaken TakenBy(const Vehicle *v) const;
 	void Clear();
 
@@ -63,6 +63,7 @@ private:
 
 	static TickTrail::Spot SpotOf(const Vehicle *v, uint64_t tick);
 	static bool Glides(const TickTrail::Spot &from, const TickTrail::Spot &to);
+	Snapshot &Noted(const Vehicle *v);
 	bool SeenLately(const Snapshot &e) const;
 	Passage LeftBy(const Vehicle *unit) const;
 	Snapshot &Turned(const Vehicle *v);
