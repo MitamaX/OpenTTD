@@ -27,6 +27,7 @@ static constexpr double CHANNEL_LIP = 0.03;
 static constexpr double CHANNEL_FALL = 0.15;
 static constexpr double RAPIDS_DEPTH = 0.3;
 static constexpr double SLOPE_PROBE = 0.1;
+static constexpr double LEAST_UPRIGHT = 0.05;
 static constexpr int SPLINE_REACH = 1;
 
 bool IsBareCoast(int tx, int ty)
@@ -62,12 +63,14 @@ double TileRelief::Level(double x, double y) const
 	return std::lerp(this->Faceted(x, y), this->Curved(x, y), this->Freedom(x, y));
 }
 
-Vec3 TileRelief::Normal(double x, double y) const
+Vec3 TileRelief::Normal(double x, double y, const Vec3 &faceted) const
 {
 	double rise = LevelRise();
-	double slope_x = (this->Level(x + SLOPE_PROBE, y) - this->Level(x - SLOPE_PROBE, y)) * rise / (2.0 * SLOPE_PROBE);
-	double slope_y = (this->Level(x, y + SLOPE_PROBE) - this->Level(x, y - SLOPE_PROBE)) * rise / (2.0 * SLOPE_PROBE);
-	return Normalised({-slope_x, -slope_y, 1.0});
+	auto curving = [this](double px, double py) { return this->Level(px, py) - this->Faceted(px, py); };
+	double bend_x = (curving(x + SLOPE_PROBE, y) - curving(x - SLOPE_PROBE, y)) * rise / (2.0 * SLOPE_PROBE);
+	double bend_y = (curving(x, y + SLOPE_PROBE) - curving(x, y - SLOPE_PROBE)) * rise / (2.0 * SLOPE_PROBE);
+	double upright = std::max(faceted.z, LEAST_UPRIGHT);
+	return Normalised({faceted.x / upright - bend_x, faceted.y / upright - bend_y, 1.0});
 }
 
 /* The tile's corners spread over it, straight along each side as every neighbour's edge runs. Corners go north, west, east, south. */

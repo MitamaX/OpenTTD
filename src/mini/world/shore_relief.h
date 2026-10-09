@@ -29,7 +29,7 @@ public:
 	virtual ~TileRelief() = default;
 
 	double Level(double x, double y) const;
-	Vec3 Normal(double x, double y) const;
+	Vec3 Normal(double x, double y, const Vec3 &faceted) const;
 	/* Whether the ground at a point is held to the tile's facets by a neighbour that keeps them. */
 	bool Pinned(double x, double y) const { return this->Freedom(x, y) <= 0.0; }
 

@@ -56,6 +56,11 @@ inline Vec3 Normalised(const Vec3 &v)
 	return length > 0.0 ? v * (1.0 / length) : v;
 }
 
+inline Vec3 Lerp(const Vec3 &from, const Vec3 &to, double share)
+{
+	return {std::lerp(from.x, to.x, share), std::lerp(from.y, to.y, share), std::lerp(from.z, to.z, share)};
+}
+
 /* Column major, as GL takes it. */
 struct Mat4 {
 	std::array<double, 16> m{};

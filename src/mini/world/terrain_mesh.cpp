@@ -225,7 +225,20 @@ static TileCorner CornerAt(int dx, int dy)
 	NOT_REACHED();
 }
 
-/* A tile whose ground curves is laid as a fine grid over it, sharing the tile's own corners wherever a neighbour keeps them. */
+static Vec3 VertexNormal(const TerrainMesh &mesh, uint32_t index)
+{
+	const std::array<int8_t, 4> &normal = mesh.vertices[index].normal;
+	return Vec3{static_cast<double>(normal[0]), static_cast<double>(normal[1]), static_cast<double>(normal[2])} * (1.0 / NORMALISED_BYTE_MAX);
+}
+
+static Vec3 FacetedNormal(const TerrainMesh &mesh, const std::array<uint32_t, CORNER_COUNT> &corners, double fx, double fy)
+{
+	Vec3 north = Lerp(VertexNormal(mesh, corners[NORTH]), VertexNormal(mesh, corners[WEST]), fx);
+	Vec3 south = Lerp(VertexNormal(mesh, corners[EAST]), VertexNormal(mesh, corners[SOUTH]), fx);
+	return Lerp(north, south, fy);
+}
+
+/* A tile whose ground curves is laid as a fine grid over it, sharing the tile's own corners wherever a neighbour keeps them and shading as its facets would between them. */
 static void AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty, int divisions)
 {
 	WaterSheet sheet(tx, ty);
@@ -233,7 +246,7 @@ static void AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::ar
 		bool on_corner = (i % divisions == 0) && (j % divisions == 0);
 		if (on_corner && relief.Pinned(x, y)) return corners[CornerAt(i / divisions, j / divisions)];
 		double level = relief.Level(x, y);
-		return mesh.Add({x, y, level}, relief.Normal(x, y), SunkMark(std::max(sheet.Level(x, y) - level, 0.0)));
+		return mesh.Add({x, y, level}, relief.Normal(x, y, FacetedNormal(mesh, corners, x - tx, y - ty)), SunkMark(std::max(sheet.Level(x, y) - level, 0.0)));
 	});
 }
 

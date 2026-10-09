@@ -54,11 +54,6 @@ std::array<PlanPoint, RECT_CORNERS> CornersOf(const PlanRect &rect)
 	return {{{rect.x0, rect.y0}, {rect.x1, rect.y0}, {rect.x1, rect.y1}, {rect.x0, rect.y1}}};
 }
 
-static Vec3 Lerp(const Vec3 &from, const Vec3 &to, double share)
-{
-	return {std::lerp(from.x, to.x, share), std::lerp(from.y, to.y, share), std::lerp(from.z, to.z, share)};
-}
-
 static PlanPoint Lerp(const PlanPoint &from, const PlanPoint &to, double share)
 {
 	return {std::lerp(from.x, to.x, share), std::lerp(from.y, to.y, share)};
