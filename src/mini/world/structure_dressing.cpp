@@ -36,7 +36,7 @@ static constexpr uint32_t CAP_TINT = 0xFF9C9890U;
 static constexpr double FAN_SHARE = 0.32;
 static constexpr double FAN_HEIGHT = 0.006;
 static constexpr double WIDE_UNIT_SIDE = 0.15;
-static constexpr uint32_t FAN_TINT = 0xFF3C4044U;
+static constexpr double FAN_SHADE = 0.42;
 
 static constexpr double TANK_BODY_SHARE = 0.65;
 static constexpr double TANK_LEG_SIDE = 0.008;
@@ -194,7 +194,7 @@ private:
 
 	void DressRooftopUnit()
 	{
-		Coat fan = {Material::Metal, WindowGrid::None, {}, FAN_TINT};
+		Coat fan = {Material::Metal, WindowGrid::None, {}, ScaledRgb(this->solid.wall_tint, FAN_SHADE)};
 		double radius = FAN_SHARE * std::min(this->HalfX(), this->HalfY()) * 2.0;
 		bool wide = std::max(this->HalfX(), this->HalfY()) * 2.0 >= WIDE_UNIT_SIDE;
 		this->OnTop(wide, [&](double x, double y) { this->AddUpright(Prism(PROP_SIDES * 2, radius, FAN_HEIGHT), x, y, this->solid.Top(), fan); });

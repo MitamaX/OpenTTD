@@ -373,6 +373,7 @@ static Swatch WallSwatch(Material material, LandscapeType climate)
 		case Material::Timber: return Swatch::Timber;
 		case Material::Stone: return Swatch::Stone;
 		case Material::Corrugated: return Swatch::Metal;
+		case Material::Glass: return Swatch::Glass;
 		default: return Swatch::Concrete;
 	}
 }
@@ -455,7 +456,7 @@ static Material WallMaterialOf(const HouseSite &site)
 
 static void Clad(HouseSite &site)
 {
-	site.glass = SwatchTint(Swatch::Glass, SubSeed(site.seed, GLASS_SALT));
+	site.glass = SwatchTint(WallSwatch(Material::Glass, site.climate), SubSeed(site.seed, GLASS_SALT));
 	Material material = WallMaterialOf(site);
 	uint32_t tint = material == Material::Glass ? site.glass : SwatchTint(WallSwatch(material, site.climate), WALL_COLOUR.Of(site.seed));
 

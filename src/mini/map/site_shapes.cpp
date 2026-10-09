@@ -16,6 +16,7 @@
 #include <span>
 
 #include "../../direction_func.h"
+#include "../../settings_type.h"
 #include "../../tile_map.h"
 #include "../core/tones.h"
 #include "tile_shapes.h"
@@ -75,6 +76,8 @@ static constexpr float ROOFTOP_MAX_SIDE = 0.20f;
 static constexpr float ROOFTOP_MIN_HEIGHT = 0.04f;
 static constexpr float ROOFTOP_MAX_HEIGHT = 0.08f;
 static constexpr uint32_t ROOFTOP_TINT = 0xFF8E9398U;
+static constexpr uint KIT_TINT_FIRST = KIT_UNIT_FIRST + ROOFTOP_SLOTS * KIT_UNIT_BITS;
+static constexpr uint KIT_TINT_BITS = 3;
 
 static constexpr std::array<float, 2> BOTH_SIDES = {-1.0f, 1.0f};
 static constexpr float HELIPAD_MARGIN = 0.07f;
@@ -569,10 +572,18 @@ static float SlotCentre(const Plot &deck, float slot, uint index)
 	return deck.x0 + slot * index + slot / 2.0f;
 }
 
+/* Toyland's roofs carry their units in one of its sweets' colours. */
+static uint32_t RooftopTint(uint32_t kit)
+{
+	if (_settings_game.game_creation.landscape != LandscapeType::Toyland) return ROOFTOP_TINT;
+	return SwatchTint(Swatch::Candy, SeedBits(kit, KIT_TINT_FIRST, KIT_TINT_BITS));
+}
+
 /* Units stand in their own slot across the roof, so none overlaps another. */
 void AddRooftopKit(BuildingForm &form, const Solid &roof, uint32_t seed)
 {
 	uint32_t kit = SubSeed(seed, KIT_SALT);
+	uint32_t tint = RooftopTint(kit);
 	Plot deck = FootprintOf(roof).Inset(ROOFTOP_MARGIN);
 	float slot = deck.Span(AXIS_X) / ROOFTOP_SLOTS;
 	uint count = 1 + SeedBits(kit, KIT_COUNT_FIRST, KIT_FIELD_BITS) % ROOFTOP_SLOTS;
@@ -582,7 +593,7 @@ void AddRooftopKit(BuildingForm &form, const Solid &roof, uint32_t seed)
 		float side = std::min(std::lerp(ROOFTOP_MIN_SIDE, ROOFTOP_MAX_SIDE, SeedShare(kit, first, KIT_FIELD_BITS)), slot);
 		float height = std::lerp(ROOFTOP_MIN_HEIGHT, ROOFTOP_MAX_HEIGHT, SeedShare(kit, first + KIT_FIELD_BITS, KIT_FIELD_BITS));
 		float cy = std::lerp(deck.y0 + side / 2.0f, deck.y1 - side / 2.0f, SeedShare(kit, first + 2 * KIT_FIELD_BITS, KIT_FIELD_BITS));
-		form.Add(Part::Square(SlotCentre(deck, slot, (unit + shift) % ROOFTOP_SLOTS), cy, side).On(LevelAbove(roof)).Fixed(Fixture::RooftopUnit).Height(height).Clad(Material::Metal, ROOFTOP_TINT));
+		form.Add(Part::Square(SlotCentre(deck, slot, (unit + shift) % ROOFTOP_SLOTS), cy, side).On(LevelAbove(roof)).Fixed(Fixture::RooftopUnit).Height(height).Clad(Material::Metal, tint));
 	}
 }
 

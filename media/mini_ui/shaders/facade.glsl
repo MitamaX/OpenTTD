@@ -161,10 +161,14 @@ const float TROPIC_ROOM_SHADE = 0.7;
 const vec3 LOUVRE_PAINTS[4] = vec3[4](vec3(0.20, 0.42, 0.30), vec3(0.22, 0.38, 0.55), vec3(0.18, 0.50, 0.50), vec3(0.86, 0.84, 0.78));
 const float LOUVRE_GROOVE_SHADE = 0.72;
 const float TOY_ROUNDING = 0.6;
-const vec3 TOY_GLASS = vec3(0.62, 0.86, 0.96);
+const vec3 TOY_GLASSES[3] = vec3[3](vec3(0.62, 0.86, 0.96), vec3(0.66, 0.94, 0.84), vec3(0.82, 0.76, 0.98));
+const vec3 TOY_GLASS = (TOY_GLASSES[0] + TOY_GLASSES[1] + TOY_GLASSES[2]) / 3.0;
+const vec3 TOY_LIT_GLASS = vec3(1.0, 0.9, 0.62);
+const vec3 TOY_LAMP = vec3(1.0, 0.86, 0.6);
 const vec3 TOY_FRAME = vec3(0.95, 0.95, 0.93);
 const float TOY_PANE_ROUGHNESS = 0.3;
 const float TOY_GLAZING = 0.45;
+const float TOY_BULGE = 0.7;
 
 const vec2 COLUMNS_FADE = vec2(1.2, 2.6);
 const vec2 STOREYS_FADE = vec2(2.6, 4.5);
@@ -228,9 +232,14 @@ vec2 ReachOut(vec2 from, vec2 heading, vec2 low, vec2 high)
 	return (mix(low, high, step(0.0, heading)) - from) / heading;
 }
 
+float ToyCornerRadius(vec2 half_size)
+{
+	return min(half_size.x, half_size.y) * TOY_ROUNDING;
+}
+
 vec3 RoundedEdge(vec2 half_size, vec2 from_centre)
 {
-	float radius = min(half_size.x, half_size.y) * TOY_ROUNDING;
+	float radius = ToyCornerRadius(half_size);
 	vec2 corner = abs(from_centre) - half_size + radius;
 	vec2 rounding = max(corner, 0.0);
 	float rounded = length(rounding);
@@ -444,16 +453,32 @@ Clad Drape(vec3 paint, Room room)
 	return PaneOver(paint, 1.0, room.lamp * DRAPE_GLOW);
 }
 
-Clad ToyPane()
+Clad ToyPane(vec3 glass, vec3 lamp)
 {
-	Clad pane = Matte(TOY_GLASS, TOY_PANE_ROUGHNESS);
+	Clad pane = Matte(glass, TOY_PANE_ROUGHNESS);
 	pane.glass = TOY_GLAZING;
+	pane.lamp = lamp;
+	return pane;
+}
+
+Clad ToyPaneOf(Bay bay, uint seed)
+{
+	bool lit = Roll(bay.window, seed, ROLL_LAMP) < LIT_ROOM_SHARE;
+	return lit ? ToyPane(TOY_LIT_GLASS, TOY_LAMP) : ToyPane(TOY_GLASSES[Picked(bay.window, seed, ROLL_TONE, TOY_GLASSES.length())], vec3(0.0));
+}
+
+/* A candy pane swells out of its frame, flat across its middle and rounding over toward its edges. */
+Clad Bulged(Clad pane, Opening opening, vec2 at)
+{
+	vec3 edge = NearestEdge(opening, at);
+	float radius = ToyCornerRadius(vec2(opening.width, opening.height) * 0.5);
+	pane.facing = vec3(edge.xy * TOY_BULGE * smoothstep(-radius, 0.0, edge.z), 1.0);
 	return pane;
 }
 
 Clad MeanGlazing()
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane() : PaneOver(DIM_ROOM, 1.0, TYPICAL_LAMP * LampShare(LIT_ROOM_SHARE));
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane(TOY_GLASS, TOY_LAMP * LIT_ROOM_SHARE) : PaneOver(DIM_ROOM, 1.0, TYPICAL_LAMP * LampShare(LIT_ROOM_SHARE));
 }
 
 Clad SeenThrough(Room room, Bay bay, uint grid, Outlook outlook, float pixel)
@@ -468,7 +493,7 @@ Clad SeenThrough(Room room, Bay bay, uint grid, Outlook outlook, float pixel)
 
 Clad Glazing(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return ToyPane();
+	if (Landscape() == LANDSCAPE_TOYLAND) return Bulged(ToyPaneOf(bay, seed), bay.opening, bay.at);
 	Clad clad = SeenThrough(RoomBehind(bay, grid, seed), bay, grid, outlook, pixel);
 	clad.facing = vec3((Hash2(Die(bay.window, seed, ROLL_WARP)) - 0.5) * PANE_WARP, 1.0);
 	return clad;
@@ -567,10 +592,11 @@ Clad UnderSill(Clad wall, Opening opening, vec2 at, vec3 sun)
 
 float Drips(Bay bay, vec2 texel, uint grid)
 {
-	if (texel.y < FACADE_GROUND[grid] || bay.opening.kind == OPEN_NONE) return 1.0;
-	float below = mod(-bay.at.y, FACADE_STOREY[grid]);
+	if (!Weathers() || texel.y < FACADE_GROUND[grid] || bay.opening.kind == OPEN_NONE) return 1.0;
 	float half_width = bay.opening.width * 0.5;
 	float under = 1.0 - smoothstep(half_width - 0.5, half_width + 0.5, abs(bay.at.x));
+	if (under <= 0.0) return 1.0;
+	float below = mod(-bay.at.y, FACADE_STOREY[grid]);
 	ivec2 shedding = bay.at.y < 0.0 ? bay.window : bay.window + ivec2(0, 1);
 	float runs = smoothstep(DRIP_EDGES.x, DRIP_EDGES.y, Noise(vec2(bay.at.x * DRIPS_PER_TEXEL, dot(vec2(shedding), DRIP_WINDOW_SEED))));
 	float fade = 1.0 - smoothstep(0.0, DRIP_REACH * Varied(runs, DRIP_VARIETY), below);
@@ -600,7 +626,8 @@ Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook o
 	vec3 edge = NearestEdge(opening, bay.at);
 	bool sills = !Mullioned(grid) && (opening.kind == OPEN_WINDOW || opening.kind == OPEN_SHOP);
 	float springline = opening.arch ? opening.height - opening.width * 0.5 : opening.height;
-	bool framed = edge.z < (Mullioned(grid) ? MULLION_WIDTH : SURROUND_WIDTH) && (!sills || bay.at.y >= springline);
+	bool surrounded = Mullioned(grid) || Landscape() != LANDSCAPE_TOYLAND;
+	bool framed = surrounded && edge.z < (Mullioned(grid) ? MULLION_WIDTH : SURROUND_WIDTH) && (!sills || bay.at.y >= springline);
 	bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -SILL_HEIGHT && AlongSill(opening, bay.at);
 	bool louvred = Landscape() == LANDSCAPE_TROPIC && HoldsHomes(grid) && opening.kind == OPEN_WINDOW && BesideWindow(opening, bay.at);
 	if (sills) clad = UnderSill(clad, opening, bay.at, outlook.sun);
@@ -630,7 +657,7 @@ Clad FillingFromAfar(Bay bay, uint grid, uint seed)
 {
 	if (bay.opening.kind == OPEN_DOOR) return Matte(DoorPaint(bay, seed), PAINT_ROUGHNESS);
 	if (bay.opening.kind == OPEN_SHUTTER) return Matte(mix(SHUTTER_SLAT, SHUTTER_GROOVE, 0.5), SHUTTER_ROUGHNESS);
-	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane() : RoomFromAfar(bay, grid, seed);
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyPaneOf(bay, seed) : RoomFromAfar(bay, grid, seed);
 }
 
 Clad Banded(Clad wall, uint grid, vec2 texel, bool front, uint seed, vec2 pixel)
