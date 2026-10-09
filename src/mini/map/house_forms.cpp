@@ -822,8 +822,10 @@ static Solid AddPodium(BuildingForm &form, const HouseSite &site, int storeys)
 
 static Solid AddSlab(BuildingForm &form, const Plot &plot, float base, int storeys, const HouseSite &site)
 {
-	float top = WallTiles(WearableGrid(site.wall.material, site.grid), storeys);
-	Solid slab = Roofed(Storeyed(plot, site, site.grid, storeys).On(base).Height(top - base), site, RoofShape::Parapet);
+	WindowGrid grid = WearableGrid(site.wall.material, site.grid);
+	float storey = StoreyTiles(grid);
+	float height = std::round((WallTiles(grid, storeys) - base) / storey) * storey;
+	Solid slab = Roofed(Storeyed(plot, site, site.grid, storeys).On(base).Height(height), site, RoofShape::Parapet);
 	Place(form, slab);
 	return slab;
 }

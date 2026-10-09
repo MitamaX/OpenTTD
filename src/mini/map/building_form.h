@@ -100,6 +100,11 @@ constexpr float GroundStoreyTiles(WindowGrid grid)
 	return WallTiles(grid, 1);
 }
 
+constexpr float StoreyTiles(WindowGrid grid)
+{
+	return FacadeMetricsOf(grid).storey_texels / static_cast<float>(TEXELS_PER_TILE);
+}
+
 constexpr int StoreysFor(WindowGrid grid, float wall_tiles)
 {
 	const FacadeMetrics &metrics = FacadeMetricsOf(grid);
@@ -138,6 +143,11 @@ struct Solid {
 
 	float Top() const { return this->base + this->wall + this->rise; }
 };
+
+constexpr bool StandsOnStoreys(const Solid &solid)
+{
+	return solid.windows != WindowGrid::None && solid.base >= GroundStoreyTiles(solid.windows);
+}
 
 inline constexpr size_t MAX_SOLIDS = 20;
 

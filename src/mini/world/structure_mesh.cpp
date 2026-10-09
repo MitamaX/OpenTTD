@@ -134,7 +134,7 @@ private:
 	void CoverFacade(const Face &face)
 	{
 		bool front = this->solid.fronts.Test(FacingSide(face.normal));
-		double windows_from = front || this->solid.base >= GroundStoreyTiles(this->solid.windows) ? LOWEST : GroundStoreyTiles(this->solid.windows);
+		double windows_from = front || StandsOnStoreys(this->solid) ? LOWEST : GroundStoreyTiles(this->solid.windows);
 		double eave = this->solid.base + this->solid.wall;
 		Coat wall = this->CoatOf(Cladding::Wall);
 		Coat facade = {this->solid.wall_material, this->solid.windows, front ? SurfaceFlags{SurfaceFlag::Facade, SurfaceFlag::Front} : SurfaceFlags{SurfaceFlag::Facade}, this->solid.wall_tint};
@@ -160,10 +160,15 @@ private:
 			model.Place(this->Place(point, face, coat));
 			model.Face(RenderNormalOf(face.smooth && Dot(point.normal, point.normal) > 0.0 ? point.normal : face.normal));
 			model.Occlude(point.shade);
-			double v = upright ? point.z - this->solid.base : face.uv.V(point);
+			double v = upright ? point.z - this->PatternFoot() : face.uv.V(point);
 			return this->style.Vertex(model, face.uv.U(point), v, coat, this->solid.glass_tint);
 		});
 		this->mesh.Polygon(std::span(corners).first(points.size()));
+	}
+
+	double PatternFoot() const
+	{
+		return StandsOnStoreys(this->solid) ? this->solid.base - GroundStoreyTiles(this->solid.windows) : this->solid.base;
 	}
 
 	/* A wall standing on the ground reaches down below its lowest point, and a decal lies a little above what it covers. */

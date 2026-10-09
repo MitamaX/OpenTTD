@@ -262,7 +262,7 @@ private:
 		double ground = static_cast<double>(metrics.ground_texels) / TEXELS_PER_TILE;
 		double storey = static_cast<double>(metrics.storey_texels) / TEXELS_PER_TILE;
 		bool balconies = wall.front && this->solid.windows == WindowGrid::Apartment && SeedBits(this->dice.Next(), BALCONY_BIT, 1) != 0;
-		for (double bottom = this->solid.base + ground; bottom + storey <= this->Eave() + PLACE_EPS; bottom += storey) {
+		for (double bottom = StandsOnStoreys(this->solid) ? this->solid.base : this->solid.base + ground; bottom + storey <= this->Eave() + PLACE_EPS; bottom += storey) {
 			for (int column = 0; column < columns; column++) {
 				MapVector centre = wall.At((column + 0.5) * column_width);
 				if (balconies) {
