@@ -113,8 +113,6 @@ const float INLAND_FOAM = 0.45;
 const float FOAM_EDGE_THRESHOLD = 0.3;
 const float FOAM_OPACITY = 0.85;
 const float OUTLINE_FOAM_WIDTH = 0.12;
-const float STREAM_REACH = 1.0;
-const float STREAM_TILT = 0.25;
 const float BREAKER_REACH = 0.38;
 const float BREAKERS_PER_REACH = 40.0;
 const float BREAKER_SPEED = 1.3;
@@ -289,14 +287,15 @@ Surface Waves(vec2 p, float calm)
 	return Surface(normalize(vec3(-slope, 1.0)), normalize(vec3(-broad * steepness * 0.5, 1.0)), mix(lost / total, 1.0, ruffled * 0.4), ruffled * lost / total);
 }
 
-/* A tile's water where its surface comes within reach of a sheet at this level: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
-vec4 SheetWater(ivec2 tile, float level, float reach)
+/* A tile's water as wholly as it joins a sheet at this level, by how far the sheet stands off the levels the water spans: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
+vec4 SheetWater(ivec2 tile, float level)
 {
 	vec4 water = texelFetch(u_water, Clamped(tile), 0);
 	Corners c = SurfaceOf(tile);
 	float low = min(min(c.north, c.west), min(c.east, c.south));
 	float high = water.r >= 1.0 ? max(max(c.north, c.west), max(c.east, c.south)) : low;
-	return level >= low - reach && level <= high + reach ? water : vec4(0.0);
+	float apart = max(max(low - level, level - high), 0.0);
+	return water * (1.0 - smoothstep(SHEET_HOLD, SHEET_REACH, apart));
 }
 
 /* Whether the four by four tiles from one before the cell to two past it are all open sea, from the water's texels averaged four tiles to a texel;
@@ -311,7 +310,6 @@ bool OpenSeaAbout(ivec2 cell)
  * a stream running down between two pools joins both. Open sea, all flat and at one level, joins every tile it weighs. */
 vec4 SheetField(vec2 p, float level)
 {
-	float reach = fwidth(level) > STREAM_TILT * length(fwidth(p)) ? STREAM_REACH : SHEET_TOLERANCE;
 	vec2 t = p + ShoreWarp(p) - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(t));
 	if (OpenSeaAbout(cell)) return OPEN_SEA;
@@ -319,7 +317,7 @@ vec4 SheetField(vec2 p, float level)
 	float wy[4] = SplineWeights(fract(t.y));
 	vec4 field = vec4(0.0);
 	for (int j = 0; j < 4; j++) {
-		for (int i = 0; i < 4; i++) field += wx[i] * wy[j] * SheetWater(cell + ivec2(i - 1, j - 1), level, reach);
+		for (int i = 0; i < 4; i++) field += wx[i] * wy[j] * SheetWater(cell + ivec2(i - 1, j - 1), level);
 	}
 	return Walled(field, p);
 }

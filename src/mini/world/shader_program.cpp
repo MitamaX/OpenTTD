@@ -171,7 +171,8 @@ static std::string ShaderHeader()
 	DefineFloat(header, "SHORE_WARP", SHORE_WARP);
 	DefineFloat(header, "SHORE_WARP_FREQUENCY", SHORE_WARP_FREQUENCY);
 	DefineFloats(header, "SHORE_WARP_SEEDS", SHORE_WARP_SEEDS);
-	DefineFloat(header, "SHEET_TOLERANCE", SHEET_TOLERANCE);
+	DefineFloat(header, "SHEET_HOLD", SHEET_HOLD);
+	DefineFloat(header, "SHEET_REACH", SHEET_REACH);
 	DefineInt(header, "TREE_DETAILS", static_cast<int>(TREE_DETAILS));
 	DefineFloats(header, "TREE_DETAIL_FLOORS", TREE_DETAIL_FLOORS);
 	DefineFloats(header, "TREE_AGE_SCALES", TREE_AGE_SCALES);

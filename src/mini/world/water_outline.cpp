@@ -65,15 +65,33 @@ static std::array<double, 4> SplineWeights(double f)
 	return {w0, w1, 1.0 - w0 - w1 - w3, w3};
 }
 
-/* A tile's water where its surface comes within reach of the sheet: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
-static double SheetTexel(int tx, int ty, double level)
+/* A tile's water and the levels it spans: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
+struct SheetSpan {
+	WaterTexel water;
+	double low;
+	double high;
+};
+
+static SheetSpan SheetSpanOf(int tx, int ty)
 {
 	TileIndex tile = TileXY(std::clamp<int>(tx, 0, Map::MaxX()), std::clamp<int>(ty, 0, Map::MaxY()));
 	WaterTexel water = _world_tiles.WaterAt(tile);
 	SurfaceTexel surface = _world_tiles.SurfaceAt(tile);
 	double low = std::min({surface.north, surface.west, surface.east, surface.south});
 	double high = water.level == FULL_WATER ? std::max({surface.north, surface.west, surface.east, surface.south}) : low;
-	return level >= low - SHEET_TOLERANCE && level <= high + SHEET_TOLERANCE ? water.level / TEXEL_SCALE : 0.0;
+	return {water, low, high};
+}
+
+static double JoiningOf(const SheetSpan &span, double level)
+{
+	double apart = std::max({span.low - level, level - span.high, 0.0});
+	return 1.0 - SmoothStep(SHEET_HOLD, SHEET_REACH, apart);
+}
+
+static double SheetTexel(int tx, int ty, double level)
+{
+	SheetSpan span = SheetSpanOf(tx, ty);
+	return span.water.level / TEXEL_SCALE * JoiningOf(span, level);
 }
 
 double SheetWater(double x, double y, double level)
