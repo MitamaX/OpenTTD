@@ -71,17 +71,6 @@ static constexpr double CONIFER_TIER_SHRINK = 0.19;
 static constexpr LatheRing CONIFER_WAIST = {0.55, 0.45};
 static constexpr double CONIFER_ROUGHNESS = 0.008;
 
-static constexpr SeedRange JUNGLE_CROWN = {0.44, 0.5};
-static constexpr SeedRange JUNGLE_LEAN = {-0.03, 0.03};
-static constexpr double JUNGLE_UNDERSIDE = 0.06;
-static constexpr double JUNGLE_TOP = 0.08;
-static constexpr SeedRange JUNGLE_TRUNK = {0.024, 0.016};
-static constexpr Vec3 JUNGLE_HEART = {0.13, 0.13, 0.06};
-static constexpr double JUNGLE_HEART_RISE = 0.03;
-static constexpr int JUNGLE_RING_LUMPS = 4;
-static constexpr Vec3 JUNGLE_MASS = {0.21, 0.21, 0.085};
-static constexpr double JUNGLE_MASS_RISE = 0.02;
-
 static constexpr SeedRange PALM_HEIGHT = {0.42, 0.48};
 static constexpr SeedRange PALM_LEAN = {0.04, 0.1};
 static constexpr double PALM_UNDERSIDE = 0.12;
@@ -194,16 +183,14 @@ static constexpr std::array<CrownHabit, TREE_SHAPES> BROADLEAF_HABITS = {{
 	{{0.07, 0.09}, {0.12, 0.12, 0.24}, 4, 1, {0.065, 0.08}, 1.15, false, {0.0, 0.0}, {0.026, 0.016}},
 }};
 
-/* Lumps set round a crown: how far out, how big and how far up or down each may lie, how flat they are and how rough. */
-struct LumpRing {
-	SeedRange reach;
-	SeedRange radius;
-	SeedRange rise;
-	double squash;
-	double roughness;
-};
-
-static constexpr LumpRing JUNGLE_RING = {{0.09, 0.12}, {0.085, 0.11}, {-0.025, 0.01}, 0.5, 0.14};
+static constexpr std::array<CrownHabit, TREE_SHAPES> JUNGLE_HABITS = {{
+	{{0.4, 0.44}, {0.26, 0.26, 0.065}, 6, 2, {0.07, 0.09}, 0.55, true, {0.0, 0.03}, {0.024, 0.016}},
+	{{0.2, 0.24}, {0.22, 0.22, 0.12}, 5, 2, {0.08, 0.1}, 0.75, true, {0.0, 0.02}, {0.024, 0.016}},
+	{{0.16, 0.2}, {0.18, 0.18, 0.17}, 6, 1, {0.06, 0.075}, 0.5, false, {0.0, 0.02}, {0.024, 0.016}},
+	{{0.28, 0.32}, {0.2, 0.2, 0.09}, 5, 1, {0.07, 0.09}, 0.6, true, {0.06, 0.09}, {0.024, 0.016}},
+	{{0.05, 0.07}, {0.17, 0.17, 0.12}, 5, 1, {0.07, 0.085}, 0.85, true, {0.0, 0.0}, {0.024, 0.016}},
+	{{0.3, 0.34}, {0.13, 0.13, 0.1}, 4, 1, {0.06, 0.075}, 0.7, false, {0.0, 0.03}, {0.018, 0.012}},
+}};
 
 /* One shape at one detail, built up part by part. */
 class TreeBuilder {
@@ -265,21 +252,6 @@ public:
 		Vec3 out = to - from;
 		std::array<SweepPoint, 2> path = {{{from, 1.0}, {from + out * LIMB_REACH, LIMB_TAPER}}};
 		this->Wood(Sweep(Circle(LIMB_RADIUS, LIMB_SIDES), true, path, {-out.y, out.x, 0.0}), [&](const Vec3 &at) { return crown.Openness(at); });
-	}
-
-	/* Lumps around a crown's middle, each set a little off its even place. */
-	ModelMesh Ring(const Vec3 &centre, const LumpRing &ring, int count)
-	{
-		ModelMesh lumps;
-		double turn = this->dice.Between(0.0, TAU);
-		for (int lump = 0; lump < count; lump++) {
-			double angle = turn + TAU * lump / count + this->dice.Between(LUMP_SCATTER);
-			double reach = this->dice.Between(ring.reach);
-			double radius = this->dice.Between(ring.radius);
-			Vec3 at = centre + Vec3{reach * std::cos(angle), reach * std::sin(angle), this->dice.Between(ring.rise)};
-			lumps.Append(this->Lump(at, {radius, radius, radius * ring.squash}, 1, ring.roughness));
-		}
-		return lumps;
 	}
 
 	/* A far tree as one smooth turned solid, wood below the given height and leaves above; too small on screen to show facets. */
@@ -372,30 +344,6 @@ static void Conifer(TreeBuilder &tree, TreeDetail detail)
 			break;
 		default:
 			tree.Spindle({{CONIFER_TRUNK.low, FOOT}, {radius, CONIFER_BOUGHS_BASE}, {0.0, top}}, 4, 0.0, LEAF_TRANSLUCENCY);
-			break;
-	}
-}
-
-static void Jungle(TreeBuilder &tree, TreeDetail detail)
-{
-	SeedDice &dice = tree.Dice();
-	double crown_z = dice.Between(JUNGLE_CROWN);
-	Vec3 lean = {dice.Between(JUNGLE_LEAN), dice.Between(JUNGLE_LEAN), 0.0};
-	Crown crown = {Vec3{0.0, 0.0, crown_z} + lean, crown_z - JUNGLE_UNDERSIDE, crown_z + JUNGLE_TOP, JUNGLE_MASS.x};
-	switch (detail) {
-		case TreeDetail::Full: {
-			tree.Trunk(5, JUNGLE_TRUNK, crown_z, lean);
-			ModelMesh canopy = tree.Lump(crown.centre + Vec3{0.0, 0.0, JUNGLE_HEART_RISE}, JUNGLE_HEART, 1, JUNGLE_RING.roughness);
-			canopy.Append(tree.Ring(crown.centre, JUNGLE_RING, JUNGLE_RING_LUMPS));
-			tree.Leaves(std::move(canopy), crown);
-			break;
-		}
-		case TreeDetail::Simple:
-			tree.Trunk(4, JUNGLE_TRUNK, crown_z);
-			tree.Leaves(tree.Lump(crown.centre + Vec3{0.0, 0.0, JUNGLE_MASS_RISE}, JUNGLE_MASS, 0, MASS_ROUGHNESS), crown);
-			break;
-		default:
-			tree.Spindle({{JUNGLE_TRUNK.low, FOOT}, {JUNGLE_TRUNK.low, crown.underside}, {JUNGLE_MASS.x, crown_z}, {0.0, crown.top}}, 5, crown.underside, LEAF_TRANSLUCENCY);
 			break;
 	}
 }
@@ -531,7 +479,7 @@ static ModelMesh BuildTree(TreeShape shape, TreeDetail detail)
 	switch (shape.kind) {
 		case TreeKind::Broadleaf: Canopy(tree, detail, BROADLEAF_HABITS[shape.variant]); break;
 		case TreeKind::Conifer: Conifer(tree, detail); break;
-		case TreeKind::Jungle: Jungle(tree, detail); break;
+		case TreeKind::Jungle: Canopy(tree, detail, JUNGLE_HABITS[shape.variant]); break;
 		case TreeKind::Palm: Palm(tree, detail); break;
 		case TreeKind::Cactus: Cactus(tree, detail); break;
 		default: Toy(tree, detail, shape.variant); break;
