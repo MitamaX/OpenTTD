@@ -6,6 +6,7 @@ uniform float u_occlusion_strength;
 out vec4 frag_colour;
 
 const int BLUR_SPAN = 4;
+const float BLUR_TENT_REACH = 2.0;
 const float BLUR_DEPTH_TOLERANCE = 0.04;
 const float OCCLUSION_POWER = 1.5;
 const float CONTACT_ON_SUN = 0.6;
@@ -21,15 +22,18 @@ float FarFade(float distance)
 /* The half size openness, over a tile around and where things meet, blurred over four texels square, which takes in its whole noise spread, leaving out texels on other surfaces. */
 vec2 Openness(ivec2 texel, float ahead)
 {
-	ivec2 origin = texel / 2 - 1;
+	vec2 at = vec2(texel) * 0.5;
+	ivec2 origin = ivec2(floor(at)) - 1;
 	ivec2 last = textureSize(u_occlusion, 0) - 1;
 	float tolerance = ahead * BLUR_DEPTH_TOLERANCE;
 	vec2 sum = vec2(0.0);
 	float weights = 0.0;
 	for (int y = 0; y < BLUR_SPAN; y++) {
 		for (int x = 0; x < BLUR_SPAN; x++) {
-			vec3 tap = texelFetch(u_occlusion, clamp(origin + ivec2(x, y), ivec2(0), last), 0).rgb;
-			float weight = max(0.0, 1.0 - abs(tap.z - ahead) / tolerance);
+			ivec2 cell = origin + ivec2(x, y);
+			vec3 tap = texelFetch(u_occlusion, clamp(cell, ivec2(0), last), 0).rgb;
+			vec2 tent = max(1.0 - abs(vec2(cell) - at) / BLUR_TENT_REACH, 0.0);
+			float weight = max(0.0, 1.0 - abs(tap.z - ahead) / tolerance) * tent.x * tent.y;
 			sum += tap.xy * weight;
 			weights += weight;
 		}
