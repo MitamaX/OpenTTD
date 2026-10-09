@@ -204,7 +204,7 @@ TreeRolls Grove::Roll()
 {
 	TreeRolls rolls;
 	rolls.spread = this->dice.Between(TREE_SPREAD);
-	rolls.wither = this->age == TreeAge::Dying ? this->dice.Between(DYING_WITHER) : 0.0;
+	rolls.wither = this->age == TreeAge::Dying && this->kind != TreeKind::Toy ? this->dice.Between(DYING_WITHER) : 0.0;
 	rolls.shape = static_cast<uint8_t>(this->dice.Below(TREE_SHAPES));
 	rolls.turn = this->dice.Share();
 	rolls.tint = this->dice.Share();

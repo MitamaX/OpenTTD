@@ -15,10 +15,13 @@ flat in float v_crown_sunlit;
 out vec4 frag_colour;
 
 const vec3 TINT_VARIETY = vec3(0.32, 0.24, 0.1);
-const vec3 HUE_VARIETY = vec3(0.32, 0.08, -0.36);
+const vec3 HUE_VARIETY = vec3(0.36, 0.24, -0.12);
 const vec3 FRESH_TIPS = vec3(1.12, 1.1, 0.84);
 const vec2 TIP_REACH = vec2(0.75, 1.0);
-const vec3 WITHERED = vec3(0.56, 0.45, 0.24);
+const vec3 AUTUMN_GOLD = vec3(0.80, 0.58, 0.16);
+const vec3 AUTUMN_RUST = vec3(0.74, 0.40, 0.15);
+const float AUTUMN_GAIN = 1.9;
+const float TURN_EDGE = 0.06;
 const vec3 SNOW_COVER = vec3(0.90, 0.93, 0.97);
 const float SNOW_SETTLES = 0.0;
 const float SNOW_COVERS = 0.5;
@@ -61,11 +64,29 @@ float Foliage()
 	return LeafShare() * LeafResolved(LEAF_CLUMPS_PER_TILE);
 }
 
+float SprayShown()
+{
+	return LeafShare() * LeafResolved(LEAF_SPRAYS_PER_TILE);
+}
+
+float SprayNoise()
+{
+	return Noise(v_grown * LEAF_SPRAYS_PER_TILE + SPRAY_SEED);
+}
+
 vec3 Sprays()
 {
-	float shown = LeafShare() * LeafResolved(LEAF_SPRAYS_PER_TILE);
+	float shown = SprayShown();
 	if (shown <= 0.0) return vec3(1.0);
-	return Varied(smoothstep(SPRAY_EDGES.x, SPRAY_EDGES.y, Noise(v_grown * LEAF_SPRAYS_PER_TILE + SPRAY_SEED)), SPRAY_VARIETY * shown);
+	return Varied(smoothstep(SPRAY_EDGES.x, SPRAY_EDGES.y, SprayNoise()), SPRAY_VARIETY * shown);
+}
+
+float Turning()
+{
+	if (v_wither <= 0.0) return 0.0;
+	float shown = SprayShown();
+	if (shown <= 0.0) return v_wither;
+	return mix(v_wither, smoothstep(-TURN_EDGE, TURN_EDGE, v_wither - SprayNoise()), shown);
 }
 
 vec3 Albedo(vec3 normal)
@@ -73,7 +94,8 @@ vec3 Albedo(vec3 normal)
 	float leafy = Leafy();
 	vec3 albedo = v_colour * Varied(v_tint, TINT_VARIETY * leafy) * Varied(v_hue, HUE_VARIETY * leafy) * Sprays();
 	albedo *= mix(vec3(1.0), FRESH_TIPS, smoothstep(TIP_REACH.x, TIP_REACH.y, v_reach) * leafy);
-	albedo = mix(albedo, WITHERED * dot(albedo, LUMA_WEIGHTS) * 2.0, v_wither * leafy);
+	vec3 autumn = mix(AUTUMN_GOLD, AUTUMN_RUST, v_hue) * dot(albedo, LUMA_WEIGHTS) * AUTUMN_GAIN;
+	albedo = mix(albedo, autumn, Turning() * leafy);
 	return mix(albedo, SNOW_COVER, v_snow * leafy * smoothstep(SNOW_SETTLES, SNOW_COVERS, normal.z));
 }
 
