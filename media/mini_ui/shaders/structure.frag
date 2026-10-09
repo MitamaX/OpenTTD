@@ -20,10 +20,20 @@ const vec2 RELIEF_SPAN = vec2(0.6, 1.1);
 const float SEED_SCALE = 255.0;
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
+const float FILM_TINT = 0.35;
+const float COATED_FILM_TINT = 0.5;
 
 bool Has(uint flag)
 {
 	return (v_surface.z & flag) != 0u;
+}
+
+Pane PaneOf(vec3 room, uint material)
+{
+	bool coated = material == CLAD_GLASS;
+	vec3 tint = Linear(v_glass.rgb);
+	vec3 film = mix(vec3(1.0), tint / max(Luminance(tint), MIN_SPREAD), coated ? COATED_FILM_TINT : FILM_TINT);
+	return Pane(room, film, coated ? GLASS_REFLECTANCE : PANE_REFLECTANCE);
 }
 
 /* A surface tilted off its face across it, to the right as seen from outside, and up it. */
@@ -59,12 +69,16 @@ void main()
 
 	Clad clad = CladOf(material, v_pattern, v_colour.rgb);
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(normalize(v_normal).z));
-	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_glass.rgb, uint(round(v_glass.a * SEED_SCALE)));
+	if (Has(SURFACE_FACADE)) clad = Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)));
 	vec3 normal = Tilted(normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0), clad.tilt);
 	if (Has(SURFACE_ROOF)) clad.albedo = Snowed(clad.albedo, normal);
 
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
-	Coat coat = Coat(roughness, mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, clad.glass));
-	frag_colour = Radiance(albedo, normal, v_position, coat, v_colour.a * clad.occlusion);
+	vec3 view = ToEye(v_position);
+	float sunlit = SunVisibility(v_position, normal);
+	float occlusion = v_colour.a * clad.occlusion;
+	vec4 lit = clad.glass < 1.0 ? SunlitRadiance(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, 0.0, sunlit) : vec4(0.0);
+	if (clad.glass > 0.0) lit = mix(lit, PaneRadiance(PaneOf(albedo, material), normal, view, roughness, occlusion, sunlit, v_pattern.y), clad.glass);
+	frag_colour = lit;
 }

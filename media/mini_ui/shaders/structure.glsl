@@ -24,6 +24,7 @@ const float LICHEN_SPOT_MEAN = 0.25;
 const float LICHEN_SPOT_SEED = 6.1;
 const float LICHEN_COVER = 0.45;
 const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
+const vec3 DIM_ROOM = vec3(0.4, 0.38, 0.35);
 
 /* What a point of a building is: its colour before light, how its surface tilts off the face across and up it,
  * how rough and how much glass it is, and how open it lies to the sky. */
@@ -185,7 +186,7 @@ Clad Planked(vec2 p, vec3 tint, float planks)
 Clad Glazed(vec2 p, vec3 frame, vec2 panes, float bar)
 {
 	float bars = max(Lines(p.x * panes.x, bar), Lines(p.y * panes.y, bar));
-	Clad clad = Matte(mix(frame * 0.6, frame, bars), mix(0.08, 0.5, bars));
+	Clad clad = Matte(mix(DIM_ROOM, frame, bars), mix(0.08, 0.5, bars));
 	clad.glass = 1.0 - bars;
 	return clad;
 }
@@ -390,7 +391,7 @@ bool OnMuntin(Opening opening, vec2 at, float pixel)
 }
 
 /* What fills an opening: glass behind its bars and frame, a painted door, or the slats of a shutter; the head of every opening lies in the shade of its reveal. */
-Clad Filling(Bay bay, vec3 glass, uint seed, float pixel)
+Clad Filling(Bay bay, uint seed, float pixel)
 {
 	Opening opening = bay.opening;
 	vec2 at = bay.at;
@@ -408,7 +409,7 @@ Clad Filling(Bay bay, vec3 glass, uint seed, float pixel)
 	if (rimmed || OnMuntin(opening, at, pixel)) return Matte((rimmed ? vec3(0.22) : FRAME_PAINT) * reveal, 0.5);
 	if (opening.kind == OPEN_WINDOW && pane < 0.18 && at.y > opening.height * 0.5) return Matte(BLIND * reveal, 0.8);
 	if (opening.kind == OPEN_WINDOW && pane > 0.72 && abs(at.x) > opening.width * (0.92 - pane * 0.5)) return Matte(CURTAINS[uint(pane * 37.0) % 4u] * reveal, 0.9);
-	Clad clad = Matte(glass * (0.5 + 0.3 * pane) * reveal, 0.06);
+	Clad clad = Matte(DIM_ROOM * (0.5 + 0.3 * pane) * reveal, 0.06);
 	clad.glass = reveal;
 	return clad;
 }
@@ -425,7 +426,7 @@ float Drips(Bay bay, vec2 texel, uint grid)
 }
 
 /* The windows, doors and frames of a facade over the wall it is cut into; seen from too far for them to show, the wall blends toward its windows' glass. */
-Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, vec3 glass, uint seed)
+Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed)
 {
 	vec2 texel = pattern * TEXELS;
 	float pixel = max(fwidth(texel.x), fwidth(texel.y));
@@ -449,12 +450,12 @@ Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, vec3 glass, uint see
 		bool on_sill = sills && bay.at.y < 0.0 && bay.at.y >= -1.0 && abs(bay.at.x) < opening.width * 0.5 + 1.0;
 		if (framed || on_sill) clad = Matte(on_sill ? SILL_STONE : mix(wall.albedo, FRAME_PAINT, 0.55), 0.7);
 		float inside = clamp(0.5 - outside / max(pixel, 1e-3), 0.0, 1.0);
-		Clad filling = Filling(bay, glass, seed, pixel);
+		Clad filling = Filling(bay, seed, pixel);
 		clad = Clad(mix(clad.albedo, filling.albedo, inside), clad.tilt * (1.0 - inside), mix(clad.roughness, filling.roughness, inside), filling.glass * inside, clad.occlusion);
 	}
 
 	Opening upper = UPPER_OPENINGS[grid];
 	float open_share = upper.width * upper.height / (FACADE_PITCH[grid] * FACADE_STOREY[grid]);
-	Clad distant = Clad(mix(wall.albedo, glass * 0.6, open_share), vec2(0.0), mix(wall.roughness, 0.1, open_share), open_share * 0.7, wall.occlusion);
+	Clad distant = Clad(mix(wall.albedo, DIM_ROOM, open_share), vec2(0.0), mix(wall.roughness, 0.1, open_share), open_share * 0.7, wall.occlusion);
 	return Clad(mix(distant.albedo, clad.albedo, detail), clad.tilt * detail, mix(distant.roughness, clad.roughness, detail), mix(distant.glass, clad.glass, detail), clad.occlusion);
 }

@@ -445,10 +445,9 @@ vec3 SunOnWater(Surface surface, vec3 view, vec2 p, float sunlit, float sparkle)
  * Where the wind ruffles it the water mirrors less, and that from higher in the sky, so gusts darken it in patches between bright slicks. */
 vec3 SkyOnWater(vec3 way, Surface surface, vec3 view, float reflectance, out float reflected)
 {
-	vec3 skyward = vec3(way.xy, max(way.z, REFLECTED_LIFT) + surface.ruffled * RUFFLED_SPREAD);
 	float ceiling = Landscape() == LANDSCAPE_TOYLAND ? TOY_REFLECTANCE_CEILING : REFLECTANCE_CEILING;
 	reflected = min(Fresnel(dot(surface.normal, view), reflectance), ceiling) * (1.0 - surface.ruffled * RUFFLED_DIMMING);
-	return SkyRadiance(normalize(skyward)) * REFLECTED_SKY;
+	return MirroredSky(way + UP * surface.ruffled * RUFFLED_SPREAD, REFLECTED_LIFT) * REFLECTED_SKY;
 }
 
 vec4 MirroredWorld(vec3 from, vec3 way)
