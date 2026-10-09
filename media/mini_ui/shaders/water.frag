@@ -65,6 +65,10 @@ const float INLAND_REFLECTANCE = 0.035;
 const float REFLECTANCE_CEILING = 0.62;
 const float REFLECTED_LIFT = 0.04;
 const float REFLECTED_SKY = 0.9;
+const int MIRROR_STEPS = 16;
+const float MIRROR_REACH = 6.0;
+const float MIRROR_THICKNESS = 1.0;
+const float MIRROR_EDGE = 0.08;
 const float REFRACTION = 0.012;
 const float INLAND_REFRACTION = 0.024;
 const float REFRACTION_DEPTH = 0.5;
@@ -445,6 +449,23 @@ vec3 SkyOnWater(vec3 sight, Surface surface, vec3 view, float reflectance, out f
 	return SkyRadiance(normalize(mirrored)) * REFLECTED_SKY;
 }
 
+/* The solid world a way from the water passes behind first on screen, and how surely, fading out toward the screen's edges and the way's end. */
+vec4 MirroredWorld(vec3 from, vec3 way)
+{
+	for (int step = 1; step <= MIRROR_STEPS; step++) {
+		float share = float(step) / float(MIRROR_STEPS);
+		vec4 clip = u_view_projection * vec4(from + way * MIRROR_REACH * share * share, 1.0);
+		vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
+		if (clip.w <= 0.0 || any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) break;
+		float scene = AheadOf(texture(u_scene_depth, uv).r);
+		if (clip.w > scene && clip.w < scene + MIRROR_THICKNESS) {
+			vec2 edge = min(uv, 1.0 - uv);
+			return vec4(texture(u_scene_colour, uv).rgb, smoothstep(0.0, MIRROR_EDGE, min(edge.x, edge.y)) * (1.0 - share));
+		}
+	}
+	return vec4(0.0);
+}
+
 /* The water's depth behind a screen point, along the sight line and straight down. */
 vec2 DepthBehind(vec2 uv, vec3 sight, float surface)
 {
@@ -651,9 +672,11 @@ void main()
 
 	float reflected;
 	vec3 sky = SkyOnWater(sight, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
+	vec4 world = MirroredWorld(v_position, reflect(sight, waves.normal));
+	vec3 mirrored = mix(sky, world.rgb, world.a * water.body.sheen * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
-	vec3 colour = Frothed(mix(below, sky, reflected) + glitter, water, flecks, straight.x, light, glitter);
+	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
 	float filled = max(water.body.canal, water.drop.steep);
