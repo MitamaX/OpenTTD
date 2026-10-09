@@ -32,17 +32,6 @@ static constexpr std::array<const char *, 2> SIGNAL_VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/signal.vert",
 };
-static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
-	"mini_ui/shaders/overlay.glsl",
-	"mini_ui/shaders/solid.frag",
-};
 
 /* Signals show only where a tile spans enough pixels for a post to read. */
 static constexpr double SIGNAL_PIXELS = 10.0;
@@ -54,9 +43,9 @@ static constexpr float WAY_WEATHERING = 1.0f;
 static constexpr float OFFSET_SLOPE = -1.0f;
 static constexpr float OFFSET_UNITS = -2.0f;
 
-NetworkPass::NetworkPass() :
-	program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), span_program(SPAN_VERTEX_SOURCES, FRAGMENT_SOURCES),
-	signal_program(SIGNAL_VERTEX_SOURCES, FRAGMENT_SOURCES), signal_caster(CasterProgram(SIGNAL_VERTEX_SOURCES))
+NetworkPass::NetworkPass(const WorldTextures &textures) :
+	textures(textures), program(VERTEX_SOURCES, SOLID_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), span_program(SPAN_VERTEX_SOURCES, SOLID_FRAGMENT_SOURCES),
+	signal_program(SIGNAL_VERTEX_SOURCES, SOLID_FRAGMENT_SOURCES), signal_caster(CasterProgram(SIGNAL_VERTEX_SOURCES))
 {
 }
 
@@ -109,8 +98,9 @@ void NetworkPass::Draw(const SceneView &view)
 {
 	if (!this->program.Ready() || !this->span_program.Ready() || !this->signal_program.Ready()) return;
 	this->field.Gather(view, view.frustum, this->shown);
+	this->textures.Bind();
 	for (const ShaderProgram *solid : {&this->program, &this->span_program, &this->signal_program}) {
-		solid->Use();
+		WorldTextures::BindSamplers(*solid);
 		UploadOverlay(*solid);
 		glUniform2f(solid->Uniform("u_fade"), static_cast<float>(NETWORK_FADE_START), static_cast<float>(NETWORK_FADE_END));
 		glUniform2f(solid->Uniform("u_recede"), static_cast<float>(NETWORK_RECEDE_PIXELS), solid == &this->span_program ? 0.0f : static_cast<float>(NETWORK_RECEDE_DEPTH));

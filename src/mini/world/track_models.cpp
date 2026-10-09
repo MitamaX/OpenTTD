@@ -70,12 +70,21 @@ static constexpr double DROPPER_HALF = 0.002;
 static constexpr std::array<double, 3> DROPPER_SHARES = {0.25, 0.5, 0.75};
 static constexpr double MAST_SPACING = 1.6;
 
-static constexpr std::array<SectionPoint, 4> BALLAST_SECTION = {{
-	{-BALLAST_HALF, WAY_FOOT, BALLAST}, {-0.19, 0.034, BALLAST}, {0.19, 0.034, BALLAST}, {BALLAST_HALF, WAY_FOOT, BALLAST},
-}};
-static constexpr std::array<SectionPoint, 4> DISTANT_BALLAST_SECTION = {{
-	{-BALLAST_HALF, WAY_FOOT, DISTANT_BALLAST}, {-0.19, 0.034, DISTANT_BALLAST}, {0.19, 0.034, DISTANT_BALLAST}, {BALLAST_HALF, WAY_FOOT, DISTANT_BALLAST},
-}};
+static constexpr double CROWN_HALF = 0.19;
+static constexpr double CROWN_TOP = 0.034;
+static constexpr double SHOULDER_HALF = 0.225;
+static constexpr double SHOULDER_TOP = 0.02;
+
+static constexpr std::array<SectionPoint, 6> BallastSection(uint32_t tone)
+{
+	return {{
+		{-BALLAST_HALF, WAY_FOOT, tone, 0.0, WayBed::Shoulder}, {-SHOULDER_HALF, SHOULDER_TOP, tone, 0.0, WayBed::Shoulder}, {-CROWN_HALF, CROWN_TOP, tone, 0.0, WayBed::Ballast},
+		{CROWN_HALF, CROWN_TOP, tone, 0.0, WayBed::Shoulder}, {SHOULDER_HALF, SHOULDER_TOP, tone, 0.0, WayBed::Shoulder}, {BALLAST_HALF, WAY_FOOT, tone, 0.0, WayBed::Shoulder},
+	}};
+}
+
+static constexpr std::array<SectionPoint, 6> BALLAST_SECTION = BallastSection(BALLAST);
+static constexpr std::array<SectionPoint, 6> DISTANT_BALLAST_SECTION = BallastSection(DISTANT_BALLAST);
 static constexpr std::array<SectionPoint, 4> RAIL_SECTION = {{
 	{-0.011, 0.046, RAIL_WEB}, {-0.011, RAIL_TOP, RAIL_HEAD, STEEL_GLOSS}, {0.011, RAIL_TOP, RAIL_WEB}, {0.011, 0.046, RAIL_WEB},
 }};

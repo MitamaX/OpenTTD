@@ -50,6 +50,7 @@
 #include "tree_models.h"
 #include "water_outline.h"
 #include "water_pass.h"
+#include "way_shapes.h"
 
 #include "../../safeguards.h"
 
@@ -140,6 +141,9 @@ static std::string ShaderHeader()
 	DefineCodes(header, "MAT_", GROUND_MATERIAL_NAMES);
 	DefineCodes(header, "TREE_", TREE_KIND_NAMES);
 	DefineCodes(header, "AIRFIELD_", AIRFIELD_MARK_NAMES);
+	DefineCodes(header, "BED_", WAY_BED_NAMES);
+	DefineUnsigned(header, "WAY_BEDS", static_cast<uint>(WAY_BED_NAMES.size()));
+	DefineFloat(header, "TRAIT_SCALE", NORMALISED_BYTE_MAX);
 	DefineUnsigned(header, "DENSITY_MASK", GROUND_DENSITY_MASK);
 	DefineUnsigned(header, "LUSH_BIT", GROUND_LUSH_BIT);
 	DefineUnsigned(header, "BUILT_BIT", GROUND_BUILT_BIT);

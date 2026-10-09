@@ -129,17 +129,6 @@ inline constexpr std::array<const char *, 2> VEHICLE_VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/vehicle.vert",
 };
-inline constexpr std::array<const char *, 9> VEHICLE_FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
-	"mini_ui/shaders/overlay.glsl",
-	"mini_ui/shaders/solid.frag",
-};
 
 /* Where a steam engine's chimney stands on its model, how tall and how wide at the mouth its smoke leaves. */
 inline constexpr Vec3 STEAM_CHIMNEY_FOOT = {0.185, 0.0, 0.21};

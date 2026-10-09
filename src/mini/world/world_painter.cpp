@@ -65,7 +65,7 @@ static bool GlSupportsWorld()
 
 WorldPainter::WorldPainter()
 {
-	this->passes.push_back(std::make_unique<NetworkPass>());
+	this->passes.push_back(std::make_unique<NetworkPass>(this->textures));
 	auto structures = std::make_unique<StructurePass>(this->textures);
 	this->structures = structures.get();
 	this->passes.push_back(std::move(structures));

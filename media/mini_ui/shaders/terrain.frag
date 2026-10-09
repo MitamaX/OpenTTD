@@ -140,7 +140,6 @@ const vec3 ROCK = vec3(0.50, 0.49, 0.47);
 const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
 const vec3 SCREE = vec3(0.55, 0.52, 0.47);
 const vec3 SCOURED_SNOW = vec3(0.76, 0.82, 0.9);
-const vec3 SAND = vec3(0.87, 0.76, 0.54);
 const vec3 RED_SAND = vec3(0.85, 0.64, 0.43);
 const vec3 GRAVEL = vec3(0.74, 0.62, 0.48);
 const vec3 PACKED_EARTH = vec3(0.72, 0.57, 0.43);

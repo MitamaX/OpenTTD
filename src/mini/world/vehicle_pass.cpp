@@ -64,7 +64,7 @@ static MiniLayer LayerOf(VehicleLook look)
 	return MiniLayer::None;
 }
 
-VehiclePass::VehiclePass() : program(VEHICLE_VERTEX_SOURCES, VEHICLE_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))
+VehiclePass::VehiclePass() : program(VEHICLE_VERTEX_SOURCES, SOLID_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))
 {
 }
 

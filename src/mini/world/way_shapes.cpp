@@ -56,6 +56,12 @@ double Stretch::ShareOf(const MapVector &point) const
 	return Dot(point - this->from, run) / Dot(run, run);
 }
 
+static ModelMesh &Finished(ModelMesh &face, const SectionPoint &point)
+{
+	face.Paint(point.tone);
+	return point.bed == WayBed::Plain ? face.Gloss(point.gloss) : face.Coded(to_underlying(point.bed));
+}
+
 ModelMesh EndCap(const WayLine &line, Section section, bool last)
 {
 	double share = last ? 1.0 : 0.0;
@@ -63,7 +69,7 @@ ModelMesh EndCap(const WayLine &line, Section section, bool last)
 	ModelMesh cap;
 	for (const SectionPoint &point : section) cap.Point(Flat(line.At(share, point.lateral), point.height), facing);
 	for (uint32_t corner = 1; corner + 1 < section.size(); corner++) cap.Triangle(0, corner, corner + 1);
-	return cap.Paint(section.front().tone).Gloss(section.front().gloss);
+	return Finished(cap, section.front());
 }
 
 ModelMesh Laid(const WayLine &line, Section section, int rows)
@@ -80,7 +86,7 @@ ModelMesh Laid(const WayLine &line, Section section, int rows)
 			face.Point(Flat(line.At(share, high.lateral), high.height), normal);
 			if (row > 0) face.Quad(2 * row - 2, 2 * row - 1, 2 * row + 1, 2 * row);
 		}
-		mesh.Append(face.Paint(low.tone).Gloss(low.gloss));
+		mesh.Append(Finished(face, low));
 	}
 	return mesh;
 }

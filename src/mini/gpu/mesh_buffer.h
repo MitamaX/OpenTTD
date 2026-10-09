@@ -20,6 +20,8 @@ enum class AttributeType : uint8_t {
 	NormalisedUnsignedByte,
 };
 
+inline constexpr double NORMALISED_BYTE_MAX = 127.0;
+
 struct VertexAttribute {
 	uint32_t location;
 	int components;

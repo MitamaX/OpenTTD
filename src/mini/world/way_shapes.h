@@ -13,8 +13,10 @@
 #include <array>
 #include <functional>
 #include <span>
+#include <string_view>
 #include <vector>
 
+#include "../../core/enum_type.hpp"
 #include "../core/camera.h"
 #include "../map/way_line.h"
 #include "../model/model_mesh.h"
@@ -34,13 +36,23 @@ using Footing = std::function<double(double x, double y)>;
 Footing GroundFooting(int tx, int ty);
 Footing LevelFooting(double level);
 
-/* A point of a cross section: how far right of the run's centre line it lies and how high, with the paint of the face from it to the next point.
- * Points go over the top from left to right, so every face looks outward. */
+enum class WayBed : uint8_t {
+	Plain,
+	Ballast,
+	Shoulder,
+	End,
+};
+
+inline constexpr std::array<std::string_view, to_underlying(WayBed::End)> WAY_BED_NAMES = {"PLAIN", "BALLAST", "SHOULDER"};
+
+/* A point of a cross section: how far right of the run's centre line it lies and how high, with the paint, gloss and bed of the face from it to the next point.
+ * Points go over the top from left to right, so every face looks outward. A face laid as a bed is matte. */
 struct SectionPoint {
 	double lateral;
 	double height;
 	uint32_t tone = MODEL_WHITE;
 	double gloss = 0.0;
+	WayBed bed = WayBed::Plain;
 };
 
 using Section = std::span<const SectionPoint>;

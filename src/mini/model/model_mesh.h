@@ -31,6 +31,7 @@ struct ModelVertex {
 	void Paint(uint32_t rgb);
 	void Occlude(double openness);
 	void Trait(double share);
+	void Code(uint8_t code);
 };
 
 inline constexpr std::array<VertexAttribute, 3> MODEL_LAYOUT = {{
@@ -58,10 +59,12 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Vary(double spread, uint32_t seed);
 	ModelMesh &Weld();
 
-	/* The trait is how much light foliage lets through, how glossy a solid is, or how brightly a lamp glows, which reads as a negative share. */
+	/* The trait is how much light foliage lets through, how glossy a solid is, or how brightly a lamp glows, which reads as a negative share;
+	 * a matte solid may hold a small whole code in its place instead. */
 	ModelMesh &Translucent(double share) { return this->Trait(share); }
 	ModelMesh &Gloss(double share) { return this->Trait(share); }
 	ModelMesh &Glow(double share) { return this->Trait(-share); }
+	ModelMesh &Coded(uint8_t code);
 
 	template <class Tone>
 	ModelMesh &PaintBy(Tone tone)

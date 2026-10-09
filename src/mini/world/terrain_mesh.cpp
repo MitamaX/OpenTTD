@@ -34,7 +34,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr double NORMAL_SCALE = 127.0;
 static constexpr double SKIRT_LEVELS_PER_STEP = 2.0;
 static constexpr double STEEP_BANK_RUN = 0.35;
 static constexpr double LONGEST_BANK_RUN = 1.0;
@@ -79,7 +78,7 @@ static constexpr std::array<std::array<int, 2>, CORNER_COUNT> CORNER_OFFSETS = {
 
 static int8_t NormalByte(double component)
 {
-	return static_cast<int8_t>(std::lround(std::clamp(component, -1.0, 1.0) * NORMAL_SCALE));
+	return static_cast<int8_t>(std::lround(std::clamp(component, -1.0, 1.0) * NORMALISED_BYTE_MAX));
 }
 
 uint32_t TerrainMesh::Add(const WorldPoint &at, const Vec3 &normal, double mark)

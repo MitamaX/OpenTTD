@@ -20,7 +20,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr double NORMAL_SCALE = 127.0;
 static constexpr double WELD_GRID = 1.0e4;
 static constexpr std::array<uint32_t, 3> AXIS_SALTS = {0x9E3779B9U, 0x85EBCA6BU, 0xC2B2AE35U};
 
@@ -32,7 +31,7 @@ static int RoundedAway(double value)
 
 static int8_t SignedByte(double share)
 {
-	return static_cast<int8_t>(RoundedAway(std::clamp(share, -1.0, 1.0) * NORMAL_SCALE));
+	return static_cast<int8_t>(RoundedAway(std::clamp(share, -1.0, 1.0) * NORMALISED_BYTE_MAX));
 }
 
 static uint8_t UnsignedByte(double share)
@@ -42,7 +41,7 @@ static uint8_t UnsignedByte(double share)
 
 Vec3 ModelVertex::Normal() const
 {
-	return Vec3{static_cast<double>(this->normal[0]), static_cast<double>(this->normal[1]), static_cast<double>(this->normal[2])} * (1.0 / NORMAL_SCALE);
+	return Vec3{static_cast<double>(this->normal[0]), static_cast<double>(this->normal[1]), static_cast<double>(this->normal[2])} * (1.0 / NORMALISED_BYTE_MAX);
 }
 
 void ModelVertex::Place(const Vec3 &position)
@@ -71,6 +70,11 @@ void ModelVertex::Occlude(double openness)
 void ModelVertex::Trait(double share)
 {
 	this->normal[3] = SignedByte(share);
+}
+
+void ModelVertex::Code(uint8_t code)
+{
+	this->normal[3] = static_cast<int8_t>(code);
 }
 
 uint32_t ModelMesh::Point(const Vec3 &position, const Vec3 &normal)
@@ -195,6 +199,12 @@ ModelMesh &ModelMesh::Vary(double spread, uint32_t seed)
 ModelMesh &ModelMesh::Trait(double share)
 {
 	for (ModelVertex &vertex : this->vertices) vertex.Trait(share);
+	return *this;
+}
+
+ModelMesh &ModelMesh::Coded(uint8_t code)
+{
+	for (ModelVertex &vertex : this->vertices) vertex.Code(code);
 	return *this;
 }
 

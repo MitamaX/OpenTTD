@@ -10,6 +10,7 @@
 #ifndef MINI_WORLD_SHADER_PROGRAM_H
 #define MINI_WORLD_SHADER_PROGRAM_H
 
+#include <array>
 #include <span>
 #include <vector>
 
@@ -42,5 +43,18 @@ private:
 
 /* Hands the overlay's shown layer and how far the rest sinks to a program reading overlay.glsl. */
 void UploadOverlay(const ShaderProgram &program);
+
+inline constexpr std::array<const char *, 10> SOLID_FRAGMENT_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
+	"mini_ui/shaders/common.glsl",
+	"mini_ui/shaders/climate.glsl",
+	"mini_ui/shaders/sky.glsl",
+	"mini_ui/shaders/cloud_field.glsl",
+	"mini_ui/shaders/shadow.glsl",
+	"mini_ui/shaders/lighting.glsl",
+	"mini_ui/shaders/overlay.glsl",
+	"mini_ui/shaders/solid.frag",
+};
 
 #endif /* MINI_WORLD_SHADER_PROGRAM_H */

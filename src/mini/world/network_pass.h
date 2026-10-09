@@ -17,10 +17,11 @@
 #include "shader_program.h"
 #include "signal_models.h"
 #include "world_pass.h"
+#include "world_textures.h"
 
 class NetworkPass final : public WorldPass {
 public:
-	NetworkPass();
+	explicit NetworkPass(const WorldTextures &textures);
 
 	std::string_view Name() const override { return "network"; }
 	std::vector<ShaderProgram *> Programs() override;
@@ -38,6 +39,7 @@ private:
 	void DrawSignals();
 	void DrawBlankSignal();
 
+	const WorldTextures &textures;
 	NetworkField field;
 	std::vector<const NetworkChunk *> seen;
 	std::vector<const NetworkChunk *> shown;

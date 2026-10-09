@@ -19,7 +19,7 @@
 static constexpr float NO_GROWTH = 1.0f;
 
 ScatterPass::ScatterPass(std::unique_ptr<Scatter> scatter, const ScatterLook &look) :
-	scatter(std::move(scatter)), look(look), program(VEHICLE_VERTEX_SOURCES, VEHICLE_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))
+	scatter(std::move(scatter)), look(look), program(VEHICLE_VERTEX_SOURCES, SOLID_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))
 {
 }
 
