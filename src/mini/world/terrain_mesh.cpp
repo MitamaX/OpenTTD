@@ -43,7 +43,7 @@ static constexpr double EARTH_BANK_RUN_PER_RISE = 2.5;
 static constexpr double OPEN_EARTH_BANK_RUN = 1.0;
 static constexpr double FAR_EARTH_BANK_RUN = 2.0;
 static constexpr double WAYSIDE_EARTH_BANK_RUN = 0.2;
-static constexpr int EARTH_BANK_ROWS = 5;
+static constexpr int EARTH_BANK_ROWS = 8;
 /* Earth stands no steeper than this, in tile widths of fall for each of run; a way banked up any steeper over a way below stands on a retaining wall. */
 static constexpr double STEEPEST_EARTH = 1.6;
 static constexpr int RAMP_BANK_ROWS = 12;
@@ -59,6 +59,8 @@ static constexpr int CHANNEL_DIVISIONS = 6;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
+static constexpr int FORMATION_TOE_STEPS = 8;
+static constexpr int FORMATION_TOE_REFINES = 4;
 static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
 static constexpr double SEA_FLOOR = -DEEPEST_SINK;
 
@@ -626,7 +628,27 @@ static std::vector<MapVector> FormationLine(const WayCourse &course, int rows)
 	return line;
 }
 
-/* An eased way stands on a bank of the ground's own earth: a top under the way level with its foot, and sides leaning out and down until the ground swallows them. */
+/* Where a formation's side, falling from its crest toward its foot, first meets the ground, if it does before its foot. */
+static std::optional<WorldPoint> Swallowed(const WorldPoint &crest, const WorldPoint &foot)
+{
+	auto buried = [&](double share) {
+		WorldPoint at = Between(crest, foot, share);
+		return at.level <= GroundLevel(at.x, at.y);
+	};
+	double step = 1.0 / FORMATION_TOE_STEPS;
+	double high = step;
+	while (high <= 1.0 && !buried(high)) high += step;
+	if (high > 1.0) return std::nullopt;
+	double low = high - step;
+	for (int refine = 0; refine < FORMATION_TOE_REFINES; refine++) {
+		double middle = (low + high) / 2.0;
+		(buried(middle) ? high : low) = middle;
+	}
+	return Between(crest, foot, high);
+}
+
+/* An eased way stands on a bank of the ground's own earth: a top under the way level with its foot, and sides leaning out and down until the ground swallows them,
+ * where they end buried a little under it and lit as it is. */
 static void AddFormation(TerrainMesh &mesh, const WayCourse &course, double half)
 {
 	int rows = std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE)));
@@ -649,8 +671,15 @@ static void AddFormation(TerrainMesh &mesh, const WayCourse &course, double half
 			MapVector side = Unit(out - at);
 			bool flat = inner.drop == outer.drop;
 			Vec3 normal = flat ? UPRIGHT : Normalised(Vec3{side.x, side.y, FORMATION_RUN});
-			uint32_t near = mesh.Add({at.x, at.y, top - inner.drop}, normal, FILL_MARK);
-			mesh.Add({out.x, out.y, top - outer.drop}, normal, FILL_MARK);
+			WorldPoint crest = {at.x, at.y, top - inner.drop};
+			WorldPoint foot = {out.x, out.y, top - outer.drop};
+			std::optional<WorldPoint> toe = flat ? std::nullopt : Swallowed(crest, foot);
+			uint32_t near = mesh.Add(crest, normal, FILL_MARK);
+			if (toe.has_value()) {
+				mesh.Add(Grounded(*toe), ClimbNormal(GroundClimb(toe->x, toe->y)), FILL_MARK);
+			} else {
+				mesh.Add(foot, normal, FILL_MARK);
+			}
 			if (row > 0) mesh.Quad(previous, previous + 1, near + 1, near);
 			previous = near;
 		}
