@@ -542,28 +542,46 @@ static void AddStoneQuad(TerrainMesh &mesh, const std::array<WorldPoint, 4> &cor
 	mesh.Quad(first, first + 1, first + 2, first + 3);
 }
 
+static Vec3 Upright(const MapVector &facing)
+{
+	return {facing.x, facing.y, 0.0};
+}
+
 /* A stone face from a line of points down to the ground under them, facing out one way. */
 static void AddMasonry(TerrainMesh &mesh, std::span<const WorldPoint> line, const MapVector &facing)
 {
-	Vec3 outward = {facing.x, facing.y, 0.0};
+	Vec3 outward = Upright(facing);
 	for (size_t i = 0; i + 1 < line.size(); i++) AddStoneQuad(mesh, {line[i], line[i + 1], Grounded(line[i + 1]), Grounded(line[i])}, outward);
+}
+
+struct CopingEnd {
+	WorldPoint front_foot;
+	WorldPoint front_top;
+	WorldPoint back_foot;
+	WorldPoint back_top;
+};
+
+static CopingEnd CopingAt(const WorldPoint &at, const MapVector &facing)
+{
+	MapVector front = facing * COPING_OVERHANG;
+	MapVector back = facing * -COPING_DEPTH;
+	return {Shifted(at, front, 0.0), Shifted(at, front, COPING_RISE), Shifted(at, back, 0.0), Shifted(at, back, COPING_RISE)};
 }
 
 static void AddWingWall(TerrainMesh &mesh, std::span<const WorldPoint> line, const MapVector &facing)
 {
 	AddMasonry(mesh, line, facing);
-	Vec3 outward = {facing.x, facing.y, 0.0};
-	MapVector front = facing * COPING_OVERHANG;
-	MapVector back = facing * -COPING_DEPTH;
+	Vec3 outward = Upright(facing);
+	Vec3 inward = outward * -1.0;
 	for (size_t i = 0; i + 1 < line.size(); i++) {
-		const WorldPoint &from = line[i];
-		const WorldPoint &to = line[i + 1];
-		Vec3 along = {to.x - from.x, to.y - from.y, (to.level - from.level) * LevelRise()};
-		Vec3 cap = Normalised(Cross(Vec3{-facing.x, -facing.y, 0.0}, along));
+		Vec3 along = {line[i + 1].x - line[i].x, line[i + 1].y - line[i].y, (line[i + 1].level - line[i].level) * LevelRise()};
+		Vec3 cap = Normalised(Cross(inward, along));
 		if (cap.z < 0.0) cap = cap * -1.0;
-		AddStoneQuad(mesh, {Shifted(from, front, COPING_RISE), Shifted(to, front, COPING_RISE), Shifted(to, front, 0.0), Shifted(from, front, 0.0)}, outward);
-		AddStoneQuad(mesh, {Shifted(from, back, COPING_RISE), Shifted(to, back, COPING_RISE), Shifted(to, front, COPING_RISE), Shifted(from, front, COPING_RISE)}, cap);
-		AddStoneQuad(mesh, {Shifted(from, back, 0.0), Shifted(to, back, 0.0), Shifted(to, back, COPING_RISE), Shifted(from, back, COPING_RISE)}, outward * -1.0);
+		CopingEnd from = CopingAt(line[i], facing);
+		CopingEnd to = CopingAt(line[i + 1], facing);
+		AddStoneQuad(mesh, {from.front_top, to.front_top, to.front_foot, from.front_foot}, outward);
+		AddStoneQuad(mesh, {from.back_top, to.back_top, to.front_top, from.front_top}, cap);
+		AddStoneQuad(mesh, {from.back_foot, to.back_foot, to.back_top, from.back_top}, inward);
 	}
 }
 
