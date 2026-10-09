@@ -112,7 +112,7 @@ void FrameProfile::EndFrame()
 	this->last_frame_end = now;
 	this->frame_count++;
 
-	this->current = (this->current + 1) % FRAMES_IN_FLIGHT;
+	this->current = (this->current + 1) % GPU_FRAMES_IN_FLIGHT;
 	this->Collect(this->frames[this->current]);
 
 	if (!_frame_capture.Active() && this->frame_count - this->reported_frames >= UNLABELLED_REPORT_FRAMES) {

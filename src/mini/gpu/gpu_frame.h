@@ -12,6 +12,9 @@
 
 #include "screen_target.h"
 
+/* The frames the GPU may still be drawing behind the one being built, held back by the driver's queue. */
+inline constexpr size_t GPU_FRAMES_IN_FLIGHT = 4;
+
 /* The layer every frame is drawn in. It is detached while the GL context
  * still lives, so it can free what it holds. */
 class ScreenLayer {

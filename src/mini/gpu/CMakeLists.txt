@@ -19,6 +19,8 @@ add_files(
     instanced_meshes.h
     mesh_buffer.cpp
     mesh_buffer.h
+    retired_textures.cpp
+    retired_textures.h
     screen_target.cpp
     screen_target.h
     texture_store.cpp

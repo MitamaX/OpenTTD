@@ -15,6 +15,7 @@
 #include "frame_capture.h"
 #include "frame_profile.h"
 #include "gl_api.h"
+#include "retired_textures.h"
 
 #include "../../safeguards.h"
 
@@ -42,6 +43,7 @@ void GpuFrame::Compose()
 		this->layer->Render(size);
 	}
 	_frame_capture.Grab(size);
+	_retired_textures.Advance();
 	_frame_profile.EndFrame();
 }
 
@@ -55,6 +57,7 @@ void GpuFrame::Release()
 	_frame_profile.Release();
 	this->target.Release();
 	_textures.Release();
+	_retired_textures.Release();
 	UnloadGl();
 }
 

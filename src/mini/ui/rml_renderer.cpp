@@ -16,6 +16,7 @@
 #include "../../core/format.hpp"
 #include "../../core/string_consumer.hpp"
 #include "../gpu/gpu_frame.h"
+#include "../gpu/retired_textures.h"
 
 #include "../../safeguards.h"
 
@@ -65,7 +66,7 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i &texture_dimensions, c
 
 void RmlRenderer::ReleaseTexture(Rml::TextureHandle texture_handle)
 {
-	if (this->lent.erase(texture_handle) == 0) RenderInterface_GL3::ReleaseTexture(texture_handle);
+	if (this->lent.erase(texture_handle) == 0) _retired_textures.Retire(static_cast<uint32_t>(texture_handle));
 }
 
 /* `decorator: shader(name)` reaches a registered painter by its name; any other shader stays upstream's. */

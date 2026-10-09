@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "gpu_frame.h"
+
 /** Whether a section is timed on the GPU as well as the CPU; sections run outside the GL context are timed on the CPU only. */
 enum class ProfileClock : uint8_t {
 	Cpu,
@@ -78,7 +80,6 @@ private:
 		Tally frame;
 	};
 
-	static constexpr size_t FRAMES_IN_FLIGHT = 4;
 	static constexpr size_t UNLABELLED_REPORT_FRAMES = 240;
 
 	uint32_t TakeQuery(Frame &frame);
@@ -87,7 +88,7 @@ private:
 	void Write(std::string_view label);
 	void Trace(const Frame &frame);
 
-	std::array<Frame, FRAMES_IN_FLIGHT> frames;
+	std::array<Frame, GPU_FRAMES_IN_FLIGHT> frames;
 	std::vector<Samples> samples;
 	std::ofstream log;
 	std::ofstream timeline;

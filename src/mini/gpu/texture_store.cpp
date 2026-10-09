@@ -15,6 +15,7 @@
 
 #include "draw_list.h"
 #include "gl_api.h"
+#include "retired_textures.h"
 
 #include "../../safeguards.h"
 
@@ -49,7 +50,7 @@ void TextureStore::Remove(TextureId id)
 {
 	auto it = this->entries.find(id);
 	if (it == this->entries.end()) return;
-	if (it->second.name != 0) glDeleteTextures(1, &it->second.name);
+	_retired_textures.Retire(it->second.name);
 	this->entries.erase(it);
 }
 
