@@ -129,8 +129,7 @@ static Vec3 Wobble(const Vec3 &at, double reach, uint32_t seed)
 
 ModelMesh &ModelMesh::Displace(double reach, uint32_t seed)
 {
-	for (ModelVertex &vertex : this->vertices) vertex.Place(vertex.Position() + Wobble(vertex.Position(), reach, seed));
-	return *this;
+	return this->Reshape([&](const Vec3 &at) { return at + Wobble(at, reach, seed); });
 }
 
 static Vec3 TriangleNormal(const ModelVertex &a, const ModelVertex &b, const ModelVertex &c)

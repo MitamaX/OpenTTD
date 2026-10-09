@@ -73,6 +73,13 @@ struct ModelMesh : TriangleList<ModelVertex> {
 		return *this;
 	}
 
+	template <class Shift>
+	ModelMesh &Reshape(Shift shift)
+	{
+		for (ModelVertex &vertex : this->vertices) vertex.Place(shift(vertex.Position()));
+		return *this;
+	}
+
 	template <class Openness>
 	ModelMesh &Occlude(Openness openness)
 	{

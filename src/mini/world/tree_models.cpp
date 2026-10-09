@@ -55,19 +55,14 @@ static constexpr double LIMB_TAPER = 0.5;
 static constexpr double LIMB_SKIP = 0.04;
 
 static constexpr SeedRange CONIFER_GIRTH = {0.9, 1.1};
-static constexpr SeedRange CONIFER_TOP = {0.5, 0.56};
 static constexpr SeedRange CONIFER_TRUNK = {0.02, 0.012};
 static constexpr double CONIFER_TRUNK_TOP = 0.2;
-static constexpr double CONIFER_BOUGHS_BASE = 0.07;
-static constexpr double CONIFER_RADIUS = 0.155;
-static constexpr int CONIFER_FEWEST_TIERS = 3;
-static constexpr uint32_t CONIFER_TIER_CHOICES = 3;
 static constexpr uint32_t CONIFER_DEEP_GREEN = 0x2C5A44;
 static constexpr uint CONIFER_DEEP_SHARE = 110;
-static constexpr double CONIFER_TOP_TIER_REACH = 0.22;
-static constexpr double CONIFER_TIER_TAPER = 0.65;
-static constexpr double CONIFER_TIER_HEIGHT = 0.21;
+static constexpr double CONIFER_TIER_SPAN = 0.67;
+static constexpr double CONIFER_TIER_DEPTH = 0.45;
 static constexpr double CONIFER_TIER_SHRINK = 0.19;
+static constexpr int CONIFER_SIMPLE_TIPS = 4;
 static constexpr LatheRing CONIFER_WAIST = {0.55, 0.45};
 static constexpr double CONIFER_ROUGHNESS = 0.008;
 
@@ -127,7 +122,7 @@ struct TreeTones {
 static constexpr size_t TONE_SETS = 3;
 static constexpr std::array<std::array<TreeTones, TONE_SETS>, TREE_KINDS> TONES = {{
 	{{{0x5E8C3A, 0x5E5246}, {0x4E8034, 0x564A3E}, {0x7EA046, 0xCFC9BA}}},
-	{{{0x3A6B38, 0x54463A}, {0x447334, 0x4E4136}, {0x356640, 0x5A4A3C}}},
+	{{{0x3A6B38, 0x54463A}, {0x2F6046, 0x4E4136}, {0x557F3A, 0x8A5A3C}}},
 	{{{0x3B7A2E, 0x6A604E}, {0x2F6E2A, 0x625846}, {0x4C8A30, 0x72684F}}},
 	{{{0x5E9A3A, 0x8A7050}, {0x6AA040, 0x7E6649}, {0x548E36, 0x927858}}},
 	{{{0x5E8A4A, 0xE86FA8}, {0x6B9A55, 0xF2C94A}, {0x557F45, 0xF4EEE4}}},
@@ -181,6 +176,27 @@ static constexpr std::array<CrownHabit, TREE_SHAPES> BROADLEAF_HABITS = {{
 	{{0.05, 0.07}, {0.19, 0.19, 0.12}, 4, 1, {0.07, 0.085}, 0.9, true, {0.0, 0.0}, {0.032, 0.02}},
 	{{0.16, 0.18}, {0.23, 0.23, 0.12}, 4, 1, {0.07, 0.09}, 0.8, true, {0.05, 0.08}, {0.032, 0.02}},
 	{{0.07, 0.09}, {0.12, 0.12, 0.24}, 4, 1, {0.065, 0.08}, 1.15, false, {0.0, 0.0}, {0.026, 0.016}},
+}};
+
+struct ConiferHabit {
+	SeedRange top;
+	double boughs;
+	double radius;
+	int tiers;
+	uint32_t extra_tiers;
+	double taper;
+	int tips;
+	double notch;
+	double droop;
+};
+
+static constexpr std::array<ConiferHabit, TREE_SHAPES> CONIFER_HABITS = {{
+	{{0.48, 0.54}, 0.06, 0.18, 4, 0, 0.7, 7, 0.72, 0.22},
+	{{0.52, 0.58}, 0.05, 0.145, 5, 0, 0.75, 7, 0.62, 0.38},
+	{{0.48, 0.54}, 0.28, 0.16, 2, 0, 0.35, 6, 0.55, 0.08},
+	{{0.28, 0.34}, 0.03, 0.13, 3, 0, 0.7, 7, 0.7, 0.28},
+	{{0.5, 0.58}, 0.04, 0.1, 6, 0, 0.6, 6, 0.75, 0.45},
+	{{0.46, 0.52}, 0.08, 0.135, 4, 0, 0.7, 6, 0.5, 0.18},
 }};
 
 static constexpr std::array<CrownHabit, TREE_SHAPES> JUNGLE_HABITS = {{
@@ -314,36 +330,47 @@ static void Canopy(TreeBuilder &tree, TreeDetail detail, const CrownHabit &habit
 	}
 }
 
-static void Conifer(TreeBuilder &tree, TreeDetail detail)
+static ModelMesh Skirt(const ConiferHabit &habit, int tips, double radius, double height)
+{
+	std::array<LatheRing, 3> profile = {{{radius, 0.0}, {radius * CONIFER_WAIST.radius, height * CONIFER_WAIST.z}, {0.0, height}}};
+	ModelMesh skirt = Lathe(profile, 2 * tips);
+	skirt.Reshape([&](const Vec3 &at) {
+		double out = std::hypot(at.x, at.y) / radius;
+		double tip = 0.5 + 0.5 * std::cos(tips * std::atan2(at.y, at.x));
+		double spread = std::lerp(1.0, std::lerp(habit.notch, 1.0, tip), out);
+		return Vec3{at.x * spread, at.y * spread, at.z - habit.droop * radius * tip * out * out};
+	});
+	return skirt;
+}
+
+static void Conifer(TreeBuilder &tree, TreeDetail detail, const ConiferHabit &habit)
 {
 	SeedDice &dice = tree.Dice();
 	double girth = dice.Between(CONIFER_GIRTH);
-	double top = dice.Between(CONIFER_TOP);
-	double radius = CONIFER_RADIUS * girth;
-	Crown crown = {{0.0, 0.0, (CONIFER_BOUGHS_BASE + top) * 0.5}, CONIFER_BOUGHS_BASE, top, radius};
+	double top = dice.Between(habit.top);
+	double radius = habit.radius * girth;
+	Crown crown = {{0.0, 0.0, (habit.boughs + top) * 0.5}, habit.boughs, top, radius};
 	switch (detail) {
 		case TreeDetail::Full: {
-			tree.Trunk(5, CONIFER_TRUNK, CONIFER_TRUNK_TOP);
-			int tiers = CONIFER_FEWEST_TIERS + static_cast<int>(dice.Below(CONIFER_TIER_CHOICES));
-			uint32_t deep = Mix(tree.Tones().leaves, CONIFER_DEEP_GREEN, CONIFER_DEEP_SHARE);
+			tree.Trunk(5, CONIFER_TRUNK, std::max(habit.boughs, CONIFER_TRUNK_TOP));
+			int tiers = habit.tiers + static_cast<int>(dice.Below(habit.extra_tiers + 1));
 			for (int tier = 0; tier < tiers; tier++) {
 				double share = static_cast<double>(tier) / tiers;
-				double base = CONIFER_BOUGHS_BASE + share * (top - CONIFER_TOP_TIER_REACH);
-				double tier_radius = radius * (1.0 - share * CONIFER_TIER_TAPER);
-				double height = tier == tiers - 1 ? top - base : CONIFER_TIER_HEIGHT * (1.0 - share * CONIFER_TIER_SHRINK);
-				std::array<LatheRing, 3> profile = {{{tier_radius, 0.0}, {tier_radius * CONIFER_WAIST.radius, height * CONIFER_WAIST.z}, {0.0, height}}};
-				ModelMesh bough = Lathe(profile, 7);
+				double base = habit.boughs + share * (top - habit.boughs) * CONIFER_TIER_SPAN;
+				double height = tier == tiers - 1 ? top - base : (top - habit.boughs) * CONIFER_TIER_DEPTH * (1.0 - share * CONIFER_TIER_SHRINK);
+				ModelMesh bough = Skirt(habit, habit.tips, radius * (1.0 - share * habit.taper), height);
 				bough.Transform(Mat4::Translation({0.0, 0.0, base}) * Mat4::Turn(UP, dice.Between(0.0, TAU)));
-				tree.Leaves(bough.Displace(CONIFER_ROUGHNESS, dice.Next()), crown, tier % 2 == 0 ? deep : tree.Tones().leaves, LEAF_TRANSLUCENCY);
+				uint32_t tone = Mix(tree.Tones().leaves, CONIFER_DEEP_GREEN, static_cast<uint>(std::lround(CONIFER_DEEP_SHARE * (1.0 - share))));
+				tree.Leaves(bough.Displace(CONIFER_ROUGHNESS, dice.Next()), crown, tone, LEAF_TRANSLUCENCY);
 			}
 			break;
 		}
 		case TreeDetail::Simple:
-			tree.Trunk(4, CONIFER_TRUNK, CONIFER_BOUGHS_BASE);
-			tree.Leaves(Cone(6, radius, top - CONIFER_BOUGHS_BASE).Transform(Mat4::Translation({0.0, 0.0, CONIFER_BOUGHS_BASE})), crown);
+			tree.Trunk(4, CONIFER_TRUNK, habit.boughs);
+			tree.Leaves(Skirt(habit, std::max(habit.tips / 2, CONIFER_SIMPLE_TIPS), radius, top - habit.boughs).Transform(Mat4::Translation({0.0, 0.0, habit.boughs})), crown);
 			break;
 		default:
-			tree.Spindle({{CONIFER_TRUNK.low, FOOT}, {radius, CONIFER_BOUGHS_BASE}, {0.0, top}}, 4, 0.0, LEAF_TRANSLUCENCY);
+			tree.Spindle({{CONIFER_TRUNK.low, FOOT}, {CONIFER_TRUNK.low, habit.boughs}, {radius, habit.boughs}, {0.0, top}}, 4, habit.boughs, LEAF_TRANSLUCENCY);
 			break;
 	}
 }
@@ -478,7 +505,7 @@ static ModelMesh BuildTree(TreeShape shape, TreeDetail detail)
 	TreeBuilder tree(TONES[static_cast<size_t>(shape.kind)][shape.variant % TONE_SETS], Hash32(SHAPE_SALT + static_cast<uint32_t>(shape.Index())));
 	switch (shape.kind) {
 		case TreeKind::Broadleaf: Canopy(tree, detail, BROADLEAF_HABITS[shape.variant]); break;
-		case TreeKind::Conifer: Conifer(tree, detail); break;
+		case TreeKind::Conifer: Conifer(tree, detail, CONIFER_HABITS[shape.variant]); break;
 		case TreeKind::Jungle: Canopy(tree, detail, JUNGLE_HABITS[shape.variant]); break;
 		case TreeKind::Palm: Palm(tree, detail); break;
 		case TreeKind::Cactus: Cactus(tree, detail); break;
