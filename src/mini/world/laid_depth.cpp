@@ -14,14 +14,22 @@
 
 #include "../../safeguards.h"
 
-LaidDepthScope::LaidDepthScope()
+LaidDepthScope::LaidDepthScope(const ShaderProgram &program) : program(program)
 {
-	glDepthFunc(GL_LEQUAL);
+	glDepthFunc(GL_EQUAL);
 	glDepthMask(GL_FALSE);
+	this->Tell(true);
 }
 
 LaidDepthScope::~LaidDepthScope()
 {
+	this->Tell(false);
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LESS);
+}
+
+void LaidDepthScope::Tell(bool laid) const
+{
+	this->program.Use();
+	glUniform1i(this->program.Uniform("u_laid"), laid);
 }

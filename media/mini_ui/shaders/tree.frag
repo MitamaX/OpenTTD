@@ -100,7 +100,7 @@ vec3 Bumped(vec3 normal, float relief, vec3 view, vec3 across, vec3 down)
 /* Foliage breaks into clumps of leaves, dark in the pockets between them and frayed where the crown turns away at its rim. */
 void main()
 {
-	if (OutOfWindow()) discard;
+	DropOutOfWindow();
 	vec3 normal = normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0);
 	vec3 across = dFdx(v_position);
 	vec3 down = dFdy(v_position);
@@ -109,7 +109,7 @@ void main()
 	vec3 view = ToEye(v_position);
 	float dome = LeafDome(clumps);
 	vec3 leaves = Bumped(normal, (dome - 0.5) * LEAF_RELIEF * foliage, view, across, down);
-	if (Frayed(normal, view, clumps, foliage)) discard;
+	DropFrayed(normal, view, clumps, foliage);
 
 	float clouds = CloudLight(v_position);
 	float sunlit = SunVisibility(v_position, leaves, clouds);

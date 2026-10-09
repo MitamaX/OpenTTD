@@ -1,6 +1,6 @@
 void main()
 {
-	if (OutOfWindow()) discard;
+	DropOutOfWindow();
 	float foliage = Foliage();
-	if (Frayed(normalize(v_normal), ToEye(v_position), Clumps(foliage), foliage)) discard;
+	DropFrayed(normalize(v_normal), ToEye(v_position), Clumps(foliage), foliage);
 }

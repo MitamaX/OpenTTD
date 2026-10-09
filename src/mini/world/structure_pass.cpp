@@ -98,7 +98,7 @@ void StructurePass::Draw([[maybe_unused]] const SceneView &view)
 {
 	if (!this->Shadeable()) return;
 	this->UseLit();
-	LaidDepthScope laid;
+	LaidDepthScope laid(this->program);
 	this->DrawSolidParts();
 }
 

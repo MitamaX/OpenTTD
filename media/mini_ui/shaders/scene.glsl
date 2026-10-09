@@ -23,6 +23,8 @@ layout(std140) uniform Shadows {
 	vec4 u_shadow_fade;
 };
 
+uniform bool u_laid;
+
 float Luminance(vec3 colour)
 {
 	return dot(colour, LUMINANCE);
@@ -116,6 +118,11 @@ float ScreenNoise(vec2 fragment)
 {
 	vec2 moved = fragment + 5.588238 * u_screen.w;
 	return fract(52.9829189 * fract(dot(moved, vec2(0.06711056, 0.00583715))));
+}
+
+bool Dropped(bool unseen)
+{
+	return unseen && !u_laid;
 }
 
 vec3 RenderPoint(vec3 world)

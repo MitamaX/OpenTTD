@@ -138,7 +138,7 @@ void ForestPass::Draw([[maybe_unused]] const SceneView &view)
 		CullingScope culling;
 		this->batch.Redraw(this->models, shade, ShadedAsDrawn);
 	}
-	LaidDepthScope laid;
+	LaidDepthScope laid(this->program);
 	this->batch.Redraw(this->models, shade, LaidFirst);
 }
 

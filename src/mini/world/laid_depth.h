@@ -10,13 +10,20 @@
 #ifndef MINI_WORLD_LAID_DEPTH_H
 #define MINI_WORLD_LAID_DEPTH_H
 
+#include "shader_program.h"
+
 class LaidDepthScope {
 public:
-	LaidDepthScope();
+	explicit LaidDepthScope(const ShaderProgram &program);
 	~LaidDepthScope();
 
 	LaidDepthScope(const LaidDepthScope &) = delete;
 	LaidDepthScope &operator=(const LaidDepthScope &) = delete;
+
+private:
+	void Tell(bool laid) const;
+
+	const ShaderProgram &program;
 };
 
 #endif /* MINI_WORLD_LAID_DEPTH_H */
