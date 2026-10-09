@@ -103,14 +103,19 @@ vec3 Reflected(vec3 normal, vec3 view, Coat coat, vec3 sun, vec3 ambient, float 
 	return sun * Highlight(normal, view, SunDirection(), coat) + Sheen(normal, view, coat, ambient) * occlusion;
 }
 
+/* The light a surface point sends toward the eye, given the sun's light on its coat and the share of it its body scatters. */
+vec4 SurfaceRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlusion, vec3 sun, vec3 scattered_sun)
+{
+	vec3 ambient = AmbientLight(normal);
+	vec3 scattered = Diffuse(albedo, scattered_sun + ambient * occlusion, coat.reflectance);
+	return vec4(scattered + Reflected(normal, view, coat, sun, ambient, occlusion), AmbientShare(ambient, sun));
+}
+
 /* The light a surface point sends toward the eye with the share of the sun that reaches it given, and how brightly crystals in it glint in the sun. */
 vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 position, Coat coat, float occlusion, float glint, float sunlit)
 {
-	vec3 view = normalize(Eye() - position);
 	vec3 sun = Sunlight(normal, sunlit);
-	vec3 ambient = AmbientLight(normal);
-	vec3 reflected = Reflected(normal, view, coat, sun, ambient, occlusion) + sun * glint;
-	return vec4(Diffuse(albedo, sun + ambient * occlusion, coat.reflectance) + reflected, AmbientShare(ambient, sun));
+	return SurfaceRadiance(albedo, normal, normalize(Eye() - position), coat, occlusion, sun, sun) + vec4(sun * glint, 0.0);
 }
 
 /* The light a surface point sends toward the eye, the sun's shut out where it is shadowed, with albedo in linear light and the point and normal in render space. */
@@ -129,11 +134,7 @@ vec3 SunlightThrough(vec3 normal, vec3 view, float translucency, float sunlit)
 }
 
 /* Leaves let light through as well as reflecting it off their coat. */
-vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 position, float translucency, Coat coat, float occlusion, float sunlit)
+vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 view, float translucency, Coat coat, float occlusion, float sunlit)
 {
-	vec3 view = normalize(Eye() - position);
-	vec3 sun = Sunlight(normal, sunlit);
-	vec3 ambient = AmbientLight(normal);
-	vec3 through = Diffuse(albedo, SunlightThrough(normal, view, translucency, sunlit) + ambient * occlusion, coat.reflectance);
-	return vec4(through + Reflected(normal, view, coat, sun, ambient, occlusion), AmbientShare(ambient, sun));
+	return SurfaceRadiance(albedo, normal, view, coat, occlusion, Sunlight(normal, sunlit), SunlightThrough(normal, view, translucency, sunlit));
 }
