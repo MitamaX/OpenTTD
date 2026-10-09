@@ -488,11 +488,12 @@ float StrataPerLevel()
 
 float BeddingAt(vec2 p)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return v_world.z * TOY_STRATA_PER_LEVEL;
-	float thickness = Noise(vec2(v_world.z * BED_THICKNESS_PER_LEVEL, BED_THICKNESS_SEED)) * STRATA_PER_LEVEL;
+	float levelled = v_world.z * StrataPerLevel();
+	if (Landscape() == LANDSCAPE_TOYLAND) return levelled;
+	float thickness = Noise(vec2(v_world.z * BED_THICKNESS_PER_LEVEL, BED_THICKNESS_SEED)) * StrataPerLevel();
 	float warp = (Noise(p * STRATA_WARP_PER_TILE) - 0.5) * STRATA_WARP;
 	float bow = (Octave(p + STRATA_BOW_SEED, STRATA_BOWS_PER_TILE) - 0.5) * STRATA_BOW;
-	return v_world.z * STRATA_PER_LEVEL + dot(p, STRATA_DIP) + thickness + warp + bow;
+	return levelled + dot(p, STRATA_DIP) + thickness + warp + bow;
 }
 
 Relief ReliefAt(vec3 normal, float levels_per_pixel)
@@ -581,9 +582,14 @@ vec3 ToyStrataMean()
 	return (TOY_STRATA[0] + TOY_STRATA[1] + TOY_STRATA[2] + TOY_STRATA[3]) / float(TOY_STRATA_COUNT);
 }
 
+vec3 ToyStratum(int layer)
+{
+	return TOY_STRATA[abs(layer) % TOY_STRATA_COUNT];
+}
+
 vec3 Stratum(int layer)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return TOY_STRATA[abs(layer) % TOY_STRATA_COUNT];
+	if (Landscape() == LANDSCAPE_TOYLAND) return ToyStratum(layer);
 	return mix(ROCK, ROCK_WARM, Hash(ivec2(layer, 7))) * Varied(Hash(ivec2(layer, 19)), LAYER_VARIETY);
 }
 
@@ -1170,7 +1176,7 @@ vec3 WallFace(vec3 normal)
 
 vec3 EarthStratum(int layer)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return TOY_STRATA[abs(layer) % TOY_STRATA_COUNT];
+	if (Landscape() == LANDSCAPE_TOYLAND) return ToyStratum(layer);
 	int pick = int(Hash(ivec2(layer, 23)) * float(EARTH_STRATA_COUNT)) % EARTH_STRATA_COUNT;
 	return EARTH_STRATA[pick] * Varied(Hash(ivec2(layer, 29)), EDGE_LAYER_VARIETY);
 }
