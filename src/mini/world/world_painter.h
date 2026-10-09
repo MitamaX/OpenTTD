@@ -51,6 +51,7 @@ private:
 	void SyncChanges();
 	void LayDepth(const SceneView &view);
 	void DrawStage(WorldStage stage, const SceneView &view);
+	void DrawOpen(const SceneView &view);
 
 	WorldTarget target;
 	WorldTextures textures;

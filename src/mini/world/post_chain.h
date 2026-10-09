@@ -36,6 +36,7 @@ public:
 
 	/* The view the world is drawn through this frame, nudged by a fraction of a pixel when frames are blended. */
 	SceneView Jitter(const SceneView &view);
+	void FindOcclusion(const WorldTarget &target);
 	void Finish(const WorldTarget &target, const SceneView &view);
 	void Warm(const WorldTarget &target);
 	void Present(const ShaderArea &area, Dimension layer, const WorldTarget &target);

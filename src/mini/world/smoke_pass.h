@@ -54,7 +54,7 @@ public:
 	void Draw(const SceneView &view) override;
 	void Warm() override;
 	void Release() override;
-	WorldStage Stage() const override { return WorldStage::Surface; }
+	WorldStage Stage() const override { return WorldStage::Translucent; }
 
 private:
 	/* A vent near enough for its smoke to show and how far it lies from the eye. */

@@ -157,6 +157,13 @@ bool PostChain::Fit(Dimension size)
 	return fitted;
 }
 
+void PostChain::FindOcclusion(const WorldTarget &target)
+{
+	if (_tuning.ambient_occlusion == 0 || !this->Fit(target.Size())) return;
+	this->BeginSteps();
+	this->Occlude(target);
+}
+
 /* Every step after the world is drawn reads the target's depth, and none of them tests or writes depth of its own. */
 void PostChain::Finish(const WorldTarget &target, const SceneView &view)
 {
@@ -166,7 +173,6 @@ void PostChain::Finish(const WorldTarget &target, const SceneView &view)
 	}
 
 	this->BeginSteps();
-	if (_tuning.ambient_occlusion != 0) this->Occlude(target);
 	this->Shade(target);
 	this->resolved = &this->Resolve(target);
 	if (_tuning.bloom != 0) this->Bloom(*this->resolved);

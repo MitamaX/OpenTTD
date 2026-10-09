@@ -67,19 +67,25 @@ void StructurePass::Cast(const ShadowView &view)
 	if (!this->caster.Ready() || !this->open_caster.Ready()) return;
 	this->field.Gather(view.camera, view.frustum, this->shown);
 	this->caster.Use();
-	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw(0, chunk->solid_indices);
+	this->DrawSolidParts();
 	this->open_caster.Use();
-	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw(chunk->solid_indices, chunk->mesh.IndexCount() - chunk->solid_indices);
+	this->DrawOpenParts();
 }
 
 void StructurePass::Draw(const SceneView &view)
 {
 	if (!this->program.Ready()) return;
 	this->field.Gather(view, view.frustum, this->shown);
-	this->program.Use();
-	UploadOverlay(this->program);
-	glUniform2f(this->program.Uniform("u_fade"), static_cast<float>(STRUCTURE_FADE_START), static_cast<float>(STRUCTURE_FADE_END));
-	this->DrawChunks();
+	this->UseLit();
+	this->DrawSolidParts();
+}
+
+/* The open claddings of the blocks Draw gathered. */
+void StructurePass::DrawOpen([[maybe_unused]] const SceneView &view)
+{
+	if (!this->program.Ready()) return;
+	this->UseLit();
+	this->DrawOpenParts();
 }
 
 void StructurePass::WarmCast()
@@ -98,9 +104,21 @@ void StructurePass::Warm()
 	DrawBlankTriangle(STRUCTURE_LAYOUT, sizeof(StructureVertex));
 }
 
-void StructurePass::DrawChunks() const
+void StructurePass::UseLit()
 {
-	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw();
+	this->program.Use();
+	UploadOverlay(this->program);
+	glUniform2f(this->program.Uniform("u_fade"), static_cast<float>(STRUCTURE_FADE_START), static_cast<float>(STRUCTURE_FADE_END));
+}
+
+void StructurePass::DrawSolidParts() const
+{
+	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw(0, chunk->solid_indices);
+}
+
+void StructurePass::DrawOpenParts() const
+{
+	for (const StructureChunk *chunk : this->shown) chunk->mesh.Draw(chunk->solid_indices, chunk->mesh.IndexCount() - chunk->solid_indices);
 }
 
 void StructurePass::Release()

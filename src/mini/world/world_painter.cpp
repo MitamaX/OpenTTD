@@ -178,7 +178,7 @@ static void BeginWorldState()
 	glClearDepth(1.0);
 }
 
-/* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, and the finishing steps work on the whole. */
+/* Shadows are cast before the solid passes draw, surface passes draw over a snapshot of the solid world, the occlusion is found before open claddings and translucent passes draw, and the finishing steps work on the whole. */
 void WorldPainter::Render(const SceneView &view)
 {
 	this->SyncChanges();
@@ -201,6 +201,9 @@ void WorldPainter::Render(const SceneView &view)
 	this->DrawStage(WorldStage::Solid, view);
 	this->target.Snapshot();
 	this->DrawStage(WorldStage::Surface, view);
+	this->post.FindOcclusion(this->target);
+	this->DrawOpen(view);
+	this->DrawStage(WorldStage::Translucent, view);
 	this->post.Finish(this->target, view);
 }
 
@@ -262,5 +265,17 @@ void WorldPainter::DrawStage(WorldStage stage, const SceneView &view)
 		if (pass->Stage() != stage) continue;
 		ProfileScope profile("draw", pass->Name());
 		pass->Draw(view);
+	}
+}
+
+/* Drawing takes up the target and the world's state again, the world's textures back on the units the occlusion borrowed. */
+void WorldPainter::DrawOpen(const SceneView &view)
+{
+	BeginWorldState();
+	if (!this->target.Bind(view.viewport)) return;
+	this->textures.Bind();
+	for (const auto &pass : this->passes) {
+		ProfileScope profile("open", pass->Name());
+		pass->DrawOpen(view);
 	}
 }

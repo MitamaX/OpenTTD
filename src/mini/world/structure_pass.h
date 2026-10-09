@@ -28,6 +28,7 @@ public:
 	void Sync(const WorldChanges &changes) override;
 	void Cast(const ShadowView &view) override;
 	void Draw(const SceneView &view) override;
+	void DrawOpen(const SceneView &view) override;
 	void WarmCast() override;
 	void Warm() override;
 	void Release() override;
@@ -37,7 +38,9 @@ public:
 	std::span<const StructureChunk *const> Shown() const { return this->shown; }
 
 private:
-	void DrawChunks() const;
+	void UseLit();
+	void DrawSolidParts() const;
+	void DrawOpenParts() const;
 
 	StructureField field;
 	std::vector<const StructureChunk *> shown;
