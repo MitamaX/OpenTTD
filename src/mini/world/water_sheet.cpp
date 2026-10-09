@@ -13,6 +13,7 @@
 #include <algorithm>
 
 #include "../../map_func.h"
+#include "../map/tile_shapes.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
@@ -73,10 +74,6 @@ double WaterSheet::Level(double x, double y) const
 
 int WaterSheet::Divisions() const
 {
-	bool beside_fall = false;
-	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
-		TileIndexDiffC step = TileIndexDiffCByDiagDir(side);
-		beside_fall = beside_fall || RapidsFollowed(this->tx + step.x, this->ty + step.y).has_value();
-	}
+	bool beside_fall = AnySideTile(this->tx, this->ty, [](int nx, int ny) { return RapidsFollowed(nx, ny).has_value(); });
 	return this->fall.has_value() || beside_fall ? CHANNEL_DIVISIONS : 1;
 }

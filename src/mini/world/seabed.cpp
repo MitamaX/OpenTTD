@@ -159,11 +159,7 @@ static bool FallsOnto(int nx, int ny, int tx, int ty)
 bool IsRiverMouth(int tx, int ty)
 {
 	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Open || _world_tiles.WaterAt(TileXY(tx, ty)).sea == 0) return false;
-	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
-		TileIndexDiffC step = TileIndexDiffCByDiagDir(side);
-		if (FallsOnto(tx + step.x, ty + step.y, tx, ty)) return true;
-	}
-	return false;
+	return AnySideTile(tx, ty, [&](int nx, int ny) { return FallsOnto(nx, ny, tx, ty); });
 }
 
 static std::optional<TileIndex> RiverAlong(int tx, int ty)

@@ -55,6 +55,18 @@ Rect TilesNear(const Rect &area, int reach);
 /* The area grown just enough to take in a tile. */
 Rect TakingIn(const Rect &area, int tx, int ty);
 MapVector Outward(DiagDirection side);
+
+/* Whether any of the four tiles sharing a side with a tile passes a test. */
+template <typename Test>
+bool AnySideTile(int tx, int ty, Test test)
+{
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		MapVector out = Outward(side);
+		if (test(tx + static_cast<int>(out.x), ty + static_cast<int>(out.y))) return true;
+	}
+	return false;
+}
+
 std::optional<StepFace> StepFaceOf(int tx, int ty, DiagDirection side);
 
 WorldPoint Between(const WorldPoint &from, const WorldPoint &to, double share);
