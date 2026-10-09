@@ -305,7 +305,7 @@ static constexpr uint32_t UNDERLAY_TINT = 0xFF5A5652U;
 static constexpr float SCAFFOLD_NEAR = 0.01f;
 static constexpr float SCAFFOLD_FAR = 0.03f;
 static constexpr float SCAFFOLD_ABOVE = 0.04f;
-static constexpr uint32_t SCAFFOLD_TINT = 0xFFD2A95AU;
+static constexpr uint32_t SCAFFOLD_TINT = 0xFF9EA2A4U;
 
 static Axis LongAxis(const Plot &plot)
 {

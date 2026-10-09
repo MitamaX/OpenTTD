@@ -1,6 +1,9 @@
 const float TAU = 6.2831853;
 const float TEXELS = float(TEXELS_PER_TILE);
 const float PLINTH_HEIGHT = 0.016;
+const vec2 LATTICE_BAYS = vec2(5.0, 7.0);
+const float LATTICE_MEMBER = 0.1;
+const float LATTICE_BRACE = 0.07;
 const float COURSE_TILT = 0.2;
 const vec2 COURSE_SHADES = vec2(0.72, 1.06);
 const vec2 COURSE_LIGHT_EDGES = vec2(0.0, 0.4);
@@ -258,11 +261,13 @@ Clad Lightbox(vec2 p, vec3 tint)
 	return face;
 }
 
-/* The members of a braced lattice, as a share of the point they cover. */
+/* The members of a braced frame, as a share of the point they cover: uprights and ledgers in bays, every other bay braced across from corner to corner. */
 float LatticeCover(vec2 p)
 {
-	vec2 cell = p * 14.0;
-	return max(max(Lines(cell.x, 0.16), Lines(cell.y, 0.16)), max(Lines(cell.x + cell.y, 0.12), Lines(cell.x - cell.y, 0.12)));
+	vec2 cell = p * LATTICE_BAYS;
+	vec2 bay = floor(cell);
+	float braced = step(1.0, mod(bay.x + bay.y, 2.0));
+	return max(max(Lines(cell.x, LATTICE_MEMBER), Lines(cell.y, LATTICE_MEMBER)), Lines(cell.x - cell.y, LATTICE_BRACE) * braced);
 }
 
 /* The pickets of a fence and the two rails they are nailed to. */
