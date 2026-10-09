@@ -312,6 +312,12 @@ const vec3 SHUTTER_SLAT = vec3(0.62, 0.64, 0.66);
 const vec3 SHUTTER_GROOVE = vec3(0.50, 0.52, 0.54);
 const vec3 DOOR_PAINTS[5] = vec3[5](vec3(0.42, 0.12, 0.10), vec3(0.12, 0.28, 0.18), vec3(0.12, 0.20, 0.36), vec3(0.30, 0.20, 0.12), vec3(0.85, 0.84, 0.80));
 const vec3 FASCIA_PAINTS[4] = vec3[4](vec3(0.55, 0.12, 0.10), vec3(0.10, 0.24, 0.40), vec3(0.14, 0.32, 0.18), vec3(0.62, 0.48, 0.16));
+const float DRIP_REACH = 5.0;
+const float DRIP_SHADE = 0.86;
+const float DRIPS_PER_TEXEL = 0.5;
+const vec2 DRIP_EDGES = vec2(0.25, 0.85);
+const float DRIP_VARIETY = 0.8;
+const vec2 DRIP_WINDOW_SEED = vec2(7.0, 13.0);
 
 /* Where a point of a facade lies: the opening of its bay, the point measured from that opening's foot at its middle, and which window it is. */
 struct Bay {
@@ -387,6 +393,17 @@ Clad Filling(Bay bay, vec3 glass, uint seed, float pixel)
 	return clad;
 }
 
+float Drips(Bay bay, vec2 texel, uint grid)
+{
+	if (texel.y < FACADE_GROUND[grid] || bay.opening.kind == OPEN_NONE) return 1.0;
+	float below = mod(-bay.at.y, FACADE_STOREY[grid]);
+	float half_width = bay.opening.width * 0.5;
+	float under = 1.0 - smoothstep(half_width - 0.5, half_width + 0.5, abs(bay.at.x));
+	float runs = smoothstep(DRIP_EDGES.x, DRIP_EDGES.y, Noise(vec2(bay.at.x * DRIPS_PER_TEXEL, dot(vec2(bay.window), DRIP_WINDOW_SEED))));
+	float fade = 1.0 - smoothstep(0.0, DRIP_REACH * Varied(runs, DRIP_VARIETY), below);
+	return mix(1.0, DRIP_SHADE, under * runs * fade);
+}
+
 /* The windows, doors and frames of a facade over the wall it is cut into; seen from too far for them to show, the wall blends toward its windows' glass. */
 Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, vec3 glass, uint seed)
 {
@@ -394,7 +411,9 @@ Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, vec3 glass, uint see
 	float pixel = max(fwidth(texel.x), fwidth(texel.y));
 	Bay bay = BayAt(grid, texel, front);
 	Opening opening = bay.opening;
+	float detail = 1.0 - smoothstep(1.2, 2.6, pixel);
 	Clad clad = wall;
+	clad.albedo *= mix(1.0, Drips(bay, texel, grid), detail);
 
 	float fascia = FASCIA_ROWS[grid];
 	float ground = FACADE_GROUND[grid];
@@ -417,6 +436,5 @@ Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, vec3 glass, uint see
 	Opening upper = UPPER_OPENINGS[grid];
 	float open_share = upper.width * upper.height / (FACADE_PITCH[grid] * FACADE_STOREY[grid]);
 	Clad distant = Clad(mix(wall.albedo, glass * 0.6, open_share), vec2(0.0), mix(wall.roughness, 0.1, open_share), open_share * 0.7, wall.occlusion);
-	float detail = 1.0 - smoothstep(1.2, 2.6, pixel);
 	return Clad(mix(distant.albedo, clad.albedo, detail), clad.tilt * detail, mix(distant.roughness, clad.roughness, detail), mix(distant.glass, clad.glass, detail), clad.occlusion);
 }

@@ -27,8 +27,8 @@ inline constexpr float MAX_STRUCTURE_TILES = 3.0f;
 inline constexpr float TALLEST_BUILDING_TILES = 2.4f;
 inline constexpr float PARAPET_HEIGHT = 0.03f;
 inline constexpr uint8_t MAX_FOOTPRINT_TILES = 2;
-inline constexpr double TINT_JITTER_BASE = 0.94;
-inline constexpr double TINT_JITTER_SPAN = 0.12;
+inline constexpr double TINT_JITTER_BASE = 0.86;
+inline constexpr double TINT_JITTER_SPAN = 0.28;
 inline constexpr uint TINT_JITTER_BITS = 4;
 
 enum class Material : uint8_t {
