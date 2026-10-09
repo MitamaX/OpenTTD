@@ -507,11 +507,12 @@ vec2 DepthBehind(vec2 uv, vec3 sight, float surface)
 	return vec2(behind - surface, v_position.z - bed.z);
 }
 
-/* The level a tile's water stands at a point: down the plane of a river running down a slope, and level with its lowest corner elsewhere. */
+/* The level a tile's water stands at a point: down the plane of a river running down a slope or of a bank sloping beside it, and level with its lowest corner elsewhere. */
 float WaterLevelOn(ivec2 tile, vec2 f)
 {
 	Corners c = SurfaceOf(tile);
-	bool inclined = texelFetch(u_water, Clamped(tile), 0).a > HALF_TILE && min(c.north, c.south) != max(c.north, c.south);
+	vec4 water = texelFetch(u_water, Clamped(tile), 0);
+	bool inclined = (water.a > HALF_TILE || water.r <= 0.0) && c.north != c.south;
 	if (!inclined) return min(min(c.north, c.west), min(c.east, c.south));
 	return mix(mix(c.north, c.west, f.x), mix(c.east, c.south, f.x), f.y);
 }

@@ -25,6 +25,8 @@ private:
 		Plane,
 	};
 
+	static Shape ShapeOf(int tx, int ty);
+
 	int tx;
 	int ty;
 	SurfaceTexel surface;

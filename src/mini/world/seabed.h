@@ -10,6 +10,7 @@
 #ifndef MINI_WORLD_SEABED_H
 #define MINI_WORLD_SEABED_H
 
+#include <optional>
 #include <vector>
 
 #include "../../map_type.h"
@@ -38,7 +39,8 @@ bool IsRapids(int tx, int ty);
 MapVector Downhill(int tx, int ty);
 TileIndexDiffC FallStep(int tx, int ty);
 bool IsRiverMouth(int tx, int ty);
-/* A level dry tile with nothing on it beside a river at its own level, onto which the river's curved outline may reach; a sloping one would be cut down to the water in a terrace. */
+std::optional<TileIndex> RiverAlong(int tx, int ty);
+/* A dry tile with nothing on it beside a river whose ground lies just as its own, level or down the same slope, onto which the river's curved outline may reach. */
 bool IsRiverBank(int tx, int ty);
 /* A river or one of its bare banks, whose ground follows the river's outline. */
 bool IsRiverside(int tx, int ty);

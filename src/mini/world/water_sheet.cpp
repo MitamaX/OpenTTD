@@ -15,9 +15,17 @@
 
 #include "../../safeguards.h"
 
-WaterSheet::WaterSheet(int tx, int ty) :
-	tx(tx), ty(ty), surface(_world_tiles.SurfaceAt(TileXY(tx, ty))), low(SurfaceLevelOf(tx, ty)), shape(WaterFormOf(tx, ty) == WaterForm::Incline ? Shape::Plane : Shape::Level)
+WaterSheet::WaterSheet(int tx, int ty) : tx(tx), ty(ty), surface(_world_tiles.SurfaceAt(TileXY(tx, ty))), low(SurfaceLevelOf(tx, ty)), shape(ShapeOf(tx, ty))
 {
+}
+
+WaterSheet::Shape WaterSheet::ShapeOf(int tx, int ty)
+{
+	switch (WaterFormOf(tx, ty)) {
+		case WaterForm::Open:
+		case WaterForm::Shore: return Shape::Level;
+		default: return Shape::Plane;
+	}
 }
 
 double WaterSheet::Level(double x, double y) const

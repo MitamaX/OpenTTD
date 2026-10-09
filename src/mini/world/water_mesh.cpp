@@ -28,7 +28,7 @@ static void AddSheet(WaterMesh &mesh, int tx, int ty)
 	LayTileGrid(mesh, tx, ty, sheet.Divisions(), [&](int, int, double x, double y) { return Add(mesh, x, y, sheet.Level(x, y)); });
 }
 
-/* A river's bare banks carry its sheet on over their low ground, so the water's curved outline may reach onto them instead of stopping short along the river's tile edge. */
+/* A river's bare banks carry its sheet on over their ground, so the water's curved outline may reach onto them instead of stopping short along the river's tile edge. */
 static bool CarriesSheet(int tx, int ty)
 {
 	return WaterFormOf(tx, ty) != WaterForm::Dry || IsRiverBank(tx, ty);
