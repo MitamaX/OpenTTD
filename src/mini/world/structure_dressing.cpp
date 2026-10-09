@@ -33,10 +33,15 @@ static constexpr double POT_HEIGHT = 0.016;
 static constexpr uint32_t POT_TINT = 0xFFB0603EU;
 static constexpr uint32_t CAP_TINT = 0xFF9C9890U;
 
-static constexpr double FAN_SHARE = 0.32;
+static constexpr double FAN_FILL = 0.64;
+static constexpr double FAN_INNER = 0.8;
+static constexpr double SHROUD_HEIGHT = 0.005;
 static constexpr double FAN_HEIGHT = 0.006;
+static constexpr double HUB_SHARE = 0.22;
+static constexpr double HUB_HEIGHT = 0.007;
 static constexpr double WIDE_UNIT_SIDE = 0.15;
 static constexpr double FAN_SHADE = 0.42;
+static constexpr double RIM_SHADE = 0.85;
 
 static constexpr double TANK_BODY_SHARE = 0.65;
 static constexpr double TANK_LEG_SIDE = 0.008;
@@ -140,6 +145,10 @@ private:
 	double CentreY() const { return (this->plan.y0 + this->plan.y1) / 2.0; }
 	double HalfX() const { return (this->plan.x1 - this->plan.x0) / 2.0; }
 	double HalfY() const { return (this->plan.y1 - this->plan.y0) / 2.0; }
+	double ShorterHalf() const { return std::min(this->HalfX(), this->HalfY()); }
+	double LongerHalf() const { return std::max(this->HalfX(), this->HalfY()); }
+	double SpotReach(bool pair) const { return this->LongerHalf() / (pair ? 2.0 : 1.0); }
+	Coat MetalShade(double shade) const { return {Material::Metal, WindowGrid::None, {}, ScaledRgb(this->solid.wall_tint, shade)}; }
 
 	/* A part's faces each keep their own normal; its pattern runs across upright faces and over the plan on the others. */
 	void Add(ModelMesh part, const Coat &coat)
@@ -176,7 +185,7 @@ private:
 	void OnTop(bool pair, Visit visit) const
 	{
 		bool along_x = this->HalfX() >= this->HalfY();
-		double spread = pair ? std::max(this->HalfX(), this->HalfY()) / 2.0 : 0.0;
+		double spread = pair ? this->SpotReach(pair) : 0.0;
 		for (double offset : {-spread, spread}) {
 			visit(this->CentreX() + (along_x ? offset : 0.0), this->CentreY() + (along_x ? 0.0 : offset));
 			if (!pair) return;
@@ -194,16 +203,19 @@ private:
 
 	void DressRooftopUnit()
 	{
-		Coat fan = {Material::Metal, WindowGrid::None, {}, ScaledRgb(this->solid.wall_tint, FAN_SHADE)};
-		double radius = FAN_SHARE * std::min(this->HalfX(), this->HalfY()) * 2.0;
-		bool wide = std::max(this->HalfX(), this->HalfY()) * 2.0 >= WIDE_UNIT_SIDE;
-		this->OnTop(wide, [&](double x, double y) { this->AddUpright(Prism(PROP_SIDES * 2, radius, FAN_HEIGHT), x, y, this->solid.Top(), fan); });
+		bool wide = this->LongerHalf() * 2.0 >= WIDE_UNIT_SIDE;
+		double radius = FAN_FILL * std::min(this->ShorterHalf(), this->SpotReach(wide));
+		this->OnTop(wide, [&](double x, double y) {
+			this->AddUpright(Prism(PROP_SIDES * 2, radius, SHROUD_HEIGHT), x, y, this->solid.Top(), this->MetalShade(RIM_SHADE));
+			this->AddUpright(Prism(PROP_SIDES * 2, radius * FAN_INNER, FAN_HEIGHT), x, y, this->solid.Top(), this->MetalShade(FAN_SHADE));
+			this->AddUpright(Prism(PROP_SIDES, radius * HUB_SHARE, HUB_HEIGHT), x, y, this->solid.Top(), this->MetalShade(RIM_SHADE));
+		});
 	}
 
 	/* A timber tank on legs with a pointed lid, as town roofs carry them. */
 	void DressWaterTank()
 	{
-		double radius = std::min(this->HalfX(), this->HalfY());
+		double radius = this->ShorterHalf();
 		double legs = this->solid.wall * (1.0 - TANK_BODY_SHARE);
 		Coat wood = {Material::Planks, WindowGrid::None, {}, TANK_WOOD};
 		Coat steel = {Material::Metal, WindowGrid::None, {}, Darken(this->solid.wall_tint)};
@@ -328,9 +340,8 @@ private:
 	void DressDrum()
 	{
 		if (this->solid.kind != SolidKind::Cylinder || this->solid.wall_material != Material::Metal || this->solid.wall < DRUM_MIN_WALL || this->solid.taper != 0.0f) return;
-		double radius = std::min(this->HalfX(), this->HalfY());
-		Coat rim = {Material::Metal, WindowGrid::None, {}, ScaledRgb(this->solid.wall_tint, 0.85)};
-		this->AddUpright(Prism(DRUM_SIDES, radius * RIM_REACH, RIM_HEIGHT), this->CentreX(), this->CentreY(), this->Eave() - RIM_HEIGHT, rim);
+		double radius = this->ShorterHalf();
+		this->AddUpright(Prism(DRUM_SIDES, radius * RIM_REACH, RIM_HEIGHT), this->CentreX(), this->CentreY(), this->Eave() - RIM_HEIGHT, this->MetalShade(RIM_SHADE));
 		double x = this->CentreX() + radius;
 		this->AddBox({x, this->CentreY() - LADDER_WIDTH / 2.0, this->solid.base}, {x + LADDER_DEPTH, this->CentreY() + LADDER_WIDTH / 2.0, this->Eave()}, {Material::Metal, WindowGrid::None, {}, Darken(this->solid.wall_tint)});
 	}
