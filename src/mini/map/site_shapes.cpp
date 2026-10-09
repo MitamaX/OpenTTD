@@ -78,6 +78,19 @@ static constexpr float ROOFTOP_MAX_HEIGHT = 0.08f;
 static constexpr uint32_t ROOFTOP_TINT = 0xFF8E9398U;
 static constexpr uint KIT_TINT_FIRST = KIT_UNIT_FIRST + ROOFTOP_SLOTS * KIT_UNIT_BITS;
 static constexpr uint KIT_TINT_BITS = 3;
+static constexpr uint KIT_KIND_FIRST = KIT_TINT_FIRST + KIT_TINT_BITS;
+static constexpr uint ROOFTOP_TINT_SHADES = 64;
+static constexpr float STAIR_HEAD_HEIGHT = 0.13f;
+static constexpr float STAIR_HEAD_MIN_SIDE = 0.14f;
+static constexpr float VENT_RADIUS = 0.018f;
+static constexpr float VENT_SPACING = 0.05f;
+static constexpr float VENT_MIN_HEIGHT = 0.08f;
+static constexpr float VENT_MAX_HEIGHT = 0.15f;
+static constexpr float SOLAR_FOOT = 0.012f;
+static constexpr float SOLAR_RISE = 0.04f;
+static constexpr float SOLAR_DEPTH = 0.12f;
+static constexpr uint32_t SOLAR_FRAME = 0xFFB9BDC2U;
+static constexpr uint32_t SOLAR_CELLS = 0xFF1C2C4AU;
 
 static constexpr std::array<float, 2> BOTH_SIDES = {-1.0f, 1.0f};
 static constexpr float HELIPAD_MARGIN = 0.07f;
@@ -572,14 +585,49 @@ static float SlotCentre(const Plot &deck, float slot, uint index)
 	return deck.x0 + slot * index + slot / 2.0f;
 }
 
-/* Toyland's roofs carry their units in one of its sweets' colours. */
+/* Toyland's roofs carry their units in one of its sweets' colours, and other roofs in a steel grey of their own. */
 static uint32_t RooftopTint(uint32_t kit)
 {
-	if (_settings_game.game_creation.landscape != LandscapeType::Toyland) return ROOFTOP_TINT;
-	return SwatchTint(Swatch::Candy, SeedBits(kit, KIT_TINT_FIRST, KIT_TINT_BITS));
+	uint32_t bits = SeedBits(kit, KIT_TINT_FIRST, KIT_TINT_BITS);
+	if (_settings_game.game_creation.landscape == LandscapeType::Toyland) return SwatchTint(Swatch::Candy, bits);
+	return Mix(ROOFTOP_TINT, COL_STEEL, bits * ROOFTOP_TINT_SHADES / (1U << KIT_TINT_BITS));
 }
 
-/* Units stand in their own slot across the roof, so none overlaps another. */
+enum class RooftopKind : uint8_t { Unit, StairHead, Vents, Solar };
+
+/* Where a piece of a roof's kit stands, how wide and how tall, and the level of the roof under it. */
+struct KitSpot {
+	float cx;
+	float cy;
+	float side;
+	float height;
+	float level;
+};
+
+static void AddUnit(BuildingForm &form, const KitSpot &spot, uint32_t tint)
+{
+	form.Add(Part::Square(spot.cx, spot.cy, spot.side).On(spot.level).Fixed(Fixture::RooftopUnit).Height(spot.height).Clad(Material::Metal, tint));
+}
+
+static void AddStairHead(BuildingForm &form, const Solid &roof, const KitSpot &spot)
+{
+	float side = std::max(spot.side, STAIR_HEAD_MIN_SIDE);
+	form.Add(Part::Square(spot.cx, spot.cy, side).On(spot.level).Height(STAIR_HEAD_HEIGHT).Clad(roof.wall_material, roof.wall_tint).Covered(roof.roof_material, roof.roof_tint));
+}
+
+static void AddVents(BuildingForm &form, const KitSpot &spot, uint32_t tint, float share)
+{
+	float height = std::lerp(VENT_MIN_HEIGHT, VENT_MAX_HEIGHT, share);
+	for (float side : BOTH_SIDES) form.Add(Part::Disc(spot.cx + side * VENT_SPACING / 2.0f, spot.cy, VENT_RADIUS).On(spot.level).Height(height).Clad(Material::Metal, Darken(tint)));
+}
+
+static void AddSolarPanel(BuildingForm &form, const KitSpot &spot)
+{
+	Plot panel = Plot::Around(spot.cx, spot.cy, spot.side / 2.0f, SOLAR_DEPTH / 2.0f);
+	form.Add(Part::Box(panel).On(spot.level).Height(SOLAR_FOOT).Clad(Material::Metal, SOLAR_FRAME).Roof(RoofShape::Shed, SOLAR_RISE).HighSide(DIAGDIR_NW).Covered(Material::GlassRoof, SOLAR_FRAME).Glazed(SOLAR_CELLS));
+}
+
+/* Each slot across the roof holds a unit of the kit, so none overlaps another: a fanned unit, a stair head, a pair of vent stacks or a solar panel. */
 void AddRooftopKit(BuildingForm &form, const Solid &roof, uint32_t seed)
 {
 	uint32_t kit = SubSeed(seed, KIT_SALT);
@@ -591,9 +639,15 @@ void AddRooftopKit(BuildingForm &form, const Solid &roof, uint32_t seed)
 	for (uint unit = 0; unit < count; unit++) {
 		uint first = KIT_UNIT_FIRST + unit * KIT_UNIT_BITS;
 		float side = std::min(std::lerp(ROOFTOP_MIN_SIDE, ROOFTOP_MAX_SIDE, SeedShare(kit, first, KIT_FIELD_BITS)), slot);
-		float height = std::lerp(ROOFTOP_MIN_HEIGHT, ROOFTOP_MAX_HEIGHT, SeedShare(kit, first + KIT_FIELD_BITS, KIT_FIELD_BITS));
+		float height_share = SeedShare(kit, first + KIT_FIELD_BITS, KIT_FIELD_BITS);
 		float cy = std::lerp(deck.y0 + side / 2.0f, deck.y1 - side / 2.0f, SeedShare(kit, first + 2 * KIT_FIELD_BITS, KIT_FIELD_BITS));
-		form.Add(Part::Square(SlotCentre(deck, slot, (unit + shift) % ROOFTOP_SLOTS), cy, side).On(LevelAbove(roof)).Fixed(Fixture::RooftopUnit).Height(height).Clad(Material::Metal, tint));
+		KitSpot spot = {SlotCentre(deck, slot, (unit + shift) % ROOFTOP_SLOTS), cy, side, std::lerp(ROOFTOP_MIN_HEIGHT, ROOFTOP_MAX_HEIGHT, height_share), LevelAbove(roof)};
+		switch (static_cast<RooftopKind>(SeedBits(kit, KIT_KIND_FIRST + unit * KIT_FIELD_BITS, KIT_FIELD_BITS))) {
+			case RooftopKind::Unit: AddUnit(form, spot, tint); break;
+			case RooftopKind::StairHead: AddStairHead(form, roof, spot); break;
+			case RooftopKind::Vents: AddVents(form, spot, tint, height_share); break;
+			case RooftopKind::Solar: AddSolarPanel(form, spot); break;
+		}
 	}
 }
 
