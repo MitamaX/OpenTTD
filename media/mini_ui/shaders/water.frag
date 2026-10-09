@@ -302,7 +302,7 @@ vec4 SheetField(vec2 p, float level)
 	return Walled(field, p);
 }
 
-float PastEdge(vec2 p)
+float DistancePastEdge(vec2 p)
 {
 	return distance(p, clamp(p, vec2(0.0), MapSize()));
 }
@@ -310,7 +310,7 @@ float PastEdge(vec2 p)
 /* Past the map's edge lies open sea. */
 vec4 FieldAt(vec2 p, float level)
 {
-	return PastEdge(p) > 0.0 ? OPEN_SEA : SheetField(p, level);
+	return DistancePastEdge(p) > 0.0 ? OPEN_SEA : SheetField(p, level);
 }
 
 Body BodyOf(vec4 field)
@@ -340,7 +340,7 @@ float Outline(vec4 field, Body body)
 vec2 FlowAt(vec2 p)
 {
 	vec2 flow = (textureLod(u_flow, p / MapSize(), 0.0).rg * 255.0 - FLOW_TEXEL_STILL) / FLOW_TEXEL_SPAN;
-	return flow * max(1.0 - PastEdge(p) / PAST_EDGE_FLOW_TILES, 0.0);
+	return flow * max(1.0 - DistancePastEdge(p) / PAST_EDGE_FLOW_TILES, 0.0);
 }
 
 /* Foam gathers in a band along the shore, thickest at the water's edge, broken into lace and drifting with the swell. */
@@ -561,7 +561,7 @@ float Enclosed(vec2 p)
  * Past the map's edge it deepens on with the distance out from the edge. */
 float ShelfPath(vec2 p, vec3 sight)
 {
-	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES + PastEdge(p);
+	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES + DistancePastEdge(p);
 	float depth = SHELF_DEPTH * smoothstep(0.0, SHELF_REACH, offshore);
 	return depth / max(-sight.z, GRAZING_SIGHT);
 }

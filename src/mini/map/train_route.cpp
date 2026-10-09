@@ -20,7 +20,7 @@
 
 /* A train takes in a tile the piece picked from among those it is known to take there, or else from among all. */
 template <typename Pick>
-static auto Taking(const TileCoord &tile, const TrackTaken &taken, Pick pick)
+static auto PickAmongTaken(const TileCoord &tile, const TrackTaken &taken, Pick pick)
 {
 	using Picked = decltype(pick(TRACK_BIT_ALL));
 	if (!OnMap(tile.first, tile.second)) return Picked{};
@@ -31,13 +31,13 @@ static auto Taking(const TileCoord &tile, const TrackTaken &taken, Pick pick)
 /* A train stands on the nearest piece under a point. */
 static std::optional<Track> StandingOn(const TileCoord &tile, const MapVector &point, const TrackTaken &taken)
 {
-	return Taking(tile, taken, [&](TrackBits among) { return TrackUnder(tile, point, among); });
+	return PickAmongTaken(tile, taken, [&](TrackBits among) { return TrackUnder(tile, point, among); });
 }
 
 /* A train runs on into a tile along the straightest piece. */
 static std::optional<Piece> OnwardAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, const TrackTaken &taken)
 {
-	return Taking(tile, taken, [&](TrackBits among) { return StraightestAt(tile, joint, heading, among); });
+	return PickAmongTaken(tile, taken, [&](TrackBits among) { return StraightestAt(tile, joint, heading, among); });
 }
 
 MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, const TrackTaken &taken)

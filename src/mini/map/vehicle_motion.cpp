@@ -108,7 +108,7 @@ WorldPoint VehicleMotion::Gliding(const Vehicle *v)
 	bool turned_about = TurnedAbout(v);
 	bool continues = e.seen + 1 >= this->frames && !e.trail.Empty() && e.turned_about == turned_about && Glides(e.trail.Latest(), spot);
 	e.trail.Note(spot, continues);
-	if (v->type == VEH_TRAIN) e.Pass({v->tile, Train::From(v)->track & TRACK_BIT_MASK}, continues);
+	if (v->type == VEH_TRAIN) e.NotePassage({v->tile, Train::From(v)->track & TRACK_BIT_MASK}, continues);
 	e.seen = this->frames;
 	e.turned_about = turned_about;
 
@@ -205,7 +205,7 @@ bool VehicleMotion::Glides(const TickTrail::Spot &from, const TickTrail::Spot &t
 }
 
 /* A unit keeps the tile it stood on before the one it stands on, as the game forgets which pieces a train took there once it is gone. */
-void VehicleMotion::Snapshot::Pass(const Passage &now, bool continues)
+void VehicleMotion::Snapshot::NotePassage(const Passage &now, bool continues)
 {
 	if (!continues) {
 		this->left = {};

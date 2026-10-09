@@ -57,7 +57,7 @@ private:
 		Passage on;
 		Passage left;
 
-		void Pass(const Passage &now, bool continues);
+		void NotePassage(const Passage &now, bool continues);
 	};
 
 	static TickTrail::Spot SpotOf(const Vehicle *v, uint64_t tick);

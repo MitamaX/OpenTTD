@@ -70,8 +70,7 @@ private:
 	size_t stride = 0;
 	std::vector<std::byte> staged;
 	std::array<Cascade, CASCADES> drawn{};
-	/* Whether the depth layers still hold what each cascade was last drawn with. */
-	bool kept = false;
+	bool layers_hold_drawn = false;
 	uint frame = 0;
 };
 

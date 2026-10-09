@@ -189,7 +189,7 @@ std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneVi
 /* A further cascade is drawn on its turn, and between turns as well once its slice of the view has moved out of the box it was last drawn over or the sun has turned too far from where it was drawn by. */
 bool ShadowMap::Due(int cascade, const Cascade &fitted) const
 {
-	if (cascade < FRESH_CASCADES || !this->kept) return true;
+	if (cascade < FRESH_CASCADES || !this->layers_hold_drawn) return true;
 	if (static_cast<int>(this->frame % TURNS) == cascade - FRESH_CASCADES) return true;
 	const Cascade &drawn = this->drawn[cascade];
 	return !drawn.Faces(fitted.sun) || !drawn.Holds(fitted);
@@ -256,7 +256,7 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 			this->drawn[index].far = fitted[index].far;
 		}
 	}
-	this->kept = true;
+	this->layers_hold_drawn = true;
 	this->Upload(camera);
 
 	this->BeginCasting();
@@ -282,7 +282,7 @@ void ShadowMap::Warm(std::span<const std::unique_ptr<WorldPass>> passes)
 	this->BeginCasting();
 	for (const auto &pass : passes) pass->WarmCast();
 	EndCasting();
-	this->kept = false;
+	this->layers_hold_drawn = false;
 }
 
 void ShadowMap::Bind() const
