@@ -88,14 +88,6 @@ static double LevelOf(TileIndex tile)
 	return SurfaceLevelOf(TileX(tile), TileY(tile));
 }
 
-static MapVector Downhill(TileIndex tile)
-{
-	SurfaceTexel surface = _world_tiles.SurfaceAt(tile);
-	double rise_x = (surface.west - surface.north) + (surface.south - surface.east);
-	double rise_y = (surface.east - surface.north) + (surface.south - surface.west);
-	return Unit({-rise_x, -rise_y});
-}
-
 /* The share of full pace water keeps where it spreads wide. */
 static double Narrowing(int tx, int ty)
 {
@@ -230,7 +222,7 @@ MapVector Drainage::Course(TileIndex tile) const
 MapVector Drainage::Flow(TileIndex tile) const
 {
 	bool sloping = WaterFormOf(TileX(tile), TileY(tile)) == WaterForm::Incline;
-	MapVector course = sloping ? Downhill(tile) : this->Course(tile);
+	MapVector course = sloping ? Downhill(TileX(tile), TileY(tile)) : this->Course(tile);
 	return course * PaceOf(TileX(tile), TileY(tile), sloping);
 }
 

@@ -209,7 +209,7 @@ static void AddBasin(TerrainMesh &mesh, const Seabed &bed, const std::array<uint
 		int half_x = 2 * tx + side.half_x;
 		int half_y = 2 * ty + side.half_y;
 		double ends = (mesh.vertices[corners[side.from]].level + mesh.vertices[corners[side.to]].level) * 0.5;
-		bool sunk = SharesBasin(tx, ty, tx + side.across_x, ty + side.across_y) && !IsChannel(tx + side.across_x, ty + side.across_y);
+		bool sunk = SharesBasin(tx, ty, tx + side.across_x, ty + side.across_y) && !IsRiverside(tx + side.across_x, ty + side.across_y);
 		double level = sunk ? bed.Level(half_x, half_y) : ends;
 		uint32_t middle = at(half_x, half_y, level);
 		mesh.Triangle(corners[side.from], middle, centre);

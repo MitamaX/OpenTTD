@@ -135,6 +135,37 @@ bool IsRapids(int tx, int ty)
 	return RunsAsRiver(tx, ty, WaterForm::Incline);
 }
 
+MapVector Downhill(int tx, int ty)
+{
+	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
+	double rise_x = (surface.west - surface.north) + (surface.south - surface.east);
+	double rise_y = (surface.east - surface.north) + (surface.south - surface.west);
+	return Unit({-rise_x, -rise_y});
+}
+
+TileIndexDiffC FallStep(int tx, int ty)
+{
+	MapVector down = Downhill(tx, ty);
+	return {static_cast<int16_t>(std::lround(down.x)), static_cast<int16_t>(std::lround(down.y))};
+}
+
+static bool FallsOnto(int nx, int ny, int tx, int ty)
+{
+	if (!IsRapids(nx, ny)) return false;
+	TileIndexDiffC fall = FallStep(nx, ny);
+	return nx + fall.x == tx && ny + fall.y == ty;
+}
+
+bool IsRiverMouth(int tx, int ty)
+{
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Open || _world_tiles.WaterAt(TileXY(tx, ty)).sea == 0) return false;
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		TileIndexDiffC step = TileIndexDiffCByDiagDir(side);
+		if (FallsOnto(tx + step.x, ty + step.y, tx, ty)) return true;
+	}
+	return false;
+}
+
 bool IsRiverBank(int tx, int ty)
 {
 	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Dry) return false;
@@ -154,7 +185,7 @@ bool IsRiverBank(int tx, int ty)
 
 bool IsRiverside(int tx, int ty)
 {
-	return IsChannel(tx, ty) || IsRapids(tx, ty) || IsRiverBank(tx, ty);
+	return IsChannel(tx, ty) || IsRapids(tx, ty) || IsRiverMouth(tx, ty) || IsRiverBank(tx, ty);
 }
 
 static double CornerBedLevel(int cx, int cy)
