@@ -21,7 +21,7 @@
 #include "../../safeguards.h"
 
 static constexpr double TEXEL_SCALE = 255.0;
-static constexpr double MIN_SPREAD = 1e-4;
+static constexpr double LEAST_WATER = 1e-4;
 
 /* The shaders' lattice hash, bit for bit. */
 static float LatticeHash(int x, int y)
@@ -137,5 +137,5 @@ double SheetWater(double x, double y, double level)
 	for (int j = 0; j < 4; j++) {
 		for (int i = 0; i < 4; i++) field.Add(SheetTexel(static_cast<int>(cell_x) + i - 1, static_cast<int>(cell_y) + j - 1, level), wx[i] * wy[j]);
 	}
-	return field.level - BRIM_PULL * field.brim * field.pooled / std::max(field.water, MIN_SPREAD);
+	return field.level - BRIM_PULL * field.brim * field.pooled / std::max(field.water, LEAST_WATER);
 }
