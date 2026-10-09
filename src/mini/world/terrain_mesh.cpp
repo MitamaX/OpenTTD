@@ -47,7 +47,7 @@ static constexpr double WAYSIDE_EARTH_BANK_RUN = 0.2;
 static constexpr int EARTH_BANK_ROWS = 5;
 /* Earth stands no steeper than this, in tile widths of fall for each of run; a way banked up any steeper over a way below stands on a retaining wall. */
 static constexpr double STEEPEST_EARTH = 1.6;
-static constexpr int RAMP_BANK_ROWS = 4;
+static constexpr int RAMP_BANK_ROWS = 12;
 static constexpr double RAMP_BANK_RUN = 1.2;
 static constexpr double GROUND_PROBE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
@@ -509,9 +509,17 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, int tx, int ty)
 	CloseSeaBankCorners(mesh, bed, sea_corners);
 }
 
+/* The ground under a point, down to the bed where water lies over it. */
+static double BedUnder(double x, double y)
+{
+	int tx = static_cast<int>(std::floor(x));
+	int ty = static_cast<int>(std::floor(y));
+	return OnMap(tx, ty) ? BedLevel(tx, ty, x, y) : GroundLevel(x, y);
+}
+
 static WorldPoint Grounded(const WorldPoint &at)
 {
-	return {at.x, at.y, GroundLevel(at.x, at.y) - BANK_FOOT_DIP};
+	return {at.x, at.y, BedUnder(at.x, at.y) - BANK_FOOT_DIP};
 }
 
 /* A stone face from a line of points down to the ground under them, facing out one way. */
@@ -527,7 +535,7 @@ static void AddMasonry(TerrainMesh &mesh, std::span<const WorldPoint> line, cons
 	}
 }
 
-/* A bridge head's ramp climbs on a bank of the ground's own earth, grading out over the ground on either side, and meets the span at a stone abutment whose wing walls close the bank's end. */
+/* A bridge head's ramp climbs on a bank of the ground's own earth, grading out over the ground on either side and down to the bed where it runs out into water, and meets the span at a stone abutment whose wing walls close the bank's end. */
 static void AddRampBank(TerrainMesh &mesh, int tx, int ty)
 {
 	TileIndex head = TileXY(tx, ty);
@@ -542,7 +550,7 @@ static void AddRampBank(TerrainMesh &mesh, int tx, int ty)
 		MapVector at = run.At(share, side * DECK_HALF);
 		return WorldPoint{at.x, at.y, footing(at.x, at.y) - crown};
 	};
-	auto ground_under = [](double x, double y, double) { return GroundLevel(x, y); };
+	auto ground_under = [](double x, double y, double) { return BedUnder(x, y); };
 
 	std::vector<WorldPoint> abutment;
 	for (double side : {-1.0, 1.0}) {
