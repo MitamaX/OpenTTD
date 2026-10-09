@@ -3,9 +3,11 @@ uniform vec2 u_fade;
 in vec3 v_position;
 in vec3 v_normal;
 in vec4 v_colour;
-in vec4 v_glass;
+in vec3 v_film;
+in vec3 v_transmission;
 in vec2 v_pattern;
 flat in uvec4 v_surface;
+flat in uint v_seed;
 
 out vec4 frag_colour;
 
@@ -21,11 +23,8 @@ const vec2 SWEPT_EDGES = vec2(0.6, 0.85);
 const float SWEPT_THINNING = 0.6;
 const float SNOW_RELIEF = 0.6;
 const vec2 RELIEF_SPAN = vec2(0.6, 1.1);
-const float SEED_SCALE = 255.0;
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
-const float FILM_TINT = 0.35;
-const float COATED_FILM_TINT = 0.5;
 
 bool Has(uint flag)
 {
@@ -34,10 +33,7 @@ bool Has(uint flag)
 
 Pane PaneOf(vec3 room, float lamp, uint material)
 {
-	bool coated = material == CLAD_GLASS;
-	vec3 tint = Linear(v_glass.rgb);
-	vec3 film = mix(vec3(1.0), tint / max(Luminance(tint), MIN_SPREAD), coated ? COATED_FILM_TINT : FILM_TINT);
-	return Pane(room, film, coated ? GLASS_REFLECTANCE : PANE_REFLECTANCE, lamp);
+	return Pane(room * v_transmission, v_film, material == CLAD_GLASS ? GLASS_REFLECTANCE : PANE_REFLECTANCE, lamp);
 }
 
 /* A face's axes: across it, to the right as seen from outside, up it, and out of it. */
@@ -75,7 +71,7 @@ Clad CladdingSeen(uint material, vec3 view, mat3 frame)
 	clad.albedo *= Plinth(material, v_pattern, 1.0 - abs(frame[2].z));
 	if (!facade) return clad;
 	Outlook outlook = Outlook(InTexels(view * frame), InTexels(SunDirection() * frame));
-	return Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), uint(round(v_glass.a * SEED_SCALE)), outlook);
+	return Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_seed, outlook);
 }
 
 /* Buildings fade out where they grow too small to show, dithered; open claddings show only what they are made of, and glass mirrors the sky.

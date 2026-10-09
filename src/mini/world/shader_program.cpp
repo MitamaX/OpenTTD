@@ -168,6 +168,7 @@ static std::string ShaderHeader()
 	DefineFloat(header, "TREE_LEAN", TREE_LEAN);
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
 	DefineTones(header, "FRAME_TONES", SwatchTints(Swatch::Frame));
+	DefineTones(header, "MULLION_TONES", SwatchTints(Swatch::Mullion));
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
 	DefineTone(header, "DISTANT_ROAD", COL_ASPHALT);

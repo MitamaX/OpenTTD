@@ -17,7 +17,6 @@ const vec4 RESPONSE_FIT_SLOPE = vec4(-1.0, -0.0275, -0.572, 0.022);
 const vec4 RESPONSE_FIT_BASE = vec4(1.0, 0.0425, 1.04, -0.04);
 const float RESPONSE_FIT_GRAZING = 1.04;
 const float RESPONSE_FIT_FALLOFF = 9.28;
-const float GAMMA = 2.2;
 const float GLOW_FOCUS_POWER = 4.0;
 
 struct Coat {
@@ -31,12 +30,6 @@ struct Pane {
 	float reflectance;
 	float lamp;
 };
-
-/* Colours picked on screen to the light they reflect. */
-vec3 Linear(vec3 display)
-{
-	return pow(max(display, 0.0), vec3(GAMMA));
-}
 
 float Fresnel(float cosine, float reflectance)
 {

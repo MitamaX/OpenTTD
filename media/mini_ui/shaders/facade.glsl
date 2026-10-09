@@ -35,9 +35,9 @@ const Opening SHOP_DOOR = Opening(OPEN_GLASS_DOOR, 4.0, 9.0, 0.0, MUNTIN_NONE, f
 const Opening OFFICE_RIBBON = Opening(OPEN_WINDOW, 7.0, 3.0, 3.0, MUNTIN_NONE, false);
 const Opening OFFICE_LOBBY = Opening(OPEN_WINDOW, 7.0, 8.0, 2.0, MUNTIN_TRANSOM, false);
 const Opening OFFICE_ENTRANCE = Opening(OPEN_GLASS_DOOR, 7.0, 10.0, 0.0, MUNTIN_MULLION, false);
-const Opening CURTAIN_PANEL = Opening(OPEN_WINDOW, 7.0, 6.0, 1.0, MUNTIN_NONE, false);
-const Opening CURTAIN_LOBBY = Opening(OPEN_WINDOW, 7.0, 10.0, 1.0, MUNTIN_TRANSOM, false);
-const Opening CURTAIN_ENTRANCE = Opening(OPEN_GLASS_DOOR, 7.0, 11.0, 0.0, MUNTIN_MULLION, false);
+const Opening CURTAIN_PANEL = Opening(OPEN_WINDOW, 7.4, 6.0, 1.0, MUNTIN_NONE, false);
+const Opening CURTAIN_LOBBY = Opening(OPEN_WINDOW, 7.4, 10.0, 1.0, MUNTIN_TRANSOM, false);
+const Opening CURTAIN_ENTRANCE = Opening(OPEN_GLASS_DOOR, 7.4, 11.0, 0.0, MUNTIN_MULLION, false);
 const Opening ARCHED_WINDOW = Opening(OPEN_WINDOW, 6.0, 10.0, 3.0, MUNTIN_SASH, true);
 const Opening ARCHED_DOOR = Opening(OPEN_DOOR, 8.0, 13.0, 0.0, MUNTIN_MULLION, true);
 const Opening FACTORY_WINDOW = Opening(OPEN_WINDOW, 11.0, 7.0, 5.0, MUNTIN_GRID, false);
@@ -51,11 +51,12 @@ const Opening ENTRANCES[10] = Opening[10](NO_OPENING, COTTAGE_DOOR, TERRACE_DOOR
 const float FASCIA_ROWS[10] = float[10](0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
 const vec3 FRAME_PAINTS[] = FRAME_TONES;
+const vec3 MULLION_PAINTS[] = MULLION_TONES;
 const vec3 SILL_STONE = vec3(0.80, 0.78, 0.74);
 const float SURROUND_SHARE = 0.55;
 const float SURROUND_WIDTH = 1.0;
 const float SURROUND_BEVEL = 0.5;
-const float MULLION_WIDTH = 0.4;
+const float MULLION_WIDTH = 0.3;
 const float SASH_WIDTH = 0.4;
 const float SHOPFRONT_RIM_WIDTH = 0.6;
 const float SILL_HEIGHT = 1.0;
@@ -64,10 +65,16 @@ const float SILL_LEDGE_TILT = 1.2;
 const float SILL_PROJECTION = 0.8;
 const float UNDER_SILL_OPENNESS = 0.8;
 const vec3 SHOPFRONT_FRAME = vec3(0.22);
-const vec3 SPANDREL_BACKING = vec3(0.16, 0.17, 0.18);
+const vec3 SPANDREL_BACKING = vec3(0.34, 0.35, 0.36);
 const vec3 SHUTTER_SLAT = vec3(0.62, 0.64, 0.66);
 const vec3 SHUTTER_GROOVE = vec3(0.50, 0.52, 0.54);
 const float SLATS_PER_TEXEL = 0.5;
+const float SHUTTER_HOOD_SHADE = 0.8;
+const float DOOR_PANEL_SHADE = 0.7;
+const float PAINT_ROUGHNESS = 0.6;
+const float FRAME_ROUGHNESS = 0.5;
+const float SHUTTER_ROUGHNESS = 0.45;
+const float STONE_ROUGHNESS = 0.7;
 const vec3 DOOR_PAINTS[5] = vec3[5](vec3(0.42, 0.12, 0.10), vec3(0.12, 0.28, 0.18), vec3(0.12, 0.20, 0.36), vec3(0.30, 0.20, 0.12), vec3(0.85, 0.84, 0.80));
 const vec3 FASCIA_PAINTS[4] = vec3[4](vec3(0.55, 0.12, 0.10), vec3(0.10, 0.24, 0.40), vec3(0.14, 0.32, 0.18), vec3(0.62, 0.48, 0.16));
 const float DRIP_REACH = 5.0;
@@ -295,9 +302,15 @@ bool HoldsHomes(uint grid)
 	return grid == WINDOWS_COTTAGE || grid == WINDOWS_TERRACE || grid == WINDOWS_APARTMENT;
 }
 
-vec3 FramePaint(uint seed)
+vec3 FramePaint(uint grid, uint seed)
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? TOY_FRAME : FRAME_PAINTS[seed % uint(FRAME_PAINTS.length())];
+	if (Landscape() == LANDSCAPE_TOYLAND) return TOY_FRAME;
+	return Mullioned(grid) ? MULLION_PAINTS[seed % uint(MULLION_PAINTS.length())] : FRAME_PAINTS[seed % uint(FRAME_PAINTS.length())];
+}
+
+Clad FrameOf(uint grid, uint seed)
+{
+	return Matte(FramePaint(grid, seed), FRAME_ROUGHNESS);
 }
 
 float LampShare(float share)
@@ -394,13 +407,14 @@ Clad Filling(Bay bay, uint grid, uint seed, Outlook outlook, float pixel)
 	Opening opening = bay.opening;
 	vec2 at = bay.at;
 	if (opening.kind == OPEN_DOOR) {
-		vec3 paint = DOOR_PAINTS[(seed + uint(bay.window.y)) % 5u];
-		return Matte(paint * (OnMuntin(opening, at, pixel) ? 0.7 : 1.0), 0.6);
+		vec3 paint = DOOR_PAINTS[(seed + uint(bay.window.y)) % uint(DOOR_PAINTS.length())];
+		return Matte(paint * (OnMuntin(opening, at, pixel) ? DOOR_PANEL_SHADE : 1.0), PAINT_ROUGHNESS);
 	}
-	if (opening.kind == OPEN_SHUTTER) return Matte(at.y > opening.height - 1.0 ? SHUTTER_GROOVE * 0.8 : InGroove(at.y) ? SHUTTER_GROOVE : SHUTTER_SLAT, 0.45);
+	if (opening.kind == OPEN_SHUTTER) return Matte(at.y > opening.height - 1.0 ? SHUTTER_GROOVE * SHUTTER_HOOD_SHADE : InGroove(at.y) ? SHUTTER_GROOVE : SHUTTER_SLAT, SHUTTER_ROUGHNESS);
 	bool sashed = opening.kind == OPEN_WINDOW;
-	bool rimmed = OutsideOpening(opening, at) > -max(sashed ? SASH_WIDTH : SHOPFRONT_RIM_WIDTH, pixel);
-	if (rimmed || OnMuntin(opening, at, pixel)) return Matte(sashed ? FramePaint(seed) : SHOPFRONT_FRAME, 0.5);
+	bool held_by_mullions = sashed && Mullioned(grid);
+	bool rimmed = !held_by_mullions && OutsideOpening(opening, at) > -max(sashed ? SASH_WIDTH : SHOPFRONT_RIM_WIDTH, pixel);
+	if (rimmed || OnMuntin(opening, at, pixel)) return sashed ? FrameOf(grid, seed) : Matte(SHOPFRONT_FRAME, FRAME_ROUGHNESS);
 	return Glazing(bay, grid, seed, outlook, pixel);
 }
 
@@ -445,7 +459,8 @@ Clad Recessed(Clad wall, Bay bay, uint grid, uint seed, Outlook outlook, float p
 	filling.sunlit = SunThrough(opening, sunk.at, depth, outlook.sun);
 	float behind = InsideShare(OutsideOpening(opening, sunk.at), pixel);
 	if (behind >= 1.0) return filling;
-	return Mixed(Reveal(wall, opening, bay.at, depth, outlook), filling, behind);
+	Clad jamb = Mullioned(grid) ? FrameOf(grid, seed) : wall;
+	return Mixed(Reveal(jamb, opening, bay.at, depth, outlook), filling, behind);
 }
 
 bool BesideWindow(Opening opening, vec2 at)
@@ -457,7 +472,7 @@ bool BesideWindow(Opening opening, vec2 at)
 Clad Louvre(vec2 at, uint seed)
 {
 	vec3 paint = LOUVRE_PAINTS[seed % uint(LOUVRE_PAINTS.length())];
-	return Matte(InGroove(at.y) ? paint * LOUVRE_GROOVE_SHADE : paint, 0.6);
+	return Matte(InGroove(at.y) ? paint * LOUVRE_GROOVE_SHADE : paint, PAINT_ROUGHNESS);
 }
 
 bool AlongSill(Opening opening, vec2 at)
@@ -503,7 +518,7 @@ Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook o
 	float fascia = FASCIA_ROWS[grid];
 	float ground = FACADE_GROUND[grid];
 	if (front && fascia > 0.0 && texel.y < ground && texel.y >= ground - 1.0 - fascia) {
-		clad = Matte(texel.y >= ground - 1.0 ? SILL_STONE : FASCIA_PAINTS[seed % 4u], 0.6);
+		clad = texel.y >= ground - 1.0 ? Matte(SILL_STONE, STONE_ROUGHNESS) : Matte(FASCIA_PAINTS[seed % uint(FASCIA_PAINTS.length())], PAINT_ROUGHNESS);
 	}
 	if (opening.kind == OPEN_NONE) return clad;
 
@@ -515,12 +530,12 @@ Clad Windowed(Clad wall, uint grid, vec2 texel, bool front, uint seed, Outlook o
 	bool louvred = Landscape() == LANDSCAPE_TROPIC && HoldsHomes(grid) && opening.kind == OPEN_WINDOW && BesideWindow(opening, bay.at);
 	if (sills) clad = UnderSill(clad, opening, bay.at, outlook.sun);
 	if (on_sill) {
-		clad = Matte(SILL_STONE, 0.7);
+		clad = Matte(SILL_STONE, STONE_ROUGHNESS);
 		clad.facing = vec3(0.0, SILL_LEDGE_TILT, 1.0);
 	} else if (louvred) {
 		clad = Louvre(bay.at, seed);
 	} else if (framed) {
-		clad = Matte(Mullioned(grid) ? FramePaint(seed) : mix(wall.albedo, SILL_STONE, SURROUND_SHARE), 0.7);
+		clad = Mullioned(grid) ? FrameOf(grid, seed) : Matte(mix(wall.albedo, SILL_STONE, SURROUND_SHARE), STONE_ROUGHNESS);
 		clad.facing = vec3(-edge.xy * SURROUND_BEVEL, 1.0);
 	}
 	float inside = InsideShare(edge.z, pixel);

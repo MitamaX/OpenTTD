@@ -11,6 +11,7 @@ layout(std140) uniform Scene {
 };
 
 const vec3 LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
+const float GAMMA = 2.2;
 
 layout(std140) uniform Shadows {
 	mat4 u_cascades[CASCADES];
@@ -23,6 +24,12 @@ layout(std140) uniform Shadows {
 float Luminance(vec3 colour)
 {
 	return dot(colour, LUMINANCE);
+}
+
+/* Colours picked on screen to the light they reflect. */
+vec3 Linear(vec3 display)
+{
+	return pow(max(display, 0.0), vec3(GAMMA));
 }
 
 vec2 MapSize()
