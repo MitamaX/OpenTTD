@@ -55,11 +55,11 @@ ivec2 Seat()
 }
 
 /* Each tree grows its own way by its own dice, and taller in the thickets that run across the tiles than between them. */
-Growth GrowthOf()
+Growth GrowthOf(ivec2 seat)
 {
 	float thicket = mix(TREE_THICKET_SCALES[0], TREE_THICKET_SCALES[1], Noise(i_place.xy * THICKET_FREQUENCY));
-	vec2 lean = (Hash2(Seat() + GROWTH_SALT) - 0.5) * 2.0 * TREE_LEAN;
-	float stretch = mix(TREE_STRETCHES[0], TREE_STRETCHES[1], Hash(Seat() - GROWTH_SALT));
+	vec2 lean = (Hash2(seat + GROWTH_SALT) - 0.5) * 2.0 * TREE_LEAN;
+	float stretch = mix(TREE_STRETCHES[0], TREE_STRETCHES[1], Hash(seat - GROWTH_SALT));
 	return Growth(Turn(i_look.x * TAU), lean, stretch, i_look.y * TREE_LARGEST_SCALE * thicket);
 }
 
@@ -76,18 +76,17 @@ vec3 GrownNormal(Growth growth, vec3 normal)
 }
 
 /* Each tree sways on its own beat, its crown more than its foot. */
-vec2 Sway(float height, float scale)
+vec2 Sway(float height, float scale, float beat)
 {
 	float lift = clamp(height / TREE_SWAY_HEIGHT, 0.0, 1.0);
-	float beat = Hash(Seat()) * TAU;
 	float swing = mix(sin(Clock() * GUST_RATE + beat), sin(Clock() * FLUTTER_RATE + beat * 1.7), FLUTTER_SHARE);
 	return WIND_WAY * swing * TREE_SWAY_REACH * lift * lift * scale;
 }
 
 /* The trees of a stand share much of their hue, and each its own share besides. */
-float HueOf()
+float HueOf(ivec2 seat)
 {
-	return mix(Hash(Seat() + GROWTH_SALT.yx), Noise(i_place.xy * STAND_FREQUENCY + 5.1), STAND_SHARE);
+	return mix(Hash(seat + GROWTH_SALT.yx), Noise(i_place.xy * STAND_FREQUENCY + 5.1), STAND_SHARE);
 }
 
 float SnowOn(vec3 place)
@@ -115,22 +114,24 @@ void main()
 		return;
 	}
 
-	Growth growth = GrowthOf();
+	ivec2 seat = Seat();
+	float dice = Hash(seat);
+	Growth growth = GrowthOf(seat);
 	vec3 local = Grown(growth, a_position);
-	v_grown = local + Hash(Seat()) * GRAIN_OFFSET;
-	local.xy += Sway(a_position.z, growth.scale);
+	v_grown = local + dice * GRAIN_OFFSET;
+	local.xy += Sway(a_position.z, growth.scale, dice * TAU);
 	v_position = base + local;
 	v_normal = GrownNormal(growth, a_normal.xyz);
 	v_colour = a_colour.rgb;
 	v_reach = a_colour.a;
 	v_translucency = a_normal.w;
 	v_tint = i_look.z;
-	v_hue = HueOf();
 	v_wither = i_look.w;
 #ifdef SHADOW_CASTER
 	v_openness = a_colour.a;
 	v_snow = 0.0;
 #else
+	v_hue = HueOf(seat);
 	ReadGround();
 #endif
 	gl_Position = ClipPosition(v_position);
