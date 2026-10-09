@@ -11,6 +11,9 @@ out vec4 frag_colour;
 
 const vec3 SNOW = vec3(0.87, 0.9, 0.95);
 const float SNOW_LINE_RAGGED = 1.2;
+const float SNOW_LINE_PER_TILE = 0.7;
+const vec2 SNOW_EDGES = vec2(0.35, 0.65);
+const vec2 SNOW_FACING_EDGES = vec2(0.4, 0.7);
 const float SNOW_PATCHES_PER_TILE = 6.0;
 const float SNOW_DRIFTS_PER_TILE = 2.3;
 const vec2 SWEPT_EDGES = vec2(0.6, 0.85);
@@ -45,16 +48,22 @@ mat3 FaceFrame(vec3 normal)
 
 float RoofSnow(vec3 normal)
 {
-	float lying = clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * 0.7) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
-	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying);
+	if (Landscape() != LANDSCAPE_ARCTIC) return 0.0;
+	float upward = smoothstep(SNOW_FACING_EDGES.x, SNOW_FACING_EDGES.y, normal.z);
+	if (upward <= 0.0) return 0.0;
+	float lying = clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * SNOW_LINE_PER_TILE) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
+	if (lying <= 0.0) return 0.0;
+	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying) * lying;
 	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Noise(v_position.xy * SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
-	return smoothstep(0.35, 0.65, lying + patchy) * smoothstep(0.4, 0.7, normal.z) * (1.0 - swept);
+	return smoothstep(SNOW_EDGES.x, SNOW_EDGES.y, lying + patchy) * upward * (1.0 - swept);
 }
 
 vec3 Snowed(vec3 cladding, vec3 normal)
 {
+	float snow = RoofSnow(normal);
+	if (snow <= 0.0) return cladding;
 	float relief = clamp(Luminance(cladding) / max(Luminance(v_colour.rgb), MIN_SPREAD), RELIEF_SPAN.x, RELIEF_SPAN.y);
-	return mix(cladding, SNOW * mix(1.0, relief, SNOW_RELIEF), RoofSnow(normal));
+	return mix(cladding, SNOW * mix(1.0, relief, SNOW_RELIEF), snow);
 }
 
 /* Buildings fade out where they grow too small to show, dithered; open claddings show only what they are made of, and glass mirrors the sky.
