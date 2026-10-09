@@ -15,7 +15,7 @@ const float SHED_BARING = 0.9;
 const float ALPINE_BARING = 0.9;
 const float SCREE_EXPOSURE = 0.5;
 const float TOY_BARING = 0.55;
-const float ROCK_EXPOSURE = 0.9;
+const float ROCK_EXPOSURE = 0.8;
 const float EXPOSURE_BLEND = 0.14;
 const float BLANKET_SLIP_SLOPE = 1.1;
 const float SNOW_EDGE = 0.07;
@@ -102,8 +102,8 @@ const float MOISTURE_DRIFT_FREQUENCY = 0.09;
 const float WATERSIDE_LOD = 3.0;
 const float WATERSIDE_WETTING = 1.5;
 const float WATERSIDE_MOST = 0.3;
-const float UPLAND_DRYING = 0.12;
-const float SUNNY_SLOPE_DRYING = 0.18;
+const float UPLAND_DRYING = 0.07;
+const float SUNNY_SLOPE_DRYING = 0.11;
 const vec2 SUNNY_SIDE = vec2(0.6, 0.8);
 const vec2 LUSH_MOISTURE = vec2(0.56, 0.8);
 const vec2 PARCHED_MOISTURE = vec2(0.0, 0.34);
@@ -194,6 +194,19 @@ const float STONE_PATCHES_PER_TILE = 1.7;
 const float STONE_GAPS = 0.3;
 const float PALE_STONE = 1.15;
 const float BOULDERS_PER_TILE = 5.5;
+const float GULLIES_PER_TILE = 2.8;
+const float GULLY_WANDER = 0.7;
+const float GULLY_WANDER_PER_TILE = 0.8;
+const float GULLY_RUNS_PER_TILE = 0.9;
+const vec2 GULLY_RUN_EDGES = vec2(0.35, 0.6);
+const vec2 GULLY_SLOPES = vec2(0.45, 0.95);
+const vec2 GULLY_WIDTHS = vec2(0.2, 0.4);
+const vec2 GULLY_DEPTHS = vec2(0.15, 0.4);
+const float GULLY_RIB = 0.1;
+const float GULLY_SEED = 13.7;
+const float SCREE_DRIFTS_PER_TILE = 1.3;
+const vec2 SCREE_DRIFT_SEED = vec2(2.6, 19.4);
+const float SCREE_SPARSE = 0.25;
 const vec2 ARMOUR_REACH = vec2(0.3, 0.7);
 const float ARMOUR_RAGS_PER_TILE = 2.3;
 const float ARMOUR_RAGGED = 0.4;
@@ -666,10 +679,31 @@ vec3 LooseStone()
 }
 
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
-vec3 Scree(Grain grain)
+vec3 Scree(Grain grain, vec2 p)
 {
 	vec3 tone = LooseStone() * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
-	return tone * mix(1.0, 1.18, grain.stones) * Hollowed(grain, STONY_HOLLOWS);
+	float strewn = grain.stones * mix(SCREE_SPARSE, 1.0, Octave(p + SCREE_DRIFT_SEED, SCREE_DRIFTS_PER_TILE));
+	return tone * mix(1.0, 1.18, strewn) * Hollowed(grain, STONY_HOLLOWS);
+}
+
+float Channels(float down, float across)
+{
+	float wandering = across * GULLIES_PER_TILE + (Noise(vec2(down * GULLY_WANDER_PER_TILE, across * GULLY_WANDER_PER_TILE) + GULLY_SEED) - 0.5) * GULLY_WANDER;
+	float channel = floor(wandering);
+	vec2 dice = Hash2(ivec2(int(channel), int(GULLY_SEED)));
+	float vein = abs(fract(wandering) - 0.5);
+	float runs = smoothstep(GULLY_RUN_EDGES.x, GULLY_RUN_EDGES.y, Noise(vec2(down * GULLY_RUNS_PER_TILE, channel + GULLY_SEED)));
+	float cut = 1.0 - smoothstep(0.0, mix(GULLY_WIDTHS.x, GULLY_WIDTHS.y, dice.x), 0.5 - vein);
+	return (GULLY_RIB * (1.0 - cut) - mix(GULLY_DEPTHS.x, GULLY_DEPTHS.y, dice.y) * cut) * runs;
+}
+
+float Gullied(vec2 p, Relief relief)
+{
+	float lean = length(relief.facing);
+	float shown = Resolved(GULLIES_PER_TILE * 2.0) * smoothstep(GULLY_SLOPES.x, GULLY_SLOPES.y, relief.slope);
+	if (shown <= 0.0 || lean <= MIN_SPREAD) return 1.0;
+	vec2 weights = relief.facing * relief.facing / (lean * lean);
+	return 1.0 + (Channels(p.x, p.y) * weights.x + Channels(p.y, p.x) * weights.y) * shown;
 }
 
 /* Cracks wander through rock, here and there breaking off. */
@@ -705,8 +739,9 @@ Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
 	float standing = relief.steep * relief.strata;
 	float runs = Landscape() == LANDSCAPE_TOYLAND || standing <= 0.0 ? 1.0 : LedgeRun(p, bedding);
 	float ledges = standing * runs;
-	vec3 rock = rocky ? Rock(p, bedding, ledges, relief, grain) : vec3(0.0);
-	return Bare(Scree(grain), rock, smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * ledges);
+	float gullied = Gullied(p, relief);
+	vec3 rock = rocky ? Rock(p, bedding, ledges, relief, grain) * gullied : vec3(0.0);
+	return Bare(Scree(grain, p) * gullied, rock, smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * ledges);
 }
 
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
