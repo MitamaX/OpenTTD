@@ -187,7 +187,7 @@ static uint32_t OwnerTint(TileIndex tile)
 
 static uint32_t DepotRoof(uint32_t seed, uint32_t company)
 {
-	return Mix(RoofTint(Material::MetalSeam, seed), company, COMPANY_ROOF_SHARE);
+	return Mix(RoofTint(Material::MetalSeam, seed), Muted(company, PAINT_SATURATION), COMPANY_ROOF_SHARE);
 }
 
 static BuildingForm LandDepotForm(TileIndex tile, DiagDirection exit, const DepotShed &shed)

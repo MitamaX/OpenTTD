@@ -531,7 +531,7 @@ uint32_t RoofTint(Material roof, uint32_t seed)
 
 SiteLivery LiveryFor(Finish finish, Material roof, uint32_t seed, uint32_t trim)
 {
-	uint32_t wall = finish == Finish::Painted ? trim : FinishTint(finish, seed);
+	uint32_t wall = finish == Finish::Painted ? Muted(trim, PAINT_SATURATION) : FinishTint(finish, seed);
 	return {wall, RoofTint(roof, seed), trim, BULK_TINT};
 }
 

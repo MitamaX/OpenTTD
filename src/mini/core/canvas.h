@@ -36,17 +36,8 @@ constexpr uint32_t TextTint(TextColour colour)
 	return colour == TC_BLACK ? 0xFF14181CU : 0xFFE6E1D3U;
 }
 
-inline constexpr uint LUMA_RED = 77;
-inline constexpr uint LUMA_GREEN = 151;
-inline constexpr uint LUMA_BLUE = 28;
-inline constexpr uint LUMA_SHIFT = 8;
 inline constexpr uint LIGHT_LUMINANCE = 140;
 inline constexpr uint GREY_FLOOR = 12;
-
-constexpr uint Luminance(uint32_t c)
-{
-	return (LUMA_RED * Red(c) + LUMA_GREEN * Green(c) + LUMA_BLUE * Blue(c)) >> LUMA_SHIFT;
-}
 
 constexpr bool IsLightTone(uint32_t c)
 {

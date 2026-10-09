@@ -26,6 +26,7 @@ inline constexpr uint32_t FRONT_SALT = 7;
 inline constexpr float SAWTOOTH_RISE = 0.12f;
 inline constexpr float ROOFTOP_MARGIN = 0.06f;
 inline constexpr uint32_t BULK_TINT = 0xFF6B5E50U;
+inline constexpr double PAINT_SATURATION = 0.5;
 inline constexpr uint32_t SOOT_TINT = 0xFF2A2D30U;
 inline constexpr DiagDirections LOT_SIDES{DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_NW};
 

@@ -56,6 +56,16 @@ constexpr uint32_t WithAlpha(uint32_t argb, uint alpha)
 	return PackArgb(alpha, Red(argb), Green(argb), Blue(argb));
 }
 
+inline constexpr uint LUMA_RED = 77;
+inline constexpr uint LUMA_GREEN = 151;
+inline constexpr uint LUMA_BLUE = 28;
+inline constexpr uint LUMA_SHIFT = 8;
+
+constexpr uint Luminance(uint32_t c)
+{
+	return (LUMA_RED * Red(c) + LUMA_GREEN * Green(c) + LUMA_BLUE * Blue(c)) >> LUMA_SHIFT;
+}
+
 /* The alpha that keeps this share of a full alpha, from none at 0 to all of it at 1. */
 inline uint FadedAlpha(double share, uint alpha = CHANNEL_MAX)
 {
