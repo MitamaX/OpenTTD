@@ -127,8 +127,15 @@ const vec3 HEDGE = vec3(0.24, 0.33, 0.16);
 
 const float STRATA_PER_LEVEL = 2.5;
 const float STRATA_WARP = 1.8;
+const vec2 STRATA_DIP = vec2(0.09, -0.06);
 const float LAYER_VARIETY = 0.3;
 const float LEDGE_SHADE = 0.8;
+const float LEDGE_LIT = 1.08;
+const float LEDGE_RISE = 0.2;
+const float LEDGE_RUNS_PER_TILE = 1.6;
+const vec2 LEDGE_RUN_EDGES = vec2(0.4, 0.6);
+const float LEDGE_RUN_SHIFT = 40.0;
+const int LEDGE_RUN_SEED = 23;
 const float SLABS_PER_TILE = 1.7;
 const float SLAB_VARIETY = 0.3;
 const float LEVEL_BEDDING = 0.35;
@@ -149,7 +156,7 @@ const float STONY_HOLLOWS = 1.0;
 const vec2 GRASS_RUGGED = vec2(0.45, 0.0);
 const vec2 ROUGH_RUGGED = vec2(0.7, 0.25);
 const vec2 SCREE_RUGGED = vec2(0.6, 1.0);
-const vec2 ROCK_RUGGED = vec2(1.0, 0.15);
+const vec2 ROCK_RUGGED = vec2(1.0, 0.55);
 const vec2 FIELD_RUGGED = vec2(0.35, 0.05);
 const vec2 SAND_RUGGED = vec2(0.2, 0.05);
 const vec2 PAVED_RUGGED = vec2(0.1, 0.0);
@@ -450,11 +457,11 @@ float SlopeOf(vec3 normal)
 	return length(normal.xy) / max(normal.z, MIN_SPREAD) / LevelRise();
 }
 
-/* Rock is bedded in layers of uneven thickness that run level through the hills, bowed a little this way and that. */
+/* Rock is bedded in layers of uneven thickness that run nearly level through the hills, dipping gently across the map and bowed a little this way and that. */
 float BeddingAt(vec2 p)
 {
 	float thickness = Noise(vec2(v_world.z * 0.7, 3.1)) * STRATA_PER_LEVEL;
-	return v_world.z * STRATA_PER_LEVEL + thickness + (Noise(p * 0.3) - 0.5) * STRATA_WARP + (Octave(p + 5.3, 1.1) - 0.5) * 0.35;
+	return v_world.z * STRATA_PER_LEVEL + dot(p, STRATA_DIP) + thickness + (Noise(p * 0.3) - 0.5) * STRATA_WARP + (Octave(p + 5.3, 1.1) - 0.5) * 0.35;
 }
 
 Relief ReliefAt(vec3 normal, float levels_per_pixel)
@@ -561,16 +568,23 @@ float Cracks(vec2 p)
 	return (1.0 - smoothstep(0.0, CRACK_WIDTH, vein)) * smoothstep(0.4, 0.62, Noise(p * 1.9 + 8.1)) * shown;
 }
 
-/* Bare rock in layers stepping out in ledges where it stands steep, weathered and veined with cracks where it lies flat; toyland's candy layers show only where it stands steep. */
-vec3 Rock(vec2 p, float bedding, Relief relief, Grain grain)
+/* A layer stands out as a ledge in runs that break off along the face. */
+float LedgeRun(vec2 p, float bedding)
+{
+	vec2 shift = Hash2(ivec2(int(floor(bedding)), LEDGE_RUN_SEED)) * LEDGE_RUN_SHIFT;
+	return smoothstep(LEDGE_RUN_EDGES.x, LEDGE_RUN_EDGES.y, Noise(p * LEDGE_RUNS_PER_TILE + shift));
+}
+
+/* Bare rock in slabs a shade apart, its layers stepping out in ledges as far as they stand out, weathered and veined with cracks where it lies flat; toyland's candy layers show only where it stands steep. */
+vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 {
 	int layer = int(floor(bedding));
-	float strata = relief.steep * relief.strata;
 	vec3 bed = Stratum(layer);
-	float ledge = mix(LEDGE_SHADE, 1.08, smoothstep(0.0, 0.3, fract(bedding)));
+	float ledge = mix(LEDGE_SHADE, LEDGE_LIT, smoothstep(0.0, LEDGE_RISE, fract(bedding)));
 	bool toy = Landscape() == LANDSCAPE_TOYLAND;
-	vec3 slabs = (toy ? ToyStrataMean() : mix(ROCK, ROCK_WARM, 0.3)) * Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
-	vec3 rock = mix(mix(slabs, bed, toy ? 0.0 : LEVEL_BEDDING), bed * ledge, strata);
+	float slab = Varied(Octave(p + 2.0, SLABS_PER_TILE), SLAB_VARIETY);
+	vec3 slabs = (toy ? ToyStrataMean() : mix(ROCK, ROCK_WARM, 0.3)) * slab;
+	vec3 rock = mix(mix(slabs, bed, toy ? 0.0 : LEVEL_BEDDING), bed * ledge * slab, ledges);
 	vec3 weathered = mix(rock, rock * vec3(0.72, 0.74, 0.66), smoothstep(0.55, 0.8, Octave(p + 4.4, 2.7)));
 	return weathered * Varied(grain.fine, 0.22) * Varied(grain.micro, 0.3) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
 }
@@ -578,7 +592,8 @@ vec3 Rock(vec2 p, float bedding, Relief relief, Grain grain)
 Bare BareAt(vec2 p, Relief relief, Grain grain)
 {
 	float bedding = BeddingAt(p);
-	return Bare(Scree(grain, p), Rock(p, bedding, relief, grain), smoothstep(0.7, 0.95, fract(bedding)) * relief.steep * relief.strata);
+	float ledges = relief.steep * relief.strata * LedgeRun(p, bedding);
+	return Bare(Scree(grain, p), Rock(p, bedding, ledges, relief, grain), smoothstep(0.7, 0.95, fract(bedding)) * ledges);
 }
 
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
