@@ -801,6 +801,14 @@ bool HasCorner(Ground corners[4], uint material)
 	return corners[0].material == material || corners[1].material == material || corners[2].material == material || corners[3].material == material;
 }
 
+bool GrassAmong(Ground corners[4])
+{
+	for (int i = 0; i < 4; i++) {
+		if (IsNatural(corners[i].material) || corners[i].material == MAT_ROCKS) return true;
+	}
+	return false;
+}
+
 float Ragged(vec2 p, Grain grain)
 {
 	return (Octave(p, 0.17) - 0.5) * 0.5 + (Octave(p, 0.45) - 0.5) * 0.4 + (grain.local - 0.5) * 0.4 + (grain.fine - 0.5) * 0.2;
@@ -821,7 +829,7 @@ float Moisture(vec2 p, Relief relief)
 	return drifts + waterside - upland * UPLAND_DRYING - dot(relief.facing, SUNNY_SIDE) * SUNNY_SLOPE_DRYING;
 }
 
-/* The stone is only worked out where some ground at the point shows it. */
+/* The stone and the grass's wetness are only worked out where some ground at the point shows them. */
 Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4], vec2 warp, float settled)
 {
 	Climate climate = Climate(0.0, 0.0, 0.0);
@@ -832,7 +840,7 @@ Site SiteAt(vec2 p, Grain grain, Relief relief, bool armoured, Ground corners[4]
 		ragged = Ragged(p, grain);
 		climate.lush = smoothstep(0.15, 0.85, climate.lush + ragged * 0.6);
 		if (Landscape() == LANDSCAPE_TROPIC) trodden = smoothstep(0.05, 0.4, settled + ragged * 0.4);
-	} else if (Landscape() != LANDSCAPE_TOYLAND) {
+	} else if (Landscape() != LANDSCAPE_TOYLAND && GrassAmong(corners)) {
 		float moisture = Moisture(p, relief);
 		climate.lush = smoothstep(LUSH_MOISTURE.x, LUSH_MOISTURE.y, moisture);
 		climate.parched = 1.0 - smoothstep(PARCHED_MOISTURE.x, PARCHED_MOISTURE.y, moisture);
