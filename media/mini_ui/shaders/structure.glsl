@@ -10,13 +10,17 @@ const float TILE_GAP_WIDTH = 0.06;
 const float TILE_GAP_SHADE = 0.35;
 const float FIRING_BLOTCHES = 4.5;
 const vec2 BLOTCH_EDGES = vec2(0.2, 0.8);
+const float BLOTCH_MEAN = 0.5;
 const float BLOTCH_VARIETY = 1.5;
 const float BLOTCH_SEED = 3.7;
 const vec2 RAIN_STREAKS = vec2(13.0, 1.4);
+const vec2 STREAK_EDGES = vec2(-0.25, 1.25);
+const float STREAK_MEAN = 0.5;
 const float STREAK_DEPTH = 0.16;
 const float STREAK_SEED = 9.2;
 const float LICHEN_PATCHES = 2.7;
 const vec2 LICHEN_PATCH_EDGES = vec2(0.62, 0.86);
+const float LICHEN_PATCH_MEAN = 0.0;
 const float LICHEN_PATCH_SEED = 1.3;
 const float LICHEN_SPOTS = 40.0;
 const vec2 LICHEN_SPOT_EDGES = vec2(0.565, 0.765);
@@ -108,12 +112,6 @@ Clad Coursed(vec2 p, vec3 tint, vec2 units, float joint, float variety, vec3 fil
 	return Matte(mix(unit, filling, joints), 0.85);
 }
 
-float Faded(vec2 q, float seed)
-{
-	float sharp = Sharpness(q);
-	return sharp > 0.0 ? mix(0.5, Noise(q + seed), sharp) : 0.5;
-}
-
 float Faded(vec2 q, float seed, vec2 edges, float mean)
 {
 	float sharp = Sharpness(q);
@@ -123,9 +121,9 @@ float Faded(vec2 q, float seed, vec2 edges, float mean)
 vec3 Weathered(vec2 p, vec3 tint, float variety)
 {
 	if (!Weathers()) return tint;
-	float blotches = Faded(p * FIRING_BLOTCHES, BLOTCH_SEED, BLOTCH_EDGES, 0.5);
-	float streaks = Faded(p * RAIN_STREAKS, STREAK_SEED);
-	float patched = Faded(p * LICHEN_PATCHES, LICHEN_PATCH_SEED, LICHEN_PATCH_EDGES, 0.0);
+	float blotches = Faded(p * FIRING_BLOTCHES, BLOTCH_SEED, BLOTCH_EDGES, BLOTCH_MEAN);
+	float streaks = Faded(p * RAIN_STREAKS, STREAK_SEED, STREAK_EDGES, STREAK_MEAN);
+	float patched = Faded(p * LICHEN_PATCHES, LICHEN_PATCH_SEED, LICHEN_PATCH_EDGES, LICHEN_PATCH_MEAN);
 	float spotted = Faded(p * LICHEN_SPOTS, LICHEN_SPOT_SEED, LICHEN_SPOT_EDGES, LICHEN_SPOT_MEAN);
 	vec3 weathered = tint * Varied(blotches, variety * BLOTCH_VARIETY) * Varied(streaks, STREAK_DEPTH);
 	return mix(weathered, LICHEN, patched * spotted * LICHEN_COVER);
