@@ -63,11 +63,6 @@ vec3 NoiseSlope(vec2 p)
 	return vec3(value, du * (vec2(b - a, c - a) + twist * u.yx));
 }
 
-float ResolvedAt(float frequency, float pixels)
-{
-	return smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS, pixels / frequency);
-}
-
 float Resolved(float frequency)
 {
 	return ResolvedAt(frequency, tile_pixels);
@@ -95,11 +90,6 @@ float Octave(vec2 p, float frequency)
 float Layered(vec2 p, float frequency)
 {
 	return (2.0 * Octave(p, frequency) + Octave(p + 17.3, frequency * 2.07)) / 3.0;
-}
-
-float Varied(float noise, float variety)
-{
-	return 1.0 + variety * (noise - 0.5);
 }
 
 ivec2 Clamped(ivec2 tile)
@@ -206,7 +196,7 @@ float SegmentDistance(vec2 p, vec2 from, vec2 to)
 }
 
 /* How wide one screen pixel is on the ground across an edge with this normal; the pixel's columns are the ground it steps over across and down the screen. */
-float Spread(mat2 pixel, vec2 normal)
+float PixelAcross(mat2 pixel, vec2 normal)
 {
 	return max(abs(dot(pixel[0], normal)) + abs(dot(pixel[1], normal)), MIN_SPREAD);
 }

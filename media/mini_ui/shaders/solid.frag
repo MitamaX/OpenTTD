@@ -56,7 +56,7 @@ float Mended(vec2 p, float facing_up)
 	return (1.0 - smoothstep(-pixel, pixel, max(outside.x, outside.y))) * smoothstep(MENDED_FACING.x, MENDED_FACING.y, facing_up) * Resolved(MENDS_PER_TILE * 2.0);
 }
 
-float Weathered(vec3 position, vec3 normal, float gloss)
+float Worn(vec3 position, vec3 normal, float gloss)
 {
 	float worn = u_weathering * (1.0 - gloss);
 	if (worn <= 0.0 || !Weathers()) return 1.0;
@@ -81,7 +81,7 @@ void main()
 	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) * (1.0 - receded) <= ScreenNoise(gl_FragCoord.xy)) discard;
 	float gloss = max(v_trait, 0.0);
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, MIN_SPREAD)));
-	vec3 grained = v_colour.rgb * Grain(v_position, gloss) * Weathered(v_position, normal, gloss);
+	vec3 grained = v_colour.rgb * Grain(v_position, gloss) * Worn(v_position, normal, gloss);
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	Coat coat = Coat(mix(MATTE, POLISHED, gloss), mix(DIELECTRIC_REFLECTANCE, GLASS_REFLECTANCE, smoothstep(MIRROR_GLOSS.x, MIRROR_GLOSS.y, gloss)));
 	vec4 lit = Radiance(albedo, normal, v_position, coat, v_colour.a);

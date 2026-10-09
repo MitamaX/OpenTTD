@@ -93,9 +93,9 @@ float Lines(float x, float width)
 	return Lines(x, width, Sharpness(x));
 }
 
-float Spread(vec2 cell, float variety, float sharpness)
+float UnitVaried(vec2 unit, float variety, float sharpness)
 {
-	return 1.0 + variety * (Hash(ivec2(floor(cell))) - 0.5) * sharpness;
+	return Varied(Hash(ivec2(floor(unit))), variety * sharpness);
 }
 
 /* Units laid in courses with every other course shifted half a unit, the joints between them filled. */
@@ -104,7 +104,7 @@ Clad Coursed(vec2 p, vec3 tint, vec2 units, float joint, float variety, vec3 fil
 	float course = p.y * units.y;
 	float column = p.x * units.x + 0.5 * floor(course);
 	float joints = max(Lines(course, joint), Lines(column, joint * units.x / units.y));
-	vec3 unit = tint * Spread(vec2(column, course), variety, Sharpness(course));
+	vec3 unit = tint * UnitVaried(vec2(column, course), variety, Sharpness(course));
 	return Matte(mix(unit, filling, joints), 0.85);
 }
 
@@ -142,7 +142,7 @@ Clad Tiled(vec2 p, vec3 tint, vec2 units, float variety, float roughness, float 
 	float lit = mix(COURSE_SHADES.x, COURSE_SHADES.y, smoothstep(COURSE_LIGHT_EDGES.x, COURSE_LIGHT_EDGES.y, along));
 	float overlapped = 1.0 - COURSE_OVERLAP_SHADE * smoothstep(COURSE_OVERLAP_EDGES.x, COURSE_OVERLAP_EDGES.y, along);
 	float shade = mix(1.0, lit * overlapped, sharp);
-	vec3 colour = Weathered(p, tint, variety) * shade * Spread(vec2(column, course), variety, sharp);
+	vec3 colour = Weathered(p, tint, variety) * shade * UnitVaried(vec2(column, course), variety, sharp);
 	float gaps = Lines(column, TILE_GAP_WIDTH, rolled) * sharp;
 	float unseen_tilt = WaveSpread(roll) * (1.0 - rolled) + RampSpread(COURSE_TILT) * (1.0 - sharp);
 	Clad clad = Matte(colour * (1.0 - TILE_GAP_SHADE * gaps), Roughened(roughness, unseen_tilt));
@@ -178,7 +178,7 @@ Clad Boarded(vec2 p, vec3 tint, float boards, float roughness)
 	float board = p.y * boards;
 	float sharp = Sharpness(board);
 	float shade = mix(1.0, mix(0.84, 1.06, fract(board)), sharp);
-	Clad clad = Matte(tint * shade * Spread(vec2(0.0, board), 0.1, sharp), roughness);
+	Clad clad = Matte(tint * shade * UnitVaried(vec2(0.0, board), 0.1, sharp), roughness);
 	clad.facing = vec3(0.0, 0.25 * sharp, 1.0);
 	return clad;
 }
@@ -187,7 +187,7 @@ Clad Planked(vec2 p, vec3 tint, float planks)
 {
 	float plank = p.x * planks;
 	float sharp = Sharpness(plank);
-	vec3 colour = tint * Spread(vec2(plank, 0.0), 0.18, sharp) * (1.0 - 0.4 * Lines(plank, 0.08));
+	vec3 colour = tint * UnitVaried(vec2(plank, 0.0), 0.18, sharp) * (1.0 - 0.4 * Lines(plank, 0.08));
 	return Matte(colour, 0.9);
 }
 

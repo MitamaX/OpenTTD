@@ -53,7 +53,7 @@ Field Nearer(Field a, Field b)
 Field SegmentField(vec2 at, vec2 from, vec2 to, mat2 pixel)
 {
 	vec2 run = normalize(to - from);
-	return Field(SegmentDistance(at, from, to), Spread(pixel, vec2(-run.y, run.x)));
+	return Field(SegmentDistance(at, from, to), PixelAcross(pixel, vec2(-run.y, run.x)));
 }
 
 float OutsideTile(vec2 local)
@@ -95,7 +95,7 @@ Field TracksNear(vec2 at, ivec2 home, mat2 pixel)
 {
 	Field band = NOWHERE;
 	float half_width = WayHalf(DISTANT_RAIL_HALF);
-	float reach = half_width + max(Spread(pixel, vec2(1.0, 0.0)), Spread(pixel, vec2(0.0, 1.0)));
+	float reach = half_width + max(PixelAcross(pixel, vec2(1.0, 0.0)), PixelAcross(pixel, vec2(0.0, 1.0)));
 	for (int j = -WINDOW_REACH; j <= WINDOW_REACH; j++) {
 		for (int i = -WINDOW_REACH; i <= WINDOW_REACH; i++) {
 			ivec2 tile = ivec2(i, j);
@@ -127,7 +127,7 @@ Field RouteCentre(vec2 at, int from, int to, mat2 pixel)
 
 	vec2 radial = at - (a + b - TILE_CENTRE);
 	float reach = max(length(radial), MIN_SPREAD);
-	return Field(abs(reach - HALF_TILE), Spread(pixel, radial / reach));
+	return Field(abs(reach - HALF_TILE), PixelAcross(pixel, radial / reach));
 }
 
 /* Every pair of a tile's ends is a route through it, bending around the corner they share; a lone end is a dead end at the centre. */

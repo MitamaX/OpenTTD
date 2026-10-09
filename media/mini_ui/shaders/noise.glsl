@@ -18,6 +18,26 @@ float Noise(vec2 p)
 	return mix(mix(corners.x, corners.y, s.x), mix(corners.z, corners.w, s.x), s.y);
 }
 
+float Varied(float noise, float variety)
+{
+	return 1.0 + variety * (noise - 0.5);
+}
+
+vec3 Varied(float noise, vec3 variety)
+{
+	return 1.0 + variety * (noise - 0.5);
+}
+
+float ResolvedAt(float frequency, float pixels, vec2 edges)
+{
+	return smoothstep(edges.x, edges.y, pixels / frequency);
+}
+
+float ResolvedAt(float frequency, float pixels)
+{
+	return ResolvedAt(frequency, pixels, vec2(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS));
+}
+
 /* Each layer of the lattice up is hashed as a far off stretch of the flat one. */
 const ivec2 NOISE_LAYER_STRIDE = ivec2(1013, 619);
 

@@ -359,7 +359,7 @@ static Part Storeyed(const Plot &plot, const HouseSite &site, WindowGrid wanted,
 	return Walled(plot, site, wanted, WallTiles(WearableGrid(site.wall.material, wanted), storeys));
 }
 
-static uint32_t Weathered(uint32_t tint, uint32_t seed)
+static uint32_t Jittered(uint32_t tint, uint32_t seed)
 {
 	return TintJitter(tint, seed, TINT_JITTER_FIRST);
 }
@@ -395,7 +395,7 @@ static Swatch RoofSwatch(Material material, LandscapeType climate)
 
 static HouseCover Covering(const HouseSite &site, Material material, Swatch swatch)
 {
-	return {material, Weathered(SwatchTint(swatch, ROOF_COLOUR.Of(site.seed)), site.seed)};
+	return {material, Jittered(SwatchTint(swatch, ROOF_COLOUR.Of(site.seed)), site.seed)};
 }
 
 static HouseCover RoofCover(const HouseSite &site, Material material)
@@ -464,7 +464,7 @@ static void Clad(HouseSite &site)
 		tint = remap->argb;
 		if (site.kind == HouseKind::GlassTower) site.glass = remap->argb;
 	}
-	site.wall = {material, Weathered(tint, site.seed)};
+	site.wall = {material, Jittered(tint, site.seed)};
 }
 
 static bool IsTownRoad(int x, int y)
