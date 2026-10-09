@@ -462,7 +462,8 @@ float Drips(Bay bay, vec2 texel, uint grid)
 	float below = mod(-bay.at.y, FACADE_STOREY[grid]);
 	float half_width = bay.opening.width * 0.5;
 	float under = 1.0 - smoothstep(half_width - 0.5, half_width + 0.5, abs(bay.at.x));
-	float runs = smoothstep(DRIP_EDGES.x, DRIP_EDGES.y, Noise(vec2(bay.at.x * DRIPS_PER_TEXEL, dot(vec2(bay.window), DRIP_WINDOW_SEED))));
+	ivec2 shedding = bay.at.y < 0.0 ? bay.window : bay.window + ivec2(0, 1);
+	float runs = smoothstep(DRIP_EDGES.x, DRIP_EDGES.y, Noise(vec2(bay.at.x * DRIPS_PER_TEXEL, dot(vec2(shedding), DRIP_WINDOW_SEED))));
 	float fade = 1.0 - smoothstep(0.0, DRIP_REACH * Varied(runs, DRIP_VARIETY), below);
 	return mix(1.0, DRIP_SHADE, under * runs * fade);
 }
