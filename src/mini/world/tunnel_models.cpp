@@ -133,8 +133,6 @@ void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 		frame.Quad(stone, {frame.At(across, 0.0, 0.0), frame.At(across, 0.0, FACE_PROUD), frame.At(across, height, FACE_PROUD), frame.At(across, height, 0.0)}, frame.Facing(side, 0.0));
 	}
 	ModelMesh reveal;
-	ModelMesh opening;
-	uint32_t middle = opening.Point(frame.At(0.0, SPRING_HEIGHT, MOUTH_PROUD), out);
 	for (size_t point = 0; point + 1 < outline.size(); point++) {
 		const MapVector &from = outline[point];
 		const MapVector &to = outline[point + 1];
@@ -143,7 +141,12 @@ void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 		}
 		Vec3 inside = frame.Facing(-(from.x + to.x) * 0.5, SPRING_HEIGHT - (from.y + to.y) * 0.5);
 		frame.Quad(reveal, {frame.At(from.x, from.y, FACE_PROUD), frame.At(from.x, from.y, MOUTH_PROUD), frame.At(to.x, to.y, MOUTH_PROUD), frame.At(to.x, to.y, FACE_PROUD)}, inside);
-		opening.Triangle(middle, opening.Point(frame.At(from.x, from.y, MOUTH_PROUD), out), opening.Point(frame.At(to.x, to.y, MOUTH_PROUD), out));
+	}
+	ModelMesh opening;
+	uint32_t middle = opening.Point(frame.At(0.0, SPRING_HEIGHT, MOUTH_PROUD), out);
+	auto on_mouth = [&](const MapVector &at) { return opening.Point(frame.At(at.x, at.y, MOUTH_PROUD), out); };
+	for (size_t point = 0; point < outline.size(); point++) {
+		opening.Triangle(middle, on_mouth(outline[point]), on_mouth(outline[(point + 1) % outline.size()]));
 	}
 
 	MapVector cornice_middle = edge - inward * (CORNICE_PROUD * 0.5);
