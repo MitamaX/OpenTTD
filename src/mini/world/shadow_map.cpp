@@ -35,6 +35,8 @@ static constexpr double CASTER_HEADROOM_LEVELS = 24.0;
 static constexpr double LOWEST_SUN_RISE = 0.1;
 static constexpr double DEPTH_MARGIN = 1.0;
 static constexpr double TURN_MARGIN = 0.05;
+/* Half the span shadow.glsl softens an edge over. */
+static constexpr double UNSEEN_SWING_TEXELS = 2.0;
 static constexpr int TURNS = ShadowMap::CASCADES - ShadowMap::FRESH_CASCADES;
 static constexpr float SLOPE_OFFSET = 2.0f;
 static constexpr float CONSTANT_OFFSET = 2.0f;
@@ -70,6 +72,17 @@ MapVector ShadowFall(const Vec3 &sun)
 {
 	double rise = std::max(sun.z, LOWEST_SUN_RISE);
 	return {-sun.x / rise, -sun.y / rise};
+}
+
+/* How far along the sun's rays a height reaches above where its shadow lands. */
+static double Sunward(double height, const Vec3 &sun)
+{
+	return height / std::max(sun.z, LOWEST_SUN_RISE);
+}
+
+static double LandRelief()
+{
+	return (_world_tiles.Peak() + DEEPEST_SINK) * LevelRise();
 }
 
 /* The sun looks down its own rays, with the map's up kept upward on its picture. */
@@ -152,11 +165,10 @@ ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, double near, dou
 	double texel = 2.0 * half / RESOLUTION;
 	Vec3 centre = {std::floor(seen.x / texel) * texel, std::floor(seen.y / texel) * texel, seen.z};
 
-	double tallest = (_world_tiles.Peak() + CASTER_HEADROOM_LEVELS + DEEPEST_SINK) * LevelRise();
-	double sunward = tallest / std::max(camera.sun.z, LOWEST_SUN_RISE);
+	double sunward = Sunward(LandRelief() + CASTER_HEADROOM_LEVELS * LevelRise(), camera.sun);
 	Vec3 low = {centre.x - half, centre.y - half, centre.z - half - DEPTH_MARGIN};
 	Vec3 high = {centre.x + half, centre.y + half, centre.z + half + sunward};
-	return {Mat4::Orthographic(low, high) * view, far, texel, camera.sun, low, high, sunward, middle, radius};
+	return {Mat4::Orthographic(low, high) * view, far, texel, camera.sun, low, high, middle, radius};
 }
 
 /* Whatever stands between a slice's sphere and the sun is pressed onto the box's near side, so only its far side must reach past the sphere. */
@@ -168,10 +180,10 @@ bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 		centre.z - slice.radius >= this->low.z;
 }
 
-/* The sun may turn until the longest shadow the box takes in has swung by one of its texels. */
+/* The sun may turn as long as the longest shadow the land casts swings by less than its softened edge hides. */
 bool ShadowMap::Cascade::Faces(const Vec3 &sun) const
 {
-	return Length(sun - this->sun) * this->sunward <= this->texel;
+	return Length(sun - this->sun) * Sunward(LandRelief(), this->sun) <= this->texel * UNSEEN_SWING_TEXELS;
 }
 
 /* Cascades drawn in turn are given room to spare, so the camera may move a little before they no longer hold their slices. */

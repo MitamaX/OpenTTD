@@ -40,7 +40,7 @@ public:
 	void Release();
 
 private:
-	/* One cascade: how the sun sees it, how far from the camera it reaches, how wide one of its texels is, the way to the sun it is drawn by, the box it is drawn over in the sun's view and how far that reaches toward the sun, and the sphere about its slice of the camera's view. */
+	/* The box a cascade is drawn over lies in the sun's view, the sphere about its slice of the camera's view in the world. */
 	struct Cascade {
 		Mat4 view_projection;
 		double far;
@@ -48,7 +48,6 @@ private:
 		Vec3 sun;
 		Vec3 low;
 		Vec3 high;
-		double sunward;
 		Vec3 middle;
 		double radius;
 
