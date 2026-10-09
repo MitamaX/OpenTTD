@@ -38,6 +38,7 @@ static constexpr double FRINGE_REACH = 0.45;
 static constexpr double FRINGE_SCALE = 0.6;
 static constexpr double TOY_HUDDLE = 0.3;
 static constexpr SeedRange TOY_HUDDLE_SPOT = {0.3, 0.7};
+static constexpr SeedRange DYING_WITHER = {0.35, 0.7};
 static constexpr uint32_t PLANTING_SALT = 0x7EE5F00DU;
 
 /* Spots a tile's trees stand on, spread so neighbours' crowns just meet; the middle one comes last, clear of a park's paths. */
@@ -97,50 +98,105 @@ static double FringeDepth(int tx, int ty, double fx, double fy)
 	return reach / FRINGE_REACH;
 }
 
-/* A tile's trees, the same every time it is planted: each on a slot of its own, the slots turned, mirrored and shuffled tile by tile.
- * A thick wood thins out toward treeless ground, its spare trees dropping out and the rest growing smaller over its fringe. */
-static void PlantTile(int tx, int ty, std::vector<std::pair<size_t, TreeInstance>> &planted)
-{
-	TileIndex tile = TileXY(tx, ty);
-	uint8_t flora = _world_tiles.GroundAt(tile).flora;
-	uint count = std::min<uint>(flora & FLORA_COUNT_MASK, FLORA_MOST_TREES);
-	if (count == 0) return;
+using ShapedTree = std::pair<size_t, TreeInstance>;
 
-	TreeKind kind = static_cast<TreeKind>(flora >> FLORA_KIND_SHIFT);
-	TreeAge age = static_cast<TreeAge>((flora >> FLORA_AGE_SHIFT) & FLORA_AGE_MASK);
-	SeedDice dice(Hash32(PLANTING_SALT + tile.base()));
-	bool mirror_x = (dice.Next() & 1) != 0;
-	bool mirror_y = (dice.Next() & 1) != 0;
-	bool swap = (dice.Next() & 1) != 0;
-	size_t turn = dice.Next() % OUTER_SLOTS;
-	bool toy = kind == TreeKind::Toy;
-	MapVector huddle = toy ? MapVector{dice.Between(TOY_HUDDLE_SPOT), dice.Between(TOY_HUDDLE_SPOT)} : MapVector{HALF_TILE, HALF_TILE};
-	uint shown = (toy ? SHOWN_TOYS : SHOWN_TREES)[count];
+/* A tile's trees, the same every time it is planted: each on a slot of its own, the slots turned, mirrored and shuffled tile by tile, all rolled off one run of dice. */
+class Grove {
+public:
+	Grove(int tx, int ty, uint8_t flora);
+	void Plant(std::vector<ShapedTree> &planted);
+
+private:
+	TilePoint Spot(uint tree);
+	double Scale(double fringe, bool spare);
+	ShapedTree Grown(const TilePoint &spot, double fringe, bool spare);
+
+	int tx;
+	int ty;
+	TreeKind kind;
+	TreeAge age;
+	uint count;
+	SeedDice dice;
+	bool mirror_x = false;
+	bool mirror_y = false;
+	bool swap = false;
+	size_t turn = 0;
+	MapVector huddle = {HALF_TILE, HALF_TILE};
+	double huddling = 0.0;
+};
+
+/* The slots are laid before any tree is rolled, toyland's huddling toward a spot of their own. */
+Grove::Grove(int tx, int ty, uint8_t flora) :
+	tx(tx),
+	ty(ty),
+	kind(static_cast<TreeKind>(flora >> FLORA_KIND_SHIFT)),
+	age(static_cast<TreeAge>((flora >> FLORA_AGE_SHIFT) & FLORA_AGE_MASK)),
+	count(std::min<uint>(flora & FLORA_COUNT_MASK, FLORA_MOST_TREES)),
+	dice(Hash32(PLANTING_SALT + TileXY(tx, ty).base()))
+{
+	this->mirror_x = (this->dice.Next() & 1) != 0;
+	this->mirror_y = (this->dice.Next() & 1) != 0;
+	this->swap = (this->dice.Next() & 1) != 0;
+	this->turn = this->dice.Below(OUTER_SLOTS);
+	if (this->kind != TreeKind::Toy) return;
+	double huddle_x = this->dice.Between(TOY_HUDDLE_SPOT);
+	this->huddle = {huddle_x, this->dice.Between(TOY_HUDDLE_SPOT)};
+	this->huddling = TOY_HUDDLE;
+}
+
+/* A thick wood thins out toward treeless ground, its spare trees dropping out and the rest growing smaller over its fringe. */
+void Grove::Plant(std::vector<ShapedTree> &planted)
+{
+	bool toy = this->kind == TreeKind::Toy;
+	bool thinning = !toy && this->count >= THICK_WOOD;
+	uint shown = (toy ? SHOWN_TOYS : SHOWN_TREES)[this->count];
 	for (uint tree = 0; tree < shown; tree++) {
-		auto [sx, sy] = tree < OUTER_SLOTS ? SLOTS[(tree + turn) % OUTER_SLOTS] : SLOTS.back();
-		if (swap) std::swap(sx, sy);
-		double fx = std::clamp((mirror_x ? 1.0 - sx : sx) + dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
-		double fy = std::clamp((mirror_y ? 1.0 - sy : sy) + dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
-		double x = tx + (toy ? std::lerp(fx, huddle.x, TOY_HUDDLE) : fx);
-		double y = ty + (toy ? std::lerp(fy, huddle.y, TOY_HUDDLE) : fy);
-		double fringe = toy || count < THICK_WOOD ? 1.0 : FringeDepth(tx, ty, fx, fy);
-		bool spare = tree >= count;
-		if (spare && dice.Share() > fringe) continue;
-		double scale = TREE_AGE_SCALES[to_underlying(age)] * dice.Between(TREE_SPREAD) * std::lerp(FRINGE_SCALE, 1.0, fringe) * (spare ? SPARE_TREE_SCALE : 1.0) * (toy ? TOY_TREE_SCALE : 1.0);
-		double wither = age == TreeAge::Dying ? dice.Between(0.35, 0.7) : 0.0;
-		TreeShape shape = {kind, static_cast<uint8_t>(dice.Next() % TREE_SHAPES)};
-		TreeInstance instance = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(tx, ty, x, y)), {ShareByte(dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(dice.Share()), ShareByte(wither)}};
-		planted.emplace_back(shape.Index(), instance);
+		TilePoint spot = this->Spot(tree);
+		double fringe = thinning ? FringeDepth(this->tx, this->ty, spot.first, spot.second) : 1.0;
+		bool spare = tree >= this->count;
+		if (spare && this->dice.Share() > fringe) continue;
+		planted.push_back(this->Grown(spot, fringe, spare));
 	}
+}
+
+TilePoint Grove::Spot(uint tree)
+{
+	auto [sx, sy] = tree < OUTER_SLOTS ? SLOTS[(tree + this->turn) % OUTER_SLOTS] : SLOTS.back();
+	if (this->swap) std::swap(sx, sy);
+	auto jittered = [&](double share, bool mirror) {
+		return std::clamp((mirror ? 1.0 - share : share) + this->dice.Between(-SLOT_JITTER, SLOT_JITTER), EDGE_MARGIN, 1.0 - EDGE_MARGIN);
+	};
+	double fx = jittered(sx, this->mirror_x);
+	return {fx, jittered(sy, this->mirror_y)};
+}
+
+double Grove::Scale(double fringe, bool spare)
+{
+	double grown = TREE_AGE_SCALES[to_underlying(this->age)] * this->dice.Between(TREE_SPREAD);
+	return grown * std::lerp(FRINGE_SCALE, 1.0, fringe) * (spare ? SPARE_TREE_SCALE : 1.0) * (this->kind == TreeKind::Toy ? TOY_TREE_SCALE : 1.0);
+}
+
+ShapedTree Grove::Grown(const TilePoint &spot, double fringe, bool spare)
+{
+	double x = this->tx + std::lerp(spot.first, this->huddle.x, this->huddling);
+	double y = this->ty + std::lerp(spot.second, this->huddle.y, this->huddling);
+	double scale = this->Scale(fringe, spare);
+	double wither = this->age == TreeAge::Dying ? this->dice.Between(DYING_WITHER) : 0.0;
+	TreeShape shape = {this->kind, static_cast<uint8_t>(this->dice.Below(TREE_SHAPES))};
+	std::array<uint8_t, 4> look = {ShareByte(this->dice.Share()), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(this->dice.Share()), ShareByte(wither)};
+	return {shape.Index(), {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(this->tx, this->ty, x, y)), look}};
 }
 
 void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 {
 	_frame_profile.Count("forest_plants");
 	ProfileScope profile("build", "forest", ProfileClock::Cpu);
-	std::vector<std::pair<size_t, TreeInstance>> planted;
+	std::vector<ShapedTree> planted;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
-		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) PlantTile(tx, ty, planted);
+		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
+			uint8_t flora = _world_tiles.GroundAt(TileXY(tx, ty)).flora;
+			if ((flora & FLORA_COUNT_MASK) != 0) Grove(tx, ty, flora).Plant(planted);
+		}
 	}
 	std::ranges::stable_sort(planted, {}, [](const auto &entry) { return entry.first; });
 
