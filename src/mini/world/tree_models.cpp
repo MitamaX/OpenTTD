@@ -114,6 +114,7 @@ static constexpr double TOY_GUMDROP_HEIGHT = 0.1;
 static constexpr double TOY_GUMDROP_TAPER = 0.75;
 static constexpr double TOY_GUMDROP_STEP = 0.2;
 static constexpr double TOY_CUBE_HALF = 0.09;
+static constexpr uint8_t TOY_FORMS = 3;
 
 /* A shape's two colours, picked on screen: its leaves, and its wood or whatever else sets them off. */
 struct TreeTones {
@@ -538,7 +539,7 @@ static void Toy(TreeBuilder &tree, TreeDetail detail, uint8_t variant)
 
 	bool full = detail == TreeDetail::Full;
 	tree.Trunk(full ? 6 : 4, TOY_STICK, crown.underside + TOY_STICK_INSET);
-	switch (variant % TONE_SETS) {
+	switch (variant % TOY_FORMS) {
 		case 0:
 			tree.Leaves(tree.Lump(crown.centre, TOY_LOLLIPOP, full ? 1 : 0, 0.0), crown, CANDY_TRANSLUCENCY);
 			break;
