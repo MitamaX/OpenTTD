@@ -68,7 +68,9 @@ constexpr uint Luminance(uint32_t c)
 
 constexpr uint32_t ScaledRgb(uint32_t argb, double factor)
 {
-	auto scaled = [factor](uint channel) { return static_cast<uint>(std::clamp(channel * factor + 0.5, 0.0, static_cast<double>(CHANNEL_MAX))); };
+	uint brightest = std::max({Red(argb), Green(argb), Blue(argb), 1U});
+	double kept = std::min(factor, static_cast<double>(CHANNEL_MAX) / brightest);
+	auto scaled = [kept](uint channel) { return static_cast<uint>(channel * kept + 0.5); };
 	return PackArgb(Alpha(argb), scaled(Red(argb)), scaled(Green(argb)), scaled(Blue(argb)));
 }
 
