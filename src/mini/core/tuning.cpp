@@ -29,13 +29,14 @@ static constexpr std::array<std::string_view, 3> RETIRED_KEYS = {"height_scale",
 
 MiniTuning _tuning;
 
+/* from_chars reads inf and nan as well, which no knob takes and no clamp holds. */
 template <typename T>
 static void ReadIniNumber(IniGroup &group, std::string_view name, T &v)
 {
 	if (const IniItem *item = group.GetItem(name); item != nullptr && item->value.has_value()) {
 		const std::string &s = *item->value;
 		T parsed;
-		if (std::from_chars(s.data(), s.data() + s.size(), parsed).ec == std::errc{}) v = parsed;
+		if (std::from_chars(s.data(), s.data() + s.size(), parsed).ec == std::errc{} && std::isfinite(parsed)) v = parsed;
 	} else {
 		group.GetOrCreateItem(name).SetValue(fmt::format("{}", v));
 	}
