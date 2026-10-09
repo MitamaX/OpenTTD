@@ -50,6 +50,9 @@ static constexpr double STEEPEST_EARTH = 1.6;
 static constexpr int RAMP_BANK_ROWS = 12;
 static constexpr double RAMP_BANK_RUN = 1.2;
 static constexpr double GROUND_PROBE = 0.05;
+static constexpr double COPING_RISE = 0.02;
+static constexpr double COPING_DEPTH = 0.05;
+static constexpr double COPING_OVERHANG = 0.012;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int COAST_DIVISIONS = 4;
@@ -405,12 +408,18 @@ static double GroundBeyond(const TileGround &low, double x, double y, double rea
 	return reach < 1.0 ? low.Level(x, y) : GroundLevel(x, y);
 }
 
+template <class Level>
+static MapVector ClimbOf(const Level &level, double x, double y)
+{
+	double east = level(x + GROUND_PROBE, y) - level(x - GROUND_PROBE, y);
+	double south = level(x, y + GROUND_PROBE) - level(x, y - GROUND_PROBE);
+	return MapVector{east, south} * (0.5 / GROUND_PROBE);
+}
+
 /* How the ground climbs along map x and map y at a point, in levels per tile. */
 static MapVector GroundClimb(double x, double y)
 {
-	double east = GroundLevel(x + GROUND_PROBE, y) - GroundLevel(x - GROUND_PROBE, y);
-	double south = GroundLevel(x, y + GROUND_PROBE) - GroundLevel(x, y - GROUND_PROBE);
-	return MapVector{east, south} * (0.5 / GROUND_PROBE);
+	return ClimbOf(GroundLevel, x, y);
 }
 
 static Vec3 ClimbNormal(const MapVector &climb)
@@ -422,7 +431,7 @@ static Vec3 ClimbNormal(const MapVector &climb)
 /* One end of an earth bank: from the step's top it grades out over the lower ground, as far as its run allows for the height it falls, onto the ground there;
  * the ground is read a point and how far out it lies. */
 template <class GroundUnder>
-static BankEdge BankEnd(const GroundUnder &ground_under, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double run)
+static BankEdge BankEnd(const GroundUnder &ground_under, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double run, const MapVector &top_climb = {})
 {
 	double reach = std::clamp((top.level - foot.level) * LevelRise() * EARTH_BANK_RUN_PER_RISE, 0.0, run);
 	BankEdge edge;
@@ -433,7 +442,7 @@ static BankEdge BankEnd(const GroundUnder &ground_under, const WorldPoint &top, 
 		double y = foot.y + outward.y * out;
 		double ground = std::min(ground_under(x, y, out) - BANK_FOOT_DIP * share, top.level);
 		double fall = BankFall(share);
-		MapVector climb = GroundClimb(x, y) * fall - outward * ((top.level - ground) * BankFallSlope(share) / std::max(reach, GROUND_PROBE));
+		MapVector climb = GroundClimb(x, y) * fall + top_climb * (1.0 - fall) - outward * ((top.level - ground) * BankFallSlope(share) / std::max(reach, GROUND_PROBE));
 		edge.points[row] = {x, y, top.level + (ground - top.level) * fall};
 		edge.normals[row] = ClimbNormal(climb);
 	}
@@ -522,16 +531,40 @@ static WorldPoint Grounded(const WorldPoint &at)
 	return {at.x, at.y, BedUnder(at.x, at.y) - BANK_FOOT_DIP};
 }
 
+static WorldPoint Shifted(const WorldPoint &at, const MapVector &by, double rise)
+{
+	return {at.x + by.x, at.y + by.y, at.level + rise / LevelRise()};
+}
+
+static void AddStoneQuad(TerrainMesh &mesh, const std::array<WorldPoint, 4> &corners, const Vec3 &normal)
+{
+	uint32_t first = mesh.Add(corners[0], normal, WALL_MARK);
+	for (size_t corner = 1; corner < corners.size(); corner++) mesh.Add(corners[corner], normal, WALL_MARK);
+	mesh.Quad(first, first + 1, first + 2, first + 3);
+}
+
 /* A stone face from a line of points down to the ground under them, facing out one way. */
 static void AddMasonry(TerrainMesh &mesh, std::span<const WorldPoint> line, const MapVector &facing)
 {
 	Vec3 outward = {facing.x, facing.y, 0.0};
+	for (size_t i = 0; i + 1 < line.size(); i++) AddStoneQuad(mesh, {line[i], line[i + 1], Grounded(line[i + 1]), Grounded(line[i])}, outward);
+}
+
+static void AddWingWall(TerrainMesh &mesh, std::span<const WorldPoint> line, const MapVector &facing)
+{
+	AddMasonry(mesh, line, facing);
+	Vec3 outward = {facing.x, facing.y, 0.0};
+	MapVector front = facing * COPING_OVERHANG;
+	MapVector back = facing * -COPING_DEPTH;
 	for (size_t i = 0; i + 1 < line.size(); i++) {
-		uint32_t top = mesh.Add(line[i], outward, WALL_MARK);
-		mesh.Add(line[i + 1], outward, WALL_MARK);
-		mesh.Add(Grounded(line[i + 1]), outward, WALL_MARK);
-		mesh.Add(Grounded(line[i]), outward, WALL_MARK);
-		mesh.Quad(top, top + 1, top + 2, top + 3);
+		const WorldPoint &from = line[i];
+		const WorldPoint &to = line[i + 1];
+		Vec3 along = {to.x - from.x, to.y - from.y, (to.level - from.level) * LevelRise()};
+		Vec3 cap = Normalised(Cross(Vec3{-facing.x, -facing.y, 0.0}, along));
+		if (cap.z < 0.0) cap = cap * -1.0;
+		AddStoneQuad(mesh, {Shifted(from, front, COPING_RISE), Shifted(to, front, COPING_RISE), Shifted(to, front, 0.0), Shifted(from, front, 0.0)}, outward);
+		AddStoneQuad(mesh, {Shifted(from, back, COPING_RISE), Shifted(to, back, COPING_RISE), Shifted(to, front, COPING_RISE), Shifted(from, front, COPING_RISE)}, cap);
+		AddStoneQuad(mesh, {Shifted(from, back, 0.0), Shifted(to, back, 0.0), Shifted(to, back, COPING_RISE), Shifted(from, back, COPING_RISE)}, outward * -1.0);
 	}
 }
 
@@ -551,23 +584,21 @@ static void AddRampBank(TerrainMesh &mesh, int tx, int ty)
 		return WorldPoint{at.x, at.y, footing(at.x, at.y) - crown};
 	};
 	auto ground_under = [](double x, double y, double) { return BedUnder(x, y); };
+	MapVector facing = Outward(onto);
 
-	std::vector<WorldPoint> abutment;
+	std::array<WorldPoint, 2> abutment;
 	for (double side : {-1.0, 1.0}) {
 		std::vector<BankEdge> edges;
 		for (int row = 0; row <= RAMP_BANK_ROWS; row++) {
 			WorldPoint top = crest(static_cast<double>(row) / RAMP_BANK_ROWS, side);
-			edges.push_back(BankEnd(ground_under, top, Grounded(top), run.Right() * side, RAMP_BANK_RUN));
+			edges.push_back(BankEnd(ground_under, top, Grounded(top), run.Right() * side, RAMP_BANK_RUN, ClimbOf(footing, top.x, top.y)));
 		}
 		for (size_t i = 0; i + 1 < edges.size(); i++) AddBankStrip(mesh, edges[i], edges[i + 1], FILL_MARK);
 		const auto &end = edges.back().points;
-		if (side < 0.0) {
-			abutment.insert(abutment.end(), end.rbegin(), end.rend());
-		} else {
-			abutment.insert(abutment.end(), end.begin(), end.end());
-		}
+		abutment[side < 0.0 ? 0 : 1] = end.front();
+		AddWingWall(mesh, end, facing);
 	}
-	AddMasonry(mesh, abutment, Outward(onto));
+	AddMasonry(mesh, abutment, facing);
 }
 
 /* A run of samples along a course's middle line, carried on a step beyond each end along the course's heading there, so its offsets end square to it. */
