@@ -52,14 +52,25 @@ const vec2 PANE_WARP_SEED = vec2(5.3, 9.1);
 const float GLAZED_SHARE = 0.85;
 const vec3 LOUVRE_PAINTS[4] = vec3[4](vec3(0.20, 0.42, 0.30), vec3(0.22, 0.38, 0.55), vec3(0.18, 0.50, 0.50), vec3(0.86, 0.84, 0.78));
 const float LOUVRE_GROOVE_SHADE = 0.72;
-const vec3 TOY_GLASSES[3] = vec3[3](vec3(0.62, 0.86, 0.96), vec3(0.66, 0.94, 0.84), vec3(0.82, 0.76, 0.98));
-const vec3 TOY_GLASS = (TOY_GLASSES[0] + TOY_GLASSES[1] + TOY_GLASSES[2]) / 3.0;
+const vec3 TOY_GLASSES[4] = vec3[4](vec3(0.30, 0.56, 0.90), vec3(0.18, 0.62, 0.68), vec3(0.50, 0.40, 0.84), vec3(0.62, 0.80, 0.94));
+const vec3 TOY_GLASS = (TOY_GLASSES[0] + TOY_GLASSES[1] + TOY_GLASSES[2] + TOY_GLASSES[3]) / 4.0;
 const vec3 TOY_LIT_GLASS = vec3(1.0, 0.9, 0.62);
 const vec3 TOY_LAMP = vec3(1.0, 0.86, 0.6);
 const vec3 TOY_FRAME = vec3(0.95, 0.95, 0.93);
 const float TOY_PANE_ROUGHNESS = 0.3;
 const float TOY_GLAZING = 0.45;
-const float TOY_BULGE = 0.7;
+const float TOY_BULGE = 0.35;
+const uint TOY_CROSSED = 1u;
+const uint TOY_CURTAINED = 2u;
+const uint TOY_POTTED = 3u;
+const int TOY_DRESSINGS = 4;
+const float TOY_BAR = 0.35;
+const float TOY_CURTAIN_SHARE = 0.26;
+const vec2 TOY_POT = vec2(1.1, 1.3);
+const float TOY_BLOOM_RADIUS = 1.1;
+const vec3 TOY_POT_PAINT = vec3(0.86, 0.42, 0.22);
+const vec3 TOY_CANDIES[3] = vec3[3](vec3(0.94, 0.34, 0.46), vec3(0.98, 0.76, 0.24), vec3(0.42, 0.78, 0.40));
+const float TOY_PAINT_ROUGHNESS = 0.5;
 
 const vec2 COLUMNS_FADE = vec2(1.2, 2.6);
 const vec2 STOREYS_FADE = vec2(2.6, 4.5);
@@ -96,6 +107,22 @@ Clad ToyPaneOf(Bay bay, uint seed)
 	return lit ? ToyPane(TOY_LIT_GLASS, TOY_LAMP) : ToyPane(TOY_GLASSES[Picked(bay.window, seed, ROLL_TONE, TOY_GLASSES.length())], vec3(0.0));
 }
 
+Clad ToyDressed(Clad pane, Bay bay, Elevation elevation)
+{
+	Opening opening = bay.opening;
+	vec2 at = bay.at;
+	float pixel = max(elevation.pixel, LEAST_PIXEL);
+	uint dressing = Picked(bay.window, elevation.seed, ROLL_CURTAIN, TOY_DRESSINGS);
+	float crossed = max(Band(at.x, -TOY_BAR, TOY_BAR, pixel), Band(at.y, opening.height * 0.5 - TOY_BAR, opening.height * 0.5 + TOY_BAR, pixel));
+	float curtained = smoothstep(-pixel, pixel, abs(at.x) - opening.width * (0.5 - TOY_CURTAIN_SHARE));
+	float pot = Band(at.x, -TOY_POT.x, TOY_POT.x, pixel) * Band(at.y, 0.0, TOY_POT.y, pixel);
+	float bloom = 1.0 - smoothstep(-pixel, pixel, distance(at, vec2(0.0, TOY_POT.y + TOY_BLOOM_RADIUS)) - TOY_BLOOM_RADIUS);
+	float cover = dressing == TOY_CROSSED ? crossed : dressing == TOY_CURTAINED ? curtained : dressing == TOY_POTTED ? max(pot, bloom) : 0.0;
+	vec3 candy = TOY_CANDIES[Picked(bay.window, elevation.seed, ROLL_CURTAIN_PAINT, TOY_CANDIES.length())];
+	vec3 paint = dressing == TOY_CROSSED ? TOY_FRAME : dressing == TOY_POTTED && at.y < TOY_POT.y ? TOY_POT_PAINT : candy;
+	return Mixed(pane, Matte(paint, TOY_PAINT_ROUGHNESS), cover);
+}
+
 /* A candy pane swells out of its frame, flat across its middle and rounding over toward its edges. */
 Clad Bulged(Clad pane, Opening opening, vec2 at)
 {
@@ -119,7 +146,7 @@ vec3 PaneLean(ivec2 window, uint seed)
 
 Clad Glazing(Bay bay, Elevation elevation)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return Bulged(ToyPaneOf(bay, elevation.seed), bay.opening, bay.at);
+	if (Landscape() == LANDSCAPE_TOYLAND) return Bulged(ToyDressed(ToyPaneOf(bay, elevation.seed), bay, elevation), bay.opening, bay.at);
 	Clad clad = SeenThrough(RoomBehind(bay, elevation), bay, elevation);
 	clad.facing = PaneLean(bay.window, elevation.seed);
 	return clad;
