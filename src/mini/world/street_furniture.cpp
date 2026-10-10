@@ -10,9 +10,12 @@
 #include "../../stdafx.h"
 #include "street_furniture.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
+#include "../core/seed.h"
+#include "../gpu/draw_list.h"
 #include "../model/model_shapes.h"
 
 #include "../map/car_look.h"
@@ -46,6 +49,11 @@ static constexpr double TRUNK_HEIGHT = 0.15;
 static constexpr Vec3 CANOPY_SPAN = {0.065, 0.065, 0.075};
 static constexpr double CANOPY_LUMPINESS = 0.18;
 static constexpr double CANOPY_VARIETY = 0.12;
+static constexpr std::array<Vec3, 4> CANOPY_LUMPS = {{{0.0, 0.0, 0.3}, {0.38, 0.12, -0.12}, {-0.22, 0.34, -0.06}, {-0.16, -0.36, -0.02}}};
+static constexpr double CANOPY_LUMP_SCALE = 0.66;
+static constexpr double CANOPY_ROUNDING = 0.4;
+static constexpr double CANOPY_UNDERSIDE_SHADE = 0.7;
+static constexpr double CANOPY_TOP_SHADE = 1.12;
 
 static constexpr Vec3 POST_LOW = {-0.012, -0.012, 0.0};
 static constexpr Vec3 POST_HIGH = {0.012, 0.012, 0.17};
@@ -106,8 +114,20 @@ ModelMesh LitterBin(const MapVector &at, double base)
 ModelMesh StreetTree(const MapVector &at, double base, uint32_t seed)
 {
 	ModelMesh tree = Prism(TRUNK_SIDES, TRUNK_RADIUS, TRUNK_HEIGHT).Paint(BARK);
-	ModelMesh canopy = Icosphere(1).Displace(CANOPY_LUMPINESS, seed).Transform(Mat4::Translation({0.0, 0.0, TRUNK_HEIGHT + CANOPY_SPAN.z * 0.6}) * Mat4::Scaling(CANOPY_SPAN));
-	tree.Append(canopy.Facet().Paint(LEAVES[seed % LEAVES.size()]).Vary(CANOPY_VARIETY, seed));
+	Vec3 crown = {0.0, 0.0, TRUNK_HEIGHT + CANOPY_SPAN.z * 0.6};
+	SeedDice dice(seed);
+	ModelMesh canopy;
+	for (const Vec3 &lump : CANOPY_LUMPS) {
+		Vec3 centre = crown + Vec3{lump.x * CANOPY_SPAN.x, lump.y * CANOPY_SPAN.y, lump.z * CANOPY_SPAN.z};
+		canopy.Append(Icosphere(1).Displace(CANOPY_LUMPINESS, dice.Next()).Transform(Mat4::Translation(centre) * Mat4::Scaling(CANOPY_SPAN * CANOPY_LUMP_SCALE)));
+	}
+	uint32_t leaves = ScaledRgb(LEAVES[seed % LEAVES.size()], dice.Between(1.0 - CANOPY_VARIETY, 1.0 + CANOPY_VARIETY));
+	double underside = crown.z - CANOPY_SPAN.z;
+	double top = crown.z + CANOPY_SPAN.z;
+	canopy.Smooth().Round(crown, CANOPY_ROUNDING).PaintBy([&](const Vec3 &point) {
+		return ScaledRgb(leaves, std::lerp(CANOPY_UNDERSIDE_SHADE, CANOPY_TOP_SHADE, std::clamp((point.z - underside) / (top - underside), 0.0, 1.0)));
+	});
+	tree.Append(canopy.Transform(Mat4::Turn(UP, dice.Between(0.0, 2.0 * M_PI))));
 	return Placed(std::move(tree), at, {1.0, 0.0}, base);
 }
 
