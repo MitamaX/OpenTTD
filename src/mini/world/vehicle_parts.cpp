@@ -95,12 +95,18 @@ static std::vector<MapVector> RoundedSection(const HullProfile &profile, int arc
 
 static std::vector<LoftRing> EndRings(double tip, double inward, const BodyEnd &end, ShellSteps steps)
 {
-	if (end.reach <= 0.0 || steps.end <= 0) return {{tip, 1.0, 1.0}};
+	if (end.reach <= 0.0) return {{tip, 1.0, 1.0}};
+	if (end.curve == EndCurve::Tapered) {
+		std::vector<LoftRing> rings = TaperRings(tip + inward * end.reach, tip, end.shape);
+		std::ranges::reverse(rings);
+		return rings;
+	}
+	if (steps.end <= 0) return {{tip, 1.0, 1.0}};
 	std::vector<LoftRing> rings;
 	for (int step = 0; step <= steps.end; step++) {
 		double angle = QUARTER_TURN * step / steps.end;
 		double rounded = std::sin(angle);
-		rings.push_back({tip + inward * end.reach * (1.0 - std::cos(angle)), std::lerp(end.width, 1.0, rounded), std::lerp(end.height, 1.0, rounded)});
+		rings.push_back({tip + inward * end.reach * (1.0 - std::cos(angle)), std::lerp(end.shape.width, 1.0, rounded), std::lerp(end.shape.height, 1.0, rounded)});
 	}
 	return rings;
 }
@@ -143,6 +149,14 @@ ModelMesh BodyRun::Laid(const HullProfile &section, double from, double to) cons
 	return this->Lofted(section, this->RingsOver(from, to));
 }
 
+ModelMesh BodyRun::Over(const HullProfile &section, double from, double to) const
+{
+	std::vector<LoftRing> over = this->RingsOver(from, to);
+	if (from <= this->Back()) over.front().x -= PROUD;
+	if (to >= this->Front()) over.back().x += PROUD;
+	return this->Lofted(section, over);
+}
+
 ModelMesh BodyRun::Shell() const
 {
 	return this->Laid(this->profile, this->Back(), this->Front());
@@ -156,10 +170,7 @@ ModelMesh BodyRun::Stripe(const Band &band, uint32_t tone) const
 ModelMesh BodyRun::Stripe(const Band &band, double from, double to, uint32_t tone) const
 {
 	assert(band.low >= this->profile.low && band.high <= this->profile.high - BevelOf(this->profile));
-	std::vector<LoftRing> over = this->RingsOver(from, to);
-	if (from <= this->Back()) over.front().x -= PROUD;
-	if (to >= this->Front()) over.back().x += PROUD;
-	return this->Lofted({this->profile.half_width + PROUD, band.low, band.high, 0.0}, over).Paint(tone);
+	return this->Over({this->profile.half_width + PROUD, band.low, band.high, 0.0}, from, to).Paint(tone);
 }
 
 double BodyRun::HalfWidthAt(double x) const

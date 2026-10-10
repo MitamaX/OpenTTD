@@ -34,7 +34,27 @@ static constexpr HullProfile COACH_BODY = {BODY_HALF, FLOOR, COACH_TOP, 0.0};
 static constexpr HullProfile COACH_ROOF = {BODY_HALF - 0.002, COACH_TOP, ROOF_TOP, 0.03};
 static constexpr HullProfile VAN_BODY = {BODY_HALF - 0.005, FLOOR, COACH_TOP, 0.012};
 static constexpr HullProfile STREAMLINED_BODY = {BODY_HALF, 0.07, 0.24, 0.05};
-static constexpr HullProfile SLEEK_BODY = {0.12, 0.0, 0.17, 0.06};
+static constexpr double STREAMLINED_GLASS_FOOT = 0.17;
+static constexpr Band STREAMLINED_BAND = {0.1, 0.125};
+static constexpr HullProfile SLEEK_BODY = {0.12, 0.0, 0.17, 0.04};
+static constexpr Band SLEEK_GLASS = {0.085, 0.13};
+static constexpr Band SLEEK_BAND = {0.04, 0.055};
+static constexpr HullProfile ELECTRIC_BODY = {BODY_HALF, 0.07, 0.235, 0.02};
+static constexpr BodyEnd ELECTRIC_ENDS = RoundedEnd(0.03, 0.9, 0.86);
+static constexpr Band ELECTRIC_BAND = {0.1, 0.122};
+static constexpr WindowSpan ELECTRIC_WINDOWS = {-0.17, 0.17, 5};
+static constexpr Band ELECTRIC_GLASS = {0.15, 0.2};
+static constexpr Band ELECTRIC_CAB_GLASS = {0.165, 0.215};
+static constexpr HullProfile LONG_HOOD = {0.085, 0.075, 0.2, 0.02};
+static constexpr HullProfile SHORT_HOOD = {0.085, 0.075, 0.17, 0.02};
+static constexpr BodyEnd HOOD_END = RoundedEnd(0.015, 0.9, 0.92);
+static constexpr Band HOOD_BAND = {0.1, 0.12};
+static constexpr HullProfile HOOD_CAB = {0.122, 0.075, 0.25, 0.02};
+static constexpr BodyEnd HOOD_CAB_ENDS = RoundedEnd(0.012, 0.95, 0.96);
+static constexpr Band HOOD_CAB_GLASS = {0.19, 0.23};
+static constexpr double STEAM_CAB_HALF = 0.125;
+static constexpr WindowSpan STEAM_CAB_WINDOW = {-0.2, -0.1, 1};
+static constexpr Band STEAM_CAB_GLASS = {0.18, 0.235};
 static constexpr std::array<double, 4> VAN_RIBS = {-0.17, -0.11, 0.11, 0.17};
 static constexpr double GANGWAY_TUCK = 0.006;
 static constexpr double GANGWAY_HALF = 0.07;
@@ -95,13 +115,13 @@ static ModelMesh SteamEngine(VehicleDetail detail)
 	kit.Body(Barrel(-0.08, 0.17, 0.075, 0.15, 10).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(Barrel(0.17, 0.215, 0.077, 0.15, 10).Paint(RUNNING_GEAR));
 	kit.Body(Column(8, 0.024, STEAM_CHIMNEY_MOUTH, STEAM_CHIMNEY_HEIGHT).Transform(Mat4::Translation(STEAM_CHIMNEY_FOOT)).Paint(RUNNING_GEAR));
-	kit.Body(Hull({0.125, 0.074, 0.255, 0.01}, -0.215, -0.08).Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(Hull({STEAM_CAB_HALF, 0.074, 0.255, 0.01}, -0.215, -0.08).Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(Plank({-0.228, -0.135, 0.255}, {-0.07, 0.135, 0.268}, RUNNING_GEAR));
 	kit.Fine(Column(8, 0.032, 0.022, 0.04).Transform(Mat4::Translation({0.06, 0.0, 0.215})).Paint(BRASS).Gloss(METAL_GLOSS));
 	kit.Fine(Barrel(0.215, 0.219, 0.05, 0.15, 10).Paint(STEEL));
 	kit.Fine(SideBand(-UNIT_REACH, UNIT_REACH, 0.11, 0.054, 0.07, SECONDARY));
 	kit.Fine(Plank({0.215, -0.11, 0.05}, {0.228, 0.11, 0.088}, SECONDARY));
-	kit.Fine(WindowRow(-0.2, -0.1, 0.18, 0.235, 0.125, 1));
+	kit.Fine(WindowGlass(STEAM_CAB_WINDOW, STEAM_CAB_GLASS, STEAM_CAB_HALF));
 	kit.Fine(Windscreen(-0.08, 0.12, 0.2, 0.24));
 	for (double x : {-0.03, 0.065, 0.16}) kit.Fine(WheelPair(x, 0.095, 0.045, 0.016).Paint(DARK_SECONDARY));
 	kit.Fine(WheelPair(-0.17, 0.095, WHEEL_RADIUS, 0.014));
@@ -111,14 +131,16 @@ static ModelMesh SteamEngine(VehicleDetail detail)
 
 static void HoodUnitCab(VehicleKit &kit)
 {
-	kit.Body(Hull({0.085, 0.075, 0.2, 0.02}, -0.215, 0.04).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Hull({0.122, 0.075, 0.25, 0.02}, 0.04, 0.13).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Hull({0.085, 0.075, 0.17, 0.02}, 0.13, 0.215).Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	BodyRun long_hood(LONG_HOOD, -0.215, 0.04, HOOD_END, SQUARE_END, kit.Steps());
+	BodyRun short_hood(SHORT_HOOD, 0.13, 0.215, SQUARE_END, HOOD_END, kit.Steps());
+	BodyRun cab(HOOD_CAB, 0.04, 0.13, HOOD_CAB_ENDS, HOOD_CAB_ENDS, kit.Steps());
+	for (const BodyRun *hood : {&long_hood, &short_hood}) {
+		kit.Body(hood->Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
+		kit.Body(hood->Stripe(HOOD_BAND, SECONDARY).Gloss(PAINT_GLOSS));
+	}
+	kit.Body(cab.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(Hull({0.125, 0.25, 0.262, 0.008}, 0.035, 0.135).Paint(ROOF_GREY));
-	kit.Body(SideBand(-0.215, 0.215, 0.085, 0.1, 0.12, SECONDARY));
-	kit.Fine(Windscreen(0.13, 0.095, 0.19, 0.235));
-	kit.Fine(Windscreen(0.04, 0.095, 0.19, 0.235));
-	kit.Fine(WindowRow(0.055, 0.115, 0.19, 0.235, 0.122, 1));
+	kit.Fine(cab.Stripe(HOOD_CAB_GLASS, GLASS).Gloss(GLASS_GLOSS));
 	kit.Fine(Plank({-0.19, -0.05, 0.2}, {-0.09, 0.05, 0.204}, RUNNING_GEAR));
 	kit.Fine(Plank({-0.05, -0.015, 0.2}, {-0.025, 0.015, 0.222}, RUNNING_GEAR));
 	kit.Fine(LampPair(0.215, 0.04, 0.15, 0.008, HEADLAMP));
@@ -137,14 +159,14 @@ static ModelMesh DieselEngine(VehicleDetail detail)
 /* A full width body running into a rounded nose wrapped in glass, the streamlined look of fast or late engines. */
 static void Streamliner(VehicleKit &kit, double nose_from, const NoseShape &shape)
 {
-	const HullProfile &body = STREAMLINED_BODY;
-	kit.Body(Hull(body, -UNIT_REACH, nose_from).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Nose(body, nose_from, UNIT_REACH, shape, body.low).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Nose({body.half_width + 0.003, 0.17, body.high + 0.003, body.bevel}, nose_from, UNIT_REACH, shape, body.low).Paint(GLASS).Gloss(GLASS_GLOSS));
-	kit.Body(SideBand(-UNIT_REACH, nose_from, body.half_width, 0.1, 0.125, SECONDARY));
-	kit.Fine(Nose({body.half_width + 0.0025, 0.1, 0.125, 0.0}, nose_from, UNIT_REACH, shape, body.low).Paint(SECONDARY));
+	const HullProfile &profile = STREAMLINED_BODY;
+	BodyRun body(profile, -UNIT_REACH, UNIT_REACH, SQUARE_END, TaperedEnd(UNIT_REACH - nose_from, shape), kit.Steps());
+	kit.Body(body.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(body.Over(profile.Grown(PROUD).Above(STREAMLINED_GLASS_FOOT), nose_from, UNIT_REACH).Paint(GLASS).Gloss(GLASS_GLOSS));
+	kit.Body(body.Stripe(STREAMLINED_BAND, -UNIT_REACH, nose_from, SECONDARY).Gloss(PAINT_GLOSS));
+	kit.Fine(body.Stripe(STREAMLINED_BAND, nose_from, UNIT_REACH, SECONDARY).Gloss(PAINT_GLOSS));
 	kit.Fine(Windscreen(-UNIT_REACH, 0.09, 0.17, 0.215));
-	kit.Fine(Plank({-0.15, -0.06, body.high}, {-0.02, 0.06, body.high + 0.006}, RUNNING_GEAR));
+	kit.Fine(Plank({-0.15, -0.06, profile.high}, {-0.02, 0.06, profile.high + 0.006}, RUNNING_GEAR));
 	kit.Fine(LampPair(UNIT_REACH - 0.008, 0.05, 0.095, 0.008, HEADLAMP));
 	kit.Fine(LampPair(-UNIT_REACH, 0.05, 0.095, 0.008, TAIL_LAMP));
 }
@@ -161,11 +183,13 @@ static ModelMesh ElectricEngine(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Underframe(kit, 0.125);
-	kit.Body(Hull({BODY_HALF, 0.07, 0.235, 0.035}, -0.215, 0.215).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(SideBand(-0.215, 0.215, BODY_HALF, 0.1, 0.122, SECONDARY));
-	kit.Fine(Windscreen(0.215, 0.1, 0.17, 0.215));
-	kit.Fine(Windscreen(-0.215, 0.1, 0.17, 0.215));
-	kit.Fine(WindowRow(-0.17, 0.17, 0.15, 0.2, BODY_HALF, 5));
+	BodyRun body(ELECTRIC_BODY, -0.215, 0.215, ELECTRIC_ENDS, ELECTRIC_ENDS, kit.Steps());
+	kit.Body(body.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(body.Stripe(ELECTRIC_BAND, SECONDARY).Gloss(PAINT_GLOSS));
+	kit.Body(body.Stripe(ELECTRIC_GLASS, ELECTRIC_WINDOWS.GlassBack(), ELECTRIC_WINDOWS.GlassFront(), GLASS).Gloss(GLASS_GLOSS));
+	kit.Fine(WindowPosts(ELECTRIC_WINDOWS, ELECTRIC_GLASS, BODY_HALF + PROUD, PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Fine(body.Stripe(ELECTRIC_CAB_GLASS, body.Back(), body.Back() + ELECTRIC_ENDS.reach, GLASS).Gloss(GLASS_GLOSS));
+	kit.Fine(body.Stripe(ELECTRIC_CAB_GLASS, body.Front() - ELECTRIC_ENDS.reach, body.Front(), GLASS).Gloss(GLASS_GLOSS));
 	kit.Fine(Plank({-0.05, -0.06, 0.235}, {0.05, 0.06, 0.247}, ROOF_GREY));
 	kit.Fine(Pantograph(0.11, 0.235));
 	kit.Fine(LampPair(0.215, 0.05, 0.1, 0.008, HEADLAMP));
@@ -194,13 +218,15 @@ static void Gangways(VehicleKit &kit, const HullProfile &body)
 /* Monorail and maglev units share a body slung low around their guideway, rounded over the top. */
 static void SleekBody(VehicleKit &kit, double nose_from, const NoseShape &shape)
 {
-	const HullProfile &body = SLEEK_BODY;
-	kit.Body(Hull(body, -UNIT_REACH, nose_from).Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	const HullProfile &profile = SLEEK_BODY;
+	bool nosed = nose_from < UNIT_REACH;
+	BodyRun body(profile, -UNIT_REACH, UNIT_REACH, SQUARE_END, nosed ? TaperedEnd(UNIT_REACH - nose_from, shape) : SQUARE_END, kit.Steps());
+	kit.Body(body.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(GuidewaySkirts());
-	kit.Body(SideBand(-UNIT_REACH, nose_from, body.half_width, 0.085, 0.135, GLASS).Gloss(GLASS_GLOSS));
-	if (nose_from >= UNIT_REACH) return;
-	kit.Body(Nose(body, nose_from, UNIT_REACH, shape, body.low).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Nose({body.half_width + 0.003, 0.085, body.high + 0.003, body.bevel}, nose_from, UNIT_REACH, shape, body.low).Paint(GLASS).Gloss(GLASS_GLOSS));
+	kit.Body(body.Stripe(SLEEK_GLASS, -UNIT_REACH, std::min(nose_from, UNIT_REACH), GLASS).Gloss(GLASS_GLOSS));
+	kit.Fine(body.Stripe(SLEEK_BAND, SECONDARY).Gloss(PAINT_GLOSS));
+	if (!nosed) return;
+	kit.Body(body.Over(profile.Grown(PROUD).Above(SLEEK_GLASS.low), nose_from, UNIT_REACH).Paint(GLASS).Gloss(GLASS_GLOSS));
 	kit.Fine(LampPair(UNIT_REACH - 0.006, 0.04, 0.035, 0.007, HEADLAMP));
 }
 
@@ -208,7 +234,6 @@ static ModelMesh MonorailEngine(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	SleekBody(kit, 0.08, {0.6, 0.5, 1.7});
-	kit.Fine(SideBand(-UNIT_REACH, 0.08, SLEEK_BODY.half_width, 0.04, 0.055, SECONDARY));
 	return kit.Done();
 }
 
@@ -216,7 +241,6 @@ static ModelMesh MaglevEngine(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	SleekBody(kit, -0.02, {0.32, 0.28, 1.4});
-	kit.Fine(SideBand(-UNIT_REACH, -0.02, SLEEK_BODY.half_width, 0.04, 0.055, SECONDARY));
 	return kit.Done();
 }
 
@@ -225,7 +249,6 @@ static ModelMesh SleekCoach(VehicleDetail detail)
 	VehicleKit kit(detail);
 	SleekBody(kit, UNIT_REACH, {});
 	Gangways(kit, SLEEK_BODY);
-	kit.Fine(SideBand(-UNIT_REACH, UNIT_REACH, SLEEK_BODY.half_width, 0.04, 0.055, SECONDARY));
 	return kit.Done();
 }
 

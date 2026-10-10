@@ -51,6 +51,7 @@ struct HullProfile {
 	double bevel;
 
 	HullProfile Grown(double by) const { return {this->half_width + by, this->low, this->high + by, this->bevel}; }
+	HullProfile Above(double foot) const { return {this->half_width, foot, this->high, this->bevel}; }
 };
 
 /* How a nose narrows and lowers toward its tip, as shares of the body, and how quickly it starts to: one is a straight wedge, more is rounder. */
@@ -60,15 +61,25 @@ struct NoseShape {
 	double curve;
 };
 
+enum class EndCurve : uint8_t {
+	Rounded,
+	Tapered,
+};
+
 struct BodyEnd {
 	double reach;
-	double width;
-	double height;
+	NoseShape shape;
+	EndCurve curve;
 };
 
 constexpr BodyEnd RoundedEnd(double reach, double width, double height)
 {
-	return {reach, width, height};
+	return {reach, {width, height, 1.0}, EndCurve::Rounded};
+}
+
+constexpr BodyEnd TaperedEnd(double reach, const NoseShape &shape)
+{
+	return {reach, shape, EndCurve::Tapered};
 }
 
 inline constexpr BodyEnd SQUARE_END = RoundedEnd(0.0, 1.0, 1.0);
@@ -135,6 +146,7 @@ public:
 
 	ModelMesh Shell() const;
 	ModelMesh Laid(const HullProfile &section, double from, double to) const;
+	ModelMesh Over(const HullProfile &section, double from, double to) const;
 	ModelMesh Stripe(const Band &band, uint32_t tone) const;
 	ModelMesh Stripe(const Band &band, double from, double to, uint32_t tone) const;
 	double HalfWidthAt(double x) const;
