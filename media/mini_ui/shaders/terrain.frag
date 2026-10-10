@@ -18,10 +18,11 @@ const float TOY_BARING = 0.55;
 const float ROCK_EXPOSURE = 0.8;
 const float EXPOSURE_BLEND = 0.14;
 const float BLANKET_SLIP_SLOPE = 1.1;
-const float SNOW_EDGE = 0.07;
+const float SNOW_EDGE = 0.12;
 const float SAND_EDGE = 0.2;
 const float BLANKET_FRAY = 0.35;
 const float BLANKET_FRAY_FREQUENCY = 0.6;
+const float BLANKET_MEANDER = 0.6;
 const float CLINGING = 0.75;
 const float SNOW_LINE_RAGGED = 2.5;
 const float CAP_COVER = 0.85;
@@ -1581,7 +1582,7 @@ Blanket Sandfield(Site site, float cover)
 Blanket BlanketOver(Site site)
 {
 	if (site.climate.blanket <= 0.0) return NO_BLANKET;
-	float fray = (Octave(site.p + 2.7, BLANKET_FRAY_FREQUENCY) - 0.5) * BLANKET_FRAY;
+	float fray = (Octave(site.p + 2.7, BLANKET_FRAY_FREQUENCY) - 0.5) * BLANKET_FRAY + (site.grain.broad - 0.5) * BLANKET_MEANDER;
 	float edge = Landscape() == LANDSCAPE_ARCTIC ? SNOW_EDGE : SAND_EDGE;
 	float lying = smoothstep(0.5 - edge, 0.5 + edge, site.climate.blanket + SnowLift(v_world.z + site.ragged * SNOW_LINE_RAGGED) + site.ragged + fray - site.trodden);
 	float slip = smoothstep(BLANKET_SLIP_SLOPE, STEEPEST_SLOPE, site.relief.slope + site.ragged * 0.8);
