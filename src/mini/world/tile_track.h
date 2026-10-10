@@ -94,6 +94,7 @@ public:
 	const std::vector<TrackPiece> &Pieces() const { return this->pieces; }
 	double Lift(const TrackPiece &piece) const;
 	std::optional<uint32_t> BallastSeed(const TrackPiece &piece) const;
+	bool Branch(size_t rank) const;
 	/* Sleepers lie on equal slots along the piece, so the same pitch runs on across every seam. */
 	std::vector<std::vector<Sleeper>> Sleepers() const;
 

@@ -215,6 +215,11 @@ double TileTrack::Lift(const TrackPiece &piece) const
 	return LIFT_STEP * (order + static_cast<int>(TRACK_END) * parity);
 }
 
+bool TileTrack::Branch(size_t rank) const
+{
+	return std::ranges::any_of(this->turnouts, [rank](const Turnout &turnout) { return turnout.branch == rank; });
+}
+
 std::optional<uint32_t> TileTrack::BallastSeed(const TrackPiece &piece) const
 {
 	if (this->Shared()) return std::nullopt;

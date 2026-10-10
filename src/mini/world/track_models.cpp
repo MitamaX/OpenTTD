@@ -240,13 +240,14 @@ void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing
 {
 	const TrackSite &site = track.Site();
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
-	const TrackPiece &main = track.Pieces().front();
-	for (const TrackPiece &piece : track.Pieces()) {
+	const std::vector<TrackPiece> &pieces = track.Pieces();
+	for (size_t rank = 0; rank < pieces.size(); rank++) {
+		const TrackPiece &piece = pieces[rank];
 		const WayLine &line = piece.Line();
 		WireRun wires = WiresOf(piece);
 		ModelMesh parts = piece.Body(WIRE_SECTION, false);
-		parts.Append(Messenger(line, wires));
-		if (piece.Distances().has_value() || &piece == &main) {
+		if (!track.Branch(rank)) parts.Append(Messenger(line, wires));
+		if (piece.Distances().has_value() || rank == 0) {
 			for (double share : wires.SharesAt(0.0)) {
 				if (!InMouth(line.At(share, 0.0), mouth)) parts.Append(Mast(line, share));
 			}
