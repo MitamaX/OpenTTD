@@ -25,7 +25,6 @@ static constexpr Vec3 Y_AXIS = {0.0, 1.0, 0.0};
 static constexpr int NOSE_RINGS = 4;
 static constexpr double QUARTER_TURN = std::numbers::pi * 0.5;
 static constexpr int WHEEL_SIDES = 8;
-static constexpr double PROUD = 0.003;
 static constexpr double PANE_DEPTH = 0.004;
 static constexpr double WINDOW_SHARE = 0.72;
 static constexpr double BOGIE_WHEELBASE = 0.034;
@@ -237,17 +236,55 @@ ModelMesh Bogie(double x, double half_track, double radius)
 	return bogie;
 }
 
+double WindowSpan::Pitch() const
+{
+	return (this->front - this->back) / this->count;
+}
+
+double WindowSpan::Post() const
+{
+	return this->Pitch() * (1.0 - WINDOW_SHARE);
+}
+
+double WindowSpan::GlassBack() const
+{
+	return this->back + this->Post() * 0.5;
+}
+
+double WindowSpan::GlassFront() const
+{
+	return this->front - this->Post() * 0.5;
+}
+
 ModelMesh WindowRow(double back, double front, double low, double high, double half_width, int count)
 {
+	WindowSpan span{back, front, count};
+	double half = (span.Pitch() - span.Post()) * 0.5;
 	ModelMesh row;
-	double pitch = (front - back) / count;
-	double half = pitch * WINDOW_SHARE * 0.5;
 	for (int window = 0; window < count; window++) {
-		double middle = back + pitch * (window + 0.5);
+		double middle = back + span.Pitch() * (window + 0.5);
 		row.Append(Box({middle - half, half_width - PANE_DEPTH, low}, {middle + half, half_width + PROUD, high}));
 	}
 	row.Append(Mirrored(row));
 	return row.Paint(GLASS).Gloss(GLASS_GLOSS);
+}
+
+ModelMesh WindowPosts(const WindowSpan &span, const Band &band, double half_width, uint32_t tone)
+{
+	ModelMesh posts;
+	double half = span.Post() * 0.5;
+	for (int post = 1; post < span.count; post++) {
+		double at = span.back + span.Pitch() * post;
+		posts.Append(SideBand(at - half, at + half, half_width, band.low, band.high, tone));
+	}
+	return posts;
+}
+
+ModelMesh Ribs(std::span<const double> at, double half_width, const Band &band, double width, uint32_t tone)
+{
+	ModelMesh ribs;
+	for (double x : at) ribs.Append(SideBand(x - width * 0.5, x + width * 0.5, half_width, band.low, band.high, tone));
+	return ribs;
 }
 
 ModelMesh Windscreen(double x, double half_width, double low, double high)

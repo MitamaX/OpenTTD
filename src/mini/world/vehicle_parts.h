@@ -20,6 +20,7 @@
 /* A full length unit of a ground vehicle in tiles, and how far its body reaches either way of its middle, short of its couplers. */
 inline constexpr double UNIT_TILES = 0.5;
 inline constexpr double UNIT_REACH = 0.228;
+inline constexpr double PROUD = 0.003;
 
 inline constexpr uint32_t GLASS = 0x26323C;
 inline constexpr uint32_t RUNNING_GEAR = 0x2A2A2C;
@@ -75,6 +76,17 @@ inline constexpr BodyEnd SQUARE_END = RoundedEnd(0.0, 1.0, 1.0);
 struct Band {
 	double low;
 	double high;
+};
+
+struct WindowSpan {
+	double back;
+	double front;
+	int count;
+
+	double Pitch() const;
+	double Post() const;
+	double GlassBack() const;
+	double GlassFront() const;
 };
 
 struct ShellSteps {
@@ -156,6 +168,8 @@ ModelMesh WheelPair(double x, double half_track, double radius, double width);
 ModelMesh Bogie(double x, double half_track, double radius);
 /* Window boxes standing proud of both sides of a body, evenly spread between its ends. */
 ModelMesh WindowRow(double back, double front, double low, double high, double half_width, int count);
+ModelMesh WindowPosts(const WindowSpan &span, const Band &band, double half_width, uint32_t tone);
+ModelMesh Ribs(std::span<const double> at, double half_width, const Band &band, double width, uint32_t tone);
 ModelMesh Windscreen(double x, double half_width, double low, double high);
 /* A pair of lamps on the face at x, either side of the middle, glowing. */
 ModelMesh LampPair(double x, double half_spacing, double z, double half, uint32_t tone);

@@ -48,6 +48,14 @@ static constexpr double MUDGUARD = 0.003;
 static constexpr double UNDERBODY_LIFT = 0.004;
 static constexpr double UNDERBODY_GAP = 0.003;
 static constexpr double UNDERBODY_INSET = 0.03;
+static constexpr double SEAM_WIDTH = 0.004;
+static constexpr double SEAM_DEPTH = PROUD * 2.0;
+static constexpr double BUMPER_HEIGHT = 0.016;
+static constexpr double BUMPER_SIDE = 0.01;
+static constexpr double MIRROR_REACH = 0.012;
+static constexpr double MIRROR_THICKNESS = 0.004;
+static constexpr double DOOR_HALF = 0.014;
+static constexpr double DOOR_SILL = CHASSIS_LOW + 0.012;
 
 struct Axle {
 	double x;
@@ -62,18 +70,30 @@ static constexpr BodyEnd BUS_ENDS = RoundedEnd(0.035, 0.84, 0.96);
 static constexpr Band BUS_GLASS = {0.098, 0.14};
 static constexpr Band BUS_WINDSCREEN = {0.084, 0.141};
 static constexpr Band BUS_BAND = {0.068, 0.082};
+static constexpr Band BUS_MIRROR = {0.1, 0.122};
+static constexpr WindowSpan BUS_WINDOWS = {-0.175, 0.145, 5};
+static constexpr std::array<double, 2> BUS_DOORS = {-0.03, 0.166};
+static constexpr Band BUS_DOOR = {DOOR_SILL, BUS_GLASS.low};
 static constexpr HullProfile CAB_BODY = {HALF_WIDTH, CHASSIS_LOW, 0.15, 0.02};
 static constexpr BodyEnd CAB_NOSE = RoundedEnd(0.025, 0.85, 0.86);
 static constexpr Band CAB_GLASS = {0.098, 0.13};
 static constexpr double CAB_GLASS_BACK = CAB_BACK + 0.03;
+static constexpr Band CAB_MIRROR = {0.095, 0.115};
+static constexpr double CAB_DOOR_SEAM = CAB_BACK + 0.012;
+static constexpr Band CAB_DOOR = {CHASSIS_LOW + 0.008, CAB_GLASS.low};
 static constexpr HullProfile BOX_BODY = {HALF_WIDTH + 0.002, LOAD_FLOOR, 0.17, 0.01};
 static constexpr HullProfile LIVESTOCK_BODY = {HALF_WIDTH + 0.002, LOAD_FLOOR, 0.165, 0.01};
 static constexpr BodyEnd BOX_ENDS = RoundedEnd(0.008, 0.94, 0.97);
 static constexpr Band BOX_BAND = {0.11, 0.135};
+static constexpr std::array<Band, 2> BOX_RIMS = {{{LOAD_FLOOR, LOAD_FLOOR + 0.008}, {0.15, 0.158}}};
+static constexpr std::array<double, 4> BOX_RIBS = {-0.15, -0.09, -0.03, 0.03};
+static constexpr double BOX_RIB_WIDTH = 0.006;
 static constexpr HullProfile TRAM_BODY = {HALF_WIDTH + 0.005, CHASSIS_LOW + 0.01, 0.19, 0.03};
 static constexpr BodyEnd TRAM_ENDS = RoundedEnd(0.035, 0.85, 0.9);
 static constexpr Band TRAM_GLASS = {0.105, 0.16};
 static constexpr Band TRAM_BAND = {CHASSIS_LOW + 0.01, 0.085};
+static constexpr Band TRAM_MIRROR = {0.11, 0.132};
+static constexpr WindowSpan TRAM_WINDOWS = {-0.18, 0.18, 5};
 
 static void HeadLamps(VehicleKit &kit, const BodyRun &nose, double z)
 {
@@ -89,6 +109,28 @@ static void BodyLamps(VehicleKit &kit, const BodyRun &body, double z)
 {
 	HeadLamps(kit, body, z);
 	TailLamps(kit, body.Back(), body.HalfWidthAt(body.Back()), z + TAIL_LAMP_RISE);
+}
+
+static double BumperWrap(const BodyEnd &end)
+{
+	return end.reach + BUMPER_SIDE;
+}
+
+static ModelMesh Bumper(const BodyRun &body, double from, double to)
+{
+	return body.Stripe({CHASSIS_LOW, CHASSIS_LOW + BUMPER_HEIGHT}, from, to, TRIM).Gloss(TRIM_GLOSS);
+}
+
+static ModelMesh Mirrors(const BodyRun &body, double x, const Band &band)
+{
+	double side = body.HalfWidthAt(x);
+	ModelMesh mirror = Plank({x - MIRROR_THICKNESS * 0.5, side, band.low}, {x + MIRROR_THICKNESS * 0.5, side + MIRROR_REACH, band.high}, TRIM).Gloss(TRIM_GLOSS);
+	return mirror.Append(Mirrored(mirror));
+}
+
+static ModelMesh Seam(double x, double half_width, const Band &band)
+{
+	return SideBand(x - SEAM_WIDTH * 0.5, x + SEAM_WIDTH * 0.5, half_width, band.low, band.high, TRIM);
 }
 
 static ModelMesh WheelArch(double x)
@@ -133,6 +175,14 @@ static ModelMesh Bus(VehicleDetail detail)
 	kit.Body(body.Stripe(BUS_GLASS, body.Back(), windscreen, GLASS).Gloss(GLASS_GLOSS));
 	kit.Body(body.Stripe(BUS_WINDSCREEN, windscreen, body.Front(), GLASS).Gloss(GLASS_GLOSS));
 	kit.Body(body.Stripe(BUS_BAND, SECONDARY).Gloss(PAINT_GLOSS));
+	kit.Fine(WindowPosts(BUS_WINDOWS, BUS_GLASS, HALF_WIDTH + PROUD, PRIMARY).Gloss(PAINT_GLOSS));
+	for (double door : BUS_DOORS) {
+		kit.Fine(SideBand(door - DOOR_HALF, door + DOOR_HALF, HALF_WIDTH + PROUD, BUS_DOOR.low, BUS_DOOR.high, GLASS).Gloss(GLASS_GLOSS));
+		kit.Fine(Seam(door, HALF_WIDTH + PROUD * 2.0, BUS_DOOR));
+	}
+	kit.Fine(Bumper(body, body.Front() - BumperWrap(BUS_ENDS), body.Front()));
+	kit.Fine(Bumper(body, body.Back(), body.Back() + BumperWrap(BUS_ENDS)));
+	kit.Fine(Mirrors(body, windscreen, BUS_MIRROR));
 	kit.Fine(Plank({-0.12, -0.04, 0.165}, {-0.02, 0.04, 0.178}, ROOF_GREY));
 	Underbody(kit, body.Back(), body.Front());
 	Wheels(kit, BUS_AXLES);
@@ -147,11 +197,15 @@ static void Lorry(VehicleKit &kit)
 	BodyRun cab(CAB_BODY, CAB_BACK, FRONT, SQUARE_END, CAB_NOSE, kit.Steps());
 	kit.Body(cab.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(cab.Stripe(CAB_GLASS, CAB_GLASS_BACK, FRONT, GLASS).Gloss(GLASS_GLOSS));
+	kit.Fine(Seam(CAB_DOOR_SEAM, HALF_WIDTH, CAB_DOOR));
+	kit.Fine(Bumper(cab, cab.Front() - BumperWrap(CAB_NOSE), cab.Front()));
+	kit.Fine(Mirrors(cab, cab.Front() - CAB_NOSE.reach, CAB_MIRROR));
+	kit.Fine(Plank({-FRONT - SEAM_DEPTH, -HALF_WIDTH, CHASSIS_LOW}, {-FRONT, HALF_WIDTH, CHASSIS_LOW + BUMPER_HEIGHT}, TRIM).Gloss(TRIM_GLOSS));
 	Underbody(kit, -FRONT, FRONT);
 	Wheels(kit, LORRY_AXLES);
 	kit.Fine(Mudguard(LORRY_AXLES[0].x, LORRY_AXLES[1].x));
 	HeadLamps(kit, cab, LAMP_HEIGHT);
-	TailLamps(kit, -FRONT, HALF_WIDTH, LAMP_HEIGHT + TAIL_LAMP_RISE);
+	TailLamps(kit, -FRONT - SEAM_DEPTH, HALF_WIDTH, CHASSIS_LOW + BUMPER_HEIGHT * 0.5);
 }
 
 static ModelMesh BoxTruck(VehicleDetail detail)
@@ -161,6 +215,9 @@ static ModelMesh BoxTruck(VehicleDetail detail)
 	BodyRun box(BOX_BODY, -FRONT, LOAD_FRONT, BOX_ENDS, BOX_ENDS, kit.Steps());
 	kit.Body(box.Shell().Paint(CREAM).Gloss(PAINT_GLOSS));
 	kit.Body(box.Stripe(BOX_BAND, PRIMARY).Gloss(PAINT_GLOSS));
+	for (const Band &rim : BOX_RIMS) kit.Fine(box.Stripe(rim, STEEL).Gloss(METAL_GLOSS));
+	kit.Fine(Ribs(BOX_RIBS, BOX_BODY.half_width + PROUD, {LOAD_FLOOR, BOX_RIMS[1].high}, BOX_RIB_WIDTH, STEEL).Gloss(METAL_GLOSS));
+	kit.Fine(Plank({-FRONT - SEAM_DEPTH, -SEAM_WIDTH * 0.5, LOAD_FLOOR}, {-FRONT, SEAM_WIDTH * 0.5, BOX_RIMS[1].high}, TRIM));
 	return kit.Done();
 }
 
@@ -220,6 +277,8 @@ static ModelMesh Tram(VehicleDetail detail)
 	kit.Body(body.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(body.Stripe(TRAM_BAND, SECONDARY).Gloss(PAINT_GLOSS));
 	kit.Body(body.Stripe(TRAM_GLASS, GLASS).Gloss(GLASS_GLOSS));
+	kit.Fine(WindowPosts(TRAM_WINDOWS, TRAM_GLASS, TRAM_BODY.half_width + PROUD, PRIMARY).Gloss(PAINT_GLOSS));
+	for (double end : {body.Back() + TRAM_ENDS.reach, body.Front() - TRAM_ENDS.reach}) kit.Fine(Mirrors(body, end, TRAM_MIRROR));
 	for (double x : {-0.15, 0.15}) kit.Fine(Bogie(x, TRAM_HALF_TRACK, 0.018));
 	kit.Fine(Plank({-0.03, -0.03, 0.19}, {0.03, 0.03, 0.2}, PANTOGRAPH));
 	for (double side : {-0.025, 0.025}) {

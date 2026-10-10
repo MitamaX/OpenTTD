@@ -35,6 +35,8 @@ static constexpr HullProfile COACH_ROOF = {BODY_HALF - 0.002, COACH_TOP, ROOF_TO
 static constexpr HullProfile VAN_BODY = {BODY_HALF - 0.005, FLOOR, COACH_TOP, 0.012};
 static constexpr HullProfile STREAMLINED_BODY = {BODY_HALF, 0.07, 0.24, 0.05};
 static constexpr HullProfile SLEEK_BODY = {0.12, 0.0, 0.17, 0.06};
+static constexpr std::array<double, 4> VAN_RIBS = {-0.17, -0.11, 0.11, 0.17};
+static constexpr double VAN_RIB_WIDTH = 0.008;
 
 static ModelMesh Coupler(double end)
 {
@@ -244,7 +246,7 @@ static ModelMesh BoxVan(VehicleDetail detail)
 	VehicleKit kit(detail);
 	VanShell(kit, MUTED_PRIMARY);
 	kit.Fine(SideBand(-0.045, 0.045, VAN_BODY.half_width, 0.07, 0.205, DARK_SECONDARY));
-	for (double x : {-0.17, -0.11, 0.11, 0.17}) kit.Fine(SideBand(x - 0.004, x + 0.004, VAN_BODY.half_width, FLOOR, COACH_TOP, DARK_PRIMARY));
+	kit.Fine(Ribs(VAN_RIBS, VAN_BODY.half_width, {FLOOR, COACH_TOP}, VAN_RIB_WIDTH, DARK_PRIMARY));
 	return kit.Done();
 }
 
