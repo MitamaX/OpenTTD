@@ -42,14 +42,15 @@ public:
 private:
 	bool Shadeable();
 	void UseDepth() const;
-	void UseLit();
-	void DrawSolidParts() const;
-	void DrawOpenParts() const;
+	void UseLit(const ShaderProgram &lit) const;
+	void DrawLaid(const ShaderProgram &lit, CladdingGroup group) const;
+	void DrawGroups(CladdingGroup first, CladdingGroup last) const;
 
 	const WorldTextures &textures;
 	StructureField field;
 	std::vector<const StructureChunk *> shown;
 	ShaderProgram program;
+	ShaderProgram facades;
 	ShaderProgram depth;
 	ShaderProgram caster;
 	ShaderProgram open_caster;

@@ -242,7 +242,7 @@ void StructureField::Gather(const SceneView &camera, const Frustum &frustum, std
 		if (chunk.waiting->indices.empty()) {
 			chunk.mesh.Release();
 		} else {
-			chunk.solid_indices = static_cast<int>(chunk.waiting->SolidFirst());
+			chunk.group_starts = chunk.waiting->Grouped();
 			chunk.mesh.Upload(*chunk.waiting, STRUCTURE_LAYOUT);
 			this->keep.Hold(index);
 		}

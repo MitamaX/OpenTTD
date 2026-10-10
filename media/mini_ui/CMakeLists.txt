@@ -111,6 +111,8 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure_caster.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure_depth.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure_facade.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/structure_lit.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/temporal.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.vert

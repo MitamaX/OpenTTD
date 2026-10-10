@@ -71,9 +71,12 @@ constexpr bool IsOpen(Material material)
 	return material == Material::Lattice || material == Material::Pickets;
 }
 
+enum class CladdingGroup : uint8_t { Facade, Solid, Open, End };
+using GroupStarts = std::array<int, to_underlying(CladdingGroup::End) + 1>;
+
 struct StructureMesh : TriangleList<StructureVertex> {
 	void Polygon(std::span<const StructureVertex> corners);
-	size_t SolidFirst();
+	GroupStarts Grouped();
 };
 
 /* Everything forms stand as: their mesh, the boxes clicks meet and the stacks smoke rises from. */

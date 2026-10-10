@@ -41,19 +41,28 @@ void StructureMesh::Polygon(std::span<const StructureVertex> corners)
 	for (uint32_t corner = 1; corner + 1 < corners.size(); corner++) this->Triangle(first, first + corner, first + corner + 1);
 }
 
-/* The triangles of solid claddings are laid before those of open ones; how many indices the solid ones take. */
-size_t StructureMesh::SolidFirst()
+static CladdingGroup GroupOf(const StructureVertex &corner)
 {
-	std::vector<uint32_t> solid;
-	std::vector<uint32_t> open;
+	if (IsOpen(static_cast<Material>(corner.surface[0]))) return CladdingGroup::Open;
+	return SurfaceFlags(corner.surface[2]).Test(SurfaceFlag::Facade) ? CladdingGroup::Facade : CladdingGroup::Solid;
+}
+
+/* The triangles are laid group by group in the order the groups are named; where each group's indices start, and where the last group's end. */
+GroupStarts StructureMesh::Grouped()
+{
+	std::array<std::vector<uint32_t>, to_underlying(CladdingGroup::End)> groups;
 	for (auto corner = this->indices.begin(); corner != this->indices.end(); corner += 3) {
-		std::vector<uint32_t> &into = IsOpen(static_cast<Material>(this->vertices[*corner].surface[0])) ? open : solid;
+		std::vector<uint32_t> &into = groups[to_underlying(GroupOf(this->vertices[*corner]))];
 		into.insert(into.end(), corner, corner + 3);
 	}
-	size_t solid_indices = solid.size();
-	solid.insert(solid.end(), open.begin(), open.end());
-	this->indices = std::move(solid);
-	return solid_indices;
+	GroupStarts starts{};
+	this->indices.clear();
+	for (size_t group = 0; group < groups.size(); group++) {
+		starts[group] = static_cast<int>(this->indices.size());
+		this->indices.insert(this->indices.end(), groups[group].begin(), groups[group].end());
+	}
+	starts.back() = static_cast<int>(this->indices.size());
+	return starts;
 }
 
 FormStyle::FormStyle(const BuildingForm &form, MiniLayer layer) :
