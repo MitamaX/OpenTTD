@@ -103,10 +103,11 @@ void main()
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
 	float sunlit = SunVisibility(v_position, normal) * clad.sunlit;
 	float occlusion = v_colour.a * clad.occlusion;
-	vec4 lit = clad.glass < 1.0 ? SunlitRadiance(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, 0.0, sunlit) : vec4(0.0);
+	Lighting lighting = LightingOf(normal, view, roughness, Sunlight(normal, sunlit));
+	vec3 light = clad.glass < 1.0 ? SurfaceLight(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, lighting, lighting.sun) : vec3(0.0);
 	if (clad.glass > 0.0) {
 		vec3 reflection = Mirrored(StreetBefore(v_position, frame[2], v_seed), reflect(-view, normal));
-		lit = mix(lit, PaneRadiance(PaneOf(albedo, clad, material), reflection, normal, view, roughness, occlusion, sunlit), clad.glass);
+		light = mix(light, PaneLight(PaneOf(albedo, clad, material), reflection, normal, view, roughness, occlusion, lighting), clad.glass);
 	}
-	frag_colour = lit + vec4(albedo * clad.glow, 0.0);
+	frag_colour = vec4(light + albedo * clad.glow, AmbientShare(lighting.ambient, lighting.sun));
 }

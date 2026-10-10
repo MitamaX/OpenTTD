@@ -45,11 +45,15 @@ vec3 Diffuse(vec3 albedo, vec3 light, float reflectance)
 	return albedo * (1.0 - reflectance) * light;
 }
 
-/* A microfacet highlight, scaled so that a surface lit straight on by light it reflects whole comes out as bright as that light. */
-float Highlight(vec3 normal, vec3 view, vec3 light, Coat coat)
+struct Glare {
+	float lobe;
+	float turn;
+};
+
+Glare GlareOf(vec3 normal, vec3 view, vec3 light, float roughness)
 {
 	vec3 half_way = normalize(view + light);
-	float alpha = max(coat.roughness * coat.roughness, SMOOTHEST * SMOOTHEST);
+	float alpha = max(roughness * roughness, SMOOTHEST * SMOOTHEST);
 	float alpha_squared = alpha * alpha;
 	float aligned = max(dot(normal, half_way), 0.0);
 	float spread = aligned * aligned * (alpha_squared - 1.0) + 1.0;
@@ -58,7 +62,18 @@ float Highlight(vec3 normal, vec3 view, vec3 light, Coat coat)
 	float seen = max(dot(normal, view), 1e-3);
 	float lit = max(dot(normal, light), 1e-3);
 	float masking = 1.0 / ((seen * (1.0 - k) + k) * (lit * (1.0 - k) + k));
-	return facets * masking * 0.25 * Fresnel(dot(half_way, view), coat.reflectance);
+	return Glare(facets * masking * 0.25, dot(half_way, view));
+}
+
+float Highlight(Glare glare, float reflectance)
+{
+	return glare.lobe * Fresnel(glare.turn, reflectance);
+}
+
+/* A microfacet highlight, scaled so that a surface lit straight on by light it reflects whole comes out as bright as that light. */
+float Highlight(vec3 normal, vec3 view, vec3 light, Coat coat)
+{
+	return Highlight(GlareOf(normal, view, light, coat.roughness), coat.reflectance);
 }
 
 /* How much of its surroundings a coat reflects seen at this angle, from Karis's fit to the microfacet response summed over every way the light comes in. */
@@ -89,17 +104,32 @@ float AmbientShare(vec3 ambient, vec3 sun)
 	return around / (around + Luminance(sun));
 }
 
-/* The light a surface point's coat reflects toward the eye: the sun's highlight, and the sheen of its surroundings dimmed by occlusion. */
-vec3 Reflected(vec3 normal, vec3 view, Coat coat, vec3 sun, vec3 ambient, float occlusion)
+struct Lighting {
+	vec3 sun;
+	vec3 ambient;
+	Glare glare;
+};
+
+Lighting LightingOf(vec3 normal, vec3 view, float roughness, vec3 sun)
 {
-	return sun * Highlight(normal, view, SunDirection(), coat) + Sheen(normal, view, coat, ambient) * occlusion;
+	return Lighting(sun, AmbientLight(normal), GlareOf(normal, view, SunDirection(), roughness));
+}
+
+/* The light a surface point's coat reflects toward the eye: the sun's highlight, and the sheen of its surroundings dimmed by occlusion. */
+vec3 Reflected(vec3 normal, vec3 view, Coat coat, Lighting lighting, float occlusion)
+{
+	return lighting.sun * Highlight(lighting.glare, coat.reflectance) + Sheen(normal, view, coat, lighting.ambient) * occlusion;
+}
+
+vec3 SurfaceLight(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlusion, Lighting lighting, vec3 scattered_sun)
+{
+	return Diffuse(albedo, scattered_sun + lighting.ambient * occlusion, coat.reflectance) + Reflected(normal, view, coat, lighting, occlusion);
 }
 
 vec4 SurfaceRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlusion, vec3 sun, vec3 scattered_sun)
 {
-	vec3 ambient = AmbientLight(normal);
-	vec3 scattered = Diffuse(albedo, scattered_sun + ambient * occlusion, coat.reflectance);
-	return vec4(scattered + Reflected(normal, view, coat, sun, ambient, occlusion), AmbientShare(ambient, scattered_sun));
+	Lighting lighting = LightingOf(normal, view, coat.roughness, sun);
+	return vec4(SurfaceLight(albedo, normal, view, coat, occlusion, lighting, scattered_sun), AmbientShare(lighting.ambient, scattered_sun));
 }
 
 /* The light a surface point sends toward the eye with the share of the sun that reaches it given, and how brightly crystals in it glint in the sun. */
