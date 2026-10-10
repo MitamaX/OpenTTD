@@ -13,6 +13,7 @@ const float TAU = 6.2831853;
 const vec3 UP = vec3(0.0, 0.0, 1.0);
 
 const int WAVE_OCTAVES = 5;
+const int BROAD_OCTAVES = 2;
 const float WAVE_FREQUENCY = 0.55;
 const float WAVE_LACUNARITY = 1.95;
 const float WAVE_PERSISTENCE = 0.55;
@@ -79,11 +80,10 @@ const float INLAND_REFLECTANCE = 0.035;
 const float REFLECTANCE_CEILING = 0.62;
 const float REFLECTED_LIFT = 0.04;
 const float REFLECTED_SKY = 0.9;
-const int MIRROR_STEPS = 14;
+const int MIRROR_STEPS = 16;
 const float MIRROR_REACH = 6.0;
 const float MIRROR_THICKNESS = 1.0;
 const float MIRROR_EDGE = 0.08;
-const float MIRROR_SWAY = 0.3;
 const float REFRACTION = 0.012;
 const float INLAND_REFRACTION = 0.024;
 const float REFRACTION_DEPTH = 0.5;
@@ -189,7 +189,7 @@ struct Body {
 	float sheen;
 };
 
-/* The water's normal from every wave the pixels show, the normal its broadest wave alone gives, the share of the waves too fine to show,
+/* The water's normal from every wave the pixels show, the normal its broadest waves alone give, the share of the waves too fine to show,
  * and how ruffled those fine waves are by the wind. */
 struct Surface {
 	vec3 normal;
@@ -298,7 +298,7 @@ Surface Waves(vec2 p, float calm)
 		vec2 rise = vec2(0.0);
 		if (octave == 0 || shown > 0.0) rise = (NoiseSlope(turn * p * frequency + drift + float(octave) * 17.3).yz * turn) * frequency;
 		slope += rise * height * shown;
-		if (octave == 0) broad = rise;
+		if (octave < BROAD_OCTAVES) broad += rise * height;
 		lost += height * (1.0 - shown);
 		total += height;
 		calm_height = open_height;
@@ -522,10 +522,10 @@ vec3 SunOnWater(Surface surface, vec3 view, vec2 p, float sunlit, float sparkle)
 
 /* The sky the water mirrors, a little deepened, seen never quite at the horizon, and never mirrored whole however low the view.
  * Where the wind ruffles it the water mirrors less, and that from higher in the sky, so gusts darken it in patches between bright slicks. */
-vec3 SkyOnWater(vec3 way, Surface surface, vec3 settled, vec3 view, float reflectance, out float reflected)
+vec3 SkyOnWater(vec3 way, Surface surface, vec3 view, float reflectance, out float reflected)
 {
 	float ceiling = Landscape() == LANDSCAPE_TOYLAND ? TOY_REFLECTANCE_CEILING : REFLECTANCE_CEILING;
-	reflected = min(Fresnel(dot(settled, view), reflectance), ceiling) * (1.0 - surface.ruffled * RUFFLED_DIMMING);
+	reflected = min(Fresnel(dot(surface.broad, view), reflectance), ceiling) * (1.0 - surface.ruffled * RUFFLED_DIMMING);
 	return MirroredSky(way + UP * surface.ruffled * RUFFLED_SPREAD, REFLECTED_LIFT) * REFLECTED_SKY;
 }
 
@@ -807,9 +807,8 @@ void main()
 
 	float reflected;
 	vec3 way = reflect(sight, waves.normal);
-	vec3 settled = normalize(mix(facing, waves.normal, MIRROR_SWAY));
-	vec3 sky = SkyOnWater(way, waves, settled, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
-	vec3 mirrored = WorldOver(sky, v_position, Skyward(reflect(sight, settled), REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
+	vec3 sky = SkyOnWater(way, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
+	vec3 mirrored = WorldOver(sky, v_position, Skyward(reflect(sight, waves.broad), REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
