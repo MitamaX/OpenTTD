@@ -1,12 +1,7 @@
-uniform vec2 u_fade;
-
 const float TAU = 6.2831853;
 const float TEXELS = float(TEXELS_PER_TILE);
 const float PLINTH_HEIGHT = 0.016;
 const float UPRIGHT_WALL = 0.7;
-const vec2 LATTICE_BAYS = vec2(5.0, 7.0);
-const float LATTICE_MEMBER = 0.1;
-const float LATTICE_BRACE = 0.07;
 const float COURSE_TILT = 0.2;
 const vec2 COURSE_SHADES = vec2(0.72, 1.06);
 const vec2 COURSE_LIGHT_EDGES = vec2(0.0, 0.4);
@@ -95,17 +90,6 @@ Clad Mixed(Clad a, Clad b, float share)
 		mix(a.occlusion, b.occlusion, share), mix(a.sunlit, b.sunlit, share), mix(a.daylight, b.daylight, share), mix(a.lamp, b.lamp, share), mix(a.glow, b.glow, share));
 }
 
-/* How sharply a pattern repeating once a unit of x still shows: whole while a repeat spans a few pixels, gone once it blurs. */
-float Sharpness(float x)
-{
-	return 1.0 - smoothstep(0.2, 0.45, fwidth(x));
-}
-
-float Sharpness(vec2 q)
-{
-	return min(Sharpness(q.x), Sharpness(q.y));
-}
-
 /* The variance of the slopes a surface leans through when tilted along a sine wave of this amplitude, and evenly across this span. */
 float WaveSpread(float amplitude)
 {
@@ -122,20 +106,6 @@ float Roughened(float roughness, float unseen_slope_variance)
 {
 	float alpha = roughness * roughness;
 	return sqrt(sqrt(alpha * alpha + unseen_slope_variance));
-}
-
-/* How much of a pixel lines of this width, one a unit, cover; lines too fine to show blend into the share they cover. */
-float Lines(float x, float width, float sharpness)
-{
-	float pixel = fwidth(x);
-	float gap = abs(fract(x + 0.5) - 0.5);
-	float line = 1.0 - smoothstep(width * 0.5 - pixel * 0.5, width * 0.5 + pixel * 0.5, gap);
-	return mix(width, line, sharpness);
-}
-
-float Lines(float x, float width)
-{
-	return Lines(x, width, Sharpness(x));
 }
 
 float UnitVaried(vec2 unit, float variety, float sharpness)
@@ -261,16 +231,6 @@ Clad Glazed(vec2 p, vec3 frame, vec2 panes, float bar)
 	return clad;
 }
 
-float Band(float x, float low, float high, float pixel)
-{
-	return smoothstep(low - pixel, low + pixel, x) - smoothstep(high - pixel, high + pixel, x);
-}
-
-float Band(float x, float low, float high)
-{
-	return Band(x, low, high, fwidth(x));
-}
-
 /* A line of block letters along x, in texels about its middle at y = 0, as a share of the point they ink; letters too fine to show blend into the share they ink. */
 float Lettering(vec2 at, int line, float pixel)
 {
@@ -301,39 +261,6 @@ Clad Lightbox(vec2 p, vec3 tint)
 	Clad face = Matte(mix(tint, LETTERING, Lettering(vec2(at.x, at.y - (line + 0.5) * SIGN_LINE_PITCH), int(line), pixel)), SIGN_ROUGHNESS);
 	face.glow = SIGN_GLOW;
 	return face;
-}
-
-/* The members of a braced frame, as a share of the point they cover: uprights and ledgers in bays, every other bay braced across from corner to corner. */
-float LatticeCover(vec2 p)
-{
-	vec2 cell = p * LATTICE_BAYS;
-	vec2 bay = floor(cell);
-	float braced = step(1.0, mod(bay.x + bay.y, 2.0));
-	return max(max(Lines(cell.x, LATTICE_MEMBER), Lines(cell.y, LATTICE_MEMBER)), Lines(cell.x - cell.y, LATTICE_BRACE) * braced);
-}
-
-/* The pickets of a fence and the two rails they are nailed to. */
-float PicketCover(vec2 p)
-{
-	return max(Lines(p.x * 45.0, 0.5), max(Band(p.y, 0.006, 0.0095), Band(p.y, 0.017, 0.0205)));
-}
-
-/* How much of a point an open cladding covers; any other cladding covers it whole. */
-float Cover(uint material, vec2 p)
-{
-	switch (material) {
-		case CLAD_LATTICE: return LatticeCover(p);
-		case CLAD_PICKETS: return PicketCover(p);
-		default: return 1.0;
-	}
-}
-
-void DropUnseen(vec3 position, uint material, vec2 pattern)
-{
-	tile_pixels = TilePixelsAt(distance(Eye(), position));
-	float noise = ScreenNoise(gl_FragCoord.xy);
-	float cover = Cover(material, pattern);
-	if (Dropped(smoothstep(u_fade.x, u_fade.y, tile_pixels) <= noise || cover < noise)) discard;
 }
 
 Clad Leafy(vec2 p, vec3 tint)

@@ -22,7 +22,7 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/structure.vert",
 };
-static constexpr std::array<const char *, 14> FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 15> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
@@ -32,13 +32,14 @@ static constexpr std::array<const char *, 14> FRAGMENT_SOURCES = {
 	"mini_ui/shaders/shadow.glsl",
 	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/overlay.glsl",
+	"mini_ui/shaders/cover.glsl",
 	"mini_ui/shaders/structure.glsl",
 	"mini_ui/shaders/pane.glsl",
 	"mini_ui/shaders/glazing.glsl",
 	"mini_ui/shaders/structure_lit.glsl",
 	"mini_ui/shaders/structure.frag",
 };
-static constexpr std::array<const char *, 17> FACADE_FRAGMENT_SOURCES = {
+static constexpr std::array<const char *, 18> FACADE_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
@@ -48,6 +49,7 @@ static constexpr std::array<const char *, 17> FACADE_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/shadow.glsl",
 	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/overlay.glsl",
+	"mini_ui/shaders/cover.glsl",
 	"mini_ui/shaders/structure.glsl",
 	"mini_ui/shaders/pane.glsl",
 	"mini_ui/shaders/glazing.glsl",
@@ -61,7 +63,7 @@ static constexpr std::array<const char *, 5> DEPTH_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/structure.glsl",
+	"mini_ui/shaders/cover.glsl",
 	"mini_ui/shaders/structure_depth.frag",
 };
 static constexpr std::array<const char *, 6> OPEN_CASTER_FRAGMENT_SOURCES = {
@@ -69,7 +71,7 @@ static constexpr std::array<const char *, 6> OPEN_CASTER_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
 	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/structure.glsl",
+	"mini_ui/shaders/cover.glsl",
 	"mini_ui/shaders/structure_caster.frag",
 };
 

@@ -79,6 +79,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/detail.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/composite.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cover.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/edges.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/facade.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/flora.glsl
