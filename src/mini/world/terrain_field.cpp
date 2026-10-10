@@ -28,13 +28,19 @@ static constexpr double OUTER_SEA_REACH = 8192.0;
 /* The ground keeps every tile's own facets and banks wherever the network's meshes may stand on it. */
 static constexpr double FINEST_CELL_PIXELS = NETWORK_FADE_START;
 static constexpr int COARSEST_STEP = 8;
+static constexpr GroundGrain COARSEST_GRAIN = {COARSEST_STEP, 1};
+static constexpr double RELIEF_CELL_PIXELS = 32.0;
+static constexpr int MOST_RELIEF_DIVISIONS = 2;
 
-/* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles. */
-static int StepFor(double tile_pixels)
+/* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles;
+ * at full detail, curving ground is cut as finely as keeps its cells some pixels across. */
+static GroundGrain GrainFor(double tile_pixels)
 {
 	int step = 1;
 	while (step < COARSEST_STEP && tile_pixels * step < FINEST_CELL_PIXELS) step *= 2;
-	return step;
+	int divisions = 1;
+	while (step == 1 && divisions < MOST_RELIEF_DIVISIONS && tile_pixels / (2 * divisions) >= RELIEF_CELL_PIXELS) divisions *= 2;
+	return {step, divisions};
 }
 
 /* A tile whose shape or water changed reshapes the walls, the shading and the seabed of the tiles beside it, and one whose ways changed eases the runs through it afresh,
@@ -131,9 +137,9 @@ void TerrainField::Refresh(const SceneView &camera)
 		Chunk &chunk = this->chunks[near.index];
 		chunk.drawn = this->frame;
 		if (in_sight) blank = blank && chunk.ground.Empty();
-		int step = StepFor(nearest_pixels);
-		if (chunk.Outdated(step)) {
-			this->due.push_back({near.index, step, in_sight});
+		GroundGrain grain = GrainFor(nearest_pixels);
+		if (chunk.Outdated(grain)) {
+			this->due.push_back({near.index, grain, in_sight});
 		} else {
 			chunk.rebuild.reset();
 			chunk.due_since = 0;
@@ -144,9 +150,9 @@ void TerrainField::Refresh(const SceneView &camera)
 	for (const Due &entry : this->due) {
 		const Chunk &chunk = this->chunks[entry.index];
 		if (!entry.in_sight || !chunk.ground.Empty()) continue;
-		this->Build(entry.index, blank ? entry.step : slice.Spent() ? COARSEST_STEP : chunk.NextStep(entry.step));
+		this->Build(entry.index, blank ? entry.grain : slice.Spent() ? COARSEST_GRAIN : chunk.NextGrain(entry.grain));
 	}
-	std::erase_if(this->due, [&](const Due &entry) { return !this->chunks[entry.index].Outdated(entry.step); });
+	std::erase_if(this->due, [&](const Due &entry) { return !this->chunks[entry.index].Outdated(entry.grain); });
 	for (const Due &entry : this->due) {
 		uint64_t &since = this->chunks[entry.index].due_since;
 		if (since == 0) since = this->frame;
@@ -155,11 +161,11 @@ void TerrainField::Refresh(const SceneView &camera)
 	this->Refine(slice);
 }
 
-void TerrainField::Build(size_t index, int step)
+void TerrainField::Build(size_t index, GroundGrain grain)
 {
 	Chunk &chunk = this->chunks[index];
 	ProfileScope profile("build", "terrain", ProfileClock::Cpu);
-	TerrainBuild &build = chunk.rebuild.emplace(TerrainBuild(this->grid.TilesOf(index), step)).build;
+	TerrainBuild &build = chunk.rebuild.emplace(TerrainBuild(this->grid.TilesOf(index), grain)).build;
 	while (!build.Done()) build.Advance();
 	this->Finish(index);
 }
@@ -171,9 +177,9 @@ void TerrainField::Refine(const BuildSlice &slice)
 	for (const Due &entry : this->due) {
 		Chunk &chunk = this->chunks[entry.index];
 		ProfileScope profile("build", "terrain", ProfileClock::Cpu);
-		int step = chunk.NextStep(entry.step);
-		if (chunk.rebuild.has_value() && chunk.rebuild->build.Step() != step) chunk.rebuild.reset();
-		if (!chunk.rebuild.has_value()) chunk.rebuild.emplace(TerrainBuild(this->grid.TilesOf(entry.index), step));
+		GroundGrain grain = chunk.NextGrain(entry.grain);
+		if (chunk.rebuild.has_value() && chunk.rebuild->build.Grain() != grain) chunk.rebuild.reset();
+		if (!chunk.rebuild.has_value()) chunk.rebuild.emplace(TerrainBuild(this->grid.TilesOf(entry.index), grain));
 		if (!slice.Carry(chunk.rebuild->build)) return;
 		this->Finish(entry.index);
 	}
@@ -190,7 +196,7 @@ void TerrainField::Finish(size_t index)
 		chunk.water.Upload(BuildWaterSurface(tiles), WATER_LAYOUT);
 		chunk.sprays = BuildFallSprays(tiles);
 	}
-	chunk.step = chunk.rebuild->build.Step();
+	chunk.grain = chunk.rebuild->build.Grain();
 	chunk.stale = chunk.rebuild->outdated;
 	chunk.due_since = 0;
 	chunk.rebuild.reset();

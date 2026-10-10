@@ -67,21 +67,30 @@ private:
 	std::vector<Known> corners;
 };
 
-/* A block's ground, built a row of tiles at a time so the work may be spread over frames. At step one every tile keeps its own facets and walls;
+struct GroundGrain {
+	int step;
+	int divisions;
+
+	bool operator==(const GroundGrain &) const = default;
+};
+
+/* A block's ground, built a row of tiles at a time so the work may be spread over frames. At step one every tile keeps its own facets and walls, and rolling land curves over its tiles cut so many times each way;
  * a longer step lays a lattice over every step-th corner in one go, skirted down so nothing shows through beside a finer neighbour.
  * Under water the ground sinks toward the seabed; along the map's edge it is cut down in a face of earth over the shelf of seabed falling away beyond. */
 class TerrainBuild {
 public:
-	TerrainBuild(const TileSpan &tiles, int step);
+	TerrainBuild(const TileSpan &tiles, GroundGrain grain);
 
-	int Step() const { return this->step; }
+	GroundGrain Grain() const { return this->grain; }
 	bool Done() const { return this->next_row > this->tiles.ty1; }
 	void Advance();
 	TerrainMesh Finish();
 
 private:
+	void AddTile(int tx, int ty);
+
 	TileSpan tiles;
-	int step;
+	GroundGrain grain;
 	int next_row;
 	Seabed bed;
 	Landform land;

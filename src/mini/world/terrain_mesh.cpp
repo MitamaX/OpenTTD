@@ -38,6 +38,7 @@
 #include "../../safeguards.h"
 
 static constexpr double SKIRT_LEVELS_PER_STEP = 2.0;
+static constexpr double RELIEF_SKIRT_LEVELS = 0.25;
 static constexpr double STEEP_BANK_RUN = 0.35;
 static constexpr double LONGEST_BANK_RUN = 1.0;
 static constexpr double LEAST_BANK_FALL = 0.25;
@@ -59,7 +60,6 @@ static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int COAST_DIVISIONS = 4;
-static constexpr int HILL_DIVISIONS = 4;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -230,7 +230,7 @@ static Vec3 FacetedNormal(const TerrainMesh &mesh, const std::array<uint32_t, CO
 
 /* A tile whose ground curves is laid as a fine grid over it, sharing the tile's own corners wherever a neighbour keeps them and shading as its facets would between them;
  * it is marked sunk as far as it lies under the water, where the water stands no higher than the tile's own ground. */
-static void AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty, int divisions)
+static std::vector<uint32_t> AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty, int divisions)
 {
 	WaterSheet sheet(tx, ty);
 	TileGround ground(tx, ty);
@@ -239,7 +239,7 @@ static void AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::ar
 		double water = std::min(sheet.Level(x, y), ground.Level(x, y));
 		return SunkMark(std::max(water - level, 0.0));
 	};
-	LayTileGrid(mesh, tx, ty, divisions, [&](int i, int j, double x, double y) {
+	return LayTileGrid(mesh, tx, ty, divisions, [&](int i, int j, double x, double y) {
 		bool on_corner = (i % divisions == 0) && (j % divisions == 0);
 		if (on_corner && relief.Pinned(x, y)) return corners[CornerAt(i / divisions, j / divisions)];
 		double level = relief.Level(x, y);
@@ -254,32 +254,75 @@ static std::array<double, CORNER_COUNT> CornerLevels(const TerrainMesh &mesh, co
 	return levels;
 }
 
-static void AddTile(TerrainMesh &mesh, const Seabed &bed, const Landform &land, CornerNormals &normals, int tx, int ty)
+static void AddSkirt(TerrainMesh &mesh, uint32_t from, uint32_t to, double drop)
 {
+	auto lowered = [&](uint32_t index) {
+		const TerrainVertex &top = mesh.vertices[index];
+		return mesh.Add({top.x, top.y, top.level - drop}, UPRIGHT, DRY_MARK);
+	};
+	mesh.Quad(from, to, lowered(to), lowered(from));
+}
+
+struct OpenSides {
+	bool low_x;
+	bool high_x;
+	bool low_y;
+	bool high_y;
+};
+
+static OpenSides OpenSidesOf(const TileSpan &block, const TileSpan &area)
+{
+	return {
+		area.tx0 == block.tx0 && block.tx0 > 0,
+		area.tx1 == block.tx1 && block.tx1 < static_cast<int>(Map::MaxX()),
+		area.ty0 == block.ty0 && block.ty0 > 0,
+		area.ty1 == block.ty1 && block.ty1 < static_cast<int>(Map::MaxY()),
+	};
+}
+
+static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, size_t columns, const OpenSides &open, double drop)
+{
+	size_t rows = grid.size() / columns;
+	auto at = [&](size_t i, size_t j) { return grid[j * columns + i]; };
+	for (size_t i = 0; i + 1 < columns; i++) {
+		if (open.low_y) AddSkirt(mesh, at(i, 0), at(i + 1, 0), drop);
+		if (open.high_y) AddSkirt(mesh, at(i, rows - 1), at(i + 1, rows - 1), drop);
+	}
+	for (size_t j = 0; j + 1 < rows; j++) {
+		if (open.low_x) AddSkirt(mesh, at(0, j), at(0, j + 1), drop);
+		if (open.high_x) AddSkirt(mesh, at(columns - 1, j), at(columns - 1, j + 1), drop);
+	}
+}
+
+void TerrainBuild::AddTile(int tx, int ty)
+{
+	TerrainMesh &mesh = this->mesh;
 	TileSurface tile(tx, ty);
 	std::array<uint32_t, CORNER_COUNT> corners;
 	for (TileCorner corner : {NORTH, WEST, EAST, SOUTH}) {
 		WorldPoint at = tile.Corner(corner);
 		int cx = static_cast<int>(at.x);
 		int cy = static_cast<int>(at.y);
-		double sink = bed.Sink(cx, cy);
-		Vec3 normal = sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : normals.At(land, cx, cy, tile.Level(corner));
+		double sink = this->bed.Sink(cx, cy);
+		Vec3 normal = sink > 0.0 ? this->bed.Normal(2 * cx, 2 * cy, 1) : this->normals.At(this->land, cx, cy, tile.Level(corner));
 		corners[corner] = mesh.Add({at.x, at.y, at.level - sink}, normal, SunkMark(sink));
 	}
 	if (IsRiverside(tx, ty)) {
-		AddRelief(mesh, ChannelRelief(bed, tx, ty, CornerLevels(mesh, corners)), corners, tx, ty, CHANNEL_DIVISIONS);
+		AddRelief(mesh, ChannelRelief(this->bed, tx, ty, CornerLevels(mesh, corners)), corners, tx, ty, CHANNEL_DIVISIONS);
 		return;
 	}
 	if (WaterFormOf(tx, ty) == WaterForm::Open) {
-		AddBasin(mesh, bed, corners, tx, ty);
+		AddBasin(mesh, this->bed, corners, tx, ty);
 		return;
 	}
 	if (IsBareCoast(tx, ty)) {
-		AddRelief(mesh, ShoreRelief(bed, tx, ty, CornerLevels(mesh, corners)), corners, tx, ty, COAST_DIVISIONS);
+		AddRelief(mesh, ShoreRelief(this->bed, tx, ty, CornerLevels(mesh, corners)), corners, tx, ty, COAST_DIVISIONS);
 		return;
 	}
-	if (land.Bends(tx, ty)) {
-		AddRelief(mesh, HillRelief(land, tx, ty), corners, tx, ty, HILL_DIVISIONS);
+	if (this->land.Bends(tx, ty)) {
+		int divisions = this->grain.divisions;
+		std::vector<uint32_t> grid = AddRelief(mesh, HillRelief(this->land, tx, ty), corners, tx, ty, divisions);
+		SkirtOpenSides(mesh, grid, divisions + 1, OpenSidesOf(this->tiles, {tx, ty, tx, ty}), RELIEF_SKIRT_LEVELS);
 		return;
 	}
 	for (const Facet &facet : tile.Facets()) mesh.Triangle(corners[facet[0]], corners[facet[1]], corners[facet[2]]);
@@ -719,31 +762,15 @@ static TerrainMesh BuildLattice(const TileSpan &tiles, const Seabed &bed, int st
 	std::vector<int> ys = LatticeLines(tiles.ty0, tiles.ty1, step);
 	size_t columns = xs.size();
 	TerrainMesh mesh;
-	auto at = [&](size_t i, size_t j) { return static_cast<uint32_t>(j * columns + i); };
+	std::vector<uint32_t> grid;
 	for (int y : ys) {
-		for (int x : xs) mesh.Add({static_cast<double>(x), static_cast<double>(y), bed.Level(2 * x, 2 * y)}, bed.Normal(2 * x, 2 * y, 2 * step), SunkMark(bed.Sink(x, y)));
+		for (int x : xs) grid.push_back(mesh.Add({static_cast<double>(x), static_cast<double>(y), bed.Level(2 * x, 2 * y)}, bed.Normal(2 * x, 2 * y, 2 * step), SunkMark(bed.Sink(x, y))));
 	}
+	auto at = [&](size_t i, size_t j) { return grid[j * columns + i]; };
 	for (size_t j = 0; j + 1 < ys.size(); j++) {
 		for (size_t i = 0; i + 1 < columns; i++) mesh.Quad(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1));
 	}
-
-	double drop = SKIRT_LEVELS_PER_STEP * step;
-	auto skirt = [&](uint32_t from, uint32_t to) {
-		auto lowered = [&](uint32_t index) {
-			const TerrainVertex &top = mesh.vertices[index];
-			return mesh.Add({top.x, top.y, top.level - drop}, UPRIGHT, DRY_MARK);
-		};
-		mesh.Quad(from, to, lowered(to), lowered(from));
-	};
-	size_t last_row = ys.size() - 1;
-	for (size_t i = 0; i + 1 < columns; i++) {
-		if (tiles.ty0 > 0) skirt(at(i, 0), at(i + 1, 0));
-		if (tiles.ty1 < static_cast<int>(Map::MaxY())) skirt(at(i, last_row), at(i + 1, last_row));
-	}
-	for (size_t j = 0; j + 1 < ys.size(); j++) {
-		if (tiles.tx0 > 0) skirt(at(0, j), at(0, j + 1));
-		if (tiles.tx1 < static_cast<int>(Map::MaxX())) skirt(at(columns - 1, j), at(columns - 1, j + 1));
-	}
+	SkirtOpenSides(mesh, grid, columns, OpenSidesOf(tiles, tiles), SKIRT_LEVELS_PER_STEP * step);
 	return mesh;
 }
 
@@ -832,20 +859,20 @@ static void AddShelves(TerrainMesh &mesh, const Seabed &bed, std::span<const Map
 	}
 }
 
-TerrainBuild::TerrainBuild(const TileSpan &tiles, int step) : tiles(tiles), step(step), next_row(tiles.ty0), bed(tiles), land(tiles), normals(tiles)
+TerrainBuild::TerrainBuild(const TileSpan &tiles, GroundGrain grain) : tiles(tiles), grain(grain), next_row(tiles.ty0), bed(tiles), land(tiles), normals(tiles)
 {
 }
 
 void TerrainBuild::Advance()
 {
-	if (this->step > 1) {
-		this->mesh = BuildLattice(this->tiles, this->bed, this->step);
+	if (this->grain.step > 1) {
+		this->mesh = BuildLattice(this->tiles, this->bed, this->grain.step);
 		this->next_row = this->tiles.ty1 + 1;
 		return;
 	}
 	int ty = this->next_row++;
 	for (int tx = this->tiles.tx0; tx <= this->tiles.tx1; tx++) {
-		AddTile(this->mesh, this->bed, this->land, this->normals, tx, ty);
+		this->AddTile(tx, ty);
 		AddWalls(this->mesh, this->bed, this->land, tx, ty);
 		AddFormations(this->mesh, this->land, tx, ty);
 		AddRampBank(this->mesh, this->land, tx, ty);

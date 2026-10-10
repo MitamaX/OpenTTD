@@ -44,15 +44,16 @@ public:
 
 private:
 	static constexpr int DRAFT_STEP = 2;
+	static constexpr GroundGrain DRAFT_GRAIN = {DRAFT_STEP, 1};
 
-	/* A block of tiles: the meshes it shows and the spray off its falls, the step its ground was built at and whether the world changed under them since, the build that will replace them,
+	/* A block of tiles: the meshes it shows and the spray off its falls, the grain its ground was built at and whether the world changed under them since, the build that will replace them,
 	 * the frame since which they have waited for it, and the height range its ground spans. */
 	struct Chunk {
 		MeshBuffer ground;
 		MeshBuffer water;
 		std::vector<SmokeVent> sprays;
 		std::optional<Rebuild<TerrainBuild>> rebuild;
-		int step = 0;
+		GroundGrain grain{};
 		bool stale = true;
 		bool surveyed = false;
 		uint8_t low = 0;
@@ -60,15 +61,15 @@ private:
 		uint64_t drawn = 0;
 		uint64_t due_since = 0;
 
-		bool Outdated(int wanted_step) const { return this->stale || this->step != wanted_step; }
+		bool Outdated(const GroundGrain &wanted) const { return this->stale || this->grain != wanted; }
 		/* Ground wanted at full detail is first drafted as a lattice, which costs little, wherever none so fine shows yet. */
-		int NextStep(int wanted_step) const { return wanted_step == 1 && (this->ground.Empty() || this->step > DRAFT_STEP) ? DRAFT_STEP : wanted_step; }
+		GroundGrain NextGrain(const GroundGrain &wanted) const { return wanted.step == 1 && (this->ground.Empty() || this->grain.step > DRAFT_STEP) ? DRAFT_GRAIN : wanted; }
 	};
 
-	/* A block whose meshes are out of date, the step the camera's view asks of it and whether it lies in that view or only casts its shadow into it. */
+	/* A block whose meshes are out of date, the grain the camera's view asks of it and whether it lies in that view or only casts its shadow into it. */
 	struct Due {
 		size_t index;
-		int step;
+		GroundGrain grain;
 		bool in_sight;
 	};
 
@@ -86,7 +87,7 @@ private:
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
 	std::pair<Vec3, Vec3> Bounds(size_t index);
 	double Distance(size_t index, const Vec3 &eye) const;
-	void Build(size_t index, int step);
+	void Build(size_t index, GroundGrain grain);
 	void Refine(const BuildSlice &slice);
 	void Finish(size_t index);
 	void Evict();

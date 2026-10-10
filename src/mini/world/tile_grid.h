@@ -14,7 +14,7 @@
 #include <vector>
 
 template <typename Mesh, typename Vertex>
-void LayTileGrid(Mesh &mesh, int tx, int ty, int divisions, Vertex vertex)
+std::vector<uint32_t> LayTileGrid(Mesh &mesh, int tx, int ty, int divisions, Vertex vertex)
 {
 	int side = divisions + 1;
 	std::vector<uint32_t> grid(static_cast<size_t>(side) * side);
@@ -24,6 +24,7 @@ void LayTileGrid(Mesh &mesh, int tx, int ty, int divisions, Vertex vertex)
 	for (int j = 0; j < divisions; j++) {
 		for (int i = 0; i < divisions; i++) mesh.Quad(grid[j * side + i], grid[j * side + i + 1], grid[(j + 1) * side + i + 1], grid[(j + 1) * side + i]);
 	}
+	return grid;
 }
 
 #endif /* MINI_WORLD_TILE_GRID_H */
