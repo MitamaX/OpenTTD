@@ -108,7 +108,7 @@ static ModelMesh Mirrors(const BodyRun &body, double x, const Band &band)
 
 static ModelMesh Seam(double x, double half_width, const Band &band)
 {
-	return SideBand(x - SEAM_WIDTH * 0.5, x + SEAM_WIDTH * 0.5, half_width, band.low, band.high, TRIM);
+	return Rib(x, half_width, band, SEAM_WIDTH, TRIM);
 }
 
 static ModelMesh WheelArch(double x)
@@ -152,7 +152,7 @@ static ModelMesh Bus(VehicleDetail detail)
 	kit.Body(body.Stripe(BUS_BAND, SECONDARY).Gloss(PAINT_GLOSS));
 	kit.Fine(WindowPosts(BUS_WINDOWS, BUS_GLASS, HALF_WIDTH + PROUD, PRIMARY).Gloss(PAINT_GLOSS));
 	for (double door : BUS_DOORS) {
-		kit.Fine(SideBand(door - DOOR_HALF, door + DOOR_HALF, HALF_WIDTH + PROUD, BUS_DOOR.low, BUS_DOOR.high, GLASS).Gloss(GLASS_GLOSS));
+		kit.Fine(Rib(door, HALF_WIDTH + PROUD, BUS_DOOR, DOOR_HALF * 2.0, GLASS).Gloss(GLASS_GLOSS));
 		kit.Fine(Seam(door, HALF_WIDTH + PROUD * 2.0, BUS_DOOR));
 	}
 	kit.Fine(Bumper(body, body.Front() - BumperWrap(BUS_ENDS), body.Front()));

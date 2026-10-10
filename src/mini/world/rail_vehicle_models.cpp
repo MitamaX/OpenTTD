@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <numbers>
 
 #include "way_shapes.h"
 
@@ -52,10 +54,36 @@ static constexpr Band HOOD_BAND = {0.1, 0.12};
 static constexpr HullProfile HOOD_CAB = {0.122, 0.075, 0.25, 0.02};
 static constexpr BodyEnd HOOD_CAB_ENDS = RoundedEnd(0.012, 0.95, 0.96);
 static constexpr Band HOOD_CAB_GLASS = {0.19, 0.23};
+static constexpr double RUNNING_PLATE = 0.074;
+static constexpr double BOILER_AXIS = 0.15;
+static constexpr double BOILER_RADIUS = 0.075;
+static constexpr int BOILER_SIDES = 12;
+static constexpr std::array<double, 3> BOILER_BANDS = {-0.04, 0.03, 0.1};
+static constexpr double BOILER_BAND_HALF = 0.003;
+static constexpr double SMOKEBOX_BACK = 0.17;
+static constexpr double SMOKEBOX_FRONT = 0.215;
 static constexpr double STEAM_CAB_HALF = 0.125;
-static constexpr WindowSpan STEAM_CAB_WINDOW = {-0.2, -0.1, 1};
+static constexpr double STEAM_CAB_FRONT = -0.08;
+static constexpr HullProfile STEAM_CAB = {STEAM_CAB_HALF, RUNNING_PLATE, 0.25, 0.012};
+static constexpr HullProfile STEAM_CAB_ROOF = {0.135, 0.245, 0.268, 0.02};
+static constexpr WindowSpan STEAM_CAB_WINDOW = {-0.15, -0.09, 1};
 static constexpr Band STEAM_CAB_GLASS = {0.18, 0.235};
+static constexpr double STEAM_CAB_DOOR = -0.185;
+static constexpr Band STEAM_CAB_OPENING = {0.11, 0.235};
+static constexpr double CYLINDER_RADIUS = 0.028;
+static constexpr double CYLINDER_AXIS = 0.085;
+static constexpr double CYLINDER_SIDE = 0.098;
+static constexpr std::array<double, 3> STEAM_DRIVERS = {-0.075, 0.015, 0.105};
+static constexpr double DRIVER_RADIUS = 0.042;
+static constexpr double DRIVER_WIDTH = 0.016;
+static constexpr double STEAM_HALF_TRACK = 0.095;
+static constexpr double SPLASHER_CLEARANCE = 0.004;
+static constexpr int SPLASHER_STEPS = 4;
+static constexpr double ROD_SIDE = STEAM_HALF_TRACK + DRIVER_WIDTH * 0.5 + 0.001;
+static constexpr double ROD_HALF = 0.003;
 static constexpr std::array<double, 4> VAN_RIBS = {-0.17, -0.11, 0.11, 0.17};
+static constexpr Band VAN_DOOR = {0.07, 0.205};
+static constexpr Band COACH_DOOR = {0.075, 0.2};
 static constexpr double GANGWAY_TUCK = 0.006;
 static constexpr double GANGWAY_HALF = 0.07;
 static constexpr double GANGWAY_FOOT = 0.015;
@@ -70,6 +98,39 @@ static constexpr WindowSpan ARMOURED_WINDOWS = {-0.12, 0.12, 3};
 static constexpr Band ARMOURED_GLASS = {0.165, 0.175};
 static constexpr double ARMOURED_HALF = 0.12;
 static constexpr double VAN_RIB_WIDTH = 0.008;
+static constexpr double TANK_AXIS = 0.158;
+static constexpr double TANK_RADIUS = 0.085;
+static constexpr int TANK_SIDES = 12;
+static constexpr std::array<LatheRing, 10> TANK_SHELL = {{
+	{0.0, -0.226}, {0.045, -0.222}, {0.07, -0.212}, {0.082, -0.2}, {TANK_RADIUS, -0.186},
+	{TANK_RADIUS, 0.186}, {0.082, 0.2}, {0.07, 0.212}, {0.045, 0.222}, {0.0, 0.226},
+}};
+static constexpr double OPEN_REACH = 0.225;
+static constexpr double OPEN_HALF = 0.125;
+static constexpr double OPEN_WALL = 0.01;
+static constexpr Band OPEN_WALLS = {0.075, 0.17};
+static constexpr double RIM_DEPTH = 0.007;
+static constexpr std::array<double, 6> OPEN_STANCHIONS = {-0.17, -0.115, -0.06, 0.06, 0.115, 0.17};
+static constexpr double STANCHION_HALF = 0.004;
+static constexpr double OPEN_DOOR_HALF = 0.045;
+static constexpr double OPEN_DOOR_INSET = 0.008;
+static constexpr HullProfile HOPPER_BODY = {0.122, 0.1, 0.228, 0.06};
+static constexpr BodyEnd HOPPER_ENDS = RoundedEnd(0.014, 0.9, 0.92);
+static constexpr double HOPPER_REACH = 0.205;
+static constexpr Band HOPPER_BAND = {0.15, 0.162};
+static constexpr std::array<double, 6> HOPPER_RIBS = {-0.17, -0.105, -0.035, 0.035, 0.105, 0.17};
+static constexpr double HOPPER_RIB_WIDTH = 0.006;
+static constexpr std::array<double, 2> HOPPER_CHUTES = {-0.075, 0.075};
+static constexpr double CHUTE_HALF_TOP = 0.072;
+static constexpr double CHUTE_HALF_FOOT = 0.02;
+static constexpr double CHUTE_FOOT = 0.04;
+static constexpr double CHUTE_HALF_WIDTH = 0.085;
+static constexpr double FLAT_HALF = 0.125;
+static constexpr double FLAT_DECK = 0.078;
+static constexpr double SILL_THICKNESS = 0.008;
+static constexpr std::array<MapVector, 6> FISH_BELLY = {{
+	{-UNIT_REACH, 0.05}, {-0.1, 0.034}, {0.1, 0.034}, {UNIT_REACH, 0.05}, {UNIT_REACH, FLAT_DECK}, {-UNIT_REACH, FLAT_DECK},
+}};
 
 static ModelMesh Coupler(double end)
 {
@@ -107,23 +168,47 @@ static ModelMesh GuidewaySkirts()
 	return Flanked(Plank({-UNIT_REACH, 0.088, -0.075}, {UNIT_REACH, 0.112, 0.01}, DARK_SECONDARY));
 }
 
+/* A guard over the top of a driving wheel where it rises through the running plate. */
+static ModelMesh Splasher(double x)
+{
+	double radius = DRIVER_RADIUS + SPLASHER_CLEARANCE;
+	double rise = std::asin((RUNNING_PLATE - DRIVER_RADIUS) / radius);
+	std::array<MapVector, SPLASHER_STEPS + 1> outline;
+	for (int step = 0; step <= SPLASHER_STEPS; step++) {
+		double angle = std::lerp(rise, std::numbers::pi - rise, static_cast<double>(step) / SPLASHER_STEPS);
+		outline[step] = {x + radius * std::cos(angle), DRIVER_RADIUS + radius * std::sin(angle)};
+	}
+	return Upright(outline, DRIVER_WIDTH + SPLASHER_CLEARANCE).Move({0.0, STEAM_HALF_TRACK, 0.0}).Paint(PRIMARY).Gloss(PAINT_GLOSS);
+}
+
+/* A boiler banded in brass between a smokebox and a cab under an arched roof, coupled driving wheels under splashers behind cylinders over a leading pair. */
 static ModelMesh SteamEngine(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
-	kit.Body(Plank({-UNIT_REACH, -0.11, 0.05}, {UNIT_REACH, 0.11, 0.074}, RUNNING_GEAR));
-	kit.Body(Barrel(-0.08, 0.17, 0.075, 0.15, 10).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Barrel(0.17, 0.215, 0.077, 0.15, 10).Paint(RUNNING_GEAR));
+	kit.Body(Plank({-UNIT_REACH, -0.11, 0.05}, {UNIT_REACH, 0.11, RUNNING_PLATE}, RUNNING_GEAR));
+	kit.Body(Barrel(STEAM_CAB_FRONT, SMOKEBOX_BACK, BOILER_RADIUS, BOILER_AXIS, BOILER_SIDES).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(Barrel(SMOKEBOX_BACK, SMOKEBOX_FRONT, BOILER_RADIUS + 0.002, BOILER_AXIS, BOILER_SIDES).Paint(RUNNING_GEAR));
 	kit.Body(Column(8, 0.024, STEAM_CHIMNEY_MOUTH, STEAM_CHIMNEY_HEIGHT).Transform(Mat4::Translation(STEAM_CHIMNEY_FOOT)).Paint(RUNNING_GEAR));
-	kit.Body(Hull({STEAM_CAB_HALF, 0.074, 0.255, 0.01}, -0.215, -0.08).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Plank({-0.228, -0.135, 0.255}, {-0.07, 0.135, 0.268}, RUNNING_GEAR));
+	kit.Body(BodyRun(STEAM_CAB, -0.215, STEAM_CAB_FRONT, SQUARE_END, SQUARE_END, kit.Steps()).Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(BodyRun(STEAM_CAB_ROOF, -UNIT_REACH, STEAM_CAB_FRONT + 0.01, SQUARE_END, SQUARE_END, kit.Steps()).Shell().Paint(RUNNING_GEAR));
+	for (double x : BOILER_BANDS) kit.Fine(Barrel(x - BOILER_BAND_HALF, x + BOILER_BAND_HALF, BOILER_RADIUS + 0.0015, BOILER_AXIS, BOILER_SIDES).Paint(BRASS).Gloss(METAL_GLOSS));
 	kit.Fine(Column(8, 0.032, 0.022, 0.04).Transform(Mat4::Translation({0.06, 0.0, 0.215})).Paint(BRASS).Gloss(METAL_GLOSS));
-	kit.Fine(Barrel(0.215, 0.219, 0.05, 0.15, 10).Paint(STEEL));
+	kit.Fine(Column(8, 0.026, 0.02, 0.03).Transform(Mat4::Translation({-0.01, 0.0, 0.218})).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Fine(Barrel(SMOKEBOX_FRONT, SMOKEBOX_FRONT + 0.004, 0.05, BOILER_AXIS, BOILER_SIDES).Paint(STEEL));
 	kit.Fine(SideBand(-UNIT_REACH, UNIT_REACH, 0.11, 0.054, 0.07, SECONDARY));
-	kit.Fine(Plank({0.215, -0.11, 0.05}, {0.228, 0.11, 0.088}, SECONDARY));
+	kit.Fine(Plank({SMOKEBOX_FRONT, -0.11, 0.05}, {UNIT_REACH, 0.11, 0.088}, SECONDARY));
+	kit.Fine(Flanked(Barrel(UNIT_REACH, UNIT_REACH + 0.012, 0.009, 0.068, 6).Move({0.0, 0.07, 0.0}).Paint(STEEL)));
 	kit.Fine(WindowGlass(STEAM_CAB_WINDOW, STEAM_CAB_GLASS, STEAM_CAB_HALF));
-	kit.Fine(Windscreen(-0.08, 0.12, 0.2, 0.24));
-	for (double x : {-0.03, 0.065, 0.16}) kit.Fine(WheelPair(x, 0.095, 0.045, 0.016).Paint(DARK_SECONDARY));
-	kit.Fine(WheelPair(-0.17, 0.095, WHEEL_RADIUS, 0.014));
+	kit.Fine(Rib(STEAM_CAB_DOOR, STEAM_CAB_HALF + PROUD, STEAM_CAB_OPENING, 0.03, RUNNING_GEAR));
+	kit.Fine(Windscreen(STEAM_CAB_FRONT, 0.12, 0.2, 0.24));
+	kit.Fine(Flanked(Barrel(0.15, SMOKEBOX_FRONT, CYLINDER_RADIUS, CYLINDER_AXIS, 8).Move({0.0, CYLINDER_SIDE, 0.0}).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS)));
+	for (double x : STEAM_DRIVERS) {
+		kit.Fine(WheelPair(x, STEAM_HALF_TRACK, DRIVER_RADIUS, DRIVER_WIDTH).Paint(DARK_SECONDARY));
+		kit.Fine(Flanked(Splasher(x)));
+	}
+	kit.Fine(Flanked(Plank({STEAM_DRIVERS.front(), ROD_SIDE, DRIVER_RADIUS - ROD_HALF}, {STEAM_DRIVERS.back(), ROD_SIDE + 0.004, DRIVER_RADIUS + ROD_HALF}, STEEL).Gloss(METAL_GLOSS)));
+	kit.Fine(WheelPair(0.185, STEAM_HALF_TRACK, 0.022, 0.012));
+	kit.Fine(WheelPair(-0.17, STEAM_HALF_TRACK, WHEEL_RADIUS, 0.014));
 	kit.Fine(Plank({0.222, -0.012, 0.2}, {0.226, 0.012, 0.222}, HEADLAMP).Glow(LAMP_GLOW));
 	return kit.Done();
 }
@@ -270,7 +355,7 @@ static ModelMesh Coach(VehicleDetail detail)
 		Vec3 half = ROOF_UNIT_SIZE * 0.5;
 		kit.Fine(Plank({x - half.x, -half.y, ROOF_TOP}, {x + half.x, half.y, ROOF_TOP + ROOF_UNIT_SIZE.z}, STEEL).Gloss(METAL_GLOSS));
 	}
-	for (double end : {-0.205, 0.205}) kit.Fine(SideBand(end - 0.012, end + 0.012, BODY_HALF + 0.001, 0.075, 0.2, DARK_SECONDARY));
+	for (double end : {-0.205, 0.205}) kit.Fine(Rib(end, BODY_HALF + 0.001, COACH_DOOR, 0.024, DARK_SECONDARY));
 	return kit.Done();
 }
 
@@ -279,7 +364,7 @@ static ModelMesh MailVan(VehicleDetail detail)
 	VehicleKit kit(detail);
 	CoachShell(kit, MUTED_PRIMARY, SECONDARY);
 	for (const WindowSpan &window : MAIL_WINDOWS) kit.Body(WindowGlass(window, MAIL_GLASS, BODY_HALF));
-	kit.Fine(SideBand(-0.04, 0.04, BODY_HALF + 0.001, 0.075, 0.2, DARK_SECONDARY));
+	kit.Fine(Rib(0.0, BODY_HALF + 0.001, COACH_DOOR, 0.08, DARK_SECONDARY));
 	return kit.Done();
 }
 
@@ -294,7 +379,7 @@ static ModelMesh BoxVan(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	VanShell(kit, MUTED_PRIMARY);
-	kit.Fine(SideBand(-0.045, 0.045, VAN_BODY.half_width, 0.07, 0.205, DARK_SECONDARY));
+	kit.Fine(Rib(0.0, VAN_BODY.half_width, VAN_DOOR, 0.09, DARK_SECONDARY));
 	kit.Fine(Ribs(VAN_RIBS, VAN_BODY.half_width, {FLOOR, COACH_TOP}, VAN_RIB_WIDTH, DARK_PRIMARY));
 	return kit.Done();
 }
@@ -304,7 +389,7 @@ static ModelMesh Reefer(VehicleDetail detail)
 	VehicleKit kit(detail);
 	VanShell(kit, CREAM);
 	kit.Body(SideBand(-UNIT_REACH, UNIT_REACH, VAN_BODY.half_width, 0.17, 0.19, PRIMARY));
-	kit.Fine(SideBand(-0.04, 0.04, VAN_BODY.half_width, 0.07, 0.16, STEEL));
+	kit.Fine(Rib(0.0, VAN_BODY.half_width, {VAN_DOOR.low, 0.16}, 0.08, STEEL));
 	kit.Fine(Plank({-UNIT_REACH, -0.07, 0.235}, {-0.15, 0.07, 0.255}, STEEL));
 	return kit.Done();
 }
@@ -320,16 +405,33 @@ static ModelMesh ArmouredVan(VehicleDetail detail)
 	return kit.Done();
 }
 
+/* A tank domed at its ends on cradles over the bogies, banded in the owner's colour, with a dome on top and a walkway and handrail along either side. */
 static ModelMesh TankWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Underframe(kit, 0.1);
-	std::array<LatheRing, 4> tank = {{{0.055, -0.218}, {0.085, -0.2}, {0.085, 0.2}, {0.055, 0.218}}};
-	kit.Body(Turned(tank, 12, 0.155).Paint(STEEL).Gloss(METAL_GLOSS));
-	kit.Body(Barrel(-0.03, 0.03, 0.087, 0.155, 12).Paint(PRIMARY));
-	kit.Fine(Column(8, 0.03, 0.026, 0.03).Transform(Mat4::Translation({0.0, 0.0, 0.232})).Paint(STEEL).Gloss(METAL_GLOSS));
-	kit.Fine(Plank({-0.2, -0.105, 0.075}, {0.2, -0.1, 0.09}, RUNNING_GEAR));
+	kit.Body(Turned(TANK_SHELL, TANK_SIDES, TANK_AXIS).Paint(STEEL).Gloss(METAL_GLOSS));
+	kit.Body(Barrel(-0.03, 0.03, TANK_RADIUS + 0.002, TANK_AXIS, TANK_SIDES).Paint(PRIMARY));
+	for (double end : {-1.0, 1.0}) kit.Body(Plank({end * BOGIE_X - 0.025, -0.07, FLOOR}, {end * BOGIE_X + 0.025, 0.07, TANK_AXIS - 0.06}, RUNNING_GEAR));
+	kit.Fine(Column(8, 0.03, 0.026, 0.03).Transform(Mat4::Translation({0.0, 0.0, TANK_AXIS + TANK_RADIUS - 0.008})).Paint(STEEL).Gloss(METAL_GLOSS));
+	kit.Fine(Flanked(Plank({-0.2, 0.1, FLOOR + 0.004}, {0.2, 0.125, FLOOR + 0.008}, RUNNING_GEAR)));
+	kit.Fine(Flanked(Plank({-0.19, TANK_RADIUS + 0.004, TANK_AXIS - 0.002}, {0.19, TANK_RADIUS + 0.008, TANK_AXIS + 0.002}, STEEL)));
 	return kit.Done();
+}
+
+/* A rim capping the walls round an open body, standing a little proud of them outside. */
+static ModelMesh Rim(double reach, double half_width, double wall, double z, uint32_t tone)
+{
+	ModelMesh rim = Flanked(Plank({-reach - PROUD, half_width - wall, z}, {reach + PROUD, half_width + PROUD, z + RIM_DEPTH}, tone));
+	for (double x : {-reach - PROUD, reach - wall}) rim.Append(Plank({x, -half_width, z}, {x + wall + PROUD, half_width, z + RIM_DEPTH}, tone));
+	return rim;
+}
+
+/* A chute under a hopper's body, its ends sloping in to its outlet. */
+static ModelMesh Chute(double x)
+{
+	std::array<MapVector, 4> outline = {{{x - CHUTE_HALF_FOOT, CHUTE_FOOT}, {x + CHUTE_HALF_FOOT, CHUTE_FOOT}, {x + CHUTE_HALF_TOP, HOPPER_BODY.low}, {x - CHUTE_HALF_TOP, HOPPER_BODY.low}}};
+	return Upright(outline, CHUTE_HALF_WIDTH * 2.0).Paint(DARK_PRIMARY);
 }
 
 /* A low mound of loose cargo, heaped higher in the middle. */
@@ -339,39 +441,46 @@ static ModelMesh Heap(double half_length, double half_width, double base, double
 	return Lathe(mound, 8).Transform(Mat4::Translation({0.0, 0.0, base}) * Mat4::Scaling({half_length, half_width, rise})).Displace(HEAP_SPREAD, HEAP_SEED).Facet().Paint(CARGO);
 }
 
+/* Walls round an open floor, capped by a rim and stiffened outside by stanchions either side of a door, the load heaped inside. */
 static ModelMesh OpenWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Underframe(kit, 0.11);
-	kit.Body(Plank({-0.225, -0.125, FLOOR}, {0.225, 0.125, 0.075}, DARK_PRIMARY));
-	kit.Body(Flanked(Plank({-0.225, 0.115, 0.075}, {0.225, 0.125, 0.17}, MUTED_PRIMARY)));
-	for (double x : {-0.225, 0.215}) kit.Body(Plank({x, -0.115, 0.075}, {x + 0.01, 0.115, 0.17}, MUTED_PRIMARY));
-	kit.Body(Plank({-0.215, -0.115, 0.075}, {0.215, 0.115, 0.15}, CARGO));
+	kit.Body(Plank({-OPEN_REACH, -OPEN_HALF, FLOOR}, {OPEN_REACH, OPEN_HALF, OPEN_WALLS.low}, DARK_PRIMARY));
+	kit.Body(Flanked(Plank({-OPEN_REACH, OPEN_HALF - OPEN_WALL, OPEN_WALLS.low}, {OPEN_REACH, OPEN_HALF, OPEN_WALLS.high}, MUTED_PRIMARY)));
+	for (double x : {-OPEN_REACH, OPEN_REACH - OPEN_WALL}) kit.Body(Plank({x, -OPEN_HALF, OPEN_WALLS.low}, {x + OPEN_WALL, OPEN_HALF, OPEN_WALLS.high}, MUTED_PRIMARY));
+	kit.Body(Plank({-OPEN_REACH + OPEN_WALL, -OPEN_HALF + OPEN_WALL, OPEN_WALLS.low}, {OPEN_REACH - OPEN_WALL, OPEN_HALF - OPEN_WALL, 0.15}, CARGO));
 	kit.Body(Heap(0.2, 0.105, 0.15, 0.045));
-	for (double x : {-0.15, -0.075, 0.0, 0.075, 0.15}) kit.Fine(SideBand(x - 0.005, x + 0.005, 0.125, 0.075, 0.17, DARK_PRIMARY));
+	kit.Fine(Rim(OPEN_REACH, OPEN_HALF, OPEN_WALL, OPEN_WALLS.high, DARK_PRIMARY));
+	for (double x : OPEN_STANCHIONS) kit.Fine(Flanked(Plank({x - STANCHION_HALF, OPEN_HALF, OPEN_WALLS.low}, {x + STANCHION_HALF, OPEN_HALF + PROUD, OPEN_WALLS.high}, DARK_PRIMARY)));
+	kit.Fine(Flanked(Plank({-OPEN_DOOR_HALF, OPEN_HALF, OPEN_WALLS.low + OPEN_DOOR_INSET}, {OPEN_DOOR_HALF, OPEN_HALF + PROUD * 0.5, OPEN_WALLS.high - OPEN_DOOR_INSET}, DARK_PRIMARY)));
 	return kit.Done();
 }
 
+/* A body rounded over its roof and sloping down at its foot into a chute between each bogie and the middle, ribbed along its sides, with a walkway along its roof. */
 static ModelMesh CoveredHopper(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Underframe(kit, 0.1);
-	kit.Body(Hull({0.122, 0.105, 0.215, 0.05}, -0.215, 0.215).Paint(MUTED_PRIMARY).Gloss(PAINT_GLOSS));
-	for (double x : {-0.13, 0.0, 0.13}) kit.Body(Hull({0.07, FLOOR, 0.105, 0.0}, x - 0.05, x + 0.05).Paint(DARK_PRIMARY));
-	kit.Fine(Plank({-0.2, -0.02, 0.215}, {0.2, 0.02, 0.222}, ROOF_GREY));
-	kit.Fine(SideBand(-0.215, 0.215, 0.122, 0.15, 0.162, SECONDARY));
+	BodyRun body(HOPPER_BODY, -HOPPER_REACH, HOPPER_REACH, HOPPER_ENDS, HOPPER_ENDS, kit.Steps());
+	kit.Body(body.Shell().Paint(MUTED_PRIMARY).Gloss(PAINT_GLOSS));
+	for (double x : HOPPER_CHUTES) kit.Body(Chute(x));
+	kit.Fine(body.Stripe(HOPPER_BAND, SECONDARY).Gloss(PAINT_GLOSS));
+	kit.Fine(Ribs(HOPPER_RIBS, HOPPER_BODY.half_width + PROUD, {HOPPER_BODY.low, HOPPER_BODY.high - HOPPER_BODY.bevel}, HOPPER_RIB_WIDTH, DARK_PRIMARY));
+	kit.Fine(Plank({-0.19, -0.02, HOPPER_BODY.high}, {0.19, 0.02, HOPPER_BODY.high + 0.006}, ROOF_GREY));
 	return kit.Done();
 }
 
+/* A timber deck on sills bellied deep between the bogies, logs lashed to it between stakes. */
 static ModelMesh FlatWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Underframe(kit, 0.1);
-	kit.Body(Plank({-0.225, -0.125, FLOOR}, {0.225, 0.125, 0.078}, TIMBER_DECK));
-	kit.Body(SideBand(-0.225, 0.225, 0.125, 0.058, 0.074, DARK_PRIMARY));
+	kit.Body(Plank({-0.225, -FLAT_HALF, FLOOR}, {0.225, FLAT_HALF, FLAT_DECK}, TIMBER_DECK));
+	kit.Body(Flanked(Upright(FISH_BELLY, SILL_THICKNESS).Move({0.0, FLAT_HALF - SILL_THICKNESS * 0.5 + PROUD, 0.0}).Paint(DARK_PRIMARY)));
 	for (double y : {-0.07, 0.0, 0.07}) kit.Body(Barrel(-0.2, 0.2, 0.035, 0.113, 7).Transform(Mat4::Translation({0.0, y, 0.0})).Paint(CARGO));
 	for (double y : {-0.035, 0.035}) kit.Fine(Barrel(-0.19, 0.19, 0.033, 0.175, 7).Transform(Mat4::Translation({0.0, y, 0.0})).Paint(BRIGHT_CARGO));
-	for (double x : {-0.18, -0.06, 0.06, 0.18}) kit.Fine(Flanked(Plank({x - 0.006, 0.112, 0.078}, {x + 0.006, 0.124, 0.15}, RUNNING_GEAR)));
+	for (double x : {-0.18, -0.06, 0.06, 0.18}) kit.Fine(Flanked(Plank({x - 0.006, 0.112, FLAT_DECK}, {x + 0.006, 0.124, 0.15}, RUNNING_GEAR)));
 	return kit.Done();
 }
 
@@ -380,7 +489,7 @@ static ModelMesh LivestockVan(VehicleDetail detail)
 	VehicleKit kit(detail);
 	VanShell(kit, MUTED_PRIMARY);
 	for (double z : {0.09, 0.13, 0.17}) kit.Fine(SideBand(-0.21, 0.21, VAN_BODY.half_width, z, z + 0.012, SLAT_GAP));
-	kit.Fine(SideBand(-0.04, 0.04, VAN_BODY.half_width + 0.002, 0.07, 0.205, DARK_SECONDARY));
+	kit.Fine(Rib(0.0, VAN_BODY.half_width + 0.002, VAN_DOOR, 0.08, DARK_SECONDARY));
 	return kit.Done();
 }
 

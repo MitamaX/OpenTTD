@@ -275,21 +275,22 @@ ModelMesh WindowGlass(const WindowSpan &span, const Band &band, double half_widt
 	return SideBand(span.GlassBack(), span.GlassFront(), half_width, band.low, band.high, GLASS).Gloss(GLASS_GLOSS);
 }
 
+ModelMesh Rib(double x, double half_width, const Band &band, double width, uint32_t tone)
+{
+	return SideBand(x - width * 0.5, x + width * 0.5, half_width, band.low, band.high, tone);
+}
+
 ModelMesh WindowPosts(const WindowSpan &span, const Band &band, double half_width, uint32_t tone)
 {
 	ModelMesh posts;
-	double half = span.Post() * 0.5;
-	for (int post = 1; post < span.count; post++) {
-		double at = span.back + span.Pitch() * post;
-		posts.Append(SideBand(at - half, at + half, half_width, band.low, band.high, tone));
-	}
+	for (int post = 1; post < span.count; post++) posts.Append(Rib(span.back + span.Pitch() * post, half_width, band, span.Post(), tone));
 	return posts;
 }
 
 ModelMesh Ribs(std::span<const double> at, double half_width, const Band &band, double width, uint32_t tone)
 {
 	ModelMesh ribs;
-	for (double x : at) ribs.Append(SideBand(x - width * 0.5, x + width * 0.5, half_width, band.low, band.high, tone));
+	for (double x : at) ribs.Append(Rib(x, half_width, band, width, tone));
 	return ribs;
 }
 

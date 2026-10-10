@@ -190,6 +190,8 @@ ModelMesh Hub(double x, double y, double axle, double radius, double width);
 ModelMesh WheelPair(double x, double half_track, double radius, double width);
 ModelMesh Bogie(double x, double half_track, double radius);
 ModelMesh WindowGlass(const WindowSpan &span, const Band &band, double half_width);
+/* A narrow band up both sides of a body, centred at x. */
+ModelMesh Rib(double x, double half_width, const Band &band, double width, uint32_t tone);
 ModelMesh WindowPosts(const WindowSpan &span, const Band &band, double half_width, uint32_t tone);
 ModelMesh Ribs(std::span<const double> at, double half_width, const Band &band, double width, uint32_t tone);
 ModelMesh Windscreen(double x, double half_width, double low, double high);
