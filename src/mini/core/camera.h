@@ -114,7 +114,6 @@ public:
 	Camera();
 
 	double Ppt() const { return this->ppt; }
-	double Yaw() const { return this->yaw; }
 	int TilePixels() const;
 	int Width() const { return this->width; }
 	int Height() const { return this->height; }

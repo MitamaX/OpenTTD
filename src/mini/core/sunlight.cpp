@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file sunlight.cpp The sun over the mini map, kept at the same bearing from the way the view faces. */
+/** @file sunlight.cpp The sun over the mini map, standing at one bearing over the map. */
 
 #include "../../stdafx.h"
 #include "sunlight.h"
@@ -18,9 +18,9 @@
 
 #include "../../safeguards.h"
 
-Vec3 Sun(double view_yaw)
+Vec3 Sun()
 {
 	double elevation = _tuning.sun_elevation * std::numbers::pi / 180.0;
-	Vec3 level = Bearing(view_yaw + _tuning.sun_bearing) * std::cos(elevation);
+	Vec3 level = Bearing(_tuning.sun_bearing) * std::cos(elevation);
 	return {level.x, level.y, std::sin(elevation)};
 }

@@ -5,14 +5,14 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
  */
 
-/** @file sunlight.h The sun over the mini map, kept at the same bearing from the way the view faces. */
+/** @file sunlight.h The sun over the mini map, standing at one bearing over the map. */
 
 #ifndef MINI_CORE_SUNLIGHT_H
 #define MINI_CORE_SUNLIGHT_H
 
 #include "space.h"
 
-/* The unit way to the sun along map X, map Y and straight up over a view facing this yaw, from the elevation and the bearing off the view the tuning names. */
-Vec3 Sun(double view_yaw);
+/* The unit way to the sun along map X, map Y and straight up, from the elevation and the bearing from map north the tuning names. */
+Vec3 Sun();
 
 #endif /* MINI_CORE_SUNLIGHT_H */

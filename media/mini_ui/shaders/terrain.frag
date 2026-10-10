@@ -1051,7 +1051,7 @@ vec2 Drift(vec2 p, float frequency, float reach)
 	return (vec2(Noise(q + 3.3), Noise(q + 9.1)) - 0.5) * 2.0 * reach;
 }
 
-/* The midday sun stands on one side of the map, wherever the view's own sun is turned. */
+/* The midday sun stands on one side of the map. */
 float Moisture(vec2 p, Relief relief)
 {
 	float drifts = (2.0 * Octave(p + 11.3, MOISTURE_FREQUENCY) + Octave(p + 4.9, MOISTURE_DRIFT_FREQUENCY)) / 3.0;

@@ -69,7 +69,7 @@ SceneView SceneView::Of(const Camera &camera)
 	view.view_projection = view.projection * view.view;
 	view.frustum = FrustumOf(view.view_projection);
 	view.eye = camera.Eye();
-	view.sun = Sun(camera.Yaw());
+	view.sun = Sun();
 	view.focal = camera.Focal();
 	view.focus_pixels = camera.Ppt();
 	view.near = camera.Near();

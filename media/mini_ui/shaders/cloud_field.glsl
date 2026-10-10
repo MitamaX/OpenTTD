@@ -20,7 +20,7 @@ float Billow(vec2 p, int octaves)
 	return sum;
 }
 
-/* The cloud straight overhead shades a point, as the sun turns with the view while the clouds keep to the map. */
+/* The cloud straight overhead shades a point. */
 float CloudLight(vec3 position)
 {
 	float body = Billow(position.xy / CLOUD_SHADOW_SPAN + CLOUD_WIND * Clock(), CLOUD_SHADOW_OCTAVES);
