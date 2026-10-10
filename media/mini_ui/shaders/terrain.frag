@@ -535,11 +535,7 @@ struct Water {
 struct Canopy {
 	vec4 paint;
 	float density;
-	vec3 tone;
-	vec4 litter;
 };
-
-const Canopy NO_CANOPY = Canopy(vec4(0.0), 0.0, vec3(0.0), vec4(0.0));
 
 struct ForestFloor {
 	float cover;
@@ -1342,23 +1338,23 @@ vec3 CanopyTone(vec2 p)
 /* The ground under a forest: kept from the sky by the crowns, and painted their colour where distance has thinned the trees themselves away. */
 Canopy Forest(vec2 p)
 {
-	ForestFloor beneath = FloorAround(p);
-	if (beneath.cover <= 0.0) return NO_CANOPY;
+	float density = FloorAround(p).cover;
+	if (density <= 0.0) return Canopy(vec4(0.0), 0.0);
 
-	vec3 tone = CanopyTone(p);
 	float tint = ForestTint(TilePixelsAt(distance(Eye(), RenderPoint(v_world))));
-	return Canopy(vec4(tone, 1.0) * beneath.cover * FOREST_COVER * tint, beneath.cover, tone, beneath.litter);
+	return Canopy(vec4(CanopyTone(p), 1.0) * density * FOREST_COVER * tint, density);
 }
 
 Patch Littered(Patch ground, Canopy forest, vec2 p, Grain grain)
 {
-	vec4 litter = forest.litter;
+	if (forest.density <= 0.0) return ground;
+	vec4 litter = FloorAround(p).litter;
 	if (litter.a <= 0.0) return ground;
 
 	float patches = mix(1.0 - LITTER_PATCHINESS, 1.0, smoothstep(LITTER_PATCH_EDGES.x, LITTER_PATCH_EDGES.y, grain.local));
 	vec3 leaves = litter.rgb / litter.a * Varied(grain.fine, LITTER_VARIETY) * Varied(grain.micro, LITTER_VARIETY);
 	vec3 tone = mix(leaves, LITTER_MOSS, smoothstep(MOSS_EDGES.x, MOSS_EDGES.y, Octave(p + MOSS_SEED, MOSS_PATCHES_PER_TILE)));
-	tone = mix(forest.tone * FAR_FLOOR_SHADE, tone, smoothstep(LITTER_SHOWN_PIXELS.x, LITTER_SHOWN_PIXELS.y, tile_pixels));
+	tone = mix(CanopyTone(p) * FAR_FLOOR_SHADE, tone, smoothstep(LITTER_SHOWN_PIXELS.x, LITTER_SHOWN_PIXELS.y, tile_pixels));
 	return Mixed(ground, Patch(tone, ROUGH_RUGGED), smoothstep(LITTER_DENSITY.x, LITTER_DENSITY.y, litter.a) * patches);
 }
 
