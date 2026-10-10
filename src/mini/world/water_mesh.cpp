@@ -19,7 +19,8 @@
 
 #include "../../safeguards.h"
 
-static constexpr double SPRAY_RADIUS = 0.18;
+static constexpr double SPRAY_RADIUS_PER_LEVEL = 0.11;
+static constexpr int MOST_SPRAY_LEVELS = 3;
 static constexpr double SPRAY_DRIFT_PACE = 0.15;
 
 static uint32_t Add(WaterMesh &mesh, double x, double y, double level)
@@ -60,6 +61,13 @@ static bool FootOfFall(int tx, int ty)
 	return WaterFormOf(below_x, below_y) != WaterForm::Dry && !IsRapids(below_x, below_y);
 }
 
+static int LevelsFallenTo(int tx, int ty, TileIndexDiffC fall)
+{
+	int levels = 1;
+	while (levels < MOST_SPRAY_LEVELS && IsRapids(tx - fall.x * levels, ty - fall.y * levels)) levels++;
+	return levels;
+}
+
 std::vector<SmokeVent> BuildFallSprays(const TileSpan &tiles)
 {
 	std::vector<SmokeVent> sprays;
@@ -70,7 +78,7 @@ std::vector<SmokeVent> BuildFallSprays(const TileSpan &tiles)
 			TileIndexDiffC fall = FallStep(tx, ty);
 			WorldPoint foot = {tx + HALF_TILE * (1 + fall.x), ty + HALF_TILE * (1 + fall.y), SurfaceLevelOf(tx, ty)};
 			Vec3 drift = Vec3{down.x, down.y, 0.0} * -SPRAY_DRIFT_PACE;
-			sprays.push_back({RenderPoint(foot), SPRAY_RADIUS, drift, TileXY(tx, ty).base(), true});
+			sprays.push_back({RenderPoint(foot), SPRAY_RADIUS_PER_LEVEL * LevelsFallenTo(tx, ty, fall), drift, TileXY(tx, ty).base(), true});
 		}
 	}
 	return sprays;

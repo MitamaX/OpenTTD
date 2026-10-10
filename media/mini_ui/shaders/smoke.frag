@@ -20,6 +20,7 @@ const float BILLOWS = 2.3;
 const float RAGGEDNESS = 0.55;
 const float TRANSLUCENCY = 0.8;
 const float CHURN_RATE = 0.25;
+const vec3 SKYWARD = vec3(0.0, 0.0, 1.0);
 
 /* The puff's outline billows and churns as it ages, so no two puffs nor two moments look alike. */
 float Billowing(vec2 corner)
@@ -52,7 +53,8 @@ void main()
 	vec3 up = vec3(u_view[0][1], u_view[1][1], u_view[2][1]);
 	vec3 back = vec3(u_view[0][2], u_view[1][2], u_view[2][2]);
 	vec2 bulge = v_corner * 0.8;
-	vec3 normal = normalize(right * bulge.x + up * bulge.y + back * sqrt(max(1.0 - dot(bulge, bulge), 0.0)));
+	vec3 swelling = right * bulge.x + up * bulge.y + back * sqrt(max(1.0 - dot(bulge, bulge), 0.0));
+	vec3 normal = normalize(mix(swelling, SKYWARD, v_spray));
 	vec3 albedo = Linear(mix(mix(SOOT, SMOKE, smoothstep(0.0, SOOT_CLEARS, v_age)), SPRAY_WHITE, v_spray));
 	vec3 through = SunlightThrough(normal, ToEye(v_centre), TRANSLUCENCY, SunVisibility(v_centre, normal, v_cloud_light));
 	vec3 lit = Diffuse(albedo, through + AmbientLight(normal), DIELECTRIC_REFLECTANCE);
