@@ -11,7 +11,6 @@
 #include "seabed.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <optional>
 
@@ -33,16 +32,6 @@ static bool IsFlat(const SurfaceTexel &surface)
 static uint8_t LowestCorner(const SurfaceTexel &surface)
 {
 	return std::min({surface.north, surface.west, surface.east, surface.south});
-}
-
-/* The level of one corner point of a tile, the corner named by its offset from the tile's north corner. */
-static uint8_t CornerLevelOf(const SurfaceTexel &surface, int dx, int dy)
-{
-	static constexpr std::array<std::array<uint8_t SurfaceTexel::*, 2>, 2> CORNERS = {{
-		{&SurfaceTexel::north, &SurfaceTexel::east},
-		{&SurfaceTexel::west, &SurfaceTexel::south},
-	}};
-	return surface.*CORNERS[dx][dy];
 }
 
 WaterForm WaterFormOf(int tx, int ty)
@@ -99,7 +88,7 @@ double CornerSink(int cx, int cy)
 			if (form != WaterForm::Open && form != WaterForm::Shore) return 0.0;
 			if (!OnMap(tx, ty)) continue;
 			SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-			if (CornerLevelOf(surface, 1 - dx, 1 - dy) != LowestCorner(surface)) return 0.0;
+			if (surface.CornerAt(1 - dx, 1 - dy) != LowestCorner(surface)) return 0.0;
 		}
 	}
 	return SinkAt(ShoreDistance(cx, cy));

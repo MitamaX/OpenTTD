@@ -99,6 +99,7 @@ struct SurfaceTexel {
 	uint8_t east;
 	uint8_t south;
 
+	uint8_t CornerAt(int dx, int dy) const { return dy == 0 ? (dx == 0 ? this->north : this->west) : (dx == 0 ? this->east : this->south); }
 	bool operator==(const SurfaceTexel &) const = default;
 };
 

@@ -50,7 +50,7 @@ static constexpr double QUARTER_TURN = M_PI / 2.0;
 static constexpr uint32_t FARMSTEAD_SALT = 0x46A3D1E5U;
 static constexpr uint32_t BALE_SALT = 0x2BA1E5C7U;
 static constexpr uint32_t BOUNDARY_SALT = 0x3D7A11F9U;
-static constexpr ChangeKinds COUNTRYSIDE_READS = OPEN_LAND_READS | ChangeKinds{ChangeKind::Shape, ChangeKind::Flora};
+static constexpr ChangeKinds COUNTRYSIDE_READS = OPEN_LAND_READS | ChangeKinds{ChangeKind::Relief, ChangeKind::Flora};
 
 /* Crops ripe or cut to stubble, which bales are left on. */
 static constexpr std::array<bool, 6> BALED_CROPS = {false, false, true, true, true, false};

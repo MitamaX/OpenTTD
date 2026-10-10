@@ -59,6 +59,7 @@ static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int COAST_DIVISIONS = 4;
+static constexpr int HILL_DIVISIONS = 4;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -96,16 +97,6 @@ double SunkMark(double sink)
 	return -sink / DEEPEST_SINK;
 }
 
-static uint8_t CornerLevel(const SurfaceTexel &surface, TileCorner corner)
-{
-	switch (corner) {
-		case NORTH: return surface.north;
-		case WEST: return surface.west;
-		case EAST: return surface.east;
-		default: return surface.south;
-	}
-}
-
 /* The two facets the game folds a tile into. */
 static std::array<Facet, 2> FacetsOf(const SurfaceTexel &surface)
 {
@@ -120,7 +111,7 @@ public:
 	{
 	}
 
-	uint8_t Level(TileCorner corner) const { return CornerLevel(this->surface, corner); }
+	uint8_t Level(TileCorner corner) const { return this->surface.CornerAt(CORNER_OFFSETS[corner][0], CORNER_OFFSETS[corner][1]); }
 
 	WorldPoint Corner(TileCorner corner) const
 	{
@@ -173,10 +164,10 @@ CornerNormals::CornerNormals(const TileSpan &tiles) : tiles(tiles), columns(tile
 	this->corners.resize(static_cast<size_t>(this->columns) * (tiles.ty1 - tiles.ty0 + 2));
 }
 
-Vec3 CornerNormals::At(int cx, int cy, uint8_t level)
+Vec3 CornerNormals::At(const Landform &land, int cx, int cy, uint8_t level)
 {
 	Known &corner = this->corners[static_cast<size_t>(cy - this->tiles.ty0) * this->columns + (cx - this->tiles.tx0)];
-	if (!corner.known) corner = {SmoothNormal(cx, cy, level), level, true};
+	if (!corner.known) corner = {land.RollsRound(cx, cy) ? land.RolledNormal(cx, cy) : SmoothNormal(cx, cy, level), level, true};
 	return corner.level == level ? corner.normal : SmoothNormal(cx, cy, level);
 }
 
@@ -243,12 +234,16 @@ static void AddRelief(TerrainMesh &mesh, const TileRelief &relief, const std::ar
 {
 	WaterSheet sheet(tx, ty);
 	TileGround ground(tx, ty);
+	auto mark = [&](double x, double y, double level) {
+		if (!relief.HoldsWater()) return DRY_MARK;
+		double water = std::min(sheet.Level(x, y), ground.Level(x, y));
+		return SunkMark(std::max(water - level, 0.0));
+	};
 	LayTileGrid(mesh, tx, ty, divisions, [&](int i, int j, double x, double y) {
 		bool on_corner = (i % divisions == 0) && (j % divisions == 0);
 		if (on_corner && relief.Pinned(x, y)) return corners[CornerAt(i / divisions, j / divisions)];
 		double level = relief.Level(x, y);
-		double water = std::min(sheet.Level(x, y), ground.Level(x, y));
-		return mesh.Add({x, y, level}, relief.Normal(x, y, FacetedNormal(mesh, corners, x - tx, y - ty)), SunkMark(std::max(water - level, 0.0)));
+		return mesh.Add({x, y, level}, relief.Normal(x, y, FacetedNormal(mesh, corners, x - tx, y - ty)), mark(x, y, level));
 	});
 }
 
@@ -259,7 +254,7 @@ static std::array<double, CORNER_COUNT> CornerLevels(const TerrainMesh &mesh, co
 	return levels;
 }
 
-static void AddTile(TerrainMesh &mesh, const Seabed &bed, CornerNormals &normals, int tx, int ty)
+static void AddTile(TerrainMesh &mesh, const Seabed &bed, const Landform &land, CornerNormals &normals, int tx, int ty)
 {
 	TileSurface tile(tx, ty);
 	std::array<uint32_t, CORNER_COUNT> corners;
@@ -268,7 +263,7 @@ static void AddTile(TerrainMesh &mesh, const Seabed &bed, CornerNormals &normals
 		int cx = static_cast<int>(at.x);
 		int cy = static_cast<int>(at.y);
 		double sink = bed.Sink(cx, cy);
-		Vec3 normal = sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : normals.At(cx, cy, tile.Level(corner));
+		Vec3 normal = sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : normals.At(land, cx, cy, tile.Level(corner));
 		corners[corner] = mesh.Add({at.x, at.y, at.level - sink}, normal, SunkMark(sink));
 	}
 	if (IsRiverside(tx, ty)) {
@@ -281,6 +276,10 @@ static void AddTile(TerrainMesh &mesh, const Seabed &bed, CornerNormals &normals
 	}
 	if (IsBareCoast(tx, ty)) {
 		AddRelief(mesh, ShoreRelief(bed, tx, ty, CornerLevels(mesh, corners)), corners, tx, ty, COAST_DIVISIONS);
+		return;
+	}
+	if (land.Bends(tx, ty)) {
+		AddRelief(mesh, HillRelief(land, tx, ty), corners, tx, ty, HILL_DIVISIONS);
 		return;
 	}
 	for (const Facet &facet : tile.Facets()) mesh.Triangle(corners[facet[0]], corners[facet[1]], corners[facet[2]]);
@@ -846,7 +845,7 @@ void TerrainBuild::Advance()
 	}
 	int ty = this->next_row++;
 	for (int tx = this->tiles.tx0; tx <= this->tiles.tx1; tx++) {
-		AddTile(this->mesh, this->bed, this->normals, tx, ty);
+		AddTile(this->mesh, this->bed, this->land, this->normals, tx, ty);
 		AddWalls(this->mesh, this->bed, this->land, tx, ty);
 		AddFormations(this->mesh, this->land, tx, ty);
 		AddRampBank(this->mesh, this->land, tx, ty);

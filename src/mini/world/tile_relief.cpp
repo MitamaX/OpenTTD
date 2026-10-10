@@ -34,6 +34,14 @@ CubicWeights CatmullRomWeights(double t)
 	return {0.5 * (2.0 * t2 - t - t3), 1.0 + 0.5 * (3.0 * t3 - 5.0 * t2), 0.5 * (t + 4.0 * t2 - 3.0 * t3), 0.5 * (t3 - t2)};
 }
 
+CubicWeights BsplineWeights(double t)
+{
+	double s = 1.0 - t;
+	double t2 = t * t;
+	double t3 = t2 * t;
+	return {s * s * s / 6.0, (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0, (1.0 + 3.0 * t + 3.0 * t2 - 3.0 * t3) / 6.0, t3 / 6.0};
+}
+
 Vec3 ClimbNormal(const MapVector &climb)
 {
 	double rise = LevelRise();

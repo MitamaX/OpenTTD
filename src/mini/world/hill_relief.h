@@ -10,7 +10,15 @@
 #ifndef MINI_WORLD_HILL_RELIEF_H
 #define MINI_WORLD_HILL_RELIEF_H
 
+#include <array>
+#include <optional>
+
 #include "../core/camera.h"
+#include "lazy_lattice.h"
+#include "tile_relief.h"
+
+inline constexpr int LANDFORM_REACH = 2;
+inline constexpr int ROLL_SPREAD = 1;
 
 class Landform {
 public:
@@ -21,8 +29,35 @@ public:
 	/* How the ground climbs along map x and map y at a point, in levels per tile. */
 	MapVector Climb(double x, double y) const;
 
+	bool Rolls(int tx, int ty) const;
+	bool RollsRound(int cx, int cy) const;
+	bool Bends(int tx, int ty) const;
+	std::array<double, 4> Corners(int tx, int ty) const;
+	double Rolled(double x, double y) const;
+	Vec3 RolledNormal(double x, double y) const;
+
 private:
-	TileSpan tiles;
+	double Corner(int cx, int cy) const;
+	double MeetingCorner(int cx, int cy) const;
+	bool Planar(int tx, int ty) const;
+
+	LazyLattice<bool> rolling;
+	LazyLattice<double> corners;
+};
+
+class HillRelief : public TileRelief {
+public:
+	HillRelief(const Landform &land, int tx, int ty);
+
+	Vec3 Normal(double x, double y, const Vec3 &faceted) const override;
+	bool HoldsWater() const override { return false; }
+
+private:
+	double Curved(double x, double y) const override { return this->land.Rolled(x, y); }
+	bool Curves(int nx, int ny) const override { return this->land.Rolls(nx, ny); }
+	double Held(double, double, double corner) const override { return corner; }
+
+	const Landform &land;
 };
 
 class LaidGround {
@@ -34,9 +69,9 @@ public:
 	WorldPoint At(const MapVector &at) const { return {at.x, at.y, this->Level(at)}; }
 
 private:
-	const Landform &land;
 	int tx;
 	int ty;
+	std::optional<HillRelief> relief;
 };
 
 #endif /* MINI_WORLD_HILL_RELIEF_H */

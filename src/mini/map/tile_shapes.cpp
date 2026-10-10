@@ -125,12 +125,6 @@ Rect TakingIn(const Rect &area, int tx, int ty)
 	return {std::min(area.left, tx), std::min(area.top, ty), std::max(area.right, tx), std::max(area.bottom, ty)};
 }
 
-static uint8_t CornerLevel(const SurfaceTexel &surface, CornerOffset corner)
-{
-	if (corner.y == 0) return corner.x == 0 ? surface.north : surface.west;
-	return corner.x == 0 ? surface.east : surface.south;
-}
-
 /* The same corner as the neighbour one step away names it. */
 static CornerOffset SeenFrom(CornerOffset corner, TileIndexDiffC step)
 {
@@ -139,8 +133,9 @@ static CornerOffset SeenFrom(CornerOffset corner, TileIndexDiffC step)
 
 static StepEnd StepEndAt(int tx, int ty, CornerOffset corner, const SurfaceTexel &own, const SurfaceTexel &next, TileIndexDiffC step)
 {
-	double foot = CornerLevel(next, SeenFrom(corner, step));
-	double top = CornerLevel(own, corner);
+	CornerOffset across = SeenFrom(corner, step);
+	double foot = next.CornerAt(across.x, across.y);
+	double top = own.CornerAt(corner.x, corner.y);
 	return {static_cast<double>(tx + corner.x), static_cast<double>(ty + corner.y), foot, top};
 }
 

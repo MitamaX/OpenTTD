@@ -53,7 +53,7 @@ class CornerNormals {
 public:
 	explicit CornerNormals(const TileSpan &tiles);
 
-	Vec3 At(int cx, int cy, uint8_t level);
+	Vec3 At(const Landform &land, int cx, int cy, uint8_t level);
 
 private:
 	struct Known {

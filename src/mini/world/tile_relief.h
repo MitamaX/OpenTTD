@@ -29,6 +29,7 @@ struct LatticeCell {
 
 LatticeCell CellOf(double x, double y);
 CubicWeights CatmullRomWeights(double t);
+CubicWeights BsplineWeights(double t);
 
 template <class Corner>
 double Bicubic(const Corner &corner, const LatticeCell &cell, const CubicWeights &across, const CubicWeights &down)
@@ -59,7 +60,8 @@ public:
 	virtual ~TileRelief() = default;
 
 	double Level(double x, double y) const;
-	Vec3 Normal(double x, double y, const Vec3 &faceted) const;
+	virtual Vec3 Normal(double x, double y, const Vec3 &faceted) const;
+	virtual bool HoldsWater() const { return true; }
 	/* Whether the ground at a point is held to the tile's facets by a neighbour that keeps them. */
 	bool Pinned(double x, double y) const { return this->Freedom(x, y) <= 0.0; }
 
@@ -68,6 +70,7 @@ protected:
 	virtual bool Curves(int nx, int ny) const = 0;
 	/* The level the tile's facets are held at about a corner where no neighbour keeps its facets. */
 	virtual double Held(double x, double y, double corner) const = 0;
+	double Freedom(double x, double y) const;
 
 	int tx;
 	int ty;
@@ -78,7 +81,6 @@ private:
 	static constexpr int CURVING_SIDE = 2 * CURVING_REACH + 1;
 
 	double Faceted(double x, double y) const;
-	double Freedom(double x, double y) const;
 	bool Curving(int nx, int ny) const;
 
 	std::array<double, 4> corners;

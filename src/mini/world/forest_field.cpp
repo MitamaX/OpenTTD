@@ -329,7 +329,7 @@ void ForestField::Sync(const WorldChanges &changes)
 	}
 	auto unplant = [&](size_t index) { this->cells[index].stale = true; };
 	this->grid.ForEachTouched(changes, ChangeKind::Flora, FRINGE_MARGIN, unplant);
-	this->grid.ForEachTouched(changes, {ChangeKind::Shape, ChangeKind::Water}, SHELF_TILES, unplant);
+	this->grid.ForEachTouched(changes, ChangeKind::Relief, SHELF_TILES, unplant);
 }
 
 static double FarthestDistance(const Vec3 &eye, const Vec3 &low, const Vec3 &high)
