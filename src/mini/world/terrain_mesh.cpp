@@ -668,14 +668,10 @@ static void AddRampBank(TerrainMesh &mesh, const Landform &land, int tx, int ty)
 	AddMasonry(mesh, land, abutment, facing);
 }
 
-/* A run of samples along a course's middle line, carried on a step beyond each end along the course's heading there, so its offsets end square to it. */
-static std::vector<MapVector> FormationLine(const WayCourse &course, int rows)
+static double Unfolded(const Bend &line, double share, double lateral)
 {
-	std::vector<MapVector> line;
-	line.push_back(course.Centre(0.0) - course.Before());
-	for (int row = 0; row <= rows; row++) line.push_back(course.Centre(static_cast<double>(row) / rows));
-	line.push_back(course.Centre(1.0) + course.After());
-	return line;
+	double curvature = line.Curvature(share);
+	return lateral * curvature > 1.0 ? 1.0 / curvature : lateral;
 }
 
 /* Where a formation's side, falling from its crest toward its foot, first meets the ground, if it does before its foot. */
@@ -702,7 +698,7 @@ static std::optional<WorldPoint> Swallowed(const Landform &land, const WorldPoin
 static void AddFormation(TerrainMesh &mesh, const Landform &land, const WayCourse &course, double half)
 {
 	int rows = std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE)));
-	std::vector<MapVector> line = FormationLine(course, rows);
+	const Bend &line = course.Line();
 	double rise = LevelRise();
 	double spread = half + FORMATION_DEPTH * rise * FORMATION_RUN;
 
@@ -711,13 +707,12 @@ static void AddFormation(TerrainMesh &mesh, const Landform &land, const WayCours
 		double drop;
 	};
 	auto strip = [&](Rim inner, Rim outer) {
-		std::vector<MapVector> inside = Offset(line, inner.lateral);
-		std::vector<MapVector> outside = Offset(line, outer.lateral);
 		uint32_t previous = 0;
 		for (int row = 0; row <= rows; row++) {
-			double top = course.Level(static_cast<double>(row) / rows) + WAY_FOOT / rise;
-			MapVector at = inside[row + 1];
-			MapVector out = outside[row + 1];
+			double share = static_cast<double>(row) / rows;
+			double top = course.Level(share) + WAY_FOOT / rise;
+			MapVector at = line.At(share, Unfolded(line, share, inner.lateral));
+			MapVector out = line.At(share, Unfolded(line, share, outer.lateral));
 			MapVector side = Unit(out - at);
 			bool flat = inner.drop == outer.drop;
 			Vec3 normal = flat ? UPRIGHT : Normalised(Vec3{side.x, side.y, FORMATION_RUN});

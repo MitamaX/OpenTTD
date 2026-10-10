@@ -34,6 +34,7 @@ public:
 	Bend(const MapVector &from, const MapVector &to, const MapVector &leaving, const MapVector &arriving);
 
 	MapVector Centre(double share) const;
+	double Curvature(double share) const;
 	MapVector At(double share, double lateral) const override;
 	MapVector Along(double share) const override;
 	double Span() const override;

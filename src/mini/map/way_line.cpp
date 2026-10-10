@@ -54,6 +54,14 @@ MapVector Bend::Acceleration(double share) const
 	return this->cubic * (6.0 * share) + this->square * 2.0;
 }
 
+double Bend::Curvature(double share) const
+{
+	MapVector velocity = this->Velocity(share);
+	double speed = Length(velocity);
+	if (speed <= 0.0) return 0.0;
+	return Dot(this->Acceleration(share), RightOf(velocity)) / (speed * speed * speed);
+}
+
 MapVector Bend::Along(double share) const
 {
 	return Unit(this->Velocity(share));
