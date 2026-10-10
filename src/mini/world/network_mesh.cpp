@@ -17,6 +17,7 @@
 #include "../../elrail_func.h"
 #include "../../map_func.h"
 #include "../../rail_map.h"
+#include "../../road_func.h"
 #include "../../road_map.h"
 #include "../../settings_type.h"
 #include "../../station_map.h"
@@ -50,6 +51,21 @@ static double SignalSide()
 		case SIGNAL_SIDE_RIGHT: return 1.0;
 		default: return _settings_game.vehicle.road_side == ROAD_SIDE_LEFT ? -1.0 : 1.0;
 	}
+}
+
+static RoadBits StrayArms(int tx, int ty, RoadBits road)
+{
+	RoadBits stray = ROAD_NONE;
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		RoadBits arm = DiagDirToRoadBits(side);
+		if ((road & arm) == ROAD_NONE) continue;
+		MapVector out = Outward(side);
+		int nx = tx + static_cast<int>(out.x);
+		int ny = ty + static_cast<int>(out.y);
+		bool met = OnMap(nx, ny) && (static_cast<RoadBits>(_world_tiles.NetworkAt(TileXY(nx, ny)).road) & DiagDirToRoadBits(ReverseDiagDir(side))) != ROAD_NONE;
+		if (!met) stray |= arm;
+	}
+	return stray;
 }
 
 /* A country road eases along its course; any other keeps to its tile's ground. */
@@ -148,6 +164,7 @@ private:
 		bool crossing = IsLevelCrossingTile(tile);
 		RoadSite site = this->RoadOf(tile, tx, ty, crossing);
 		site.kerbside = !crossing;
+		site.stray = StrayArms(tx, ty, site.road);
 		LayRoad(this->meshes.Layer(MiniLayer::Road), site, footing);
 		if (!crossing) return;
 		TrackSite rails = this->TrackOf(tile, tx, ty);

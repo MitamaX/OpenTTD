@@ -28,6 +28,7 @@ struct RoadSite {
 	DisallowedRoadDirections one_way;
 	WayDetail detail;
 	bool kerbside = false;
+	RoadBits stray = ROAD_NONE;
 };
 
 void LayRoad(ModelMesh &mesh, const RoadSite &site, const Footing &footing);

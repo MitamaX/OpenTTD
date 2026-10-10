@@ -14,6 +14,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <numbers>
 #include <optional>
 
 #include "../core/seed.h"
@@ -98,6 +99,11 @@ static int Next(int arm)
 	return (arm + 1) % ARMS;
 }
 
+static int Previous(int arm)
+{
+	return (arm + ARMS - 1) % ARMS;
+}
+
 static void Extend(std::vector<MapVector> &line, const std::vector<MapVector> &more)
 {
 	line.insert(line.end(), more.begin(), more.end());
@@ -131,6 +137,21 @@ static void AddCorner(std::vector<MapVector> &outline, RoadBits bits, int arm)
 	}
 }
 
+static bool ClosesOff(RoadBits bits, RoadBits stray, int arm)
+{
+	return Has(stray, arm) && !Has(bits, Next(arm)) && !Has(bits, Previous(arm));
+}
+
+static void AddClosedEnd(std::vector<MapVector> &outline, int arm)
+{
+	MapVector out = ARM_WAYS[arm];
+	MapVector on = ARM_WAYS[Next(arm)];
+	for (int step = 1; step < 2 * END_STEPS; step++) {
+		double angle = std::numbers::pi * (static_cast<double>(step) / (2 * END_STEPS) - 0.5);
+		outline.push_back(out * (ROAD_HALF + (EDGE - ROAD_HALF) * std::cos(angle)) + on * (ROAD_HALF * std::sin(angle)));
+	}
+}
+
 static std::optional<int> BendArm(RoadBits bits)
 {
 	if (std::popcount(static_cast<uint>(bits)) != 2) return std::nullopt;
@@ -141,14 +162,16 @@ static std::optional<int> BendArm(RoadBits bits)
 }
 
 /* The asphalt's edge going round the tile's middle arm by arm, every point of it in sight of the middle. */
-static std::vector<MapVector> Outline(RoadBits bits)
+static std::vector<MapVector> Outline(RoadBits bits, RoadBits stray)
 {
 	if (std::optional<int> bend = BendArm(bits); bend.has_value()) return BendOutline(*bend);
 	std::vector<MapVector> outline;
 	for (int arm = 0; arm < ARMS; arm++) {
 		MapVector out = ARM_WAYS[arm];
 		MapVector on = ARM_WAYS[Next(arm)];
-		if (Has(bits, arm)) {
+		if (ClosesOff(bits, stray, arm)) {
+			AddClosedEnd(outline, arm);
+		} else if (Has(bits, arm)) {
 			outline.push_back(out * EDGE - on * ROAD_HALF);
 			outline.push_back(out * EDGE + on * ROAD_HALF);
 		}
@@ -239,7 +262,7 @@ private:
 
 	void Asphalt()
 	{
-		std::vector<MapVector> outline = Outline(this->site.road);
+		std::vector<MapVector> outline = Outline(this->site.road, this->site.stray & ~this->site.tram);
 		std::vector<std::vector<MapVector>> borders = Borders(outline);
 		this->Lay(Plate(outline, {0.0, 0.0}, ASPHALT_TOP), ASPHALT, WayBed::Asphalt);
 		if (this->site.kerbed) {
