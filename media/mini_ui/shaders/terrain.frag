@@ -71,12 +71,6 @@ const vec2 MAPPED_LUSH_EDGES = vec2(0.15, 0.85);
 const float MAPPED_LUSH_RAGGED = 0.6;
 const vec2 TRODDEN_EDGES = vec2(0.05, 0.4);
 const float TRODDEN_RAGGED = 0.4;
-const float EDGING_WIDTH = 0.035;
-const float EDGING_FRAY = 0.03;
-const vec2 EDGING_SHOWN_PIXELS = vec2(0.8, 2.0);
-const float WORN_REACH = 0.22;
-const vec2 WORN_FRAY = vec2(0.25, 0.2);
-const float WORN_MOST = 0.3;
 const float BUILT_WARP = 0.06;
 const float FIELD_WARP = 0.18;
 const float FIELD_BLEND_WIDTH = 0.05;
@@ -153,7 +147,6 @@ const vec3 SCOURED_SNOW = vec3(0.76, 0.82, 0.9);
 const vec3 RED_SAND = vec3(0.85, 0.64, 0.43);
 const vec3 GRAVEL = vec3(0.74, 0.62, 0.48);
 const vec3 PACKED_EARTH = vec3(0.72, 0.57, 0.43);
-const vec3 WORN_EARTH = vec3(0.5, 0.42, 0.32);
 const vec3 DRY_SAND = vec3(0.78, 0.71, 0.55);
 const vec3 PAVING = vec3(0.57, 0.55, 0.51);
 const vec3 SANDSTONE_PAVING = vec3(0.7, 0.62, 0.5);
@@ -1019,15 +1012,10 @@ bool Grassed(uint material)
 	return material == MAT_GRASS || material == MAT_ROCKS || material == MAT_DESERT || material == MAT_SHORE;
 }
 
-vec3 TroddenEarth()
-{
-	return Landscape() == LANDSCAPE_TROPIC ? PACKED_EARTH : WORN_EARTH;
-}
-
 Patch Trodden(Patch ground, Site site)
 {
 	if (site.trodden <= 0.0) return ground;
-	vec3 earth = TroddenEarth() * Varied(site.grain.local, 0.14) * Varied(site.grain.fine, 0.08) * Varied(site.grain.micro, 0.12);
+	vec3 earth = PACKED_EARTH * Varied(site.grain.local, 0.14) * Varied(site.grain.fine, 0.08) * Varied(site.grain.micro, 0.12);
 	return Mixed(ground, Patch(earth, PAVED_RUGGED), site.trodden);
 }
 
@@ -1132,33 +1120,11 @@ Climate SiteClimate(vec2 p, float ragged, Relief relief, Ground corners[4], vec2
 	return WateredClimate(p, relief);
 }
 
-float BuiltGap(Ground corners[4], vec2 across)
-{
-	int home = int(across.x >= HALF_TILE) + 2 * int(across.y >= HALF_TILE);
-	vec2 off = abs(across - HALF_TILE);
-	float gap = 1.0;
-	if (IsBuilt(corners[home ^ 1].material)) gap = off.x;
-	if (IsBuilt(corners[home ^ 2].material)) gap = min(gap, off.y);
-	if (IsBuilt(corners[home ^ 3].material)) gap = min(gap, max(off.x, off.y));
-	return gap;
-}
-
-float TroddenAt(Seams seams, Grain grain, float ragged, Ground corners[4], vec2 across)
-{
-	if (Landscape() == LANDSCAPE_TROPIC) return smoothstep(TRODDEN_EDGES.x, TRODDEN_EDGES.y, seams.settled + ragged * TRODDEN_RAGGED);
-	if (Landscape() == LANDSCAPE_ARCTIC || Landscape() == LANDSCAPE_TOYLAND) return 0.0;
-	float gap = BuiltGap(corners, across);
-	float pixel = 1.0 / tile_pixels;
-	float edging = Stroke(gap + (grain.micro - 0.5) * EDGING_FRAY, EDGING_WIDTH, pixel) * smoothstep(EDGING_SHOWN_PIXELS.x, EDGING_SHOWN_PIXELS.y, EDGING_WIDTH * tile_pixels);
-	float worn = (1.0 - smoothstep(0.0, WORN_REACH, gap + dot(vec2(grain.local, grain.micro) - 0.5, WORN_FRAY))) * WORN_MOST;
-	return max(edging, worn);
-}
-
-Site SiteAt(vec2 p, Seams seams, Grain grain, Footing footing, Ground corners[4], vec2 across)
+Site SiteAt(vec2 p, Seams seams, Grain grain, Footing footing, Ground corners[4])
 {
 	float ragged = ClimateMapped() ? Ragged(p, grain) : 0.0;
 	Climate climate = SiteClimate(p, ragged, footing.relief, corners, seams.bend * CLIMATE_WARP);
-	float trodden = TroddenAt(seams, grain, ragged, corners, across);
+	float trodden = Landscape() == LANDSCAPE_TROPIC ? smoothstep(TRODDEN_EDGES.x, TRODDEN_EDGES.y, seams.settled + ragged * TRODDEN_RAGGED) : 0.0;
 	Exposure exposure = ExposureAt(footing.relief, grain, climate.blanket);
 	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
 	bool bared = footing.lie != LIE_SUNKEN && (exposure.scree > 0.0 || footing.armoured > 0.0 || rocky);
@@ -1171,12 +1137,11 @@ Patch Surface(vec2 p, Seams seams, Grain grain, Footing footing, out Site site)
 {
 	vec2 q = p + seams.warp - TILE_CENTRE;
 	ivec2 cell = ivec2(floor(q));
-	vec2 across = fract(q);
-	vec2 f = smoothstep(HALF_TILE - seams.width, HALF_TILE + seams.width, across);
+	vec2 f = smoothstep(HALF_TILE - seams.width, HALF_TILE + seams.width, fract(q));
 
 	Ground corners[4] = Ground[4](GroundAt(cell), GroundAt(cell + ivec2(1, 0)), GroundAt(cell + ivec2(0, 1)), GroundAt(cell + ivec2(1, 1)));
 	float shares[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-	site = SiteAt(p, seams, grain, footing, corners, across);
+	site = SiteAt(p, seams, grain, footing, corners);
 	if (footing.lie == LIE_SUNKEN) return NO_PATCH;
 	Ground distinct[4];
 	float weights[4];
