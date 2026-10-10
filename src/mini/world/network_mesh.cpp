@@ -158,7 +158,7 @@ private:
 	void Station(TileIndex tile, int tx, int ty)
 	{
 		if (HasStationRail(tile)) {
-			this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
+			this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty), [tile](const MapVector &foot) { return UnderStationRoof(tile, foot); });
 			LayRailStop(this->meshes.Layer(MiniLayer::Rail), tile, this->detail);
 		} else if (IsAnyRoadStop(tile)) {
 			ModelMesh &road = this->meshes.Layer(MiniLayer::Road);

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 
 #include "../../direction_func.h"
 #include "../../map_func.h"
@@ -121,20 +122,38 @@ public:
 			this->Gantry();
 			return std::move(this->parts);
 		}
-		StopLayout layout = LayoutOf(this->tile);
 		this->Platform(-1.0);
 		this->Platform(1.0);
-		if (layout == StopLayout::Platforms) {
+		std::optional<double> roofed = this->RoofedSide();
+		if (!roofed.has_value()) {
 			this->Furnish(-1.0);
 			this->Furnish(1.0);
+		} else if (LayoutOf(this->tile) == StopLayout::Building) {
+			this->Building(*roofed);
+		} else {
+			this->Canopy(*roofed);
 		}
-		if (layout == StopLayout::Building) this->Building();
-		if (layout == StopLayout::RearRoof) this->Canopy(this->rear);
-		if (layout == StopLayout::FrontRoof) this->Canopy(-this->rear);
 		return std::move(this->parts);
 	}
 
+	bool Roofs(const MapVector &foot) const
+	{
+		std::optional<double> roofed = this->RoofedSide();
+		return roofed.has_value() && Dot(foot - this->run.from, this->run.Right()) * *roofed >= PLATFORM_INNER;
+	}
+
 private:
+	std::optional<double> RoofedSide() const
+	{
+		if (IsRailWaypoint(this->tile)) return std::nullopt;
+		switch (LayoutOf(this->tile)) {
+			case StopLayout::Building:
+			case StopLayout::RearRoof: return this->rear;
+			case StopLayout::FrontRoof: return -this->rear;
+			default: return std::nullopt;
+		}
+	}
+
 	/* A platform ends where the station does along its track. */
 	bool Ends(bool last) const
 	{
@@ -180,9 +199,8 @@ private:
 	}
 
 	/* The station building stands on the rear platform, glazed and sheltered by an awning toward the track. */
-	void Building()
+	void Building(double side)
 	{
-		double side = this->rear;
 		this->Box(side * PLATFORM_INNER, side * EDGE, PLATFORM_TOP, BUILDING_HEIGHT, BUILDING_ROOF, WALL, 0.0, true);
 		if (this->detail == WayDetail::Simple) return;
 		this->Box(side * (PLATFORM_INNER - WINDOWS_PROUD), side * PLATFORM_INNER, WINDOWS_LOW, WINDOWS_HIGH, GLASS, GLASS, GLASS_GLOSS, true);
@@ -235,6 +253,11 @@ private:
 	WayDetail detail;
 	ModelMesh parts;
 };
+
+bool UnderStationRoof(TileIndex tile, const MapVector &foot)
+{
+	return StopBuilder(tile, WayDetail::Full).Roofs(foot);
+}
 
 void LayRailStop(ModelMesh &mesh, TileIndex tile, WayDetail detail)
 {

@@ -13,6 +13,7 @@
 #include "../../tile_type.h"
 #include "way_shapes.h"
 
+bool UnderStationRoof(TileIndex tile, const MapVector &foot);
 void LayRailStop(ModelMesh &mesh, TileIndex tile, WayDetail detail);
 void LayBusShelter(ModelMesh &mesh, TileIndex tile, WayDetail detail);
 
