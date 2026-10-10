@@ -16,7 +16,7 @@
 #include "../model/model_mesh.h"
 
 inline constexpr size_t BLADE_TUFTS = 3;
-inline constexpr size_t SHRUB_TUFTS = 2;
+inline constexpr size_t SHRUB_TUFTS = 4;
 inline constexpr size_t TUFT_SHAPES = BLADE_TUFTS + SHRUB_TUFTS;
 
 /* A tuft stands at the origin, in tiles; its blades or leaves take the primary paintwork, darker at their feet than their tips. The shrubs come after the blades. */

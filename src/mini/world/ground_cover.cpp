@@ -37,7 +37,7 @@ static constexpr SeedRange DESERT_STRAW = {0.6, 1.0};
 static constexpr double SINK = 0.003;
 static constexpr uint32_t TUFT_SALT = 0x7F1A2B3CU;
 static constexpr uint32_t SCRUB_SALT = 0x5C2B1D0EU;
-static constexpr std::array<uint32_t, 4> SCRUB_GREENS = {0x5F6A3E, 0x7C8259, 0x8F8C63, 0x86704A};
+static constexpr std::array<uint32_t, 8> SCRUB_GREENS = {0x5F6A3E, 0x7C8259, 0x8F8C63, 0x86704A, 0x4E6B2C, 0x8E8A4A, 0x87907A, 0x6B5838};
 
 /* The dark and the light greens of grass in each climate, and of lush grass, as the ground paints them. */
 struct GrassGreens {

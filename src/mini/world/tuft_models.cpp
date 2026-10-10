@@ -28,7 +28,6 @@ static constexpr double NORMAL_SPREAD = 0.35;
 static constexpr double LEAF_FOOT_SHADE = 0.6;
 static constexpr double LEAF_TIP_SHADE = 1.4;
 static constexpr double LUMP_WOBBLE = 0.25;
-static constexpr double LUMP_SQUASH = 0.75;
 
 /* How many blades a tuft has, how tall and how far they lean out, and how wide at the foot. */
 struct TuftShape {
@@ -42,13 +41,19 @@ struct TuftShape {
 struct ShrubShape {
 	int lumps;
 	double radius;
-	double height;
+	double spread;
+	double climb;
+	double squash;
 	uint32_t seed;
+
+	double Height() const { return this->climb + 2.0 * this->radius * this->squash; }
 };
 
 static constexpr std::array<ShrubShape, SHRUB_TUFTS> SHRUB_SHAPE_LIST = {{
-	{4, 0.05, 0.06, 41},
-	{6, 0.038, 0.045, 53},
+	{4, 0.05, 0.05, 0.0, 0.75, 41},
+	{6, 0.038, 0.038, 0.0, 0.75, 53},
+	{5, 0.032, 0.02, 0.07, 1.15, 67},
+	{9, 0.024, 0.075, 0.01, 0.85, 79},
 }};
 
 static constexpr std::array<TuftShape, BLADE_TUFTS> TUFT_SHAPE_LIST = {{
@@ -91,13 +96,14 @@ static ModelMesh Shrub(const ShrubShape &shape)
 	SeedDice dice(shape.seed);
 	for (int lump = 0; lump < shape.lumps; lump++) {
 		double turn = lump * GOLDEN_TURN;
-		double reach = dice.Between(0.0, shape.radius);
+		double reach = dice.Between(0.0, shape.spread);
 		double radius = shape.radius * dice.Between(0.6, 1.0);
-		Vec3 centre = {std::cos(turn) * reach, std::sin(turn) * reach, radius * LUMP_SQUASH};
-		shrub.Append(Icosphere(1).Displace(LUMP_WOBBLE, dice.Next()).Transform(Mat4::Translation(centre) * Mat4::Scaling({radius, radius, radius * LUMP_SQUASH})));
+		double rise = shape.climb * (lump + dice.Share()) / shape.lumps;
+		Vec3 centre = {std::cos(turn) * reach, std::sin(turn) * reach, rise + radius * shape.squash};
+		shrub.Append(Icosphere(1).Displace(LUMP_WOBBLE, dice.Next()).Transform(Mat4::Translation(centre) * Mat4::Scaling({radius, radius, radius * shape.squash})));
 	}
 	return shrub.Facet().PaintBy([&](const Vec3 &at) {
-		return PaintworkTone(Paintwork::Primary, std::lerp(LEAF_FOOT_SHADE, LEAF_TIP_SHADE, std::clamp(at.z / shape.height, 0.0, 1.0)));
+		return PaintworkTone(Paintwork::Primary, std::lerp(LEAF_FOOT_SHADE, LEAF_TIP_SHADE, std::clamp(at.z / shape.Height(), 0.0, 1.0)));
 	});
 }
 
