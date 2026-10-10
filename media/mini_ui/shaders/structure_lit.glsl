@@ -34,7 +34,7 @@ bool Has(uint flag)
 
 Pane PaneOf(vec3 room, Clad clad)
 {
-	return Pane(room * v_transmission, v_film, v_surface.x == CLAD_GLASS ? GLASS_REFLECTANCE : PANE_REFLECTANCE, clad.daylight, clad.lamp);
+	return Pane(room * v_transmission, v_film, v_surface.x == CLAD_GLASS ? GLASS_REFLECTANCE : PANE_REFLECTANCE, clad.daylight, clad.sunbeam, clad.lamp);
 }
 
 /* A face's axes: across it, to the right as seen from outside, up it, and out of it. */

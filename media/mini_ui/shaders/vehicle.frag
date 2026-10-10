@@ -9,11 +9,12 @@ out vec4 frag_colour;
 
 const vec3 CLEAR_FILM = vec3(1.0);
 const float DAYLIT_CABIN = 1.0;
+const float SHADED_CABIN = 0.0;
 const vec3 UNLIT_CABIN = vec3(0.0);
 
 vec4 Glazed(vec3 cabin, vec3 normal, vec3 view, float roughness, float sunlit)
 {
-	Pane pane = Pane(cabin, CLEAR_FILM, PANE_REFLECTANCE, DAYLIT_CABIN, UNLIT_CABIN);
+	Pane pane = Pane(cabin, CLEAR_FILM, PANE_REFLECTANCE, DAYLIT_CABIN, SHADED_CABIN, UNLIT_CABIN);
 	return PaneRadiance(pane, Surroundings(reflect(-view, normal)), normal, view, roughness, v_colour.a, sunlit);
 }
 

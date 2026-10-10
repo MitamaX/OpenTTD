@@ -43,7 +43,6 @@ const vec2 DRIP_WINDOW_SEED = vec2(7.0, 13.0);
 const float RECESS_DEPTH = 1.5;
 const float CURTAIN_RECESS = 0.3;
 const float RECESS_OPENNESS = 0.55;
-const float SHADOW_SOFTNESS = 0.3;
 const float LEAST_PIXEL = 1e-3;
 
 const vec2 PANE_WARP = vec2(0.015, 0.035);
@@ -107,7 +106,7 @@ Clad Bulged(Clad pane, Opening opening, vec2 at)
 
 Clad MeanGlazing()
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane(TOY_GLASS, TOY_LAMP * LIT_ROOM_SHARE) : PaneOver(DIM_ROOM, 1.0, TYPICAL_LAMP * LampShare(LIT_ROOM_SHARE));
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane(TOY_GLASS, TOY_LAMP * LIT_ROOM_SHARE) : PaneOver(DIM_ROOM, 1.0, MEAN_SUNBEAM, TYPICAL_LAMP * LampShare(LIT_ROOM_SHARE));
 }
 
 /* Neighbouring panes lean alike, the lean turning slowly over a few windows across and up the facade, so what they mirror bends instead of breaking up. */
@@ -153,13 +152,6 @@ float InsideShare(float outside, float pixel)
 float RecessOpenness(float sunk)
 {
 	return mix(1.0, RECESS_OPENNESS, sunk / RECESS_DEPTH);
-}
-
-float SunThrough(Opening opening, vec2 at, float sunk, vec3 sun)
-{
-	if (sun.z <= 0.0) return 0.0;
-	vec2 mouth = at + sun.xy * (sunk / max(sun.z, LOWEST_FACING));
-	return 1.0 - smoothstep(-SHADOW_SOFTNESS, SHADOW_SOFTNESS, OutsideOpening(opening, mouth));
 }
 
 Clad Reveal(Clad wall, Opening opening, vec2 at, float depth, Outlook outlook)
@@ -235,7 +227,7 @@ float Drips(Bay bay, vec2 texel, uint grid)
 Clad Spandrel(vec3 tint)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return Matte(tint, TOY_PANE_ROUGHNESS);
-	Clad spandrel = PaneOver(SPANDREL_BACKING, 1.0, vec3(0.0));
+	Clad spandrel = PaneOver(SPANDREL_BACKING, 1.0, 0.0, vec3(0.0));
 	spandrel.glass = SPANDREL_GLAZING;
 	return spandrel;
 }

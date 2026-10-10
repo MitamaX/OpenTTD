@@ -51,6 +51,7 @@ const Opening GROUND_OPENINGS[WINDOW_GRIDS] = Opening[WINDOW_GRIDS](NO_OPENING, 
 const Opening ENTRANCES[WINDOW_GRIDS] = Opening[WINDOW_GRIDS](NO_OPENING, COTTAGE_DOOR, TERRACE_DOOR, FLAT_ENTRANCE, SHOP_DOOR, OFFICE_ENTRANCE, CURTAIN_ENTRANCE, ARCHED_DOOR, LOADING_SHUTTER, NO_OPENING);
 
 const float LOWEST_FACING = 0.05;
+const float SHADOW_SOFTNESS = 0.3;
 const float TOY_ROUNDING = 0.6;
 
 const ivec2 WINDOW_SALT = ivec2(7, 13);
@@ -66,6 +67,9 @@ const int ROLL_CURTAIN_PAINT = 7;
 const int ROLL_WALL_PAINT = 8;
 const int ROLL_FLOOR_PAINT = 9;
 const int ROLL_LAMP_PAINT = 10;
+const int ROLL_KIND = 11;
+const int ROLL_FITTING = 12;
+const int ROLL_PIECE = 13;
 
 /* Where a point of a facade lies: the opening of its bay, the point measured from that opening's foot at its middle, and which window it is. */
 struct Bay {
@@ -132,6 +136,11 @@ vec2 ReachOut(vec2 from, vec2 heading, vec2 low, vec2 high)
 	return (mix(low, high, step(0.0, heading)) - from) / heading;
 }
 
+vec2 ReachIn(vec2 from, vec2 heading, vec2 low, vec2 high)
+{
+	return ReachOut(from, heading, high, low);
+}
+
 float ToyCornerRadius(vec2 half_size)
 {
 	return min(half_size.x, half_size.y) * TOY_ROUNDING;
@@ -167,6 +176,13 @@ vec3 NearestEdge(Opening opening, vec2 at)
 float OutsideOpening(Opening opening, vec2 at)
 {
 	return NearestEdge(opening, at).z;
+}
+
+float SunThrough(Opening opening, vec2 at, float sunk, vec3 sun)
+{
+	if (sun.z <= 0.0) return 0.0;
+	vec2 mouth = at + sun.xy * (sunk / max(sun.z, LOWEST_FACING));
+	return 1.0 - smoothstep(-SHADOW_SOFTNESS, SHADOW_SOFTNESS, OutsideOpening(opening, mouth));
 }
 
 bool OnMuntin(Opening opening, vec2 at, float pixel)
