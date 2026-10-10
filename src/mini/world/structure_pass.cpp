@@ -176,7 +176,7 @@ void StructurePass::UseLit(const ShaderProgram &lit) const
 void StructurePass::DrawLaid(const ShaderProgram &lit, CladdingGroup group) const
 {
 	this->UseLit(lit);
-	LaidDepthScope laid(lit);
+	LaidDropsScope laid(lit);
 	this->DrawGroups(group, group);
 }
 

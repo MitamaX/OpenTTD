@@ -14,11 +14,17 @@
 
 class LaidDepthScope {
 public:
-	explicit LaidDepthScope(const ShaderProgram &program);
+	LaidDepthScope();
 	~LaidDepthScope();
 
 	LaidDepthScope(const LaidDepthScope &) = delete;
 	LaidDepthScope &operator=(const LaidDepthScope &) = delete;
+};
+
+class LaidDropsScope : public LaidDepthScope {
+public:
+	explicit LaidDropsScope(const ShaderProgram &program);
+	~LaidDropsScope();
 
 private:
 	void Tell(bool laid) const;

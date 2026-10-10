@@ -77,7 +77,7 @@ void TerrainPass::Draw(const SceneView &view)
 	this->Configure();
 	this->textures.Bind();
 	this->detail.Bind();
-	LaidDepthScope laid(this->program);
+	LaidDepthScope laid;
 	this->field.DrawGround(view.frustum);
 }
 
