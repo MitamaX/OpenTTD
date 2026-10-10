@@ -28,6 +28,8 @@ struct ModelVertex {
 
 	Vec3 Position() const { return {this->x, this->y, this->z}; }
 	Vec3 Normal() const;
+	uint32_t Tone() const;
+	double Trait() const;
 	void Place(const Vec3 &position);
 	void Face(const Vec3 &normal);
 	void Paint(uint32_t rgb);
@@ -67,6 +69,8 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Smooth();
 	ModelMesh &Round(const Vec3 &centre, double share);
 	ModelMesh &Paint(uint32_t rgb);
+	/* Corners painted the key take the colour given instead, so one model can stand in many paints. */
+	ModelMesh &Repaint(uint32_t key, uint32_t rgb);
 	ModelMesh &Vary(double spread, uint32_t seed);
 	ModelMesh &Weld();
 
@@ -75,6 +79,8 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Translucent(double share) { return this->Trait(share); }
 	ModelMesh &Gloss(double share) { return this->Trait(share); }
 	ModelMesh &Glow(double share) { return this->Trait(-share); }
+	/* Whatever glows goes dark, as lamps do when switched off. */
+	ModelMesh &Unlit();
 	ModelMesh &Coded(uint8_t code);
 
 	template <class Tone>

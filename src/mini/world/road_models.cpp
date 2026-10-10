@@ -62,7 +62,6 @@ static constexpr uint32_t AMENITY_SALT = 0x3A11E7U;
 static constexpr double KERBSIDE_SHARE = 0.4;
 static constexpr double KERBSIDE_REACH = 0.3;
 static constexpr double KERBSIDE_LATERAL = ROAD_HALF;
-static constexpr double KERB_PERCH = 0.012;
 static constexpr uint32_t KERBSIDE_SALT = 0x6A7C11E5U;
 static constexpr double BARRIER_ALONG = 0.4;
 static constexpr double BARRIER_LATERAL = ROAD_HALF + 0.06;
@@ -337,7 +336,7 @@ private:
 		for (double side : {-1.0, 1.0}) {
 			if (dice.Share() >= KERBSIDE_SHARE) continue;
 			MapVector at = along * dice.Between(-KERBSIDE_REACH, KERBSIDE_REACH) + RightOf(along) * (side * KERBSIDE_LATERAL);
-			this->Lay(ParkedCar(at, along * -side, PAVEMENT_TOP - KERB_PERCH, CAR_TINTS[dice.Below(static_cast<uint32_t>(CAR_TINTS.size()))]));
+			this->Lay(ParkedCar(at, along * -side, ASPHALT_TOP, PAVEMENT_TOP, CAR_TINTS[dice.Below(static_cast<uint32_t>(CAR_TINTS.size()))]));
 		}
 	}
 

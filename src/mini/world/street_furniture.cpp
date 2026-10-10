@@ -17,8 +17,7 @@
 #include "../core/seed.h"
 #include "../gpu/draw_list.h"
 #include "../model/model_shapes.h"
-
-#include "../map/car_look.h"
+#include "car_model.h"
 
 #include "../../safeguards.h"
 
@@ -78,8 +77,6 @@ static constexpr uint32_t BIN_GREEN = 0x2F4A36;
 static constexpr uint32_t BARK = 0x5E4632;
 static constexpr std::array<uint32_t, 3> LEAVES = {0x4E7F36, 0x5D8C3A, 0x3F6E34};
 static constexpr double METAL_GLOSS = 0.4;
-static constexpr double PAINT_GLOSS = 0.6;
-static constexpr double CAR_ROOF = 0.004;
 
 /* A part built about its own foot, facing along x, stood on the map. */
 static ModelMesh Placed(ModelMesh part, const MapVector &at, const MapVector &facing, double base)
@@ -147,16 +144,7 @@ ModelMesh CrossingBarrier(const MapVector &at, const MapVector &facing, double b
 	return Placed(std::move(barrier), at, facing, base);
 }
 
-ModelMesh ParkedCar(const MapVector &at, const MapVector &facing, double base, uint32_t paint)
+ModelMesh ParkedCar(const MapVector &at, const MapVector &facing, double road, double pavement, uint32_t paint)
 {
-	double half_length = CAR_LENGTH / 2.0;
-	double half_width = CAR_WIDTH / 2.0;
-	double cab_half_length = half_length * CAB_SHARE;
-	double cab_half_width = half_width - CAB_INSET;
-	double body_top = CAR_CLEARANCE + CAR_BODY_HEIGHT;
-	double cab_top = body_top + CAB_HEIGHT;
-	ModelMesh car = Box({-half_length, -half_width, CAR_CLEARANCE}, {half_length, half_width, body_top}).Paint(paint).Gloss(PAINT_GLOSS);
-	car.Append(Box({-cab_half_length, -cab_half_width, body_top}, {cab_half_length, cab_half_width, cab_top - CAR_ROOF}).Paint(CAR_GLASS).Gloss(PAINT_GLOSS));
-	car.Append(Box({-cab_half_length, -cab_half_width, cab_top - CAR_ROOF}, {cab_half_length, cab_half_width, cab_top}).Paint(paint).Gloss(PAINT_GLOSS));
-	return Placed(std::move(car), at, facing, base);
+	return Placed(CarModel(paint, pavement - road), at, facing, road);
 }

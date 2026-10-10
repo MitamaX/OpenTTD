@@ -30,6 +30,10 @@ static constexpr double WINDOW_SHARE = 0.72;
 static constexpr double BOGIE_WHEELBASE = 0.034;
 static constexpr double BOGIE_WIDTH = 0.012;
 static constexpr double LAMP_DEPTH = 0.004;
+static constexpr double LAMP_HALF = 0.007;
+static constexpr double TAIL_LAMP_RISE = 0.01;
+static constexpr double HEADLAMP_INSET = 0.016;
+static constexpr double TAIL_LAMP_INSET = 0.012;
 
 /* Turns a solid built upright along z to lie along x, keeping its section's first axis across and its second upright. */
 static Mat4 LyingAlongX()
@@ -308,4 +312,20 @@ ModelMesh Mirrored(const ModelMesh &part)
 {
 	ModelMesh mirrored = part;
 	return mirrored.Transform(Mat4::Scaling({1.0, -1.0, 1.0}));
+}
+
+void HeadLamps(VehicleKit &kit, const BodyRun &nose, double z)
+{
+	kit.Fine(LampPair(nose.Front(), nose.HalfWidthAt(nose.Front()) - HEADLAMP_INSET, z, LAMP_HALF, HEADLAMP));
+}
+
+void TailLamps(VehicleKit &kit, double x, double half_width, double z)
+{
+	kit.Fine(LampPair(x, half_width - TAIL_LAMP_INSET, z, LAMP_HALF, TAIL_LAMP));
+}
+
+void BodyLamps(VehicleKit &kit, const BodyRun &body, double z)
+{
+	HeadLamps(kit, body, z);
+	TailLamps(kit, body.Back(), body.HalfWidthAt(body.Back()), z + TAIL_LAMP_RISE);
 }

@@ -44,6 +44,16 @@ Vec3 ModelVertex::Normal() const
 	return Vec3{static_cast<double>(this->normal[0]), static_cast<double>(this->normal[1]), static_cast<double>(this->normal[2])} * (1.0 / NORMALISED_BYTE_MAX);
 }
 
+uint32_t ModelVertex::Tone() const
+{
+	return PackArgb(CHANNEL_MAX, this->colour[0], this->colour[1], this->colour[2]);
+}
+
+double ModelVertex::Trait() const
+{
+	return static_cast<double>(this->normal[3]) / NORMALISED_BYTE_MAX;
+}
+
 void ModelVertex::Place(const Vec3 &position)
 {
 	this->x = static_cast<float>(position.x);
@@ -182,6 +192,15 @@ ModelMesh &ModelMesh::Paint(uint32_t rgb)
 	return *this;
 }
 
+ModelMesh &ModelMesh::Repaint(uint32_t key, uint32_t rgb)
+{
+	uint32_t keyed = WithAlpha(key, CHANNEL_MAX);
+	for (ModelVertex &vertex : this->vertices) {
+		if (vertex.Tone() == keyed) vertex.Paint(rgb);
+	}
+	return *this;
+}
+
 /* Every triangle is brightened or darkened by its own share, so a faceted surface reads facet by facet. */
 ModelMesh &ModelMesh::Vary(double spread, uint32_t seed)
 {
@@ -198,6 +217,12 @@ ModelMesh &ModelMesh::Vary(double spread, uint32_t seed)
 ModelMesh &ModelMesh::Trait(double share)
 {
 	for (ModelVertex &vertex : this->vertices) vertex.Trait(share);
+	return *this;
+}
+
+ModelMesh &ModelMesh::Unlit()
+{
+	for (ModelVertex &vertex : this->vertices) vertex.Trait(std::max(vertex.Trait(), 0.0));
 	return *this;
 }
 

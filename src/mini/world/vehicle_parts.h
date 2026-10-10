@@ -42,6 +42,14 @@ inline constexpr uint32_t DARK_SECONDARY = PaintworkTone(Paintwork::Secondary, 0
 inline constexpr uint32_t CARGO = PaintworkTone(Paintwork::Cargo, 1.0);
 inline constexpr uint32_t BRIGHT_CARGO = PaintworkTone(Paintwork::Cargo, 1.2);
 inline constexpr double LAMP_GLOW = 0.8;
+inline constexpr double TYRE_PROUD = 0.003;
+inline constexpr UpwardOpenness GROUND_OPENNESS = {0.0, 0.09, 0.45, 1.0};
+
+/* How far either side of the middle a road vehicle's wheels run, standing a little proud of the body over them. */
+constexpr double HalfTrackUnder(double body_half_width, double tyre_width)
+{
+	return body_half_width + TYRE_PROUD - tyre_width * 0.5;
+}
 
 /* A body's cross section square to its length: half its width, its foot and top, and how much its top edges are bevelled. */
 struct HullProfile {
@@ -164,6 +172,10 @@ private:
 	ShellSteps steps;
 	std::vector<LoftRing> rings;
 };
+
+void HeadLamps(VehicleKit &kit, const BodyRun &nose, double z);
+void TailLamps(VehicleKit &kit, double x, double half_width, double z);
+void BodyLamps(VehicleKit &kit, const BodyRun &body, double z);
 
 ModelMesh Hull(const HullProfile &profile, double back, double front);
 /* A band along both sides of a body, standing a little proud of it. */

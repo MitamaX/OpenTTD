@@ -1168,14 +1168,10 @@ static bool IsClear(const BuildingForm &form, const Plot &spot)
 	return std::ranges::none_of(form.Solids(), [&kept](const Solid &solid) { return Obstructs(solid) && Overlaps(kept, FootprintOf(solid)); });
 }
 
-/* A car is a painted body under a glazed cabin roofed in the same paint. */
+/* A car stands on its spot as one stands at the kerb, the structure dressing it up close. */
 static void ParkCar(BuildingForm &form, const Plot &spot, uint32_t paint)
 {
-	Axis length = LongAxis(spot);
-	Plot cabin = spot.Narrowed(length, spot.Span(length) * CAB_SHARE).Narrowed(OtherAxis(length), spot.Span(OtherAxis(length)) - 2.0f * CAB_INSET);
-	Part body = Part::Box(spot).On(CAR_CLEARANCE).Height(CAR_BODY_HEIGHT).Detailed().Clad(Material::Metal, paint);
-	form.Add(body);
-	form.Add(Part::Box(cabin).On(LevelAbove(body)).Height(CAB_HEIGHT).Detailed().Clad(Material::Glass, CAR_GLASS).Covered(Material::Metal, paint));
+	form.Add(Part::Box(spot).Fixed(Fixture::Car).Height(CAR_HEIGHT).Clad(Material::Metal, paint));
 }
 
 /* A house, shop or hall on a street may have a car or two standing in its yard: along its front, or up a drive beside it, wherever nothing else stands. */
@@ -1194,7 +1190,7 @@ static void ParkCars(BuildingForm &form, const HouseSite &site)
 			lot.Band(side, YARD_EDGE, YARD_EDGE + CAR_WIDTH).Band(site.front, YARD_EDGE, YARD_EDGE + CAR_LENGTH),
 		};
 		for (const Plot &spot : spots) {
-			if (parked == MOST_PARKED || static_cast<size_t>(form.count) + 2 > MAX_SOLIDS || !IsClear(form, spot)) continue;
+			if (parked == MOST_PARKED || form.count >= MAX_SOLIDS || !IsClear(form, spot)) continue;
 			ParkCar(form, spot, CAR_TINTS[dice.Below(static_cast<uint32_t>(CAR_TINTS.size()))]);
 			parked++;
 		}

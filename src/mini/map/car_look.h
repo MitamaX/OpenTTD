@@ -21,7 +21,7 @@ inline constexpr float CAR_BODY_HEIGHT = 0.034f;
 inline constexpr float CAB_SHARE = 0.55f;
 inline constexpr float CAB_INSET = 0.008f;
 inline constexpr float CAB_HEIGHT = 0.03f;
-inline constexpr uint32_t CAR_GLASS = 0xFF2B3640U;
+inline constexpr float CAR_HEIGHT = CAR_CLEARANCE + CAR_BODY_HEIGHT + CAB_HEIGHT;
 inline constexpr std::array<uint32_t, 10> CAR_TINTS = {
 	0xFFB9BDC2U, 0xFFE8E8E4U, 0xFF2A2C30U, 0xFFB0302AU, 0xFF2E5A9AU, 0xFF2F5A40U, 0xFFC9B48AU, 0xFF6E7378U, 0xFFD8B03AU, 0xFF7A2638U,
 };

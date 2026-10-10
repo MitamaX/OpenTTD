@@ -22,7 +22,6 @@
 /* Ships and aircraft are drawn larger than life beside the ways and buildings, so they read at a glance. */
 static constexpr double SHIP_SCALE = 1.4;
 static constexpr double AIRCRAFT_SCALE = 1.3;
-static constexpr UpwardOpenness GROUND_OPENNESS = {0.0, 0.09, 0.45, 1.0};
 
 static bool OnGround(VehicleLook look)
 {

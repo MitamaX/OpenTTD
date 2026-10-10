@@ -6,6 +6,8 @@ add_files(
     bridge_models.h
     build_slice.cpp
     build_slice.h
+    car_model.cpp
+    car_model.h
     chunk_grid.cpp
     chunk_grid.h
     chunk_keep.h

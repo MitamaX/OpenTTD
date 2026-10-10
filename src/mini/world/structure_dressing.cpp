@@ -14,15 +14,20 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <numbers>
 
 #include "../../settings_type.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
 #include "../model/model_shapes.h"
+#include "car_model.h"
+#include "vehicle_models.h"
 
 #include "../../safeguards.h"
 
+static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
+static constexpr double HALF_TURN = std::numbers::pi;
 static constexpr int PROP_SIDES = 8;
 static constexpr int DRUM_SIDES = 16;
 
@@ -84,11 +89,21 @@ static constexpr double RIM_HEIGHT = 0.01;
 static constexpr double LADDER_WIDTH = 0.012;
 static constexpr double LADDER_DEPTH = 0.005;
 
+static constexpr double METALLIC_GLOSS = (TRIM_GLOSS + PAINT_GLOSS) * 0.5;
+
 static constexpr std::array<DiagDirection, DIAGDIR_END> WALL_SIDES = {DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_NW};
 
 bool ReplacesSolid(const Solid &solid)
 {
-	return solid.fixture == Fixture::WaterTank;
+	return solid.fixture == Fixture::WaterTank || solid.fixture == Fixture::Car;
+}
+
+/* A part finished as vehicles are is clad in glass where it is glazed, in metal where it is glossier than trim and plainly elsewhere, each corner in its own paint. */
+static Coat FinishedCoat(const ModelVertex &corner)
+{
+	double gloss = corner.Trait();
+	Material material = gloss >= PANE_GLOSS ? Material::Glass : gloss >= METALLIC_GLOSS ? Material::Metal : Material::Plain;
+	return {material, WindowGrid::None, {}, corner.Tone()};
 }
 
 static bool CarriesWindows(const Solid &solid)
@@ -130,6 +145,7 @@ public:
 			case Fixture::Chimney: this->DressChimney(); break;
 			case Fixture::RooftopUnit: this->DressRooftopUnit(); break;
 			case Fixture::WaterTank: this->DressWaterTank(); break;
+			case Fixture::Car: this->DressCar(); break;
 			default: break;
 		}
 		if (this->solid.role != SolidRole::Body) return;
@@ -150,8 +166,14 @@ private:
 	double SpotReach(bool pair) const { return this->LongerHalf() / (pair ? 2.0 : 1.0); }
 	Coat MetalShade(double shade) const { return {Material::Metal, WindowGrid::None, {}, ScaledRgb(this->solid.wall_tint, shade)}; }
 
-	/* A part's faces each keep their own normal; its pattern runs across upright faces and over the plan on the others. */
 	void Add(ModelMesh part, const Coat &coat)
+	{
+		this->Clad(std::move(part), [&coat](const ModelVertex &) { return coat; });
+	}
+
+	/* A part's faces each keep their own normal; its pattern runs across upright faces and over the plan on the others. */
+	template <class CoatOf>
+	void Clad(ModelMesh part, CoatOf coat_of)
 	{
 		part.Facet();
 		uint32_t first = static_cast<uint32_t>(this->mesh.vertices.size());
@@ -164,7 +186,7 @@ private:
 			ModelVertex placed = corner;
 			placed.Place({at.x, at.y, this->style.Floor() + at.z * FORM_HEIGHT_SCALE});
 			placed.Face(RenderNormalOf(normal));
-			this->mesh.vertices.push_back(this->style.Vertex(placed, u, v, coat, this->solid.glass_tint));
+			this->mesh.vertices.push_back(this->style.Vertex(placed, u, v, coat_of(corner), this->solid.glass_tint));
 		}
 		for (uint32_t index : part.indices) this->mesh.indices.push_back(first + index);
 	}
@@ -228,6 +250,14 @@ private:
 		}
 		this->AddUpright(Prism(DRUM_SIDES, radius, this->solid.wall - legs), this->CentreX(), this->CentreY(), this->solid.base + legs, wood);
 		this->AddUpright(Cone(DRUM_SIDES, radius * RIM_REACH, TANK_ROOF_RISE), this->CentreX(), this->CentreY(), this->Eave(), steel);
+	}
+
+	/* A car parked lengthways on its spot, its nose either way, as tall as one parked at the kerb. */
+	void DressCar()
+	{
+		double heading = (this->HalfX() >= this->HalfY() ? 0.0 : HALF_TURN * 0.5) + (this->dice.Share() < 0.5 ? 0.0 : HALF_TURN);
+		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UPRIGHT, heading) * Mat4::Scaling({1.0, 1.0, 1.0 / FORM_HEIGHT_SCALE});
+		this->Clad(CarModel(this->solid.wall_tint).Transform(placed), FinishedCoat);
 	}
 
 	/* Gable and hip roofs wear a cap along their ridge, which a gable carries on over its overhang. */
