@@ -103,10 +103,10 @@ void VehicleMotion::Advance(double delta_ms)
 
 void VehicleMotion::Note(const Vehicle *v)
 {
-	this->Noted(v);
+	this->Refreshed(v);
 }
 
-VehicleMotion::Snapshot &VehicleMotion::Noted(const Vehicle *v)
+VehicleMotion::Snapshot &VehicleMotion::Refreshed(const Vehicle *v)
 {
 	Snapshot &e = this->snapshots[v->index.base()];
 	if (e.seen == this->frames && !e.trail.Empty()) return e;
@@ -123,7 +123,7 @@ VehicleMotion::Snapshot &VehicleMotion::Noted(const Vehicle *v)
 /* A unit stands where its trail passes the tick the clock shows, a train along its track. */
 WorldPoint VehicleMotion::Gliding(const Vehicle *v, const TrackTaken &taken)
 {
-	TickTrail::Bracket bracket = this->Noted(v).trail.About(_tick_clock.Shown());
+	TickTrail::Bracket bracket = this->Refreshed(v).trail.About(_tick_clock.Shown());
 	WorldPoint from = InTiles(bracket.from);
 	WorldPoint to = InTiles(bracket.to);
 	if (!FollowsTrack(v)) return Between(from, to, bracket.share);

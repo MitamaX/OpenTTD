@@ -362,7 +362,7 @@ vec4 SheetField(vec2 p, vec2 warped, float level)
 			brim += weight * tile_brim;
 		}
 	}
-	field.r -= BRIM_PULL * brim * pooled / max(dot(field.gba, vec3(1.0)), MIN_SPREAD);
+	field.r -= BRIM_PULL * brim * pooled / max(dot(field.gba, vec3(1.0)), LEAST_DIVISOR);
 	return Walled(field, p);
 }
 
@@ -380,7 +380,7 @@ vec4 FieldAt(vec2 p, vec2 warped, float level)
 Body BodyOf(vec4 field)
 {
 	float total = dot(field.gba, vec3(1.0));
-	vec3 share = total > MIN_SPREAD ? field.gba / total : vec3(1.0, 0.0, 0.0);
+	vec3 share = total > LEAST_DIVISOR ? field.gba / total : vec3(1.0, 0.0, 0.0);
 	Body body;
 	bool toy = Landscape() == LANDSCAPE_TOYLAND;
 	body.absorption = toy ? TOY_ABSORPTION : SEA_ABSORPTION * share.x + CANAL_ABSORPTION * share.y + RIVER_ABSORPTION * share.z;
@@ -773,7 +773,7 @@ vec3 Frothed(vec3 colour, Water water, float flecks, float behind, vec3 light, v
 void main()
 {
 	vec2 p = v_world.xy;
-	tile_pixels = 1.0 / max(max(length(dFdx(p)), length(dFdy(p))), MIN_SPREAD);
+	tile_pixels = 1.0 / max(max(length(dFdx(p)), length(dFdy(p))), LEAST_DIVISOR);
 	Water water = WaterAt(p);
 	float flecks;
 	Surface waves = Flowing(water, flecks);

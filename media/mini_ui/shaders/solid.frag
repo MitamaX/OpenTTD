@@ -164,7 +164,7 @@ float Fades(float frequency)
 
 float PixelSpan(float x)
 {
-	return max(fwidth(x), MIN_SPREAD);
+	return max(fwidth(x), LEAST_DIVISOR);
 }
 
 vec3 Trafficked(vec2 p)
@@ -190,7 +190,7 @@ float RoadCracks(vec2 p)
 	vec2 q = p * ROAD_CRACKS_PER_TILE;
 	vec2 jag = (vec2(Noise(q * ROAD_CRACK_JAGS), Noise(q * ROAD_CRACK_JAGS + ROAD_CRACK_SEED)) - 0.5) * ROAD_CRACK_JAGGED;
 	vec3 crack = NoiseSlope(q + jag);
-	float vein = abs(crack.x - 0.5) / max(length(crack.yz), MIN_SPREAD);
+	float vein = abs(crack.x - 0.5) / max(length(crack.yz), LEAST_DIVISOR);
 	float runs = smoothstep(ROAD_CRACK_RUN_EDGES.x, ROAD_CRACK_RUN_EDGES.y, Noise(p * ROAD_CRACKS_PER_TILE * 0.8 + ROAD_CRACK_SEED));
 	return mix(1.0, ROAD_CRACK_SHADE, Stroke(vein, ROAD_CRACK_WIDTH, PixelSpan(vein)) * runs * shown);
 }
@@ -263,7 +263,7 @@ void main()
 	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) * (1.0 - receded) <= ScreenNoise(gl_FragCoord.xy)) discard;
 	uint bed = BedOf(v_trait);
 	float gloss = bed == BED_PLAIN ? max(v_trait, 0.0) : 0.0;
-	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, MIN_SPREAD)));
+	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, LEAST_DIVISOR)));
 	vec3 grained = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) * Worn(v_position, normal, gloss) : Bedded(v_colour.rgb, bed, v_position, normal);
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	frag_colour = Radiance(albedo, normal, v_position, CoatOf(gloss), v_colour.a) + vec4(Glowing(albedo, v_trait), 0.0);

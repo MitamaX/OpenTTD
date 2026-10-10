@@ -124,7 +124,7 @@ vec2 SideOf(vec2 v)
 
 vec2 Heading(vec2 shift)
 {
-	return SideOf(shift) * max(abs(shift), vec2(MIN_SPREAD));
+	return SideOf(shift) * max(abs(shift), vec2(LEAST_DIVISOR));
 }
 
 vec2 ReachOut(vec2 from, vec2 heading, vec2 low, vec2 high)
@@ -198,9 +198,9 @@ uint Picked(ivec2 window, uint seed, int roll, int count)
 	return Pick(Roll(window, seed, roll), count);
 }
 
-float Chosen(float die, float share, vec2 span)
+float Chosen(float rolled, float share, vec2 span)
 {
-	return die < share ? mix(span.x, span.y, die / share) : 0.0;
+	return rolled < share ? mix(span.x, span.y, rolled / share) : 0.0;
 }
 
 bool HoldsOffices(uint grid)

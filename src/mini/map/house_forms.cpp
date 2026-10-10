@@ -330,7 +330,7 @@ static bool Contains(const Plot &outer, const Plot &inner)
 		&& inner.x1 < outer.x1 + CONTAIN_TOLERANCE && inner.y1 < outer.y1 + CONTAIN_TOLERANCE;
 }
 
-static Setback Jittered(const Setback &setback, uint32_t seed, float span)
+static Setback SetbackJittered(const Setback &setback, uint32_t seed, float span)
 {
 	float jitter = span * SETBACK_JITTER.ShareOf(seed) - span / 2;
 	return {setback.front + jitter, setback.back + jitter, setback.side + jitter};
@@ -368,7 +368,7 @@ static Part Storeyed(const Plot &plot, const HouseSite &site, WindowGrid wanted,
 	return Walled(plot, site, wanted, WallTiles(WearableGrid(site.wall.material, wanted), storeys));
 }
 
-static uint32_t Jittered(uint32_t tint, uint32_t seed)
+static uint32_t TintJittered(uint32_t tint, uint32_t seed)
 {
 	return TintJitter(tint, seed, TINT_JITTER_FIRST);
 }
@@ -405,7 +405,7 @@ static Swatch RoofSwatch(Material material, LandscapeType climate)
 
 static HouseCover Covering(const HouseSite &site, Material material, Swatch swatch)
 {
-	return {material, Jittered(SwatchTint(swatch, ROOF_COLOUR.Of(site.seed)), site.seed)};
+	return {material, TintJittered(SwatchTint(swatch, ROOF_COLOUR.Of(site.seed)), site.seed)};
 }
 
 static HouseCover RoofCover(const HouseSite &site, Material material)
@@ -474,7 +474,7 @@ static void Clad(HouseSite &site)
 		tint = remap->argb;
 		if (site.kind == HouseKind::GlassTower) site.glass = remap->argb;
 	}
-	site.wall = {material, Jittered(tint, site.seed)};
+	site.wall = {material, TintJittered(tint, site.seed)};
 }
 
 static bool IsTownRoad(int x, int y)
@@ -787,7 +787,7 @@ static void EncloseGarden(BuildingForm &form, const Solid &dwelling, const House
 static void BuildDwelling(BuildingForm &form, const HouseSite &site)
 {
 	const Setback &setback = site.kind == HouseKind::Cottage ? COTTAGE_SETBACK : HOUSE_SETBACK;
-	Setback jittered = Jittered(setback, site.seed, DWELLING_JITTER);
+	Setback jittered = SetbackJittered(setback, site.seed, DWELLING_JITTER);
 	Plot plot = FootprintOf(form).SetBack(site.front, jittered);
 	std::optional<DiagDirection> annex_side = SeedPick(ANNEX_SIDES, PLAN_VARIANT.Of(site.seed));
 	Solid dwelling = RaiseBlock(form, annex_side.has_value() ? plot.Inset(*annex_side, ANNEX_WIDTH) : plot, site);
@@ -808,7 +808,7 @@ static void BuildTerrace(BuildingForm &form, const HouseSite &site)
 
 static void BuildFlats(BuildingForm &form, const HouseSite &site)
 {
-	Solid block = RaiseBlock(form, FootprintOf(form).SetBack(site.front, Jittered(Evenly(FLATS_SETBACK), site.seed, FLATS_JITTER)), site);
+	Solid block = RaiseBlock(form, FootprintOf(form).SetBack(site.front, SetbackJittered(Evenly(FLATS_SETBACK), site.seed, FLATS_JITTER)), site);
 	DressRoof(form, block, site);
 }
 

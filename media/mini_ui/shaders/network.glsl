@@ -128,7 +128,7 @@ Field RouteCentre(vec2 at, int from, int to, mat2 pixel)
 	if (Opposite(from, to)) return SegmentField(at, a, b, pixel);
 
 	vec2 radial = at - (a + b - TILE_CENTRE);
-	float reach = max(length(radial), MIN_SPREAD);
+	float reach = max(length(radial), LEAST_DIVISOR);
 	return Field(abs(reach - HALF_TILE), PixelAcross(pixel, radial / reach));
 }
 

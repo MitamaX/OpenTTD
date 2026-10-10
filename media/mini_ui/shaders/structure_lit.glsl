@@ -84,7 +84,7 @@ vec3 Snowed(vec3 cladding, vec3 normal)
 {
 	float snow = RoofSnow(normal);
 	if (snow <= 0.0) return cladding;
-	float relief = clamp(Luminance(cladding) / max(Luminance(v_colour.rgb), MIN_SPREAD), RELIEF_SPAN.x, RELIEF_SPAN.y);
+	float relief = clamp(Luminance(cladding) / max(Luminance(v_colour.rgb), LEAST_DIVISOR), RELIEF_SPAN.x, RELIEF_SPAN.y);
 	return mix(cladding, SNOW * mix(1.0, relief, SNOW_RELIEF), snow);
 }
 

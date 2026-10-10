@@ -9,7 +9,7 @@ uniform usampler2D u_bends;
 const float HALF_TILE = 0.5;
 const vec2 TILE_CENTRE = vec2(HALF_TILE);
 const float MIN_SQUARED_SPAN = 1e-6;
-const float MIN_SPREAD = 1e-4;
+const float LEAST_DIVISOR = 1e-4;
 const float OCTAVE_TURN = 2.39996323;
 
 const vec2 WEST_CORNER = vec2(1.0, 0.0);
@@ -220,13 +220,13 @@ float SegmentDistance(vec2 p, vec2 from, vec2 to)
 /* How wide one screen pixel is on the ground across an edge with this normal; the pixel's columns are the ground it steps over across and down the screen. */
 float PixelAcross(mat2 pixel, vec2 normal)
 {
-	return max(abs(dot(pixel[0], normal)) + abs(dot(pixel[1], normal)), MIN_SPREAD);
+	return max(abs(dot(pixel[0], normal)) + abs(dot(pixel[1], normal)), LEAST_DIVISOR);
 }
 
 /* How far apart on the ground two pixels lie square across an edge with this normal as it shows on screen. */
 float Pitch(mat2 pixel, vec2 normal)
 {
-	return max(length(normal * pixel), MIN_SPREAD);
+	return max(length(normal * pixel), LEAST_DIVISOR);
 }
 
 /* A line thinner than the pixel keeps the pixel's width and fades by what it lacks, so it thins out instead of breaking up. */

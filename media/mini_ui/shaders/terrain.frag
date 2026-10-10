@@ -547,7 +547,7 @@ vec4 Lit(Shade shade)
 /* How steeply the ground leans at the fragment, in levels per tile. */
 float SlopeOf(vec3 normal)
 {
-	return length(normal.xy) / max(normal.z, MIN_SPREAD) / LevelRise();
+	return length(normal.xy) / max(normal.z, LEAST_DIVISOR) / LevelRise();
 }
 
 float StrataPerLevel()
@@ -733,7 +733,7 @@ float Gullied(vec2 p, Relief relief)
 {
 	float lean = length(relief.facing);
 	float shown = Resolved(GULLIES_PER_TILE * 2.0) * smoothstep(GULLY_SLOPES.x, GULLY_SLOPES.y, relief.slope);
-	if (shown <= 0.0 || lean <= MIN_SPREAD) return 1.0;
+	if (shown <= 0.0 || lean <= LEAST_DIVISOR) return 1.0;
 	vec2 weights = relief.facing * relief.facing / (lean * lean);
 	return 1.0 + (Channels(p.x, p.y) * weights.x + Channels(p.y, p.x) * weights.y) * shown;
 }
@@ -1634,9 +1634,9 @@ void main()
 {
 	vec2 p = v_world.xy;
 	mat2 pixel = mat2(dFdx(p), dFdy(p));
-	tile_pixels = 1.0 / max(sqrt(length(pixel[0]) * length(pixel[1])), MIN_SPREAD);
+	tile_pixels = 1.0 / max(sqrt(length(pixel[0]) * length(pixel[1])), LEAST_DIVISOR);
 	footprint = pixel;
-	float levels_per_pixel = max(fwidth(v_world.z), MIN_SPREAD);
+	float levels_per_pixel = max(fwidth(v_world.z), LEAST_DIVISOR);
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);
 	Relief relief = ReliefAt(normal, levels_per_pixel);
