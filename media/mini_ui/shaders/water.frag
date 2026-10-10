@@ -144,6 +144,8 @@ const float DECK_SHELTER = 0.75;
 const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
 const float SHELF_REACH = 2.5;
+const float CHANNEL_DEPTH = 0.25;
+const float CHANNEL_FALL = 0.15;
 const float OPEN_SEA_LEVEL = 0.0;
 const float OPEN_SEA_LOD = 2.0;
 const vec4 OPEN_SEA = vec4(1.0, 1.0, 0.0, 0.0);
@@ -635,11 +637,15 @@ float Enclosed(vec2 p)
 /* Off a sea shore the water deepens smoothly with the distance out from the land, measured straight across the water,
  * however the ground under it steps, so the bed of coast tiles shows no saw teeth through it and the shallows keep one breadth round every corner.
  * Past the map's edge it deepens on with the distance out from the edge. */
-float ShelfPath(vec2 p, vec3 sight)
+float ShelfDepth(vec2 p)
 {
 	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES + DistancePastEdge(p);
-	float depth = SHELF_DEPTH * smoothstep(0.0, SHELF_REACH, offshore);
-	return depth / max(-sight.z, GRAZING_SIGHT);
+	return SHELF_DEPTH * smoothstep(0.0, SHELF_REACH, offshore);
+}
+
+float ChannelDepth(vec4 field)
+{
+	return CHANNEL_DEPTH * smoothstep(WATERLINE, WATERLINE + CHANNEL_FALL, field.r);
 }
 
 /* The water at a point: its field and body, how its surface falls and which way it runs, how glassy it runs over a lip, how full of air it races down a drop
@@ -750,10 +756,10 @@ vec2 Refracted(vec2 uv, vec3 ripples, Body body, vec2 straight, float surface, o
 	return uv;
 }
 
-/* How far light runs through the water to what shows through it: as far as that lies behind, and never less than a sea shelf deepens or a drop churns. */
-float PathThrough(Water water, vec3 sight, float behind)
+/* How far light runs through the water to what shows through it: as far as that lies behind, and never less than a sea shelf deepens, a river's channel falls inside its outline or a drop churns. */
+float PathThrough(Water water, vec3 sight, float behind, float least_depth)
 {
-	return max(behind, max(ShelfPath(water.p, sight) * water.body.sea, RAPIDS_PATH * water.drop.steep));
+	return max(behind, max(least_depth / max(-sight.z, GRAZING_SIGHT), RAPIDS_PATH * water.drop.steep));
 }
 
 /* What shows through the water, dimmed and tinted along the light's path through it, under the light the water scatters back and a glow off its crests. */
@@ -810,11 +816,12 @@ void main()
 	vec3 sky = SkyOnWater(way, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
 	vec3 mirrored = WorldOver(sky, v_position, Skyward(reflect(sight, waves.broad), REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
-	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
+	float least_depth = mix(ChannelDepth(water.field), ShelfDepth(water.p), water.body.sea);
+	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x, least_depth), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
 
 	vec3 ground = texture(u_scene_colour, uv).rgb;
 	float filled = max(water.body.canal, max(water.drop.steep, water.churned * APRON_CLOUDING));
-	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, water.body.calm), straight.y), filled) * Outline(water.field, water.body);
+	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, water.body.calm), max(straight.y, least_depth)), filled) * Outline(water.field, water.body);
 	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(ambient, sun));
 }
