@@ -77,6 +77,15 @@ struct Sleeper {
 	double HalfLength() const { return (this->right - this->left) / 2.0; }
 };
 
+struct Turnout {
+	size_t main;
+	size_t branch;
+	double main_toe;
+	double branch_toe;
+	double side;
+	double branch_side;
+};
+
 class TileTrack {
 public:
 	explicit TileTrack(const TrackSite &site);
@@ -89,8 +98,12 @@ public:
 	std::vector<std::vector<Sleeper>> Sleepers() const;
 
 private:
+	std::vector<Turnout> FindTurnouts() const;
+	void ReachUnderBranches(size_t rank, Sleeper &sleeper) const;
+
 	TrackSite site;
 	std::vector<TrackPiece> pieces;
+	std::vector<Turnout> turnouts;
 };
 
 #endif /* MINI_WORLD_TILE_TRACK_H */

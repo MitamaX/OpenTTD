@@ -31,6 +31,11 @@ static constexpr double LIFT_STEP = 0.0012;
 static constexpr uint32_t TRACK_SALT = 0x7AC4B0A2U;
 static constexpr double SLEEPERS_PER_TILE = 7.0;
 static constexpr double SLEEPER_GAP = 0.03;
+static constexpr double TOE_SPLAY = 0.1;
+static constexpr int BISECT_STEPS = 24;
+static constexpr double SHARED_TIMBER_REACH = 2.0 * SLEEPER_HALF_LENGTH + SLEEPER_GAP;
+static constexpr double RAIL_OVERHANG = SLEEPER_HALF_LENGTH - GAUGE_HALF;
+static constexpr double STEEPEST_CROSSING_COS = 0.5;
 
 static DrawnTrack Drawn(int tx, int ty, Track track, bool grounded)
 {
@@ -112,6 +117,31 @@ struct Plank {
 	}
 };
 
+static double LateralAt(const WayLine &line, double share, const MapVector &point)
+{
+	return Dot(point - line.At(share, 0.0), RightOf(line.Along(share)));
+}
+
+static double Lateral(const WayLine &line, const MapVector &point)
+{
+	return LateralAt(line, line.ShareOf(point), point);
+}
+
+template <typename Measure>
+static double Bisect(Measure measure, double low, double high)
+{
+	bool low_negative = measure(low) < 0.0;
+	for (int step = 0; step < BISECT_STEPS; step++) {
+		double middle = (low + high) / 2.0;
+		if ((measure(middle) < 0.0) == low_negative) {
+			low = middle;
+		} else {
+			high = middle;
+		}
+	}
+	return (low + high) / 2.0;
+}
+
 using TrackRank = std::tuple<int, bool, int>;
 
 static TrackRank RankOf(int tx, int ty, Track track)
@@ -125,6 +155,50 @@ TileTrack::TileTrack(const TrackSite &site) : site(site)
 	for (Track track : SetTrackBitIterator(site.bits)) ranked.emplace_back(HasAtMostOneBit(site.bits) ? TrackRank{} : RankOf(site.tx, site.ty, track), track);
 	std::ranges::sort(ranked, std::greater{});
 	for (const auto &[rank, track] : ranked) this->pieces.emplace_back(site.tx, site.ty, track, site.grounded);
+	this->turnouts = this->FindTurnouts();
+}
+
+std::vector<Turnout> TileTrack::FindTurnouts() const
+{
+	std::vector<Turnout> found;
+	for (size_t branch = 1; branch < this->pieces.size(); branch++) {
+		const WayLine &branch_line = this->pieces[branch].Line();
+		Piece branch_piece = PieceOf(this->site.tx, this->site.ty, this->pieces[branch].Id());
+		for (double branch_toe : {0.0, 1.0}) {
+			Joint toe = branch_toe == 0.0 ? branch_piece.from : branch_piece.to;
+			for (size_t main = 0; main < branch; main++) {
+				Piece main_piece = PieceOf(this->site.tx, this->site.ty, this->pieces[main].Id());
+				if (!main_piece.Meets(toe)) continue;
+				const WayLine &main_line = this->pieces[main].Line();
+				double main_toe = main_piece.from == toe ? 0.0 : 1.0;
+				double alignment = Dot(main_line.Along(main_toe), branch_line.Along(branch_toe));
+				if (std::abs(alignment) < std::cos(TOE_SPLAY)) continue;
+				double side = std::copysign(1.0, Lateral(main_line, branch_line.At(1.0 - branch_toe, 0.0)));
+				found.push_back({main, branch, main_toe, branch_toe, side, side * std::copysign(1.0, alignment)});
+				break;
+			}
+		}
+	}
+	return found;
+}
+
+void TileTrack::ReachUnderBranches(size_t rank, Sleeper &sleeper) const
+{
+	const WayLine &main = this->pieces[rank].Line();
+	MapVector centre = main.At(sleeper.share, 0.0);
+	MapVector along = main.Along(sleeper.share);
+	for (const Turnout &turnout : this->turnouts) {
+		if (turnout.main != rank) continue;
+		const WayLine &branch = this->pieces[turnout.branch].Line();
+		auto ahead = [&](double share) { return Dot(branch.At(share, 0.0) - centre, along); };
+		if ((ahead(0.0) < 0.0) == (ahead(1.0) < 0.0)) continue;
+		double crossing = Bisect(ahead, 0.0, 1.0);
+		double lateral = LateralAt(main, sleeper.share, branch.At(crossing, 0.0));
+		if (std::abs(lateral) >= SHARED_TIMBER_REACH) continue;
+		double spread = GAUGE_HALF / std::max(std::abs(Dot(along, branch.Along(crossing))), STEEPEST_CROSSING_COS) + RAIL_OVERHANG;
+		sleeper.left = std::min(sleeper.left, lateral - spread);
+		sleeper.right = std::max(sleeper.right, lateral + spread);
+	}
 }
 
 /* Pieces crossing on one tile, and the same piece on the tiles either side, stand a hair apart so their faces never fight; eased pieces never overlap. */
@@ -152,6 +226,7 @@ std::vector<std::vector<Sleeper>> TileTrack::Sleepers() const
 		SeedDice dice(Hash32(TRACK_SALT + static_cast<uint32_t>(TileXY(this->site.tx, this->site.ty).base() * TRACK_END + this->pieces[rank].Id())));
 		for (int slot = 0; slot < count; slot++) {
 			Sleeper sleeper = {(slot + 0.5) / count, -SLEEPER_HALF_LENGTH, SLEEPER_HALF_LENGTH, dice.Next()};
+			this->ReachUnderBranches(rank, sleeper);
 			Plank plank = Plank::Of(line, sleeper);
 			if (std::ranges::any_of(above, [&](const Plank &placed) { return placed.Overlaps(plank); })) continue;
 			laid[rank].push_back(sleeper);
