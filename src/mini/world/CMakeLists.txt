@@ -32,6 +32,7 @@ add_files(
     ground_overlay.h
     laid_depth.cpp
     laid_depth.h
+    lazy_lattice.h
     network_field.cpp
     network_field.h
     network_mesh.cpp
@@ -93,6 +94,8 @@ add_files(
     terrain_pass.cpp
     terrain_pass.h
     tile_grid.h
+    tile_relief.cpp
+    tile_relief.h
     track_models.cpp
     track_models.h
     tree_models.cpp

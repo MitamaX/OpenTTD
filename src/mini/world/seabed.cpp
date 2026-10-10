@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <optional>
 
 #include "../../map_func.h"
@@ -25,7 +24,6 @@
 static constexpr double SHALLOWEST_SINK = 0.3;
 static constexpr double SHORE_GRADIENT = 1.2;
 static constexpr int CORNER_MARGIN = 1;
-static constexpr double UNKNOWN = std::numeric_limits<double>::quiet_NaN();
 
 static bool IsFlat(const SurfaceTexel &surface)
 {
@@ -228,22 +226,13 @@ double BedLevel(int tx, int ty, double x, double y)
 }
 
 Seabed::Seabed(const TileSpan &tiles) :
-	hx0(2 * (tiles.tx0 - CORNER_MARGIN)),
-	hy0(2 * (tiles.ty0 - CORNER_MARGIN)),
-	columns(2 * (tiles.tx1 - tiles.tx0 + 1 + 2 * CORNER_MARGIN) + 1),
-	rows(2 * (tiles.ty1 - tiles.ty0 + 1 + 2 * CORNER_MARGIN) + 1),
-	levels(static_cast<size_t>(columns) * rows, UNKNOWN)
+	levels(2 * (tiles.tx0 - CORNER_MARGIN), 2 * (tiles.ty0 - CORNER_MARGIN), 2 * (tiles.tx1 - tiles.tx0 + 1 + 2 * CORNER_MARGIN) + 1, 2 * (tiles.ty1 - tiles.ty0 + 1 + 2 * CORNER_MARGIN) + 1)
 {
 }
 
 double Seabed::Level(int hx, int hy) const
 {
-	int i = hx - this->hx0;
-	int j = hy - this->hy0;
-	if (i < 0 || j < 0 || i >= this->columns || j >= this->rows) return BedLevelAt(hx, hy);
-	double &level = this->levels[static_cast<size_t>(j) * this->columns + i];
-	if (std::isnan(level)) level = BedLevelAt(hx, hy);
-	return level;
+	return this->levels.At(hx, hy, BedLevelAt);
 }
 
 double Seabed::Sink(int cx, int cy) const

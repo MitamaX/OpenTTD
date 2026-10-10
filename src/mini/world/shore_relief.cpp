@@ -26,9 +26,6 @@ static constexpr double CHANNEL_STRAIGHTENING_REACH = 0.2;
 static constexpr double CHANNEL_LIP = 0.03;
 static constexpr double CHANNEL_FALL = 0.15;
 static constexpr double RAPIDS_DEPTH = 0.3;
-static constexpr double SLOPE_PROBE = 0.1;
-static constexpr double LEAST_UPRIGHT = 0.05;
-static constexpr int SPLINE_REACH = 1;
 
 bool IsBareCoast(int tx, int ty)
 {
@@ -40,87 +37,6 @@ bool IsBareCoast(int tx, int ty)
 	return ground.material == GroundMaterial::Shore && ground.flora == 0 && network.track == 0 && network.road == 0 && network.tram == 0 && !spanned;
 }
 
-/* The cubic through p1 and p2 whose slopes there point from the points either side. */
-static double CatmullRom(double p0, double p1, double p2, double p3, double t)
-{
-	return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)));
-}
-
-/* How far a point lies from a tile's square. */
-static double DistanceToTile(double x, double y, int tx, int ty)
-{
-	double dx = std::max({tx - x, 0.0, x - (tx + 1)});
-	double dy = std::max({ty - y, 0.0, y - (ty + 1)});
-	return std::hypot(dx, dy);
-}
-
-TileRelief::TileRelief(int tx, int ty, const std::array<double, 4> &corners, double straightening_reach) : tx(tx), ty(ty), corners(corners), straightening_reach(straightening_reach)
-{
-}
-
-double TileRelief::Level(double x, double y) const
-{
-	return std::lerp(this->Faceted(x, y), this->Curved(x, y), this->Freedom(x, y));
-}
-
-Vec3 TileRelief::Normal(double x, double y, const Vec3 &faceted) const
-{
-	double rise = LevelRise();
-	auto curving = [this](double px, double py) { return this->Level(px, py) - this->Faceted(px, py); };
-	double bend_x = (curving(x + SLOPE_PROBE, y) - curving(x - SLOPE_PROBE, y)) * rise / (2.0 * SLOPE_PROBE);
-	double bend_y = (curving(x, y + SLOPE_PROBE) - curving(x, y - SLOPE_PROBE)) * rise / (2.0 * SLOPE_PROBE);
-	double upright = std::max(faceted.z, LEAST_UPRIGHT);
-	return Normalised({faceted.x / upright - bend_x, faceted.y / upright - bend_y, 1.0});
-}
-
-/* The tile's corners spread over it, straight along each side as every neighbour's edge runs. Corners go north, west, east, south. */
-double TileRelief::Faceted(double x, double y) const
-{
-	if (!this->held.has_value()) {
-		std::array<double, 4> held;
-		for (size_t i = 0; i < held.size(); i++) {
-			double cx = this->tx + static_cast<double>(i % 2);
-			double cy = this->ty + static_cast<double>(i / 2);
-			held[i] = this->Pinned(cx, cy) ? this->corners[i] : this->Held(cx, cy, this->corners[i]);
-		}
-		this->held = held;
-	}
-	const std::array<double, 4> &corner = *this->held;
-	double fx = x - this->tx;
-	double fy = y - this->ty;
-	double north = std::lerp(corner[0], corner[1], fx);
-	double south = std::lerp(corner[2], corner[3], fx);
-	return std::lerp(north, south, fy);
-}
-
-/* How far the ground may curve at a point: not at all on the edge of a tile that keeps its facets, and freely from the straightening reach away from every one. */
-double TileRelief::Freedom(double x, double y) const
-{
-	int cx = static_cast<int>(std::floor(x));
-	int cy = static_cast<int>(std::floor(y));
-	double freedom = 1.0;
-	for (int ny = cy - SPLINE_REACH; ny <= cy + SPLINE_REACH; ny++) {
-		for (int nx = cx - SPLINE_REACH; nx <= cx + SPLINE_REACH; nx++) {
-			if (this->Curving(nx, ny)) continue;
-			freedom = std::min(freedom, SmoothStep(0.0, this->straightening_reach, DistanceToTile(x, y, nx, ny)));
-		}
-	}
-	return freedom;
-}
-
-/* Whether a tile near this one curves, asked of each tile once. */
-bool TileRelief::Curving(int nx, int ny) const
-{
-	if (!this->curving.has_value()) {
-		std::array<bool, CURVING_SIDE * CURVING_SIDE> curving;
-		for (int j = 0; j < CURVING_SIDE; j++) {
-			for (int i = 0; i < CURVING_SIDE; i++) curving[j * CURVING_SIDE + i] = this->Curves(this->tx + i - CURVING_REACH, this->ty + j - CURVING_REACH);
-		}
-		this->curving = curving;
-	}
-	return (*this->curving)[(ny - this->ty + CURVING_REACH) * CURVING_SIDE + nx - this->tx + CURVING_REACH];
-}
-
 ShoreRelief::ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners) : TileRelief(tx, ty, corners, SHORE_STRAIGHTENING_REACH), bed(bed)
 {
 }
@@ -128,14 +44,8 @@ ShoreRelief::ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<dou
 /* The spline runs through every corner of the bed, so it agrees with the tile's own corners wherever it is free to show. */
 double ShoreRelief::Curved(double x, double y) const
 {
-	int cx = static_cast<int>(std::floor(x));
-	int cy = static_cast<int>(std::floor(y));
-	std::array<double, 4> rows;
-	for (int j = 0; j < 4; j++) {
-		auto at = [&](int i) { return this->bed.Level(2 * (cx + i - 1), 2 * (cy + j - 1)); };
-		rows[j] = CatmullRom(at(0), at(1), at(2), at(3), x - cx);
-	}
-	return CatmullRom(rows[0], rows[1], rows[2], rows[3], y - cy);
+	LatticeCell cell = CellOf(x, y);
+	return Bicubic([this](int cx, int cy) { return this->bed.Level(2 * cx, 2 * cy); }, cell, CatmullRomWeights(cell.u), CatmullRomWeights(cell.v));
 }
 
 ChannelRelief::ChannelRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners) :

@@ -12,50 +12,13 @@
 
 #include <array>
 
-#include <optional>
-
-#include "../core/camera.h"
 #include "../map/tile_shapes.h"
 #include "seabed.h"
+#include "tile_relief.h"
 #include "water_sheet.h"
 
 /* A coast tile with nothing standing on it or spanning it, whose ground may curve without lifting anything off it. */
 bool IsBareCoast(int tx, int ty);
-
-/* The curved ground of one tile, straightened toward every tile whose ground keeps its facets, so the two meet edge to edge and corner to corner. */
-class TileRelief {
-public:
-	TileRelief(int tx, int ty, const std::array<double, 4> &corners, double straightening_reach);
-	virtual ~TileRelief() = default;
-
-	double Level(double x, double y) const;
-	Vec3 Normal(double x, double y, const Vec3 &faceted) const;
-	/* Whether the ground at a point is held to the tile's facets by a neighbour that keeps them. */
-	bool Pinned(double x, double y) const { return this->Freedom(x, y) <= 0.0; }
-
-protected:
-	virtual double Curved(double x, double y) const = 0;
-	virtual bool Curves(int nx, int ny) const = 0;
-	/* The level the tile's facets are held at about a corner where no neighbour keeps its facets. */
-	virtual double Held(double x, double y, double corner) const = 0;
-
-	int tx;
-	int ty;
-
-private:
-	/* The tiles about this one whose ground curves are looked up this far either side of it. */
-	static constexpr int CURVING_REACH = 2;
-	static constexpr int CURVING_SIDE = 2 * CURVING_REACH + 1;
-
-	double Faceted(double x, double y) const;
-	double Freedom(double x, double y) const;
-	bool Curving(int nx, int ny) const;
-
-	std::array<double, 4> corners;
-	double straightening_reach;
-	mutable std::optional<std::array<double, 4>> held;
-	mutable std::optional<std::array<bool, CURVING_SIDE * CURVING_SIDE>> curving;
-};
 
 /* A bare coast's ground: a spline through the bed's corners. */
 class ShoreRelief : public TileRelief {

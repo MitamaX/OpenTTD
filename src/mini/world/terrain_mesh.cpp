@@ -30,6 +30,7 @@
 #include "seabed.h"
 #include "shore_relief.h"
 #include "tile_grid.h"
+#include "tile_relief.h"
 #include "track_models.h"
 #include "water_sheet.h"
 #include "way_shapes.h"
@@ -50,7 +51,6 @@ static constexpr int EARTH_BANK_ROWS = 8;
 static constexpr double STEEPEST_EARTH = 1.6;
 static constexpr int RAMP_BANK_ROWS = 12;
 static constexpr double RAMP_BANK_RUN = 1.2;
-static constexpr double GROUND_PROBE = 0.05;
 static constexpr double COPING_RISE = 0.025;
 static constexpr double COPING_OVERHANG = 0.015;
 static constexpr double WING_THICKNESS = 0.12;
@@ -416,24 +416,10 @@ static double GroundBeyond(const TileGround &low, double x, double y, double rea
 	return reach < 1.0 ? low.Level(x, y) : GroundLevel(x, y);
 }
 
-template <class Level>
-static MapVector ClimbOf(const Level &level, double x, double y)
-{
-	double east = level(x + GROUND_PROBE, y) - level(x - GROUND_PROBE, y);
-	double south = level(x, y + GROUND_PROBE) - level(x, y - GROUND_PROBE);
-	return MapVector{east, south} * (0.5 / GROUND_PROBE);
-}
-
 /* How the ground climbs along map x and map y at a point, in levels per tile. */
 static MapVector GroundClimb(double x, double y)
 {
 	return ClimbOf(GroundLevel, x, y);
-}
-
-static Vec3 ClimbNormal(const MapVector &climb)
-{
-	double rise = LevelRise();
-	return Normalised(Vec3{-climb.x * rise, -climb.y * rise, 1.0});
 }
 
 /* One end of an earth bank: from the step's top it grades out over the lower ground, as far as its run allows for the height it falls, onto the ground there;
@@ -450,7 +436,7 @@ static BankEdge BankEnd(const GroundUnder &ground_under, const WorldPoint &top, 
 		double y = foot.y + outward.y * out;
 		double ground = std::min(ground_under(x, y, out) - BANK_FOOT_DIP * share, top.level);
 		double fall = BankFall(share);
-		MapVector climb = GroundClimb(x, y) * fall + top_climb * (1.0 - fall) - outward * ((top.level - ground) * BankFallSlope(share) / std::max(reach, GROUND_PROBE));
+		MapVector climb = GroundClimb(x, y) * fall + top_climb * (1.0 - fall) - outward * ((top.level - ground) * BankFallSlope(share) / std::max(reach, CLIMB_PROBE));
 		edge.points[row] = {x, y, top.level + (ground - top.level) * fall};
 		edge.normals[row] = ClimbNormal(climb);
 	}

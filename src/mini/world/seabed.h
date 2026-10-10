@@ -11,10 +11,10 @@
 #define MINI_WORLD_SEABED_H
 
 #include <optional>
-#include <vector>
 
 #include "../../map_type.h"
 #include "../core/camera.h"
+#include "lazy_lattice.h"
 
 inline constexpr double DEEPEST_SINK = 4.0;
 inline constexpr int SHELF_TILES = 6;
@@ -59,11 +59,7 @@ public:
 	Vec3 Normal(int hx, int hy, int reach) const;
 
 private:
-	int hx0;
-	int hy0;
-	int columns;
-	int rows;
-	mutable std::vector<double> levels;
+	LazyLattice<double> levels;
 };
 
 #endif /* MINI_WORLD_SEABED_H */
