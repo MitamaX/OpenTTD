@@ -99,9 +99,9 @@ struct Outlook {
 	vec3 sun;
 };
 
-vec3 InTexels(vec3 way)
+vec3 InTexels(vec3 way, float stretch)
 {
-	return vec3(way.x, way.y / FORM_HEIGHT_SCALE, way.z);
+	return vec3(way.x * stretch, way.y / FORM_HEIGHT_SCALE, way.z);
 }
 
 vec2 SightShift(Outlook outlook)

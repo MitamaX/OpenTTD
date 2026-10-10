@@ -26,6 +26,7 @@ const float SNOW_RELIEF = 0.6;
 const vec2 RELIEF_SPAN = vec2(0.6, 1.1);
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
+const float EDGE_ON_SHARE = 1e-4;
 
 bool Has(uint flag)
 {
@@ -76,13 +77,24 @@ vec3 Snowed(vec3 cladding, vec3 normal)
 	return mix(cladding, SNOW * mix(1.0, relief, SNOW_RELIEF), snow);
 }
 
+float PatternStretch(vec3 across)
+{
+	mat2x3 pixel = mat2x3(dFdx(v_position), dFdy(v_position));
+	vec2 run = across * pixel;
+	vec2 drawn = vec2(dFdx(v_pattern.x), dFdy(v_pattern.x));
+	float spread = dot(run, run);
+	bool edge_on = spread <= EDGE_ON_SHARE * (dot(pixel[0], pixel[0]) + dot(pixel[1], pixel[1]));
+	return edge_on ? 1.0 : abs(dot(drawn, run)) / spread;
+}
+
 Clad CladdingSeen(uint material, vec3 view, mat3 frame)
 {
 	bool facade = Has(SURFACE_FACADE);
 	Clad clad = facade && material == CLAD_GLASS ? Spandrel(v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);
 	clad.albedo = Walled(material, v_pattern, clad.albedo, 1.0 - abs(frame[2].z));
 	if (!facade) return clad;
-	Outlook outlook = Outlook(InTexels(view * frame), InTexels(SunDirection() * frame));
+	float stretch = PatternStretch(frame[0]);
+	Outlook outlook = Outlook(InTexels(view * frame, stretch), InTexels(SunDirection() * frame, stretch));
 	return Facade(clad, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_seed, outlook);
 }
 
