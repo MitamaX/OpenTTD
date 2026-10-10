@@ -280,7 +280,7 @@ private:
 					if (column % 2 == 0) this->AddBalcony(wall, centre, column_width, bottom);
 				} else if (wall.front) {
 					if (this->WearsWindowBoxes() && this->dice.Share() < BOX_SHARE) this->AddWindowBox(wall, centre, column_width, bottom);
-				} else if (this->dice.Share() < UNIT_SHARE) {
+				} else if (this->dice.Share() < UNIT_SHARE && this->HangsUnits()) {
 					this->AddUnit(wall, centre, bottom);
 				}
 			}
@@ -291,6 +291,11 @@ private:
 	{
 		if (_settings_game.game_creation.landscape == LandscapeType::Arctic) return false;
 		return this->solid.windows == WindowGrid::Cottage || this->solid.windows == WindowGrid::Terrace || this->solid.windows == WindowGrid::Shopfront;
+	}
+
+	bool HangsUnits() const
+	{
+		return this->solid.windows != WindowGrid::Curtain;
 	}
 
 	Vec3 OffWall(const FacadeWall &wall, MapVector at, double across, double out, double z) const
