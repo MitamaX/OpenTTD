@@ -50,7 +50,6 @@ const Opening UPPER_OPENINGS[WINDOW_GRIDS] = Opening[WINDOW_GRIDS](NO_OPENING, C
 const Opening GROUND_OPENINGS[WINDOW_GRIDS] = Opening[WINDOW_GRIDS](NO_OPENING, COTTAGE_WINDOW, TERRACE_WINDOW, FLAT_WINDOW, SHOP_DISPLAY, OFFICE_LOBBY, CURTAIN_LOBBY, ARCHED_WINDOW, FACTORY_WINDOW, BAY_SHUTTER);
 const Opening ENTRANCES[WINDOW_GRIDS] = Opening[WINDOW_GRIDS](NO_OPENING, COTTAGE_DOOR, TERRACE_DOOR, FLAT_ENTRANCE, SHOP_DOOR, OFFICE_ENTRANCE, CURTAIN_ENTRANCE, ARCHED_DOOR, LOADING_SHUTTER, NO_OPENING);
 
-const float LOWEST_FACING = 0.05;
 const float SHADOW_SOFTNESS = 0.3;
 const float TOY_ROUNDING = 0.6;
 
@@ -118,7 +117,7 @@ vec3 InTexels(vec3 way, float stretch)
 
 vec2 SightShift(Outlook outlook)
 {
-	return -outlook.eye.xy / max(outlook.eye.z, LOWEST_FACING);
+	return -Slant(outlook.eye);
 }
 
 vec2 SideOf(vec2 v)
@@ -181,7 +180,7 @@ float OutsideOpening(Opening opening, vec2 at)
 float SunThrough(Opening opening, vec2 at, float sunk, vec3 sun)
 {
 	if (sun.z <= 0.0) return 0.0;
-	vec2 mouth = at + sun.xy * (sunk / max(sun.z, LOWEST_FACING));
+	vec2 mouth = at + Slant(sun) * sunk;
 	return 1.0 - smoothstep(-SHADOW_SOFTNESS, SHADOW_SOFTNESS, OutsideOpening(opening, mouth));
 }
 

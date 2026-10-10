@@ -233,7 +233,7 @@ Clad UnderSill(Clad wall, Opening opening, vec2 at, vec3 sun)
 {
 	float below = -SILL_HEIGHT - at.y;
 	if (below < 0.0 || !AlongSill(opening, at) || sun.y <= 0.0) return wall;
-	float shadow = SILL_PROJECTION * sun.y / max(sun.z, LOWEST_FACING);
+	float shadow = SILL_PROJECTION * Slant(sun).y;
 	wall.sunlit *= smoothstep(shadow - SHADOW_SOFTNESS, shadow + SHADOW_SOFTNESS, below);
 	wall.occlusion *= mix(UNDER_SILL_OPENNESS, 1.0, smoothstep(0.0, 1.0, below));
 	return wall;
