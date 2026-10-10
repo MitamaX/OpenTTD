@@ -21,7 +21,7 @@ const float SNOW_RAGGEDNESS = 0.25;
 const float SNOW_STREAK_STRETCH = 0.3;
 const float LEANING_ROOF = 0.1;
 const vec2 SWEPT_EDGES = vec2(0.6, 0.85);
-const float SWEPT_THINNING = 0.6;
+const float SWEPT_THINNING = 0.4;
 const float SNOW_RELIEF = 0.6;
 const vec2 RELIEF_SPAN = vec2(0.6, 1.1);
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
@@ -77,14 +77,14 @@ float RoofSnow(vec3 normal)
 	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Layered(drift, SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
 	float ragged = (Octave(drift, SNOW_RAGS_PER_TILE) - 0.5) * SNOW_RAGGEDNESS;
 	float soft = max(SNOW_EDGE_SOFTNESS, SNOW_PATCHES_PER_TILE / tile_pixels);
-	return smoothstep(SNOW_SETTLES - soft, SNOW_SETTLES + soft, lying + patchy - swept + ragged) * upward;
+	return smoothstep(SNOW_SETTLES - soft, SNOW_SETTLES + soft, lying + patchy + ragged) * (1.0 - swept) * upward;
 }
 
 vec3 Snowed(vec3 cladding, vec3 normal)
 {
 	float snow = RoofSnow(normal);
 	if (snow <= 0.0) return cladding;
-	float relief = clamp(Luminance(cladding) / max(Luminance(v_colour.rgb), LEAST_DIVISOR), RELIEF_SPAN.x, RELIEF_SPAN.y);
+	float relief = Ponds(v_surface.x) ? 1.0 : clamp(Luminance(cladding) / max(Luminance(v_colour.rgb), LEAST_DIVISOR), RELIEF_SPAN.x, RELIEF_SPAN.y);
 	return mix(cladding, SNOW * mix(1.0, relief, SNOW_RELIEF), snow);
 }
 
