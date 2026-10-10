@@ -27,6 +27,7 @@ const float SHUTTER_HOOD_SHADE = 0.8;
 const float DOOR_PANEL_SHADE = 0.7;
 const float PAINT_ROUGHNESS = 0.6;
 const float FRAME_ROUGHNESS = 0.5;
+const float MULLION_ROUGHNESS = 0.75;
 const float SHUTTER_ROUGHNESS = 0.45;
 const float STONE_ROUGHNESS = 0.7;
 const vec3 DOOR_PAINTS[5] = vec3[5](vec3(0.42, 0.12, 0.10), vec3(0.12, 0.28, 0.18), vec3(0.12, 0.20, 0.36), vec3(0.30, 0.20, 0.12), vec3(0.85, 0.84, 0.80));
@@ -73,7 +74,7 @@ vec3 FramePaint(Elevation elevation)
 
 Clad FrameOf(Elevation elevation)
 {
-	return Matte(FramePaint(elevation), FRAME_ROUGHNESS);
+	return Matte(FramePaint(elevation), Mullioned(elevation.grid) ? MULLION_ROUGHNESS : FRAME_ROUGHNESS);
 }
 
 bool InGroove(float y)
@@ -180,8 +181,8 @@ Clad Recessed(Clad wall, Bay bay, Elevation elevation)
 	filling.sunlit = SunThrough(opening, sunk.at, depth, outlook.sun);
 	float behind = InsideShare(OutsideOpening(opening, sunk.at), elevation.pixel);
 	if (behind >= 1.0) return filling;
-	Clad jamb = mullioned ? FrameOf(elevation) : wall;
-	return Mixed(Reveal(jamb, opening, bay.at, depth, outlook), filling, behind);
+	Clad jamb = mullioned ? FrameOf(elevation) : Reveal(wall, opening, bay.at, depth, outlook);
+	return Mixed(jamb, filling, behind);
 }
 
 bool BesideWindow(Opening opening, vec2 at)
@@ -286,8 +287,10 @@ Clad Windowed(Clad wall, Elevation elevation, vec2 texel)
 		clad.facing = vec3(0.0, SILL_LEDGE_TILT, 1.0);
 	} else if (louvred) {
 		clad = Louvre(bay.at, elevation.seed);
+	} else if (framed && Mullioned(grid)) {
+		clad = FrameOf(elevation);
 	} else if (framed) {
-		clad = Mullioned(grid) ? FrameOf(elevation) : DressedStone(bay.at, dot(bay.at, vec2(-edge.y, edge.x)), pixel);
+		clad = DressedStone(bay.at, dot(bay.at, vec2(-edge.y, edge.x)), pixel);
 		clad.facing = vec3(-edge.xy * SURROUND_BEVEL, 1.0);
 	}
 	float inside = InsideShare(edge.z, pixel);
