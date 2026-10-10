@@ -112,7 +112,12 @@ static std::vector<LoftRing> EndRings(double tip, double inward, const BodyEnd &
 }
 
 BodyRun::BodyRun(const HullProfile &profile, double back, double front, const BodyEnd &back_end, const BodyEnd &front_end, ShellSteps steps) :
-	profile(profile), steps(steps), rings(EndRings(back, 1.0, back_end, steps))
+	BodyRun(profile, back, front, back_end, front_end, profile.low, steps)
+{
+}
+
+BodyRun::BodyRun(const HullProfile &profile, double back, double front, const BodyEnd &back_end, const BodyEnd &front_end, double foot, ShellSteps steps) :
+	profile(profile), foot(foot), steps(steps), rings(EndRings(back, 1.0, back_end, steps))
 {
 	std::vector<LoftRing> front_rings = EndRings(front, -1.0, front_end, steps);
 	this->rings.insert(this->rings.end(), front_rings.rbegin(), front_rings.rend());
@@ -141,7 +146,7 @@ std::vector<LoftRing> BodyRun::RingsOver(double from, double to) const
 
 ModelMesh BodyRun::Lofted(const HullProfile &section, std::span<const LoftRing> rings) const
 {
-	return Loft(RoundedSection(section, this->steps.arc), this->profile.low, rings);
+	return Loft(RoundedSection(section, this->steps.arc), this->foot, rings);
 }
 
 ModelMesh BodyRun::Laid(const HullProfile &section, double from, double to) const
@@ -186,11 +191,6 @@ ModelMesh Hull(const HullProfile &profile, double back, double front)
 ModelMesh SideBand(double back, double front, double half_width, double low, double high, uint32_t tone)
 {
 	return Hull({half_width + PROUD - 0.0005, low, high, 0.0}, back, front).Paint(tone);
-}
-
-ModelMesh Nose(const HullProfile &profile, double from, double to, const NoseShape &shape, double base)
-{
-	return Loft(ChamferSection(profile), base, TaperRings(from, to, shape)).Facet();
 }
 
 ModelMesh Turned(std::span<const LatheRing> profile, int sides, double axis_z)
@@ -265,19 +265,6 @@ double WindowSpan::GlassBack() const
 double WindowSpan::GlassFront() const
 {
 	return this->front - this->Post() * 0.5;
-}
-
-ModelMesh WindowRow(double back, double front, double low, double high, double half_width, int count)
-{
-	WindowSpan span{back, front, count};
-	double half = (span.Pitch() - span.Post()) * 0.5;
-	ModelMesh row;
-	for (int window = 0; window < count; window++) {
-		double middle = back + span.Pitch() * (window + 0.5);
-		row.Append(Box({middle - half, half_width - PANE_DEPTH, low}, {middle + half, half_width + PROUD, high}));
-	}
-	row.Append(Mirrored(row));
-	return row.Paint(GLASS).Gloss(GLASS_GLOSS);
 }
 
 ModelMesh WindowGlass(const WindowSpan &span, const Band &band, double half_width)

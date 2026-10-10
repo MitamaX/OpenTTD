@@ -15,7 +15,25 @@
 #include "../../safeguards.h"
 
 static constexpr double DRAUGHT = -0.035;
-static constexpr NoseShape BOW = {0.1, 1.0, 1.6};
+static constexpr double HULL_WATERLINE = 0.0;
+static constexpr double SHEER_RISE = 1.2;
+static constexpr NoseShape BOW = {0.1, SHEER_RISE, 1.6};
+static constexpr BodyEnd STERN_END = RoundedEnd(0.04, 0.8, 1.0);
+static constexpr double BOOT_TOP = 0.004;
+static constexpr double SHEER_STRAKE = 0.008;
+static constexpr double STRAKE_GAP = 0.001;
+static constexpr double DECK_INSET = 0.01;
+static constexpr double DECK_THICKNESS = 0.004;
+static constexpr double TIER = 0.045;
+static constexpr double TIER_INSET = 0.012;
+static constexpr double TIER_BAY = 0.01;
+static constexpr int TIER_WINDOWS = 6;
+static constexpr BodyEnd TIER_END = RoundedEnd(0.015, 0.88, 0.95);
+static constexpr Band TIER_GLASS = {0.016, 0.032};
+static constexpr HullProfile LIFEBOAT_BODY = {0.0065, 0.115, 0.13, 0.006};
+static constexpr BodyEnd LIFEBOAT_END = RoundedEnd(0.015, 0.5, 0.8);
+static constexpr double LIFEBOAT_SIDE = 0.1115;
+static constexpr double LIFEBOAT_HALF_LENGTH = 0.03;
 static constexpr uint32_t DECK = 0x9A8466;
 static constexpr uint32_t TANKER_DECK = 0x7A3A2E;
 static constexpr uint32_t LIFEBOAT = 0xE07020;
@@ -25,29 +43,30 @@ static constexpr double CONTAINER_LENGTH = 0.06;
 static constexpr double CONTAINER_WIDTH = 0.045;
 static constexpr double CONTAINER_HEIGHT = 0.032;
 
-/* A hull from its stern to where its bow begins, then the bow drawn to a point, with a red band below the waterline. */
+/* A hull from its rounded stern to its bow drawn to a point, rising toward it from the waterline, with a red band below the waterline and a white strake along its top. */
 static void ShipHull(VehicleKit &kit, double half_width, double freeboard, double stern, double bow_from, double bow)
 {
-	HullProfile hull = {half_width, DRAUGHT, freeboard, 0.0};
-	kit.Body(Hull(hull, stern, bow_from).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(Nose(hull, bow_from, bow, BOW, DRAUGHT).Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
-	HullProfile boot = {half_width + 0.002, DRAUGHT, 0.004, 0.0};
-	kit.Fine(Hull(boot, stern - 0.002, bow_from).Paint(BOOT_TOPPING));
-	kit.Fine(Nose(boot, bow_from, bow, BOW, DRAUGHT).Paint(BOOT_TOPPING));
-	kit.Body(Plank({stern + 0.01, -half_width + 0.01, freeboard}, {bow_from, half_width - 0.01, freeboard + 0.004}, DECK));
+	BodyRun hull({half_width, DRAUGHT, freeboard, 0.0}, stern, bow, STERN_END, TaperedEnd(bow - bow_from, BOW), HULL_WATERLINE, kit.Steps());
+	kit.Body(hull.Shell().Paint(DARK_PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Fine(hull.Stripe({DRAUGHT, BOOT_TOP}, BOOT_TOPPING));
+	kit.Fine(hull.Stripe({freeboard - SHEER_STRAKE, freeboard - STRAKE_GAP}, CREAM).Gloss(PAINT_GLOSS));
+	kit.Body(hull.Laid({half_width - DECK_INSET, freeboard, freeboard + DECK_THICKNESS, 0.0}, stern, bow_from).Paint(DECK));
 }
 
-/* A deckhouse of a few tiers stepping in as they rise, with windows round each, and a bridge on top. */
+/* A deckhouse of a few tiers stepping in as they rise, with windows round each. */
 static void Deckhouse(VehicleKit &kit, double back, double front, double half_width, double low, int tiers)
 {
-	constexpr double TIER = 0.045;
 	for (int tier = 0; tier < tiers; tier++) {
-		double inset = tier * 0.012;
+		double inset = tier * TIER_INSET;
 		double z = low + tier * TIER;
-		kit.Body(Hull({half_width - inset, z, z + TIER, 0.006}, back + inset * 2.0, front - inset).Paint(CREAM).Gloss(PAINT_GLOSS));
-		kit.Fine(WindowRow(back + inset * 2.0 + 0.01, front - inset - 0.01, z + 0.018, z + 0.032, half_width - inset, 6));
+		double from = back + inset * 2.0;
+		double to = front - inset;
+		BodyRun house({half_width - inset, z, z + TIER, 0.006}, from, to, TIER_END, TIER_END, kit.Steps());
+		Band glass = {z + TIER_GLASS.low, z + TIER_GLASS.high};
+		kit.Body(house.Shell().Paint(CREAM).Gloss(PAINT_GLOSS));
+		kit.Body(house.Stripe(glass, GLASS).Gloss(GLASS_GLOSS));
+		kit.Fine(WindowPosts({from + TIER_BAY, to - TIER_BAY, TIER_WINDOWS}, glass, half_width - inset + PROUD, CREAM).Gloss(PAINT_GLOSS));
 	}
-	kit.Fine(Windscreen(front - (tiers - 1) * 0.012, half_width - 0.02, low + (tiers - 1) * TIER + 0.018, low + tiers * TIER - 0.01));
 }
 
 static void Funnel(VehicleKit &kit, double x, double base, double radius)
@@ -70,8 +89,9 @@ static ModelMesh Ferry(VehicleDetail detail)
 	Funnel(kit, -0.2, 0.199, 0.032);
 	MastLight(kit, 0.06, 0.199, 0.06);
 	for (double x : {-0.24, -0.12, 0.0, 0.12}) {
-		ModelMesh boat = Plank({x - 0.03, 0.105, 0.115}, {x + 0.03, 0.118, 0.13}, LIFEBOAT).Gloss(PAINT_GLOSS);
-		kit.Fine(boat.Append(Mirrored(boat)));
+		BodyRun boat(LIFEBOAT_BODY, x - LIFEBOAT_HALF_LENGTH, x + LIFEBOAT_HALF_LENGTH, LIFEBOAT_END, LIFEBOAT_END, kit.Steps());
+		ModelMesh side = boat.Shell().Move({0.0, LIFEBOAT_SIDE, 0.0}).Paint(LIFEBOAT).Gloss(PAINT_GLOSS);
+		kit.Fine(side.Append(Mirrored(side)));
 	}
 	return kit.Done();
 }

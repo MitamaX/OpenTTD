@@ -143,6 +143,7 @@ private:
 class BodyRun {
 public:
 	BodyRun(const HullProfile &profile, double back, double front, const BodyEnd &back_end, const BodyEnd &front_end, ShellSteps steps);
+	BodyRun(const HullProfile &profile, double back, double front, const BodyEnd &back_end, const BodyEnd &front_end, double foot, ShellSteps steps);
 
 	ModelMesh Shell() const;
 	ModelMesh Laid(const HullProfile &section, double from, double to) const;
@@ -159,6 +160,7 @@ private:
 	ModelMesh Lofted(const HullProfile &section, std::span<const LoftRing> rings) const;
 
 	HullProfile profile;
+	double foot;
 	ShellSteps steps;
 	std::vector<LoftRing> rings;
 };
@@ -166,8 +168,6 @@ private:
 ModelMesh Hull(const HullProfile &profile, double back, double front);
 /* A band along both sides of a body, standing a little proud of it. */
 ModelMesh SideBand(double back, double front, double half_width, double low, double high, uint32_t tone);
-/* A hull from where the body ends to its tip, narrowing and lowering toward it over several rings, faceted. */
-ModelMesh Nose(const HullProfile &profile, double from, double to, const NoseShape &shape, double base);
 /* A solid turned about an axis along the length, its rings running from back to front at their reach along x. */
 ModelMesh Turned(std::span<const LatheRing> profile, int sides, double axis_z);
 ModelMesh Barrel(double back, double front, double radius, double axis_z, int sides);
@@ -177,8 +177,6 @@ ModelMesh Wheel(double x, double y, double radius, double width);
 ModelMesh Hub(double x, double y, double axle, double radius, double width);
 ModelMesh WheelPair(double x, double half_track, double radius, double width);
 ModelMesh Bogie(double x, double half_track, double radius);
-/* Window boxes standing proud of both sides of a body, evenly spread between its ends. */
-ModelMesh WindowRow(double back, double front, double low, double high, double half_width, int count);
 ModelMesh WindowGlass(const WindowSpan &span, const Band &band, double half_width);
 ModelMesh WindowPosts(const WindowSpan &span, const Band &band, double half_width, uint32_t tone);
 ModelMesh Ribs(std::span<const double> at, double half_width, const Band &band, double width, uint32_t tone);
