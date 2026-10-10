@@ -269,6 +269,11 @@ ModelMesh WindowRow(double back, double front, double low, double high, double h
 	return row.Paint(GLASS).Gloss(GLASS_GLOSS);
 }
 
+ModelMesh WindowGlass(const WindowSpan &span, const Band &band, double half_width)
+{
+	return SideBand(span.GlassBack(), span.GlassFront(), half_width, band.low, band.high, GLASS).Gloss(GLASS_GLOSS);
+}
+
 ModelMesh WindowPosts(const WindowSpan &span, const Band &band, double half_width, uint32_t tone)
 {
 	ModelMesh posts;

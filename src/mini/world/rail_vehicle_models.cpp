@@ -36,6 +36,19 @@ static constexpr HullProfile VAN_BODY = {BODY_HALF - 0.005, FLOOR, COACH_TOP, 0.
 static constexpr HullProfile STREAMLINED_BODY = {BODY_HALF, 0.07, 0.24, 0.05};
 static constexpr HullProfile SLEEK_BODY = {0.12, 0.0, 0.17, 0.06};
 static constexpr std::array<double, 4> VAN_RIBS = {-0.17, -0.11, 0.11, 0.17};
+static constexpr double GANGWAY_TUCK = 0.006;
+static constexpr double GANGWAY_HALF = 0.07;
+static constexpr double GANGWAY_FOOT = 0.015;
+static constexpr double GANGWAY_HEAD = 0.008;
+static constexpr WindowSpan COACH_WINDOWS = {-0.18, 0.18, 6};
+static constexpr Band COACH_GLASS = {0.15, 0.198};
+static constexpr std::array<double, 2> ROOF_UNITS = {-0.12, 0.12};
+static constexpr Vec3 ROOF_UNIT_SIZE = {0.07, 0.09, 0.012};
+static constexpr std::array<WindowSpan, 2> MAIL_WINDOWS = {{{-0.17, -0.11, 1}, {0.11, 0.17, 1}}};
+static constexpr Band MAIL_GLASS = {0.155, 0.19};
+static constexpr WindowSpan ARMOURED_WINDOWS = {-0.12, 0.12, 3};
+static constexpr Band ARMOURED_GLASS = {0.165, 0.175};
+static constexpr double ARMOURED_HALF = 0.12;
 static constexpr double VAN_RIB_WIDTH = 0.008;
 
 static ModelMesh Coupler(double end)
@@ -169,6 +182,15 @@ static ModelMesh ElectricStreamliner(VehicleDetail detail)
 	return kit.Done();
 }
 
+static void Gangways(VehicleKit &kit, const HullProfile &body)
+{
+	for (double end : {-1.0, 1.0}) {
+		double inner = end * (UNIT_REACH - GANGWAY_TUCK);
+		double outer = end * UNIT_TILES * 0.5;
+		kit.Body(Plank({std::min(inner, outer), -GANGWAY_HALF, body.low + GANGWAY_FOOT}, {std::max(inner, outer), GANGWAY_HALF, body.high - GANGWAY_HEAD}, RUNNING_GEAR));
+	}
+}
+
 /* Monorail and maglev units share a body slung low around their guideway, rounded over the top. */
 static void SleekBody(VehicleKit &kit, double nose_from, const NoseShape &shape)
 {
@@ -202,6 +224,7 @@ static ModelMesh SleekCoach(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	SleekBody(kit, UNIT_REACH, {});
+	Gangways(kit, SLEEK_BODY);
 	kit.Fine(SideBand(-UNIT_REACH, UNIT_REACH, SLEEK_BODY.half_width, 0.04, 0.055, SECONDARY));
 	return kit.Done();
 }
@@ -210,16 +233,21 @@ static void CoachShell(VehicleKit &kit, uint32_t body_tone, uint32_t band_tone)
 {
 	Underframe(kit, 0.11);
 	kit.Body(Hull(COACH_BODY, -UNIT_REACH, UNIT_REACH).Paint(body_tone).Gloss(PAINT_GLOSS));
-	kit.Body(Hull(COACH_ROOF, -UNIT_REACH, UNIT_REACH).Paint(ROOF_GREY));
+	kit.Body(BodyRun(COACH_ROOF, -UNIT_REACH, UNIT_REACH, SQUARE_END, SQUARE_END, kit.Steps()).Shell().Paint(ROOF_GREY));
 	kit.Body(SideBand(-UNIT_REACH, UNIT_REACH, BODY_HALF, 0.122, 0.14, band_tone));
-	kit.Fine(Plank({-0.24, -0.05, 0.08}, {0.24, 0.05, 0.205}, RUNNING_GEAR));
+	Gangways(kit, COACH_BODY);
 }
 
 static ModelMesh Coach(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	CoachShell(kit, PRIMARY, SECONDARY);
-	kit.Fine(WindowRow(-0.18, 0.18, 0.15, 0.198, BODY_HALF, 6));
+	kit.Body(WindowGlass(COACH_WINDOWS, COACH_GLASS, BODY_HALF));
+	kit.Fine(WindowPosts(COACH_WINDOWS, COACH_GLASS, BODY_HALF + PROUD, PRIMARY).Gloss(PAINT_GLOSS));
+	for (double x : ROOF_UNITS) {
+		Vec3 half = ROOF_UNIT_SIZE * 0.5;
+		kit.Fine(Plank({x - half.x, -half.y, ROOF_TOP}, {x + half.x, half.y, ROOF_TOP + ROOF_UNIT_SIZE.z}, STEEL).Gloss(METAL_GLOSS));
+	}
 	for (double end : {-0.205, 0.205}) kit.Fine(SideBand(end - 0.012, end + 0.012, BODY_HALF + 0.001, 0.075, 0.2, DARK_SECONDARY));
 	return kit.Done();
 }
@@ -228,8 +256,7 @@ static ModelMesh MailVan(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	CoachShell(kit, MUTED_PRIMARY, SECONDARY);
-	kit.Fine(WindowRow(-0.17, -0.11, 0.155, 0.19, BODY_HALF, 1));
-	kit.Fine(WindowRow(0.11, 0.17, 0.155, 0.19, BODY_HALF, 1));
+	for (const WindowSpan &window : MAIL_WINDOWS) kit.Body(WindowGlass(window, MAIL_GLASS, BODY_HALF));
 	kit.Fine(SideBand(-0.04, 0.04, BODY_HALF + 0.001, 0.075, 0.2, DARK_SECONDARY));
 	return kit.Done();
 }
@@ -264,9 +291,10 @@ static ModelMesh ArmouredVan(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Underframe(kit, 0.11);
-	kit.Body(Hull({0.12, FLOOR, 0.195, 0.025}, -0.18, 0.18).Paint(DARK_PRIMARY).Gloss(METAL_GLOSS));
-	kit.Body(SideBand(-0.18, 0.18, 0.12, 0.12, 0.135, SECONDARY));
-	kit.Fine(WindowRow(-0.12, 0.12, 0.165, 0.175, 0.12, 3));
+	kit.Body(Hull({ARMOURED_HALF, FLOOR, 0.195, 0.025}, -0.18, 0.18).Paint(DARK_PRIMARY).Gloss(METAL_GLOSS));
+	kit.Body(SideBand(-0.18, 0.18, ARMOURED_HALF, 0.12, 0.135, SECONDARY));
+	kit.Body(WindowGlass(ARMOURED_WINDOWS, ARMOURED_GLASS, ARMOURED_HALF));
+	kit.Fine(WindowPosts(ARMOURED_WINDOWS, ARMOURED_GLASS, ARMOURED_HALF + PROUD, DARK_PRIMARY).Gloss(METAL_GLOSS));
 	return kit.Done();
 }
 

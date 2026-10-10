@@ -167,6 +167,7 @@ ModelMesh WheelPair(double x, double half_track, double radius, double width);
 ModelMesh Bogie(double x, double half_track, double radius);
 /* Window boxes standing proud of both sides of a body, evenly spread between its ends. */
 ModelMesh WindowRow(double back, double front, double low, double high, double half_width, int count);
+ModelMesh WindowGlass(const WindowSpan &span, const Band &band, double half_width);
 ModelMesh WindowPosts(const WindowSpan &span, const Band &band, double half_width, uint32_t tone);
 ModelMesh Ribs(std::span<const double> at, double half_width, const Band &band, double width, uint32_t tone);
 ModelMesh Windscreen(double x, double half_width, double low, double high);
