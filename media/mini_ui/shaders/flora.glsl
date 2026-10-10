@@ -1,3 +1,5 @@
+const float LEAST_TILE_PIXELS = 1e-6;
+
 int TreeCount(uvec4 codes)
 {
 	return int(codes.b & FLORA_COUNT_MASK);
@@ -10,11 +12,15 @@ float FloraCover(uvec4 codes)
 	return min(float(TreeCount(codes)) / float(FLORA_MOST_TREES), 1.0) * grown * grown;
 }
 
+float PixelOctave(float tile_pixels)
+{
+	return log2(max(tile_pixels, LEAST_TILE_PIXELS));
+}
+
 /* How far a tree this many tile pixels across has gone over to the near side of a detail's floor, across the band the two details crossfade over. */
 float FloorCrossing(float tile_pixels, int detail)
 {
-	float octave = log2(max(tile_pixels, 1e-6));
-	return clamp((octave - log2(TREE_DETAIL_FLOORS[detail]) + TREE_CROSSFADE) / (2.0 * TREE_CROSSFADE), 0.0, 1.0);
+	return clamp((PixelOctave(tile_pixels) - log2(TREE_DETAIL_FLOORS[detail]) + TREE_CROSSFADE) / (2.0 * TREE_CROSSFADE), 0.0, 1.0);
 }
 
 /* A tree shows at a detail on the pixels whose screen noise falls within this window: it fades in past the finer detail's floor and out past its own. */
@@ -33,4 +39,11 @@ bool InWindow(vec2 window, float noise)
 float ForestTint(float tile_pixels)
 {
 	return 1.0 - FloorCrossing(tile_pixels, TREE_DETAILS - 1);
+}
+
+float TreesShrinking(float tile_pixels)
+{
+	float finest = log2(TREE_DETAIL_FLOORS[0]);
+	float coarsest = log2(TREE_DETAIL_FLOORS[TREE_DETAILS - 1]);
+	return clamp((finest - PixelOctave(tile_pixels)) / (finest - coarsest), 0.0, 1.0);
 }

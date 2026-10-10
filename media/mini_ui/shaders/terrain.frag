@@ -316,6 +316,7 @@ const vec2 UNRIPE_EDGES = vec2(0.5, 0.75);
 const float RIPENING_SEED = 3.7;
 
 const float FOREST_COVER = 0.9;
+const float CROWN_SHADE = 0.6;
 const float CANOPY_OCCLUSION = 0.45;
 const float CANOPY_VARIETY = 0.2;
 const vec2 LITTER_DENSITY = vec2(0.3, 0.8);
@@ -514,6 +515,7 @@ struct Water {
 struct Canopy {
 	vec4 paint;
 	float density;
+	float shade;
 };
 
 struct ForestFloor {
@@ -1259,14 +1261,15 @@ vec3 CanopyTone(vec2 p)
 	return TREE_CANOPY[kind] * Varied(Octave(p, 1.1), CANOPY_VARIETY);
 }
 
-/* The ground under a forest: kept from the sky by the crowns, and painted their colour where distance has thinned the trees themselves away. */
+/* The ground under a forest: kept from the sky by the crowns, darkened between them by their shade as distance shrinks the trees, and painted their colour where it has thinned the trees themselves away. */
 Canopy Forest(vec2 p)
 {
 	float density = FloorAround(p).cover;
-	if (density <= 0.0) return Canopy(vec4(0.0), 0.0);
+	if (density <= 0.0) return Canopy(vec4(0.0), 0.0, 1.0);
 
-	float tint = ForestTint(TilePixelsAt(distance(Eye(), RenderPoint(v_world))));
-	return Canopy(vec4(CanopyTone(p), 1.0) * density * FOREST_COVER * tint, density);
+	float pixels = TilePixelsAt(distance(Eye(), RenderPoint(v_world)));
+	float tint = ForestTint(pixels);
+	return Canopy(vec4(CanopyTone(p), 1.0) * density * FOREST_COVER * tint, density, 1.0 - density * CROWN_SHADE * TreesShrinking(pixels));
 }
 
 Patch Littered(Patch ground, Canopy forest, vec2 p, Grain grain)
@@ -1670,7 +1673,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Detail detail, float levels_p
 
 	vec3 colour = Composite(land, network.paint);
 	colour *= 1.0 - grid * u_grid * GRID_DEPTH * GridLine(p, pixel) * (1.0 - water.cover);
-	colour = Composite(colour, forest.paint);
+	colour = Composite(colour * forest.shade, forest.paint);
 	float roughness = mix(GroundRoughness(), blanket.roughness, blanket.cover);
 	float glint = blanket.glint > 0.0 ? Glint(p, normal) * blanketed * (1.0 - forest.paint.a) : 0.0;
 	return Shade(Overlay(clamp(colour, 0.0, 1.0), network), normal, roughness, (1.0 - forest.density * CANOPY_OCCLUSION) * CavityOpenness(grain, rugged), glint);
