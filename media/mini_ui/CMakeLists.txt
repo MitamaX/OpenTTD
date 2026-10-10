@@ -118,6 +118,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/terrain.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree_caster.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree_depth.frag
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vehicle.frag

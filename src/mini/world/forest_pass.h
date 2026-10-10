@@ -36,6 +36,7 @@ public:
 
 private:
 	bool Shadeable();
+	bool Castable();
 	void Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest);
 	template <class ChooseMesh>
 	void DrawBatch(const ShaderProgram &program, ChooseMesh choose_mesh);
@@ -47,6 +48,7 @@ private:
 	ShaderProgram program;
 	ShaderProgram depth;
 	ShaderProgram caster;
+	ShaderProgram frayed_caster;
 };
 
 #endif /* MINI_WORLD_FOREST_PASS_H */

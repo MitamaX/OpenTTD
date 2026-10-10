@@ -46,6 +46,14 @@ static constexpr std::array<const char *, 5> DEPTH_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/leaves.glsl",
 	"mini_ui/shaders/tree_depth.frag",
 };
+static constexpr std::array<const char *, 6> FRAYED_CASTER_FRAGMENT_SOURCES = {
+	"mini_ui/shaders/caster.glsl",
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
+	"mini_ui/shaders/flora.glsl",
+	"mini_ui/shaders/leaves.glsl",
+	"mini_ui/shaders/tree_caster.frag",
+};
 static constexpr double TREE_CASTER_WIDTH = 0.2;
 /* Near trees cast with simpler meshes and distant ones cast none: their shadows would only speckle the ground, which the forest tint already shades. */
 static constexpr TreeDetail COARSEST_CAST = TreeDetail::Simple;
@@ -64,6 +72,16 @@ static bool LaidFirst(size_t mesh)
 static bool ShadedAsDrawn(size_t mesh)
 {
 	return !LaidFirst(mesh);
+}
+
+static bool CastsFrayed(size_t mesh)
+{
+	return TreeDetailOf(mesh) == TreeDetail::Full;
+}
+
+static bool CastsWhole(size_t mesh)
+{
+	return !CastsFrayed(mesh);
 }
 
 /* Each mesh's copies learn which detail they were gathered for. */
@@ -88,13 +106,13 @@ public:
 };
 
 ForestPass::ForestPass(const WorldTextures &textures) :
-	textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), depth(VERTEX_SOURCES, DEPTH_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES))
+	textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), depth(VERTEX_SOURCES, DEPTH_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), frayed_caster(CasterProgram(VERTEX_SOURCES, FRAYED_CASTER_FRAGMENT_SOURCES))
 {
 }
 
 std::vector<ShaderProgram *> ForestPass::Programs()
 {
-	return {&this->program, &this->depth, &this->caster};
+	return {&this->program, &this->depth, &this->caster, &this->frayed_caster};
 }
 
 void ForestPass::Load()
@@ -116,9 +134,10 @@ void ForestPass::Refresh(const SceneView &view)
 
 void ForestPass::Cast(const ShadowView &view)
 {
-	if (!this->caster.Ready() || !view.Resolves(TREE_CASTER_WIDTH)) return;
+	if (!this->Castable() || !view.Resolves(TREE_CASTER_WIDTH)) return;
 	this->Gather(view.camera, view.frustum, COARSEST_CAST);
-	this->DrawBatch(this->caster, TreeCasterMesh);
+	this->batch.Draw(this->models, TellingDetail(this->frayed_caster, TreeCasterMesh), CastsFrayed);
+	this->batch.Redraw(this->models, TellingDetail(this->caster, TreeCasterMesh), CastsWhole);
 }
 
 void ForestPass::Lay(const SceneView &view)
@@ -144,10 +163,11 @@ void ForestPass::Draw([[maybe_unused]] const SceneView &view)
 
 void ForestPass::WarmCast()
 {
-	if (!this->caster.Ready()) return;
+	if (!this->Castable()) return;
 	this->batch.Clear(TREE_DRAWN_MESHES);
 	this->batch.Add(0, TreeInstance{});
 	this->DrawBatch(this->caster, TreeCasterMesh);
+	this->DrawBatch(this->frayed_caster, TreeCasterMesh);
 }
 
 void ForestPass::Warm()
@@ -164,6 +184,11 @@ void ForestPass::Warm()
 bool ForestPass::Shadeable()
 {
 	return this->program.Ready() && this->depth.Ready();
+}
+
+bool ForestPass::Castable()
+{
+	return this->caster.Ready() && this->frayed_caster.Ready();
 }
 
 void ForestPass::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest)
@@ -185,4 +210,5 @@ void ForestPass::Release()
 	this->program.Release();
 	this->depth.Release();
 	this->caster.Release();
+	this->frayed_caster.Release();
 }

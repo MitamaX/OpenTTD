@@ -5,9 +5,14 @@ in float v_translucency;
 flat in vec2 v_window;
 
 const vec2 LEAF_TRANSLUCENCY = vec2(0.2, 0.4);
-const float LEAF_CLUMPS_PER_TILE = 24.0;
-const float RAGGED_EDGE = 0.55;
-const float RAGGED_FACING = 0.45;
+
+struct Fraying {
+	float clumps_per_tile;
+	float edge;
+	float facing;
+};
+
+const Fraying LEAF_FRAYING = Fraying(24.0, 0.55, 0.45);
 
 float LeafResolved(float per_tile)
 {
@@ -20,14 +25,14 @@ float LeafShare()
 }
 
 /* How far a surface is foliage, clumped into sprays of leaves, rather than flesh, sweets or wood, and how far its clumps are still big enough to show. */
-float Foliage()
+float Foliage(Fraying fraying)
 {
-	return LeafShare() * LeafResolved(LEAF_CLUMPS_PER_TILE);
+	return LeafShare() * LeafResolved(fraying.clumps_per_tile);
 }
 
-float Clumps(float foliage)
+float Clumps(float foliage, Fraying fraying)
 {
-	return foliage > 0.0 ? Noise(v_grown * LEAF_CLUMPS_PER_TILE) : 0.5;
+	return foliage > 0.0 ? Noise(v_grown * fraying.clumps_per_tile) : 0.5;
 }
 
 void DropOutOfWindow()
@@ -36,9 +41,13 @@ void DropOutOfWindow()
 	if (Dropped(outside)) discard;
 }
 
-void DropFrayed(vec3 normal, vec3 view, float clumps, float foliage)
+float FrayingReach(vec3 normal, vec3 view, float foliage, Fraying fraying)
 {
-	float edge_on = 1.0 - smoothstep(0.0, RAGGED_FACING, abs(dot(normal, view)));
-	bool frayed = clumps < RAGGED_EDGE * edge_on * foliage;
-	if (Dropped(frayed)) discard;
+	float edge_on = 1.0 - smoothstep(0.0, fraying.facing, abs(dot(normal, view)));
+	return fraying.edge * edge_on * foliage;
+}
+
+void DropFrayed(float reach, float clumps)
+{
+	if (Dropped(clumps < reach)) discard;
 }

@@ -107,13 +107,13 @@ void main()
 	vec3 normal = normalize(v_normal) * (gl_FrontFacing ? 1.0 : -1.0);
 	vec3 across = dFdx(v_position);
 	vec3 down = dFdy(v_position);
-	float foliage = Foliage();
-	float clumps = Clumps(foliage);
+	float foliage = Foliage(LEAF_FRAYING);
+	float clumps = Clumps(foliage, LEAF_FRAYING);
 	vec3 view = ToEye(v_position);
 	float dome = LeafDome(clumps);
 	vec3 leaves = Bumped(normal, (dome - 0.5) * LEAF_RELIEF * foliage, view, across, down);
 	DropOutOfWindow();
-	DropFrayed(normal, view, clumps, foliage);
+	DropFrayed(FrayingReach(normal, view, foliage, LEAF_FRAYING), clumps);
 
 	float clouds = CloudLight(v_position);
 	float sunlit = SunVisibility(v_position, leaves, clouds);
