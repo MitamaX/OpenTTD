@@ -11,26 +11,75 @@
 #include "vehicle_parts.h"
 
 #include <array>
+#include <cmath>
+#include <numbers>
+#include <span>
 
 #include "way_shapes.h"
 
 #include "../../safeguards.h"
 
 static constexpr double HALF_WIDTH = 0.07;
-static constexpr double HALF_TRACK = 0.058;
 static constexpr double WHEEL_RADIUS = 0.024;
 static constexpr double WHEEL_WIDTH = 0.02;
+static constexpr double TYRE_PROUD = 0.003;
+static constexpr double HALF_TRACK = HALF_WIDTH + TYRE_PROUD - WHEEL_WIDTH * 0.5;
+static constexpr double TRAM_HALF_TRACK = 0.058;
 static constexpr double FRONT = 0.215;
 static constexpr double CHASSIS_LOW = 0.026;
 static constexpr double CAB_BACK = 0.11;
 static constexpr double LOAD_FRONT = 0.1;
-static constexpr double LOAD_FLOOR = 0.045;
+static constexpr double LOAD_CLEARANCE = 0.006;
+static constexpr double LOAD_FLOOR = WHEEL_RADIUS * 2.0 + LOAD_CLEARANCE;
 static constexpr double LAMP_HALF = 0.007;
+static constexpr double HUB_SHARE = 0.55;
+static constexpr double HUB_DEPTH = 0.003;
+static constexpr double ARCH_RADIUS = WHEEL_RADIUS * 1.3;
+static constexpr int ARCH_SIDES = 4;
+static constexpr double ARCH_GAP = 0.0005;
+static constexpr double ARCH_DEPTH = 0.001;
+static constexpr double TANK_RISE = 0.055;
+static constexpr double MUDGUARD = 0.003;
+
+struct Axle {
+	double x;
+	bool arched;
+};
+
+static constexpr std::array<Axle, 2> BUS_AXLES = {{{-0.1, true}, {0.12, true}}};
+static constexpr std::array<Axle, 3> LORRY_AXLES = {{{-0.16, false}, {-0.1, false}, {0.16, true}}};
 
 static void Lamps(VehicleKit &kit, double back, double front, double z)
 {
 	kit.Fine(LampPair(front, HALF_WIDTH - 0.018, z, LAMP_HALF, HEADLAMP));
 	kit.Fine(LampPair(back, HALF_WIDTH - 0.014, z + 0.01, LAMP_HALF, TAIL_LAMP));
+}
+
+static ModelMesh WheelArch(double x)
+{
+	std::array<MapVector, ARCH_SIDES + 1> outline;
+	for (int side = 0; side <= ARCH_SIDES; side++) {
+		double angle = std::numbers::pi * side / ARCH_SIDES;
+		outline[side] = {x + ARCH_RADIUS * std::cos(angle), WHEEL_RADIUS + ARCH_RADIUS * std::sin(angle)};
+	}
+	ModelMesh arch = Upright(outline, ARCH_DEPTH).Move({0.0, HALF_WIDTH + ARCH_GAP + ARCH_DEPTH * 0.5, 0.0}).Paint(RUNNING_GEAR);
+	return arch.Append(Mirrored(arch));
+}
+
+static void Wheels(VehicleKit &kit, std::span<const Axle> axles)
+{
+	for (const Axle &axle : axles) {
+		kit.Fine(WheelPair(axle.x, HALF_TRACK, WHEEL_RADIUS, WHEEL_WIDTH));
+		ModelMesh hub = Hub(axle.x, HALF_TRACK + WHEEL_WIDTH * 0.5 + HUB_DEPTH * 0.5, WHEEL_RADIUS, WHEEL_RADIUS * HUB_SHARE, HUB_DEPTH);
+		kit.Fine(hub.Append(Mirrored(hub)));
+		if (axle.arched) kit.Fine(WheelArch(axle.x));
+	}
+}
+
+static ModelMesh Mudguard(double back_axle, double front_axle)
+{
+	ModelMesh guard = Plank({back_axle - WHEEL_RADIUS - MUDGUARD, HALF_TRACK - WHEEL_WIDTH * 0.5, LOAD_FLOOR - MUDGUARD}, {front_axle + WHEEL_RADIUS + MUDGUARD, HALF_TRACK + WHEEL_WIDTH * 0.5, LOAD_FLOOR}, TRIM);
+	return guard.Append(Mirrored(guard));
 }
 
 static ModelMesh Bus(VehicleDetail detail)
@@ -42,7 +91,7 @@ static ModelMesh Bus(VehicleDetail detail)
 	kit.Fine(Windscreen(FRONT, HALF_WIDTH - 0.008, 0.09, 0.155));
 	kit.Fine(Windscreen(-FRONT, HALF_WIDTH - 0.014, 0.11, 0.15));
 	kit.Fine(Plank({-0.12, -0.04, 0.165}, {-0.02, 0.04, 0.178}, ROOF_GREY));
-	for (double x : {-0.14, 0.14}) kit.Fine(WheelPair(x, HALF_TRACK, WHEEL_RADIUS, WHEEL_WIDTH));
+	Wheels(kit, BUS_AXLES);
 	Lamps(kit, -FRONT, FRONT, 0.05);
 	return kit.Done();
 }
@@ -54,7 +103,8 @@ static void Lorry(VehicleKit &kit)
 	kit.Body(Hull({HALF_WIDTH, CHASSIS_LOW, 0.15, 0.02}, CAB_BACK, FRONT).Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Fine(Windscreen(FRONT, HALF_WIDTH - 0.008, 0.1, 0.14));
 	kit.Fine(WindowRow(CAB_BACK + 0.04, FRONT - 0.015, 0.1, 0.138, HALF_WIDTH, 1));
-	for (double x : {-0.16, -0.1, 0.16}) kit.Fine(WheelPair(x, HALF_TRACK, WHEEL_RADIUS, WHEEL_WIDTH));
+	Wheels(kit, LORRY_AXLES);
+	kit.Fine(Mudguard(LORRY_AXLES[0].x, LORRY_AXLES[1].x));
 	Lamps(kit, -FRONT, FRONT, 0.05);
 }
 
@@ -72,8 +122,8 @@ static ModelMesh TankerTruck(VehicleDetail detail)
 	VehicleKit kit(detail);
 	Lorry(kit);
 	std::array<LatheRing, 4> tank = {{{0.04, -0.21}, {0.058, -0.195}, {0.058, 0.085}, {0.04, 0.1}}};
-	kit.Body(Turned(tank, 10, 0.1).Paint(STEEL).Gloss(METAL_GLOSS));
-	kit.Body(Barrel(-0.07, -0.03, 0.06, 0.1, 10).Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(Turned(tank, 10, LOAD_FLOOR + TANK_RISE).Paint(STEEL).Gloss(METAL_GLOSS));
+	kit.Body(Barrel(-0.07, -0.03, 0.06, LOAD_FLOOR + TANK_RISE, 10).Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	return kit.Done();
 }
 
@@ -124,7 +174,7 @@ static ModelMesh Tram(VehicleDetail detail)
 	kit.Body(SideBand(-0.21, 0.21, HALF_WIDTH + 0.005, 0.105, 0.165, GLASS).Gloss(GLASS_GLOSS));
 	kit.Fine(Windscreen(UNIT_REACH, HALF_WIDTH - 0.005, 0.1, 0.17));
 	kit.Fine(Windscreen(-UNIT_REACH, HALF_WIDTH - 0.005, 0.1, 0.17));
-	for (double x : {-0.15, 0.15}) kit.Fine(Bogie(x, HALF_TRACK, 0.018));
+	for (double x : {-0.15, 0.15}) kit.Fine(Bogie(x, TRAM_HALF_TRACK, 0.018));
 	kit.Fine(Plank({-0.03, -0.03, 0.19}, {0.03, 0.03, 0.2}, PANTOGRAPH));
 	for (double side : {-0.025, 0.025}) {
 		kit.Fine(Strut({-0.02, side, 0.2}, {0.03, side, 0.235}, 0.003).Paint(PANTOGRAPH));

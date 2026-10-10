@@ -143,11 +143,12 @@ inline constexpr std::array<const char *, 11> VEHICLE_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/vehicle.frag",
 };
 
+inline constexpr double TRIM_GLOSS = 0.3;
 inline constexpr double PAINT_GLOSS = 0.6;
 inline constexpr double METAL_GLOSS = 0.7;
 inline constexpr double GLASS_GLOSS = 0.8;
 inline constexpr double PANE_GLOSS = (METAL_GLOSS + GLASS_GLOSS) * 0.5;
-static_assert(PAINT_GLOSS < PANE_GLOSS && METAL_GLOSS < PANE_GLOSS && GLASS_GLOSS > PANE_GLOSS);
+static_assert(TRIM_GLOSS < PANE_GLOSS && PAINT_GLOSS < PANE_GLOSS && METAL_GLOSS < PANE_GLOSS && GLASS_GLOSS > PANE_GLOSS);
 
 /* Where a steam engine's chimney stands on its model, how tall and how wide at the mouth its smoke leaves. */
 inline constexpr Vec3 STEAM_CHIMNEY_FOOT = {0.185, 0.0, 0.21};

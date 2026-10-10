@@ -100,9 +100,24 @@ ModelMesh Plank(const Vec3 &low, const Vec3 &high, uint32_t tone)
 	return Box(low, high).Paint(tone);
 }
 
+ModelMesh Upright(std::span<const MapVector> outline, double thickness)
+{
+	return Extrusion(outline, thickness).Transform(Mat4::Translation({0.0, thickness * 0.5, 0.0}) * Mat4::Turn(X_AXIS, std::numbers::pi / 2.0));
+}
+
+static ModelMesh Disc(double x, double y, double axle, double radius, double width)
+{
+	return Prism(WHEEL_SIDES, radius, width).Transform(Mat4::Translation({x, y + width * 0.5, axle}) * Mat4::Turn(X_AXIS, std::numbers::pi / 2.0));
+}
+
 ModelMesh Wheel(double x, double y, double radius, double width)
 {
-	return Prism(WHEEL_SIDES, radius, width).Transform(Mat4::Translation({x, y + width * 0.5, radius}) * Mat4::Turn(X_AXIS, std::numbers::pi / 2.0)).Paint(TYRE);
+	return Disc(x, y, radius, radius, width).Paint(TYRE);
+}
+
+ModelMesh Hub(double x, double y, double axle, double radius, double width)
+{
+	return Disc(x, y, axle, radius, width).Paint(STEEL).Gloss(METAL_GLOSS);
 }
 
 ModelMesh WheelPair(double x, double half_track, double radius, double width)

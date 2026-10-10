@@ -15,7 +15,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
 static constexpr Vec3 Z_AXIS = {0.0, 0.0, 1.0};
 static constexpr int FUSELAGE_SIDES = 10;
 static constexpr int ROTOR_BLADES = 4;
@@ -24,7 +23,6 @@ static constexpr double ROTOR_REACH = 0.22;
 static constexpr uint32_t WING = 0xC8CCD0;
 static constexpr uint32_t PORT_LAMP = 0xFF3020;
 static constexpr uint32_t STARBOARD_LAMP = 0x30FF60;
-static constexpr uint32_t BLADE = 0x2E3034;
 
 /* A round fuselage, white over a belly in the owner's second colour. */
 static ModelMesh Fuselage(std::span<const LatheRing> profile, double axis_z)
@@ -42,7 +40,7 @@ static ModelMesh Planform(std::span<const MapVector> outline, double z, double t
 /* A flat outline seen from the side, counterclockwise with x along and the second axis up, stood upright on the middle. */
 static ModelMesh Fin(std::span<const MapVector> outline, double thickness, uint32_t tone)
 {
-	return Extrusion(outline, thickness).Transform(Mat4::Translation({0.0, thickness * 0.5, 0.0}) * Mat4::Turn(X_AXIS, std::numbers::pi / 2.0)).Paint(tone).Gloss(PAINT_GLOSS);
+	return Upright(outline, thickness).Paint(tone).Gloss(PAINT_GLOSS);
 }
 
 static void WingtipLamps(VehicleKit &kit, double x, double span, double z)
@@ -71,8 +69,8 @@ static ModelMesh PropPlane(VehicleDetail detail)
 	kit.Body(Fin(fin, 0.008, PRIMARY));
 	for (double y : {-0.1, 0.1}) {
 		kit.Body(Barrel(-0.02, 0.085, 0.017, 0.088, 8).Transform(Mat4::Translation({0.0, y, 0.0})).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-		kit.Fine(Plank({0.086, y - 0.04, 0.085}, {0.09, y + 0.04, 0.091}, BLADE));
-		kit.Fine(Plank({0.086, y - 0.003, 0.048}, {0.09, y + 0.003, 0.128}, BLADE));
+		kit.Fine(Plank({0.086, y - 0.04, 0.085}, {0.09, y + 0.04, 0.091}, TRIM));
+		kit.Fine(Plank({0.086, y - 0.003, 0.048}, {0.09, y + 0.003, 0.128}, TRIM));
 	}
 	kit.Fine(Plank({0.17, -0.022, 0.085}, {0.2, 0.022, 0.1}, GLASS).Gloss(GLASS_GLOSS));
 	WingtipLamps(kit, 0.015, 0.27, 0.098);
@@ -113,7 +111,7 @@ static ModelMesh Helicopter(VehicleDetail detail)
 	kit.Body(Turned(boom, 6, 0.09).Paint(PRIMARY));
 	std::array<MapVector, 4> fin = {{{-0.28, 0.08}, {-0.24, 0.08}, {-0.26, 0.15}, {-0.285, 0.15}}};
 	kit.Body(Fin(fin, 0.006, SECONDARY));
-	kit.Fine(Plank({-0.275, 0.006, 0.09}, {-0.255, 0.01, 0.14}, BLADE));
+	kit.Fine(Plank({-0.275, 0.006, 0.09}, {-0.255, 0.01, 0.14}, TRIM));
 	for (double y : {-0.045, 0.045}) {
 		kit.Fine(Plank({-0.07, y - 0.004, 0.0}, {0.1, y + 0.004, 0.008}, RUNNING_GEAR));
 		for (double x : {-0.03, 0.06}) kit.Fine(Plank({x - 0.003, y - 0.003, 0.008}, {x + 0.003, y + 0.003, 0.04}, RUNNING_GEAR));
@@ -129,7 +127,7 @@ static ModelMesh Rotor(VehicleDetail detail)
 	VehicleKit kit(detail);
 	ModelMesh blades;
 	for (int blade = 0; blade < ROTOR_BLADES; blade++) {
-		blades.Append(Plank({0.0, -0.007, ROTOR_HUB}, {ROTOR_REACH, 0.007, ROTOR_HUB + 0.003}, BLADE).Transform(Mat4::Turn(Z_AXIS, 2.0 * std::numbers::pi * blade / ROTOR_BLADES)));
+		blades.Append(Plank({0.0, -0.007, ROTOR_HUB}, {ROTOR_REACH, 0.007, ROTOR_HUB + 0.003}, TRIM).Transform(Mat4::Turn(Z_AXIS, 2.0 * std::numbers::pi * blade / ROTOR_BLADES)));
 	}
 	kit.Body(blades);
 	kit.Fine(Prism(6, 0.014, 0.012).Transform(Mat4::Translation({0.0, 0.0, ROTOR_HUB - 0.004})).Paint(RUNNING_GEAR));

@@ -23,6 +23,7 @@ inline constexpr double UNIT_REACH = 0.228;
 inline constexpr uint32_t GLASS = 0x26323C;
 inline constexpr uint32_t RUNNING_GEAR = 0x2A2A2C;
 inline constexpr uint32_t TYRE = 0x1C1C1E;
+inline constexpr uint32_t TRIM = 0x2E3034;
 inline constexpr uint32_t ROOF_GREY = 0x8E9094;
 inline constexpr uint32_t STEEL = 0x9CA2A8;
 inline constexpr uint32_t CREAM = 0xEDE8DA;
@@ -98,7 +99,9 @@ ModelMesh Nose(const HullProfile &profile, double from, double to, const NoseSha
 ModelMesh Turned(std::span<const LatheRing> profile, int sides, double axis_z);
 ModelMesh Barrel(double back, double front, double radius, double axis_z, int sides);
 ModelMesh Plank(const Vec3 &low, const Vec3 &high, uint32_t tone);
+ModelMesh Upright(std::span<const MapVector> outline, double thickness);
 ModelMesh Wheel(double x, double y, double radius, double width);
+ModelMesh Hub(double x, double y, double axle, double radius, double width);
 ModelMesh WheelPair(double x, double half_track, double radius, double width);
 ModelMesh Bogie(double x, double half_track, double radius);
 /* Window boxes standing proud of both sides of a body, evenly spread between its ends. */
