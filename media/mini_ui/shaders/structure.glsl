@@ -71,8 +71,12 @@ const float RING_TILT = 0.35;
 const float RING_REACH = 0.3;
 const float WATER_ROUGHNESS = 0.06;
 const float GRAVEL_GRAIN = 110.0;
+const float GRAVEL_VARIETY = 0.22;
+const float GRAVEL_ROUGHNESS = 0.95;
 const vec2 PEBBLES_PER_TILE = vec2(16.0, 42.0);
 const vec2 PEBBLE_SEEDS = vec2(1.7, 6.4);
+const vec2 PEBBLE_EDGES = vec2(0.0, 1.0);
+const float PEBBLE_MEAN = 0.5;
 const float PEBBLE_VARIETY = 0.2;
 const float SCOURS_PER_TILE = 1.6;
 const vec2 SCOUR_EDGES = vec2(0.66, 0.8);
@@ -218,11 +222,11 @@ Clad Mottled(vec2 p, vec3 tint, float frequency, float variety, float roughness)
 
 Clad Gravelled(vec2 p, vec3 tint)
 {
-	float coarse = Faded(p * PEBBLES_PER_TILE.x, PEBBLE_SEEDS.x, vec2(0.0, 1.0), 0.5);
-	float fine = Faded(p * PEBBLES_PER_TILE.y, PEBBLE_SEEDS.y, vec2(0.0, 1.0), 0.5);
+	float coarse = Faded(p * PEBBLES_PER_TILE.x, PEBBLE_SEEDS.x, PEBBLE_EDGES, PEBBLE_MEAN);
+	float fine = Faded(p * PEBBLES_PER_TILE.y, PEBBLE_SEEDS.y, PEBBLE_EDGES, PEBBLE_MEAN);
 	float scoured = Faded(p * SCOURS_PER_TILE, SCOUR_SEED, SCOUR_EDGES, SCOUR_MEAN);
 	vec3 stones = tint * Varied(coarse, PEBBLE_VARIETY) * Varied(fine, PEBBLE_VARIETY);
-	return Mottled(p, mix(stones, tint * SCOUR_SHADE, scoured), GRAVEL_GRAIN, 0.22, 0.95);
+	return Mottled(p, mix(stones, tint * SCOUR_SHADE, scoured), GRAVEL_GRAIN, GRAVEL_VARIETY, GRAVEL_ROUGHNESS);
 }
 
 Clad Membrane(vec2 p, vec3 tint)
