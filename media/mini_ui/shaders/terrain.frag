@@ -216,8 +216,9 @@ const float CLUMPS_PER_TILE = 3.3;
 const float LOCAL_PER_TILE = 1.3;
 const float RELIEF_DEPTH = 0.035;
 const float STONY_HOLLOWS = 1.0;
+const float GRAIN_MEAN = 0.5;
 const vec2 BUMP_HEIGHT_SHARES = vec2(0.65, 0.35);
-const float BUMP_MEAN_HEIGHT = 0.5;
+const float BUMP_MEAN_HEIGHT = dot(BUMP_HEIGHT_SHARES, vec2(GRAIN_MEAN));
 const vec2 CAVITY_OCCLUSION = vec2(1.6, 0.9);
 
 const vec2 GRASS_RUGGED = vec2(0.45, 0.0);
