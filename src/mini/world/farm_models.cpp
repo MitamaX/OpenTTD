@@ -157,8 +157,8 @@ static ModelMesh FencePost(double x, SeedDice &dice)
 {
 	double half = FENCE_POST / 2.0;
 	double cap = half + FENCE_CAP_REACH;
-	ModelMesh post = Box({x - half, -half, -FOOT_SINK}, {x + half, half, FENCE_HEIGHT});
-	post.Append(Box({x - cap, -cap, FENCE_HEIGHT}, {x + cap, cap, FENCE_HEIGHT + FENCE_CAP_HEIGHT}));
+	ModelMesh post = Box({x - half, -half, -FOOT_SINK}, {x + half, half, FENCE_HEIGHT}, Capped::Neither);
+	post.Append(Box({x - cap, -cap, FENCE_HEIGHT}, {x + cap, cap, FENCE_HEIGHT + FENCE_CAP_HEIGHT}, Capped::Top));
 	post.Paint(ScaledRgb(TIMBER, dice.Between(FENCE_TONES)));
 	double along = dice.Between(-FENCE_LEAN, FENCE_LEAN);
 	double across = dice.Between(-FENCE_LEAN, FENCE_LEAN);
@@ -179,7 +179,7 @@ static ModelMesh Fence()
 	double front = -FENCE_POST / 2.0 - FENCE_RAIL_STANDOFF;
 	for (double share : FENCE_RAIL_SHARES) {
 		double z = FENCE_HEIGHT * share;
-		fence.Append(Box({-HALF_SIDE, front - FENCE_RAIL / 2.0, z - FENCE_RAIL / 2.0}, {HALF_SIDE, front + FENCE_RAIL / 2.0, z + FENCE_RAIL / 2.0}).Paint(ScaledRgb(TIMBER, dice.Between(FENCE_TONES))));
+		fence.Append(Box({-HALF_SIDE, front - FENCE_RAIL / 2.0, z - FENCE_RAIL / 2.0}, {HALF_SIDE, front + FENCE_RAIL / 2.0, z + FENCE_RAIL / 2.0}, Capped::Top).Paint(ScaledRgb(TIMBER, dice.Between(FENCE_TONES))));
 	}
 	return fence.Round(DEEP_BELOW, GROUND_LIGHTING);
 }
@@ -216,7 +216,7 @@ static void LayCourse(ModelMesh &wall, const WallCourse &course, double foot, do
 		double height = dice.Between(course.height);
 		double tip = dice.Between(-WALL_TIP, WALL_TIP);
 		std::array<MapVector, 4> outline = {MapVector{start, sway - course.half_foot}, MapVector{end, sway - course.half_foot}, MapVector{end, sway + course.half_foot}, MapVector{start, sway + course.half_foot}};
-		ModelMesh stone = Extrusion(outline, height);
+		ModelMesh stone = Extrusion(outline, height, Capped::Top);
 		for (ModelVertex &vertex : stone.vertices) {
 			if (vertex.z <= 0.0f) {
 				vertex.z = static_cast<float>(foot);

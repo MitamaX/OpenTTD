@@ -40,12 +40,14 @@ ModelMesh Column(int sides, double low_radius, double high_radius, double height
 ModelMesh Prism(int sides, double radius, double height);
 ModelMesh Cone(int sides, double radius, double height);
 
+enum class Capped : uint8_t { Both, Top, Neither };
+
 /* A sphere of unit radius, from an icosahedron whose faces are split into four this many times over. */
 ModelMesh Icosphere(int subdivisions);
-ModelMesh Box(const Vec3 &low, const Vec3 &high);
+ModelMesh Box(const Vec3 &low, const Vec3 &high, Capped capped = Capped::Both);
 
 /* A convex outline on the ground, counterclockwise from above, raised to a height and capped. */
-ModelMesh Extrusion(std::span<const MapVector> outline, double height);
+ModelMesh Extrusion(std::span<const MapVector> outline, double height, Capped capped = Capped::Both);
 
 ModelMesh Loft(std::span<const MapVector> section, double foot, std::span<const LoftRing> rings);
 

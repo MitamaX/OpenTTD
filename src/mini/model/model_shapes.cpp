@@ -178,13 +178,20 @@ ModelMesh Icosphere(int subdivisions)
 	return mesh;
 }
 
-ModelMesh Box(const Vec3 &low, const Vec3 &high)
+ModelMesh Box(const Vec3 &low, const Vec3 &high, Capped capped)
 {
 	std::array<MapVector, 4> outline = {{{low.x, low.y}, {high.x, low.y}, {high.x, high.y}, {low.x, high.y}}};
-	return Extrusion(outline, high.z - low.z).Transform(Mat4::Translation({0.0, 0.0, low.z}));
+	return Extrusion(outline, high.z - low.z, capped).Transform(Mat4::Translation({0.0, 0.0, low.z}));
 }
 
-ModelMesh Extrusion(std::span<const MapVector> outline, double height)
+static std::vector<Vec3> RimAt(std::span<const MapVector> outline, double z)
+{
+	std::vector<Vec3> rim;
+	for (const MapVector &corner : outline) rim.push_back({corner.x, corner.y, z});
+	return rim;
+}
+
+ModelMesh Extrusion(std::span<const MapVector> outline, double height, Capped capped)
 {
 	ModelMesh mesh;
 	size_t count = outline.size();
@@ -198,11 +205,8 @@ ModelMesh Extrusion(std::span<const MapVector> outline, double height)
 		uint32_t d = mesh.Point({from.x, from.y, height}, outward);
 		mesh.Quad(a, b, c, d);
 	}
-	for (double z : {0.0, height}) {
-		std::vector<Vec3> rim;
-		for (const MapVector &corner : outline) rim.push_back({corner.x, corner.y, z});
-		Fan(mesh, rim, z > 0.0 ? UP : DOWN, UP);
-	}
+	if (capped == Capped::Both) Fan(mesh, RimAt(outline, 0.0), DOWN, UP);
+	if (capped != Capped::Neither) Fan(mesh, RimAt(outline, height), UP, UP);
 	return mesh;
 }
 
