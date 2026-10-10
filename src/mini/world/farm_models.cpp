@@ -165,7 +165,7 @@ static ModelMesh FencePost(double x, SeedDice &dice)
 	return Leaned(post, along, across, FENCE_HEIGHT);
 }
 
-/* Timber posts along a tile's side carrying two rails nailed to their face; like a wall, it is lit half as the ground about it is, so it reads as part of the ground rather than a dark line drawn on it. */
+/* Timber posts carrying two rails, lit half as the ground about them is so the fence reads as part of the ground. */
 static ModelMesh Fence()
 {
 	SeedDice dice(FENCE_SEED);
