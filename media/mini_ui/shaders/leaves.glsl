@@ -32,10 +32,13 @@ float Clumps(float foliage)
 
 void DropOutOfWindow()
 {
-	if (Dropped(!InWindow(v_window, ScreenNoise(gl_FragCoord.xy)))) discard;
+	bool outside = !InWindow(v_window, ScreenNoise(gl_FragCoord.xy));
+	if (Dropped(outside)) discard;
 }
 
 void DropFrayed(vec3 normal, vec3 view, float clumps, float foliage)
 {
-	if (Dropped(clumps < RAGGED_EDGE * (1.0 - smoothstep(0.0, RAGGED_FACING, abs(dot(normal, view)))) * foliage)) discard;
+	float edge_on = 1.0 - smoothstep(0.0, RAGGED_FACING, abs(dot(normal, view)));
+	bool frayed = clumps < RAGGED_EDGE * edge_on * foliage;
+	if (Dropped(frayed)) discard;
 }
