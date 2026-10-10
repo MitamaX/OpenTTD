@@ -11,6 +11,7 @@
 #define MINI_WORLD_WAY_SHAPES_H
 
 #include <array>
+#include <cmath>
 #include <functional>
 #include <span>
 #include <string_view>
@@ -93,6 +94,22 @@ struct Stretch final : WayLine {
 	double Span() const override { return Length(this->to - this->from); }
 	MapVector At(double share, double lateral) const override;
 	double ShareOf(const MapVector &point) const override;
+};
+
+struct Portion final : WayLine {
+	const WayLine &line;
+	double from;
+	double to;
+
+	Portion(const WayLine &line, double from, double to) : line(line), from(from), to(to) {}
+
+	MapVector At(double share, double lateral) const override { return this->line.At(this->Inner(share), lateral); }
+	MapVector Along(double share) const override { return this->line.Along(this->Inner(share)); }
+	double Span() const override { return this->line.Span() * (this->to - this->from); }
+	double ShareOf(const MapVector &point) const override { return (this->line.ShareOf(point) - this->from) / (this->to - this->from); }
+
+private:
+	double Inner(double share) const { return std::lerp(this->from, this->to, share); }
 };
 
 /* The section run along a line, split into rows so the footing can bend it. */

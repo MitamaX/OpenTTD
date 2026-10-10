@@ -36,6 +36,7 @@ static constexpr int BISECT_STEPS = 24;
 static constexpr double SHARED_TIMBER_REACH = 2.0 * SLEEPER_HALF_LENGTH + SLEEPER_GAP;
 static constexpr double RAIL_OVERHANG = SLEEPER_HALF_LENGTH - GAUGE_HALF;
 static constexpr double STEEPEST_CROSSING_COS = 0.5;
+static constexpr double FROG_LATERAL = 2.0 * GAUGE_HALF;
 
 static DrawnTrack Drawn(int tx, int ty, Track track, bool grounded)
 {
@@ -142,6 +143,19 @@ static double Bisect(Measure measure, double low, double high)
 	return (low + high) / 2.0;
 }
 
+static std::optional<Frog> FrogOf(const WayLine &main, const WayLine &branch, const Turnout &turnout)
+{
+	auto parted = [&](double share) { return turnout.side * Lateral(main, branch.At(share, 0.0)) - FROG_LATERAL; };
+	double heel = 1.0 - turnout.branch_toe;
+	if (parted(heel) < 0.0) return std::nullopt;
+	double branch_share = Bisect(parted, turnout.branch_toe, heel);
+	MapVector point = branch.At(branch_share, -turnout.branch_side * GAUGE_HALF);
+	double main_share = main.ShareOf(point);
+	MapVector main_way = main.Along(main_share) * Turnout::Inward(turnout.main_toe);
+	MapVector branch_way = branch.Along(branch_share) * Turnout::Inward(turnout.branch_toe);
+	return Frog{main_share, branch_share, point, Unit(main_way + branch_way)};
+}
+
 using TrackRank = std::tuple<int, bool, int>;
 
 static TrackRank RankOf(int tx, int ty, Track track)
@@ -161,7 +175,7 @@ TileTrack::TileTrack(const TrackSite &site) : site(site)
 std::vector<Turnout> TileTrack::FindTurnouts() const
 {
 	std::vector<Turnout> found;
-	for (size_t branch = 1; branch < this->pieces.size(); branch++) {
+	for (size_t branch = MAIN_LINE + 1; branch < this->pieces.size(); branch++) {
 		const WayLine &branch_line = this->pieces[branch].Line();
 		Piece branch_piece = PieceOf(this->site.tx, this->site.ty, this->pieces[branch].Id());
 		for (double branch_toe : {0.0, 1.0}) {
@@ -174,7 +188,8 @@ std::vector<Turnout> TileTrack::FindTurnouts() const
 				double alignment = Dot(main_line.Along(main_toe), branch_line.Along(branch_toe));
 				if (std::abs(alignment) < std::cos(TOE_SPLAY)) continue;
 				double side = std::copysign(1.0, Lateral(main_line, branch_line.At(1.0 - branch_toe, 0.0)));
-				found.push_back({main, branch, main_toe, branch_toe, side, side * std::copysign(1.0, alignment)});
+				Turnout &turnout = found.emplace_back(main, branch, main_toe, branch_toe, side, side * std::copysign(1.0, alignment));
+				turnout.frog = FrogOf(main_line, branch_line, turnout);
 				break;
 			}
 		}

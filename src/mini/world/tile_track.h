@@ -26,6 +26,7 @@ inline constexpr double SLEEPER_HALF_WIDTH = 0.02;
 inline constexpr double SLEEPER_HALF_LENGTH = 0.17;
 inline constexpr double SLEEPER_FOOT = 0.026;
 inline constexpr double SLEEPER_TOP = 0.047;
+inline constexpr size_t MAIN_LINE = 0;
 
 /* A tile's track and how it is laid. Track on the ground meets its neighbours' pieces in mitres and ends in a sloped face where none carries on;
  * track on a bridge just runs from edge to edge. */
@@ -77,6 +78,13 @@ struct Sleeper {
 	double HalfLength() const { return (this->right - this->left) / 2.0; }
 };
 
+struct Frog {
+	double main_share;
+	double branch_share;
+	MapVector point;
+	MapVector heading;
+};
+
 struct Turnout {
 	size_t main;
 	size_t branch;
@@ -84,6 +92,9 @@ struct Turnout {
 	double branch_toe;
 	double side;
 	double branch_side;
+	std::optional<Frog> frog;
+
+	static constexpr double Inward(double toe) { return toe == 0.0 ? 1.0 : -1.0; }
 };
 
 class TileTrack {
@@ -92,6 +103,7 @@ public:
 
 	const TrackSite &Site() const { return this->site; }
 	const std::vector<TrackPiece> &Pieces() const { return this->pieces; }
+	const std::vector<Turnout> &Turnouts() const { return this->turnouts; }
 	double Lift(const TrackPiece &piece) const;
 	std::optional<uint32_t> BallastSeed(const TrackPiece &piece) const;
 	bool Branch(size_t rank) const;

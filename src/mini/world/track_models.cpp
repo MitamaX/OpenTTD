@@ -46,6 +46,22 @@ static constexpr double MAST_GLOSS = 0.4;
 
 static constexpr double STRIP_GAP_HALF = 0.1;
 
+static constexpr double MACHINE_REACH = 0.08;
+static constexpr double MACHINE_OFFSET = 0.25;
+static constexpr Vec3 MACHINE_LOW = {-0.05, -0.025, 0.0};
+static constexpr Vec3 MACHINE_HIGH = {0.05, 0.025, 0.065};
+static constexpr std::array<double, 2> ROD_REACHES = {0.05, 0.11};
+static constexpr double ROD_OVERHANG = 0.02;
+static constexpr double ROD_HEIGHT = 0.05;
+static constexpr double ROD_HALF = 0.006;
+static constexpr double FROG_HALF_LENGTH = 0.045;
+static constexpr double FROG_HALF_WIDTH = 0.016;
+static constexpr double FROG_PROUD = 0.001;
+static constexpr double CHECK_HALF = 0.08;
+static constexpr int CHECK_ROWS = 2;
+static constexpr double CHECK_INSET = 0.03;
+static constexpr double CHECK_LATERAL = GAUGE_HALF - CHECK_INSET;
+
 static constexpr double WIRE_HEIGHT = 0.36;
 static constexpr double MAST_OFFSET = 0.31;
 static constexpr std::array<double, 2> MAST_SIDES = {-1.0, 1.0};
@@ -108,13 +124,49 @@ static ModelMesh SleeperModel(const WayLine &line, const Sleeper &sleeper)
 	return timber.Paint(TIMBER).Vary(TIMBER_VARIETY, sleeper.seed);
 }
 
-static ModelMesh RailPiece(const TrackPiece &piece, WayDetail detail, std::optional<uint32_t> seed, std::span<const Sleeper> sleepers)
+static Vec3 Raised(const MapVector &point, double height)
 {
-	if (detail == WayDetail::Simple) return piece.Body(DISTANT_BALLAST_SECTION, true);
+	return {point.x, point.y, height};
+}
+
+static Portion Around(const WayLine &line, double share, double reach)
+{
+	double half = reach / line.Span();
+	return {line, std::max(share - half, 0.0), std::min(share + half, 1.0)};
+}
+
+static ModelMesh TurnoutGear(const TrackPiece &main, const TrackPiece &branch, const Turnout &turnout)
+{
+	const WayLine &line = main.Line();
+	auto from_toe = [&](double reach) { return turnout.main_toe + Turnout::Inward(turnout.main_toe) * reach / line.Span(); };
+	double machine = from_toe(MACHINE_REACH);
+	ModelMesh steel = Block(line.At(machine, -turnout.side * MACHINE_OFFSET), line.Along(machine), MACHINE_LOW, MACHINE_HIGH);
+	for (double reach : ROD_REACHES) {
+		double share = from_toe(reach);
+		steel.Append(Strut(Raised(line.At(share, -turnout.side * MACHINE_OFFSET), ROD_HEIGHT), Raised(line.At(share, turnout.side * (GAUGE_HALF + ROD_OVERHANG)), ROD_HEIGHT), ROD_HALF));
+	}
+	steel.Paint(MAST).Gloss(MAST_GLOSS);
+	if (!turnout.frog.has_value()) return steel;
+	const Frog &frog = *turnout.frog;
+	ModelMesh nose = Block(frog.point, frog.heading, {-FROG_HALF_LENGTH, -FROG_HALF_WIDTH, SLEEPER_TOP}, {FROG_HALF_LENGTH, FROG_HALF_WIDTH, RAIL_TOP + FROG_PROUD});
+	steel.Append(nose.Paint(RAIL_HEAD).Gloss(STEEL_GLOSS));
+	steel.Append(Laid(Around(line, frog.main_share, CHECK_HALF), Shifted(RAIL_SECTION, -turnout.side * CHECK_LATERAL), CHECK_ROWS));
+	return steel.Append(Laid(Around(branch.Line(), frog.branch_share, CHECK_HALF), Shifted(RAIL_SECTION, turnout.branch_side * CHECK_LATERAL), CHECK_ROWS));
+}
+
+static ModelMesh RailPiece(const TileTrack &track, size_t rank, std::span<const Sleeper> sleepers)
+{
+	const TrackPiece &piece = track.Pieces()[rank];
+	if (track.Site().detail == WayDetail::Simple) return piece.Body(DISTANT_BALLAST_SECTION, true);
 	ModelMesh mesh = piece.Body(BALLAST_SECTION, true);
-	if (seed.has_value()) mesh.Vary(BALLAST_VARIETY, *seed);
+	if (std::optional<uint32_t> seed = track.BallastSeed(piece); seed.has_value()) mesh.Vary(BALLAST_VARIETY, *seed);
 	for (const Sleeper &sleeper : sleepers) mesh.Append(SleeperModel(piece.Line(), sleeper));
-	return mesh.Append(piece.Pair(RAIL_SECTION, GAUGE_HALF));
+	mesh.Append(piece.Pair(RAIL_SECTION, GAUGE_HALF));
+	if (rank != MAIN_LINE) return mesh;
+	for (const Turnout &turnout : track.Turnouts()) {
+		if (turnout.main == MAIN_LINE) mesh.Append(TurnoutGear(piece, track.Pieces()[turnout.branch], turnout));
+	}
+	return mesh;
 }
 
 static ModelMesh MaglevPiece(const TrackPiece &piece, WayDetail detail)
@@ -134,13 +186,13 @@ double RideHeight(RailLook look)
 	}
 }
 
-static ModelMesh PieceModel(const TileTrack &track, const TrackPiece &piece, std::span<const Sleeper> sleepers)
+static ModelMesh PieceModel(const TileTrack &track, size_t rank, std::span<const Sleeper> sleepers)
 {
-	const TrackSite &site = track.Site();
-	switch (site.look) {
+	const TrackPiece &piece = track.Pieces()[rank];
+	switch (track.Site().look) {
 		case RailLook::Monorail: return piece.Body(MONORAIL_SECTION, true);
-		case RailLook::Maglev: return MaglevPiece(piece, site.detail);
-		default: return RailPiece(piece, site.detail, track.BallastSeed(piece), sleepers);
+		case RailLook::Maglev: return MaglevPiece(piece, track.Site().detail);
+		default: return RailPiece(track, rank, sleepers);
 	}
 }
 
@@ -156,7 +208,7 @@ void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing)
 	std::vector<std::vector<Sleeper>> sleepers = track.Sleepers();
 	for (size_t rank = 0; rank < pieces.size(); rank++) {
 		const TrackPiece &piece = pieces[rank];
-		Lay(mesh, PieceModel(track, piece, sleepers[rank]), track.Lift(piece), piece.FootingOn(footing));
+		Lay(mesh, PieceModel(track, rank, sleepers[rank]), track.Lift(piece), piece.FootingOn(footing));
 	}
 }
 
@@ -279,7 +331,7 @@ void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing
 		WireRun wires = WiresOf(piece);
 		ModelMesh parts = piece.Body(WIRE_SECTION, false);
 		if (!track.Branch(rank)) parts.Append(Messenger(line, wires));
-		if (piece.Distances().has_value() || rank == 0) {
+		if (piece.Distances().has_value() || rank == MAIN_LINE) {
 			for (double share : wires.SharesAt(0.0)) {
 				std::optional<double> side = MastSide(line, share, site.grounded && !run, banned);
 				if (side.has_value()) parts.Append(Mast(line, share, *side));
