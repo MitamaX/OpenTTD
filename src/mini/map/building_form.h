@@ -142,12 +142,9 @@ struct Solid {
 	uint32_t glass_tint = 0xFF7F9FB4U;
 
 	float Top() const { return this->base + this->wall + this->rise; }
+	bool StandsOnStoreys() const { return this->windows != WindowGrid::None && this->base >= GroundStoreyTiles(this->windows); }
+	float UpperStoreysFoot() const { return this->StandsOnStoreys() ? this->base : this->base + GroundStoreyTiles(this->windows); }
 };
-
-constexpr bool StandsOnStoreys(const Solid &solid)
-{
-	return solid.windows != WindowGrid::None && solid.base >= GroundStoreyTiles(solid.windows);
-}
 
 inline constexpr size_t MAX_SOLIDS = 20;
 
