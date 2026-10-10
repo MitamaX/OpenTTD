@@ -79,10 +79,11 @@ const float INLAND_REFLECTANCE = 0.035;
 const float REFLECTANCE_CEILING = 0.62;
 const float REFLECTED_LIFT = 0.04;
 const float REFLECTED_SKY = 0.9;
-const int MIRROR_STEPS = 16;
+const int MIRROR_STEPS = 14;
 const float MIRROR_REACH = 6.0;
 const float MIRROR_THICKNESS = 1.0;
 const float MIRROR_EDGE = 0.08;
+const float MIRROR_SWAY = 0.3;
 const float REFRACTION = 0.012;
 const float INLAND_REFRACTION = 0.024;
 const float REFRACTION_DEPTH = 0.5;
@@ -522,9 +523,11 @@ vec3 SkyOnWater(vec3 way, Surface surface, vec3 view, float reflectance, out flo
 
 vec4 MirroredWorld(vec3 from, vec3 way)
 {
+	vec4 start = u_view_projection * vec4(from, 1.0);
+	vec4 run = u_view_projection * vec4(way * MIRROR_REACH, 0.0);
 	for (int tap = 1; tap <= MIRROR_STEPS; tap++) {
 		float share = float(tap) / float(MIRROR_STEPS);
-		vec4 clip = u_view_projection * vec4(from + way * MIRROR_REACH * share * share, 1.0);
+		vec4 clip = start + run * (share * share);
 		vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
 		if (clip.w <= 0.0 || any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) break;
 		float scene = AheadOf(texture(u_scene_depth, uv).r);
@@ -797,7 +800,8 @@ void main()
 	float reflected;
 	vec3 way = reflect(sight, waves.normal);
 	vec3 sky = SkyOnWater(way, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
-	vec3 mirrored = WorldOver(sky, v_position, Skyward(way, REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
+	vec3 world_way = reflect(sight, normalize(mix(facing, waves.normal, MIRROR_SWAY)));
+	vec3 mirrored = WorldOver(sky, v_position, Skyward(world_way, REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
