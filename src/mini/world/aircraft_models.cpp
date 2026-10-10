@@ -53,7 +53,6 @@ static constexpr double JET_NACELLE_SIDE = 0.14;
 static constexpr double HELI_AXIS = 0.075;
 static constexpr std::array<LatheRing, 5> HELI_POD = {{{0.022, -0.09}, {0.04, -0.065}, {0.05, -0.03}, {0.052, 0.01}, {0.05, 0.045}}};
 static constexpr std::array<LatheRing, 4> HELI_CANOPY = {{{0.05, 0.045}, {0.043, 0.08}, {0.026, 0.108}, {0.0, 0.12}}};
-static constexpr int HELI_SIDES = 10;
 static constexpr double HELI_POD_WIDTH = 1.1;
 static constexpr HullProfile HELI_COWL = {0.024, 0.1, 0.14, 0.014};
 static constexpr double HELI_COWL_BACK = -0.075;
@@ -161,7 +160,7 @@ static ModelMesh Helicopter(VehicleDetail detail)
 	VehicleKit kit(detail);
 	Mat4 widened = Mat4::Scaling({1.0, HELI_POD_WIDTH, 1.0});
 	kit.Body(Fuselage(HELI_POD, HELI_AXIS, PRIMARY).Transform(widened));
-	kit.Body(Turned(HELI_CANOPY, HELI_SIDES, HELI_AXIS).Transform(widened).Paint(GLASS).Gloss(GLASS_GLOSS));
+	kit.Body(Turned(HELI_CANOPY, FUSELAGE_SIDES, HELI_AXIS).Transform(widened).Paint(GLASS).Gloss(GLASS_GLOSS));
 	kit.Body(BodyRun(HELI_COWL, HELI_COWL_BACK, HELI_COWL_FRONT, HELI_COWL_ENDS, HELI_COWL_ENDS, kit.Steps()).Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	std::array<LatheRing, 2> boom = {{{0.008, -0.27}, {0.018, -0.06}}};
 	kit.Body(Turned(boom, 6, 0.09).Paint(PRIMARY).Gloss(PAINT_GLOSS));
