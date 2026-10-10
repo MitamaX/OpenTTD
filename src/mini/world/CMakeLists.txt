@@ -30,6 +30,8 @@ add_files(
     ground_detail.h
     ground_overlay.cpp
     ground_overlay.h
+    hill_relief.cpp
+    hill_relief.h
     laid_depth.cpp
     laid_depth.h
     lazy_lattice.h

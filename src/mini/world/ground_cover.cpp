@@ -19,6 +19,7 @@
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
+#include "hill_relief.h"
 
 #include "../../safeguards.h"
 
@@ -59,9 +60,9 @@ static std::array<uint8_t, 4> TuftGreen(const GrassGreens &greens, double share,
 	return InstanceColour(Mix(Mix(greens.dark, greens.light, static_cast<uint>(share * CHANNEL_MAX)), ROUGH_STRAW, static_cast<uint>(straw * CHANNEL_MAX)));
 }
 
-static VehicleInstance TuftOn(double x, double y, double turn, double scale, const std::array<uint8_t, 4> &colour)
+static VehicleInstance TuftOn(const LaidGround &ground, double x, double y, double turn, double scale, const std::array<uint8_t, 4> &colour)
 {
-	double z = GroundLevel(x, y) * LevelRise() - SINK;
+	double z = ground.Level(x, y) * LevelRise() - SINK;
 	return VehicleInstance{
 		static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), static_cast<float>(turn), 0.0f, 0.0f,
 		static_cast<float>(scale), colour, colour, {},
@@ -94,7 +95,7 @@ static double ScrubGathering(double x, double y)
 }
 
 /* Each tuft and shrub a tile might bear stands only as often as scrub gathers where it falls, the shrubs larger where it gathers thick. */
-static void StrewScrub(int tx, int ty, const GrassGreens &greens, ScatterCopies &tufts)
+static void StrewScrub(const LaidGround &ground, int tx, int ty, const GrassGreens &greens, ScatterCopies &tufts)
 {
 	SeedDice dice(Hash32(SCRUB_SALT ^ TileXY(tx, ty).base()));
 	for (int tuft = 0; tuft < MOST_DESERT_TUFTS + MOST_SHRUBS; tuft++) {
@@ -107,7 +108,7 @@ static void StrewScrub(int tx, int ty, const GrassGreens &greens, ScatterCopies 
 		size_t shape = shrub ? BLADE_TUFTS + dice.Below(SHRUB_TUFTS) : dice.Below(BLADE_TUFTS);
 		double turn = dice.Between(0.0, 2.0 * M_PI);
 		double scale = shrub ? dice.Between(SHRUB_SCALE) * std::lerp(LONE_SHRUB_SCALE, 1.0, gathering) : dice.Between(TUFT_SCALE);
-		tufts[shape].push_back(TuftOn(x, y, turn, scale, colour));
+		tufts[shape].push_back(TuftOn(ground, x, y, turn, scale, colour));
 	}
 }
 
@@ -120,6 +121,7 @@ GroundCover::GroundCover() : BlockScatter(TUFT_SHAPES, CLEAR_REACH, OPEN_LAND_RE
 void GroundCover::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 {
 	const GrassGreens &climate = CLIMATE_GREENS[to_underlying(_settings_game.game_creation.landscape) % CLIMATE_GREENS.size()];
+	Landform land(tiles);
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			GroundTexel ground = _world_tiles.GroundAt(TileXY(tx, ty));
@@ -127,8 +129,9 @@ void GroundCover::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 			bool meadow = ground.material == GroundMaterial::Grass && (ground.detail & GROUND_DENSITY_MASK) == GROUND_DENSITY_MASK;
 			bool desert = ground.material == GroundMaterial::Desert;
 			if ((!rough && !meadow && !desert) || !ClearAround(tx, ty, CLEAR_REACH)) continue;
+			LaidGround laid(land, tx, ty);
 			if (desert) {
-				StrewScrub(tx, ty, climate, copies);
+				StrewScrub(laid, tx, ty, climate, copies);
 				continue;
 			}
 			const GrassGreens &greens = (ground.detail & GROUND_LUSH_BIT) != 0 ? LUSH_GREENS : climate;
@@ -141,7 +144,7 @@ void GroundCover::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 				std::array<uint8_t, 4> green = TuftGreen(greens, dice.Share(), straw);
 				uint32_t shape = dice.Below(BLADE_TUFTS);
 				double turn = dice.Between(0.0, 2.0 * M_PI);
-				copies[shape].push_back(TuftOn(x, y, turn, dice.Between(TUFT_SCALE), green));
+				copies[shape].push_back(TuftOn(laid, x, y, turn, dice.Between(TUFT_SCALE), green));
 			}
 		}
 	}

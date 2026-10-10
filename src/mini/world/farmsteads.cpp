@@ -19,6 +19,7 @@
 #include "../../settings_type.h"
 #include "../core/seed.h"
 #include "../map/tile_shapes.h"
+#include "hill_relief.h"
 
 #include "../../safeguards.h"
 
@@ -35,12 +36,14 @@ static constexpr uint32_t PADDOCK_ODDS = 2;
 static constexpr int PADDOCK_LEAST_TILES = 2;
 static constexpr int PADDOCK_MOST_STEPS = 4 * PADDOCK_BLOCK_TILES;
 static constexpr double PADDOCK_LEAST_STANDING = 0.6;
-static constexpr int STEEPEST_BOUNDARY_RISE = 1;
+static constexpr double STEEPEST_BOUNDARY_RISE = 1.0;
+static constexpr double BOUNDARY_SAG = 0.03;
 static constexpr uint32_t PADDOCK_COLUMN_STRIDE = 0x9E3779B1U;
 static constexpr double STONE_SHARE = 0.6;
 static constexpr int MOST_BALES = 7;
 static constexpr int YARD_BALES = 4;
 static constexpr double YARD_REACH = 0.32;
+static constexpr double YARD_PIECE_REACH = 0.1;
 static constexpr double BALE_ROW_GAP = 0.12;
 static constexpr double SILO_SHARE = 0.5;
 static constexpr double QUARTER_TURN = M_PI / 2.0;
@@ -78,10 +81,10 @@ static uint32_t Pick(const std::array<uint32_t, N> &tones, SeedDice &dice)
 }
 
 template <typename Piece>
-static void Place(ScatterCopies &copies, Piece piece, double x, double y, double turn, uint32_t primary, uint32_t secondary = 0, double pitch = 0.0)
+static void Place(ScatterCopies &copies, Piece piece, const WorldPoint &at, double turn, uint32_t primary, uint32_t secondary = 0, double pitch = 0.0)
 {
-	float z = static_cast<float>(GroundLevel(x, y) * LevelRise());
-	copies[to_underlying(piece)].push_back({static_cast<float>(x), static_cast<float>(y), z, static_cast<float>(turn), static_cast<float>(pitch), 0.0f, 1.0f, InstanceColour(primary), InstanceColour(secondary), {}});
+	float z = static_cast<float>(at.level * LevelRise());
+	copies[to_underlying(piece)].push_back({static_cast<float>(at.x), static_cast<float>(at.y), z, static_cast<float>(turn), static_cast<float>(pitch), 0.0f, 1.0f, InstanceColour(primary), InstanceColour(secondary), {}});
 }
 
 static bool IsFlat(const SurfaceTexel &surface)
@@ -153,8 +156,14 @@ static bool HoldsFarmstead(int tx, int ty)
 	return true;
 }
 
+static WorldPoint SeatOf(const LaidGround &ground, const MapVector &at)
+{
+	double lowest = std::min({ground.Level(at.x - YARD_PIECE_REACH, at.y), ground.Level(at.x + YARD_PIECE_REACH, at.y), ground.Level(at.x, at.y - YARD_PIECE_REACH), ground.Level(at.x, at.y + YARD_PIECE_REACH)});
+	return {at.x, at.y, lowest};
+}
+
 /* A farmhouse, a barn, now and then a silo, and a few bales stacked in the yard, the yard turned a quarter at a time. */
-static void Farmstead(ScatterCopies &copies, int tx, int ty, SeedDice &dice)
+static void Farmstead(ScatterCopies &copies, const LaidGround &ground, int tx, int ty, SeedDice &dice)
 {
 	double turn = dice.Below(4) * QUARTER_TURN;
 	double cos_turn = std::cos(turn);
@@ -166,21 +175,21 @@ static void Farmstead(ScatterCopies &copies, int tx, int ty, SeedDice &dice)
 	uint32_t hay = Pick(HAY, dice);
 	for (const YardSpot &spot : YARD) {
 		if (spot.piece == FarmPiece::Silo && !silo) continue;
-		MapVector at = placed(spot.at);
+		WorldPoint seat = SeatOf(ground, placed(spot.at));
 		switch (spot.piece) {
-			case FarmPiece::House: Place(copies, spot.piece, at.x, at.y, turn, Pick(HOUSE_WALLS, dice), Pick(HOUSE_ROOFS, dice)); break;
-			case FarmPiece::Barn: Place(copies, spot.piece, at.x, at.y, turn, Pick(BARN_WALLS, dice), Pick(BARN_ROOFS, dice)); break;
-			default: Place(copies, spot.piece, at.x, at.y, turn, Pick(SILO_WALLS, dice)); break;
+			case FarmPiece::House: Place(copies, spot.piece, seat, turn, Pick(HOUSE_WALLS, dice), Pick(HOUSE_ROOFS, dice)); break;
+			case FarmPiece::Barn: Place(copies, spot.piece, seat, turn, Pick(BARN_WALLS, dice), Pick(BARN_ROOFS, dice)); break;
+			default: Place(copies, spot.piece, seat, turn, Pick(SILO_WALLS, dice)); break;
 		}
 	}
 	for (int bale = 0; bale < YARD_BALES; bale++) {
 		MapVector at = placed({dice.Between(-YARD_REACH, -0.2), dice.Between(-YARD_REACH, YARD_REACH)});
-		Place(copies, bale % 2 == 0 ? FarmPiece::RoundBale : FarmPiece::BaleStack, at.x, at.y, dice.Between(0.0, 2.0 * M_PI), hay);
+		Place(copies, bale % 2 == 0 ? FarmPiece::RoundBale : FarmPiece::BaleStack, ground.At(at), dice.Between(0.0, 2.0 * M_PI), hay);
 	}
 }
 
 /* Round bales left lying along the rows of a cut field. */
-static void Bales(ScatterCopies &copies, int tx, int ty, const GroundTexel &field, SeedDice &dice)
+static void Bales(ScatterCopies &copies, const LaidGround &ground, int tx, int ty, const GroundTexel &field, SeedDice &dice)
 {
 	bool rows_along_y = (field.variant & 1) == 0;
 	uint32_t hay = Pick(HAY, dice);
@@ -191,7 +200,7 @@ static void Bales(ScatterCopies &copies, int tx, int ty, const GroundTexel &fiel
 		double across = row + (bale % 2) * BALE_ROW_GAP;
 		double x = tx + (rows_along_y ? across : along);
 		double y = ty + (rows_along_y ? along : across);
-		Place(copies, FarmPiece::RoundBale, x, y, (rows_along_y ? QUARTER_TURN : 0.0) + dice.Between(-0.3, 0.3), hay);
+		Place(copies, FarmPiece::RoundBale, ground.At({x, y}), (rows_along_y ? QUARTER_TURN : 0.0) + dice.Between(-0.3, 0.3), hay);
 	}
 }
 
@@ -202,6 +211,13 @@ struct TileSide {
 
 	int OwnerX() const { return this->axis == AXIS_X ? this->along : this->line; }
 	int OwnerY() const { return this->axis == AXIS_X ? this->line : this->along; }
+	MapVector Start() const { return {static_cast<double>(this->OwnerX()), static_cast<double>(this->OwnerY())}; }
+	MapVector Run() const { return this->axis == AXIS_X ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0}; }
+};
+
+struct SidePiece {
+	WorldPoint middle;
+	double pitch;
 };
 
 struct LoopStep {
@@ -209,6 +225,8 @@ struct LoopStep {
 	int x;
 	int y;
 	bool corner;
+
+	MapVector PostSpot() const { return {static_cast<double>(this->x), static_cast<double>(this->y)}; }
 };
 
 struct Paddock {
@@ -261,45 +279,45 @@ static bool HoldsBoundaries(int tx, int ty)
 	return IsBareGrass(tx, ty) && !HoldsFarmstead(tx, ty) && FarFromTowns(tx, ty);
 }
 
-static std::optional<int> SideRise(const TileSide &side)
+static std::optional<SidePiece> SidePieceOf(const Landform &land, const TileSide &side)
 {
 	int tx = side.OwnerX();
 	int ty = side.OwnerY();
-	if (!HoldsBoundaries(tx, ty)) return std::nullopt;
-	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
 	bool across_x = side.axis == AXIS_X;
-	int rise = (across_x ? surface.west : surface.east) - surface.north;
-	if (std::abs(rise) > STEEPEST_BOUNDARY_RISE || !IsOpenLand(across_x ? tx : tx - 1, across_x ? ty - 1 : ty)) return std::nullopt;
-	return rise;
+	if (!HoldsBoundaries(tx, ty) || !IsOpenLand(across_x ? tx : tx - 1, across_x ? ty - 1 : ty)) return std::nullopt;
+	LaidGround ground(land, tx, ty);
+	double from = ground.Level(side.Start());
+	double to = ground.Level(side.Start() + side.Run());
+	WorldPoint middle = ground.At(side.Start() + side.Run() * HALF_TILE);
+	double rise = to - from;
+	if (std::abs(rise) > STEEPEST_BOUNDARY_RISE || std::abs(middle.level - (from + to) * 0.5) > BOUNDARY_SAG) return std::nullopt;
+	return SidePiece{middle, std::atan2(rise * LevelRise(), 1.0)};
 }
 
-static void PlaceSide(ScatterCopies &copies, const TileSide &side, int rise, bool stone)
+static void PlaceSide(ScatterCopies &copies, const TileSide &side, const SidePiece &piece, bool stone)
 {
-	bool across_x = side.axis == AXIS_X;
-	double x = across_x ? side.along + HALF_TILE : static_cast<double>(side.line);
-	double y = across_x ? static_cast<double>(side.line) : side.along + HALF_TILE;
-	Place(copies, stone ? BoundaryPiece::StoneWall : BoundaryPiece::Fence, x, y, across_x ? 0.0 : QUARTER_TURN, 0, 0, std::atan(rise * LevelRise()));
+	Place(copies, stone ? BoundaryPiece::StoneWall : BoundaryPiece::Fence, piece.middle, side.axis == AXIS_X ? 0.0 : QUARTER_TURN, 0, 0, piece.pitch);
 }
 
 /* Dry stone walls and fences close paddocks about on open pasture but for a gate, with stouter posts or piers at the corners and wherever a run ends; a paddock too broken to read as one is left out. */
 template <typename Owns>
-static void Enclose(ScatterCopies &copies, const Paddock &paddock, Owns owns)
+static void Enclose(ScatterCopies &copies, const Landform &land, const Paddock &paddock, Owns owns)
 {
 	int steps = paddock.Perimeter();
-	std::array<std::optional<int>, PADDOCK_MOST_STEPS> rises{};
+	std::array<std::optional<SidePiece>, PADDOCK_MOST_STEPS> pieces{};
 	int stood = 0;
 	for (int step = 0; step < steps; step++) {
-		if (step != paddock.gate) rises[step] = SideRise(paddock.Step(step).side);
-		stood += rises[step].has_value() ? 1 : 0;
+		if (step != paddock.gate) pieces[step] = SidePieceOf(land, paddock.Step(step).side);
+		stood += pieces[step].has_value() ? 1 : 0;
 	}
 	if (stood < steps * PADDOCK_LEAST_STANDING) return;
 	for (int step = 0; step < steps; step++) {
 		LoopStep at = paddock.Step(step);
-		bool stands = rises[step].has_value();
-		bool before = rises[(step + steps - 1) % steps].has_value();
-		if (stands && owns(at.side.OwnerX(), at.side.OwnerY())) PlaceSide(copies, at.side, *rises[step], paddock.stone);
+		bool stands = pieces[step].has_value();
+		bool before = pieces[(step + steps - 1) % steps].has_value();
+		if (stands && owns(at.side.OwnerX(), at.side.OwnerY())) PlaceSide(copies, at.side, *pieces[step], paddock.stone);
 		bool post = stands != before || (at.corner && stands);
-		if (post && owns(at.x, at.y)) Place(copies, paddock.stone ? BoundaryPiece::WallPier : BoundaryPiece::GatePost, at.x, at.y, 0.0, 0);
+		if (post && owns(at.x, at.y)) Place(copies, paddock.stone ? BoundaryPiece::WallPier : BoundaryPiece::GatePost, land.At(at.PostSpot()), 0.0, 0);
 	}
 }
 
@@ -310,6 +328,7 @@ Farmsteads::Farmsteads() : BlockScatter(FARM_PIECES, TOWN_DISTANCE + FARMSTEAD_S
 void Farmsteads::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 {
 	if (_settings_game.game_creation.landscape == LandscapeType::Toyland) return;
+	Landform land(tiles);
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			TileIndex tile = TileXY(tx, ty);
@@ -322,11 +341,11 @@ void Farmsteads::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 			if (field) {
 				if (BALED_CROPS[ground.variant % BALED_CROPS.size()] && dice.Below(BALED_FIELD_ODDS) == 0 && FarFromTowns(tx, ty)) {
 					SeedDice bales(Hash32(BALE_SALT ^ tile.base()));
-					Bales(copies, tx, ty, ground, bales);
+					Bales(copies, LaidGround(land, tx, ty), tx, ty, ground, bales);
 				}
 				continue;
 			}
-			if (HoldsFarmstead(tx, ty)) Farmstead(copies, tx, ty, dice);
+			if (HoldsFarmstead(tx, ty)) Farmstead(copies, LaidGround(land, tx, ty), tx, ty, dice);
 		}
 	}
 }
@@ -339,10 +358,11 @@ void FieldBoundaries::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 {
 	if (_settings_game.game_creation.landscape == LandscapeType::Toyland) return;
 	auto owns = [&](int tx, int ty) { return tx >= tiles.tx0 && tx <= tiles.tx1 && ty >= tiles.ty0 && ty <= tiles.ty1; };
+	Landform land(tiles);
 	for (int by = BlockOf(tiles.ty0 - 1); by <= BlockOf(tiles.ty1); by++) {
 		for (int bx = BlockOf(tiles.tx0 - 1); bx <= BlockOf(tiles.tx1); bx++) {
 			std::optional<Paddock> paddock = PaddockIn(bx, by);
-			if (paddock.has_value()) Enclose(copies, *paddock, owns);
+			if (paddock.has_value()) Enclose(copies, land, *paddock, owns);
 		}
 	}
 }

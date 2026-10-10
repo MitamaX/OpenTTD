@@ -22,6 +22,7 @@
 #include "../gpu/frame_profile.h"
 #include "../map/tile_shapes.h"
 #include "build_slice.h"
+#include "hill_relief.h"
 #include "seabed.h"
 
 #include "../../safeguards.h"
@@ -181,7 +182,7 @@ struct TreeRolls {
 
 class Grove {
 public:
-	Grove(int tx, int ty, uint8_t flora);
+	Grove(int tx, int ty, uint8_t flora, const LaidGround &ground);
 	void Plant(std::vector<ShapedTree> &planted);
 
 private:
@@ -192,6 +193,7 @@ private:
 
 	int tx;
 	int ty;
+	LaidGround ground;
 	TreeKind kind;
 	TreeAge age;
 	uint count;
@@ -205,9 +207,10 @@ private:
 	double huddling = 0.0;
 };
 
-Grove::Grove(int tx, int ty, uint8_t flora) :
+Grove::Grove(int tx, int ty, uint8_t flora, const LaidGround &ground) :
 	tx(tx),
 	ty(ty),
+	ground(ground),
 	kind(static_cast<TreeKind>(flora >> FLORA_KIND_SHIFT)),
 	age(static_cast<TreeAge>((flora >> FLORA_AGE_SHIFT) & FLORA_AGE_MASK)),
 	count(std::min<uint>(TreeCount(flora), FLORA_MOST_TREES)),
@@ -279,7 +282,7 @@ ShapedTree Grove::Grown(const TilePoint &spot, double fringe, bool spare)
 	double scale = this->Scale(rolls.spread, fringe, spare);
 	TreeShape shape = {this->kind, rolls.shape};
 	std::array<uint8_t, 4> look = {ShareByte(rolls.turn), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(rolls.tint), ShareByte(rolls.wither)};
-	return {shape.Index(), {static_cast<float>(x), static_cast<float>(y), static_cast<float>(BedLevel(this->tx, this->ty, x, y)), look}};
+	return {shape.Index(), {static_cast<float>(x), static_cast<float>(y), static_cast<float>(this->ground.Level(x, y)), look}};
 }
 
 void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
@@ -287,10 +290,11 @@ void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 	_frame_profile.Count("forest_plants");
 	ProfileScope profile("build", "forest", ProfileClock::Cpu);
 	std::vector<ShapedTree> planted;
+	Landform land(tiles);
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			uint8_t flora = _world_tiles.GroundAt(TileXY(tx, ty)).flora;
-			if (TreeCount(flora) != 0) Grove(tx, ty, flora).Plant(planted);
+			if (TreeCount(flora) != 0) Grove(tx, ty, flora, LaidGround(land, tx, ty)).Plant(planted);
 		}
 	}
 	std::ranges::stable_sort(planted, {}, [](const auto &entry) { return entry.first; });

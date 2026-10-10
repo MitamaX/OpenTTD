@@ -17,6 +17,7 @@
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
 #include "../gpu/mesh_buffer.h"
+#include "hill_relief.h"
 #include "seabed.h"
 
 /* Positions run in tiles and height levels; the normal is in render space and its last byte marks a wall, or how far below the water the ground has sunk. */
@@ -83,6 +84,7 @@ private:
 	int step;
 	int next_row;
 	Seabed bed;
+	Landform land;
 	CornerNormals normals;
 	TerrainMesh mesh;
 };
