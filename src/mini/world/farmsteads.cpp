@@ -331,7 +331,7 @@ void Farmsteads::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 	}
 }
 
-FieldBoundaries::FieldBoundaries() : BlockScatter(BOUNDARY_PIECES, TOWN_DISTANCE + FARMSTEAD_SPACING, COUNTRYSIDE_READS)
+FieldBoundaries::FieldBoundaries() : BlockScatter(BOUNDARY_PIECES, TOWN_DISTANCE + FARMSTEAD_SPACING + PADDOCK_BLOCK_TILES, COUNTRYSIDE_READS)
 {
 }
 
