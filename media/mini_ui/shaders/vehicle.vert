@@ -7,6 +7,7 @@ layout(location = 5) in float i_length;
 layout(location = 6) in vec4 i_primary;
 layout(location = 7) in vec4 i_secondary;
 layout(location = 8) in vec4 i_cargo;
+layout(location = 9) in vec2 i_bends;
 
 uniform vec2 u_most_growth;
 uniform float u_readable_pixels;
@@ -70,14 +71,25 @@ vec3 Growth()
 	return vec3(min(growth, u_most_growth.x), vec2(min(growth, u_most_growth.y)));
 }
 
+/* How far across its length a unit's end leans toward the unit coupled to it, so by its body's end the two meet square halfway between their headings. */
+float Lean(float x)
+{
+	float share = clamp((abs(x) - FLEX_REACH) / (UNIT_REACH - FLEX_REACH), 0.0, 1.0);
+	return tan(x > 0.0 ? i_bends.y : i_bends.x) * share;
+}
+
 /* Cargo shows only while the unit carries some; empty, it folds away to nothing. */
 void main()
 {
 	vec3 scale = vec3(i_length, 1.0, 1.0) * Growth();
 	vec3 local = a_position * scale;
+	vec3 normal = a_normal.xyz / scale;
+	float lean = Lean(a_position.x);
+	local.x -= lean * local.y;
+	normal.y += lean * normal.x;
 	if (IsCargo(a_colour.rgb) && i_cargo.a <= 0.0) local = vec3(0.0);
 	v_position = i_place + Turned(local);
-	v_normal = Turned(normalize(a_normal.xyz / scale));
+	v_normal = Turned(normalize(normal));
 	v_colour = vec4(Painted(a_colour.rgb), a_colour.a);
 	v_trait = a_normal.w;
 	gl_Position = ClipPosition(v_position);

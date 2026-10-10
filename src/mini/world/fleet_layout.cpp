@@ -44,6 +44,8 @@ static constexpr double TRAIL_TILES_PER_SECOND = 1.6;
 static constexpr double PLUME_SECONDS = 11.0;
 /* A unit stands up to a glide of two tiles from where the game last put it, raised onto its ride and settled nose to tail along its path. */
 static constexpr double PLACING_SLACK_TILES = 3.0;
+/* Couplings turn at most this far toward the next unit, short of a unit's end leaning back past where its lean starts on the inside of the curve. */
+static constexpr double MOST_COUPLING_BEND = 0.4;
 /* The game keeps a stopped rotor's animation state at zero. */
 static constexpr uint8_t ROTOR_STOPPED = 0;
 
@@ -152,7 +154,7 @@ void FleetLayout::LayConsist(const Vehicle *head)
 	for (const Vehicle *unit = head; unit != nullptr; unit = unit->Next()) {
 		if (!IsShown(unit)) continue;
 		_vehicle_motion.Note(unit);
-		this->links.push_back({unit, {}, UnitTiles(unit)});
+		this->links.push_back({unit, {}, UnitTiles(unit), {}, {}, 0.0});
 	}
 	if (this->links.empty()) return;
 
@@ -167,18 +169,33 @@ void FleetLayout::LayConsist(const Vehicle *head)
 	this->ExtendPath(last.unit, _vehicle_motion.Onward(last.unit, last.centre, -last.length * 0.5, taken), taken);
 
 	double arc = 0.0;
-	for (const Link &link : this->links) {
-		WorldPoint front = VehicleMotion::Grounded(link.unit, Along(this->path, arc));
-		WorldPoint back = VehicleMotion::Grounded(link.unit, Along(this->path, arc + link.length));
+	for (Link &link : this->links) {
+		link.front = VehicleMotion::Grounded(link.unit, Along(this->path, arc));
+		link.back = VehicleMotion::Grounded(link.unit, Along(this->path, arc + link.length));
+		link.heading = std::atan2(link.front.y - link.back.y, link.front.x - link.back.x);
 		arc += link.length;
-		double run = Length(Flat(front) - Flat(back));
-		double heading = std::atan2(front.y - back.y, front.x - back.x);
-		double yaw = heading + (IsReversed(link.unit) ? std::numbers::pi : 0.0);
-		double pitch = std::atan2((front.level - back.level) * LevelRise(), std::max(run, 1e-6)) * (IsReversed(link.unit) ? -1.0 : 1.0);
-		VehicleLook look = LookOf(link.unit);
-		this->Add(link.unit, look, Between(back, front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH));
-		if (look == VehicleLook::SteamEngine && !link.unit->vehstatus.Test(VehState::Hidden)) this->AddFunnel(link.unit, heading);
 	}
+
+	for (size_t at = 0; at < this->links.size(); at++) {
+		const Link &link = this->links[at];
+		bool reversed = IsReversed(link.unit);
+		double run = Length(Flat(link.front) - Flat(link.back));
+		double yaw = link.heading + (reversed ? std::numbers::pi : 0.0);
+		double pitch = std::atan2((link.front.level - link.back.level) * LevelRise(), std::max(run, 1e-6)) * (reversed ? -1.0 : 1.0);
+		CouplingBends bends = {this->BendToward(at, at + 1), at > 0 ? this->BendToward(at, at - 1) : 0.0};
+		if (reversed) std::swap(bends.back, bends.front);
+		VehicleLook look = LookOf(link.unit);
+		this->Add(link.unit, look, Between(link.back, link.front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH), bends);
+		if (look == VehicleLook::SteamEngine && !link.unit->vehstatus.Test(VehState::Hidden)) this->AddFunnel(link.unit, link.heading);
+	}
+}
+
+/* Half the turn from one laid unit's heading to another's, so the two meet square; nothing unless they are coupled to each other. */
+double FleetLayout::BendToward(size_t from, size_t to) const
+{
+	if (to >= this->links.size() || this->links[std::min(from, to)].unit->Next() != this->links[std::max(from, to)].unit) return 0.0;
+	double turn = std::remainder(this->links[to].heading - this->links[from].heading, 2.0 * std::numbers::pi);
+	return std::clamp(turn * 0.5, -MOST_COUPLING_BEND, MOST_COUPLING_BEND);
 }
 
 /* The path runs on to a point as a unit there runs, a train along its track through the middles of the tile sides between. */
@@ -236,7 +253,7 @@ void FleetLayout::LayAircraft(const Vehicle *aircraft)
 	this->Add(aircraft, VehicleLook::Rotor, at, {spin, 0.0, 0.0}, 1.0);
 }
 
-void FleetLayout::Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length)
+void FleetLayout::Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length, const CouplingBends &bends)
 {
 	const VehicleBounds &box = this->bounds[to_underlying(look)];
 	Vec3 middle = {(box.low.x + box.high.x) * 0.5 * length, (box.low.y + box.high.y) * 0.5, (box.low.z + box.high.z) * 0.5};
@@ -248,6 +265,7 @@ void FleetLayout::Add(const Vehicle *unit, VehicleLook look, const WorldPoint &g
 		static_cast<float>(place.x), static_cast<float>(place.y), static_cast<float>(place.z),
 		static_cast<float>(attitude.yaw), static_cast<float>(attitude.pitch), static_cast<float>(attitude.roll), static_cast<float>(length),
 		InstanceColour(paint.primary), InstanceColour(paint.secondary), InstanceColour(paint.cargo, paint.load),
+		static_cast<float>(bends.back), static_cast<float>(bends.front),
 	};
 	this->units.push_back({instance, look, place + Transformed(turn, middle), turn, half, Length(half), unit->First()->index});
 }

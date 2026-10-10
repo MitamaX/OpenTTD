@@ -135,7 +135,7 @@ static constexpr std::array<MapVector, 6> FISH_BELLY = {{
 static ModelMesh Coupler(double end)
 {
 	double body = end * UNIT_REACH;
-	double reach = end * UNIT_TILES * 0.5;
+	double reach = end * COUPLING_REACH;
 	return Plank({std::min(body, reach), -0.015, 0.072}, {std::max(body, reach), 0.015, 0.086}, RUNNING_GEAR);
 }
 
@@ -294,7 +294,7 @@ static void Gangways(VehicleKit &kit, const HullProfile &body)
 {
 	for (double end : {-1.0, 1.0}) {
 		double inner = end * (UNIT_REACH - GANGWAY_TUCK);
-		double outer = end * UNIT_TILES * 0.5;
+		double outer = end * COUPLING_REACH;
 		kit.Body(Plank({std::min(inner, outer), -GANGWAY_HALF, body.low + GANGWAY_FOOT}, {std::max(inner, outer), GANGWAY_HALF, body.high - GANGWAY_HEAD}, RUNNING_GEAR));
 	}
 }

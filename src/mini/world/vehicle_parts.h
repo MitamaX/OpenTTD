@@ -17,9 +17,6 @@
 #include "../model/model_shapes.h"
 #include "vehicle_models.h"
 
-/* A full length unit of a ground vehicle in tiles, and how far its body reaches either way of its middle, short of its couplers. */
-inline constexpr double UNIT_TILES = 0.5;
-inline constexpr double UNIT_REACH = 0.228;
 inline constexpr double PROUD = 0.003;
 
 inline constexpr uint32_t GLASS = 0x26323C;
