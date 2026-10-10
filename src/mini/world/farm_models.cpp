@@ -142,6 +142,13 @@ static constexpr double FENCE_POST_SHIFT = 0.2;
 static constexpr double FENCE_LEAN = 0.006;
 static constexpr SeedRange FENCE_TONES = {0.7, 1.15};
 static constexpr uint32_t FENCE_SEED = 0xFE7CE;
+static constexpr double GATE_POST = 0.026;
+static constexpr double GATE_POST_HEIGHT = 0.075;
+static constexpr double PIER_SIDE = 0.05;
+static constexpr double PIER_HEIGHT = 0.06;
+static constexpr double PIER_CAP_REACH = 0.006;
+static constexpr double PIER_CAP_HEIGHT = 0.012;
+static constexpr double PIER_CAP_SHADE = 1.1;
 
 static ModelMesh &Leaned(ModelMesh &piece, double along, double across, double height)
 {
@@ -153,16 +160,22 @@ static ModelMesh &Leaned(ModelMesh &piece, double along, double across, double h
 	return piece;
 }
 
-static ModelMesh FencePost(double x, SeedDice &dice)
+static ModelMesh FencePost(double x, double side, double height, SeedDice &dice)
 {
-	double half = FENCE_POST / 2.0;
+	double half = side / 2.0;
 	double cap = half + FENCE_CAP_REACH;
-	ModelMesh post = Box({x - half, -half, -FOOT_SINK}, {x + half, half, FENCE_HEIGHT}, Capped::Neither);
-	post.Append(Box({x - cap, -cap, FENCE_HEIGHT}, {x + cap, cap, FENCE_HEIGHT + FENCE_CAP_HEIGHT}, Capped::Top));
+	ModelMesh post = Box({x - half, -half, -FOOT_SINK}, {x + half, half, height}, Capped::Neither);
+	post.Append(Box({x - cap, -cap, height}, {x + cap, cap, height + FENCE_CAP_HEIGHT}, Capped::Top));
 	post.Paint(ScaledRgb(TIMBER, dice.Between(FENCE_TONES)));
 	double along = dice.Between(-FENCE_LEAN, FENCE_LEAN);
 	double across = dice.Between(-FENCE_LEAN, FENCE_LEAN);
-	return Leaned(post, along, across, FENCE_HEIGHT);
+	return Leaned(post, along, across, height);
+}
+
+static ModelMesh GatePost()
+{
+	SeedDice dice(FENCE_SEED);
+	return FencePost(0.0, GATE_POST, GATE_POST_HEIGHT, dice).Round(DEEP_BELOW, GROUND_LIGHTING);
 }
 
 /* Timber posts carrying two rails, lit half as the ground about them is so the fence reads as part of the ground. */
@@ -174,7 +187,7 @@ static ModelMesh Fence()
 	for (int post = 0; post < FENCE_POSTS; post++) {
 		bool end = post == 0 || post == FENCE_POSTS - 1;
 		double shift = end ? 0.0 : dice.Between(-FENCE_POST_SHIFT, FENCE_POST_SHIFT) * spacing;
-		fence.Append(FencePost(-HALF_SIDE + post * spacing + shift, dice));
+		fence.Append(FencePost(-HALF_SIDE + post * spacing + shift, FENCE_POST, FENCE_HEIGHT, dice));
 	}
 	double front = -FENCE_POST / 2.0 - FENCE_RAIL_STANDOFF;
 	for (double share : FENCE_RAIL_SHARES) {
@@ -246,6 +259,16 @@ static ModelMesh StoneWall()
 	return wall.Occlude(UpwardOpenness{0.0, WALL_HEIGHT, FOOT_OPENNESS, 1.0});
 }
 
+static ModelMesh WallPier()
+{
+	double half = PIER_SIDE / 2.0;
+	double cap = half + PIER_CAP_REACH;
+	ModelMesh pier = Box({-half, -half, -FOOT_SINK}, {half, half, PIER_HEIGHT}, Capped::Neither).Paint(STONE);
+	pier.Append(Box({-cap, -cap, PIER_HEIGHT}, {cap, cap, PIER_HEIGHT + PIER_CAP_HEIGHT}, Capped::Top).Paint(ScaledRgb(STONE, PIER_CAP_SHADE)));
+	pier.Facet().Round(DEEP_BELOW, GROUND_LIGHTING);
+	return pier.Occlude(UpwardOpenness{0.0, PIER_HEIGHT, FOOT_OPENNESS, 1.0});
+}
+
 std::vector<ModelMesh> BuildFarmModels()
 {
 	std::vector<ModelMesh> pieces(FARM_PIECES);
@@ -262,5 +285,7 @@ std::vector<ModelMesh> BuildBoundaryModels()
 	std::vector<ModelMesh> pieces(BOUNDARY_PIECES);
 	pieces[to_underlying(BoundaryPiece::Fence)] = Fence();
 	pieces[to_underlying(BoundaryPiece::StoneWall)] = StoneWall();
+	pieces[to_underlying(BoundaryPiece::GatePost)] = GatePost();
+	pieces[to_underlying(BoundaryPiece::WallPier)] = WallPier();
 	return pieces;
 }

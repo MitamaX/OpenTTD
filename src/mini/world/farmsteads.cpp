@@ -30,8 +30,13 @@ static constexpr int FIELD_NEIGHBOURHOOD = 2;
 static constexpr uint32_t FARMSTEAD_BY_FIELDS_ODDS = 5;
 static constexpr uint32_t LONE_FARMSTEAD_ODDS = 24;
 static constexpr uint32_t BALED_FIELD_ODDS = 3;
-static constexpr uint32_t BOUNDARY_ODDS = 5;
-static constexpr int BOUNDARY_RUN_TILES = 4;
+static constexpr int PADDOCK_BLOCK_TILES = 5;
+static constexpr uint32_t PADDOCK_ODDS = 2;
+static constexpr int PADDOCK_LEAST_TILES = 2;
+static constexpr int PADDOCK_MOST_STEPS = 4 * PADDOCK_BLOCK_TILES;
+static constexpr double PADDOCK_LEAST_STANDING = 0.6;
+static constexpr int STEEPEST_BOUNDARY_RISE = 1;
+static constexpr uint32_t PADDOCK_COLUMN_STRIDE = 0x9E3779B1U;
 static constexpr double STONE_SHARE = 0.6;
 static constexpr int MOST_BALES = 7;
 static constexpr int YARD_BALES = 4;
@@ -73,10 +78,10 @@ static uint32_t Pick(const std::array<uint32_t, N> &tones, SeedDice &dice)
 }
 
 template <typename Piece>
-static void Place(ScatterCopies &copies, Piece piece, double x, double y, double turn, uint32_t primary, uint32_t secondary = 0)
+static void Place(ScatterCopies &copies, Piece piece, double x, double y, double turn, uint32_t primary, uint32_t secondary = 0, double pitch = 0.0)
 {
 	float z = static_cast<float>(GroundLevel(x, y) * LevelRise());
-	copies[to_underlying(piece)].push_back({static_cast<float>(x), static_cast<float>(y), z, static_cast<float>(turn), 0.0f, 0.0f, 1.0f, InstanceColour(primary), InstanceColour(secondary), {}});
+	copies[to_underlying(piece)].push_back({static_cast<float>(x), static_cast<float>(y), z, static_cast<float>(turn), static_cast<float>(pitch), 0.0f, 1.0f, InstanceColour(primary), InstanceColour(secondary), {}});
 }
 
 static bool IsFlat(const SurfaceTexel &surface)
@@ -190,26 +195,111 @@ static void Bales(ScatterCopies &copies, int tx, int ty, const GroundTexel &fiel
 	}
 }
 
-/* Whether a run of boundary stands along a line of tile sides, a few tiles at a time, and whether it is laid in stone; the same along the whole run. */
-static std::optional<bool> BoundaryRun(int line, int along, Axis axis)
+struct TileSide {
+	Axis axis;
+	int line;
+	int along;
+
+	int OwnerX() const { return this->axis == AXIS_X ? this->along : this->line; }
+	int OwnerY() const { return this->axis == AXIS_X ? this->line : this->along; }
+};
+
+struct LoopStep {
+	TileSide side;
+	int x;
+	int y;
+	bool corner;
+};
+
+struct Paddock {
+	int x0;
+	int y0;
+	int x1;
+	int y1;
+	int gate;
+	bool stone;
+
+	int Perimeter() const { return 2 * (this->x1 - this->x0 + this->y1 - this->y0); }
+
+	LoopStep Step(int step) const
+	{
+		int width = this->x1 - this->x0;
+		int depth = this->y1 - this->y0;
+		if (step < width) return {{AXIS_X, this->y0, this->x0 + step}, this->x0 + step, this->y0, step == 0};
+		step -= width;
+		if (step < depth) return {{AXIS_Y, this->x1, this->y0 + step}, this->x1, this->y0 + step, step == 0};
+		step -= depth;
+		if (step < width) return {{AXIS_X, this->y1, this->x1 - 1 - step}, this->x1 - step, this->y1, step == 0};
+		step -= width;
+		return {{AXIS_Y, this->x0, this->y1 - 1 - step}, this->x0, this->y1 - step, step == 0};
+	}
+};
+
+static int BlockOf(int tile)
 {
-	SeedDice dice(Hash32(BOUNDARY_SALT ^ Hash32(static_cast<uint32_t>(line) * 2 + to_underlying(axis)) ^ static_cast<uint32_t>(along / BOUNDARY_RUN_TILES)));
-	if (dice.Below(BOUNDARY_ODDS) != 0) return std::nullopt;
-	return _settings_game.game_creation.landscape != LandscapeType::Tropic && dice.Share() < STONE_SHARE;
+	return tile >= 0 ? tile / PADDOCK_BLOCK_TILES : -((PADDOCK_BLOCK_TILES - 1 - tile) / PADDOCK_BLOCK_TILES);
 }
 
-/* Dry stone walls and fences run along the level sides of pastures, a few tiles at a stretch, where open land lies on both sides. */
-static void Boundaries(ScatterCopies &copies, int tx, int ty, const SurfaceTexel &surface)
+static std::optional<Paddock> PaddockIn(int bx, int by)
 {
-	for (Axis axis : {AXIS_X, AXIS_Y}) {
-		bool along_x = axis == AXIS_X;
-		bool level = along_x ? surface.north == surface.west : surface.north == surface.east;
-		if (!level || !IsOpenLand(along_x ? tx : tx - 1, along_x ? ty - 1 : ty)) continue;
-		std::optional<bool> stone = along_x ? BoundaryRun(ty, tx, axis) : BoundaryRun(tx, ty, axis);
-		if (!stone.has_value()) continue;
-		double x = along_x ? tx + HALF_TILE : static_cast<double>(tx);
-		double y = along_x ? static_cast<double>(ty) : ty + HALF_TILE;
-		Place(copies, *stone ? BoundaryPiece::StoneWall : BoundaryPiece::Fence, x, y, along_x ? 0.0 : QUARTER_TURN, 0);
+	SeedDice dice(Hash32(BOUNDARY_SALT ^ Hash32(static_cast<uint32_t>(bx) * PADDOCK_COLUMN_STRIDE ^ static_cast<uint32_t>(by))));
+	if (dice.Below(PADDOCK_ODDS) != 0) return std::nullopt;
+	auto span = [&](int block) {
+		int length = PADDOCK_LEAST_TILES + static_cast<int>(dice.Below(PADDOCK_BLOCK_TILES - PADDOCK_LEAST_TILES + 1));
+		int from = block * PADDOCK_BLOCK_TILES + static_cast<int>(dice.Below(PADDOCK_BLOCK_TILES - length + 1));
+		return std::pair{from, from + length};
+	};
+	auto [x0, x1] = span(bx);
+	auto [y0, y1] = span(by);
+	Paddock paddock{x0, y0, x1, y1, 0, _settings_game.game_creation.landscape != LandscapeType::Tropic && dice.Share() < STONE_SHARE};
+	paddock.gate = static_cast<int>(dice.Below(paddock.Perimeter()));
+	return paddock;
+}
+
+static bool HoldsBoundaries(int tx, int ty)
+{
+	return IsBareGrass(tx, ty) && !HoldsFarmstead(tx, ty) && FarFromTowns(tx, ty);
+}
+
+static std::optional<int> SideRise(const TileSide &side)
+{
+	int tx = side.OwnerX();
+	int ty = side.OwnerY();
+	if (!HoldsBoundaries(tx, ty)) return std::nullopt;
+	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
+	bool across_x = side.axis == AXIS_X;
+	int rise = (across_x ? surface.west : surface.east) - surface.north;
+	if (std::abs(rise) > STEEPEST_BOUNDARY_RISE || !IsOpenLand(across_x ? tx : tx - 1, across_x ? ty - 1 : ty)) return std::nullopt;
+	return rise;
+}
+
+static void PlaceSide(ScatterCopies &copies, const TileSide &side, int rise, bool stone)
+{
+	bool across_x = side.axis == AXIS_X;
+	double x = across_x ? side.along + HALF_TILE : static_cast<double>(side.line);
+	double y = across_x ? static_cast<double>(side.line) : side.along + HALF_TILE;
+	Place(copies, stone ? BoundaryPiece::StoneWall : BoundaryPiece::Fence, x, y, across_x ? 0.0 : QUARTER_TURN, 0, 0, std::atan(rise * LevelRise()));
+}
+
+/* Dry stone walls and fences close paddocks about on open pasture but for a gate, with stouter posts or piers at the corners and wherever a run ends; a paddock too broken to read as one is left out. */
+template <typename Owns>
+static void Enclose(ScatterCopies &copies, const Paddock &paddock, Owns owns)
+{
+	int steps = paddock.Perimeter();
+	std::array<std::optional<int>, PADDOCK_MOST_STEPS> rises{};
+	int stood = 0;
+	for (int step = 0; step < steps; step++) {
+		if (step != paddock.gate) rises[step] = SideRise(paddock.Step(step).side);
+		stood += rises[step].has_value() ? 1 : 0;
+	}
+	if (stood < steps * PADDOCK_LEAST_STANDING) return;
+	for (int step = 0; step < steps; step++) {
+		LoopStep at = paddock.Step(step);
+		bool stands = rises[step].has_value();
+		bool before = rises[(step + steps - 1) % steps].has_value();
+		if (stands && owns(at.side.OwnerX(), at.side.OwnerY())) PlaceSide(copies, at.side, *rises[step], paddock.stone);
+		bool post = stands != before || (at.corner && stands);
+		if (post && owns(at.x, at.y)) Place(copies, paddock.stone ? BoundaryPiece::WallPier : BoundaryPiece::GatePost, at.x, at.y, 0.0, 0);
 	}
 }
 
@@ -248,9 +338,11 @@ FieldBoundaries::FieldBoundaries() : BlockScatter(BOUNDARY_PIECES, TOWN_DISTANCE
 void FieldBoundaries::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 {
 	if (_settings_game.game_creation.landscape == LandscapeType::Toyland) return;
-	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
-		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
-			if (IsBareGrass(tx, ty) && !HoldsFarmstead(tx, ty) && FarFromTowns(tx, ty)) Boundaries(copies, tx, ty, _world_tiles.SurfaceAt(TileXY(tx, ty)));
+	auto owns = [&](int tx, int ty) { return tx >= tiles.tx0 && tx <= tiles.tx1 && ty >= tiles.ty0 && ty <= tiles.ty1; };
+	for (int by = BlockOf(tiles.ty0 - 1); by <= BlockOf(tiles.ty1); by++) {
+		for (int bx = BlockOf(tiles.tx0 - 1); bx <= BlockOf(tiles.tx1); bx++) {
+			std::optional<Paddock> paddock = PaddockIn(bx, by);
+			if (paddock.has_value()) Enclose(copies, *paddock, owns);
 		}
 	}
 }

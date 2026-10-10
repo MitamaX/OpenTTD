@@ -30,6 +30,8 @@ inline constexpr size_t FARM_PIECES = to_underlying(FarmPiece::End);
 enum class BoundaryPiece : uint8_t {
 	Fence,
 	StoneWall,
+	GatePost,
+	WallPier,
 	End,
 };
 
