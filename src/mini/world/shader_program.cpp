@@ -214,6 +214,7 @@ static std::string ShaderHeader()
 	DefineInt(header, "LAYER_ROAD", to_underlying(MiniLayer::Road));
 	DefineCodes(header, "CLAD_", MATERIAL_NAMES);
 	DefineCodes(header, "WINDOWS_", WINDOW_GRID_NAMES);
+	DefineInt(header, "WINDOW_GRIDS", static_cast<int>(WINDOW_GRID_NAMES.size()));
 	DefineInt(header, "TEXELS_PER_TILE", TEXELS_PER_TILE);
 	DefineFloat(header, "FORM_HEIGHT_SCALE", FORM_HEIGHT_SCALE);
 	DefineFacadeTexels(header, "FACADE_GROUND", &FacadeMetrics::ground_texels);
