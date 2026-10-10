@@ -352,9 +352,15 @@ static WindowGrid WearableGrid(Material wall, WindowGrid wanted)
 	return strip == FACADE_STRIPS.end() ? WindowGrid::None : strip->grid;
 }
 
+static Part Fronted(const Part &shell, const HouseSite &site, WindowGrid grid)
+{
+	return shell.Windowed(site.wall.material, grid, site.wall.tint, site.front).Glazed(site.glass);
+}
+
 static Part Walled(const Plot &plot, const HouseSite &site, WindowGrid wanted, float wall)
 {
-	return Part::Box(plot).Facade(site.wall.material, WearableGrid(site.wall.material, wanted), wall, site.wall.tint, site.front).Glazed(site.glass);
+	WindowGrid grid = WearableGrid(site.wall.material, wanted);
+	return Fronted(Part::Box(plot).StoreyHeight(grid, wall), site, grid);
 }
 
 static Part Storeyed(const Plot &plot, const HouseSite &site, WindowGrid wanted, int storeys)
@@ -837,7 +843,7 @@ static Solid AddSlab(BuildingForm &form, const Plot &plot, float base, int store
 	WindowGrid grid = WearableGrid(site.wall.material, site.grid);
 	float storey = StoreyTiles(grid);
 	float height = std::round((WallTiles(grid, storeys) - base) / storey) * storey;
-	Solid slab = Roofed(Storeyed(plot, site, site.grid, storeys).On(base).Height(height), site, RoofShape::Parapet);
+	Solid slab = Roofed(Fronted(Part::Box(plot).On(base).Height(height), site, grid), site, RoofShape::Parapet);
 	Place(form, slab);
 	return slab;
 }

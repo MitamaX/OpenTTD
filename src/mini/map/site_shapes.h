@@ -174,6 +174,7 @@ public:
 	Part Fixed(Fixture fixture) const;
 	Part Smoking() const;
 	Part Height(float wall) const;
+	Part StoreyHeight(WindowGrid grid, float wall) const;
 	Part Taper(float taper) const;
 	Part Scaled(float share) const;
 	Part Roof(RoofShape shape, float rise = 0.0f) const;
@@ -185,6 +186,7 @@ public:
 	Part Clad(Material material, uint32_t tint) const;
 	Part Tinted(uint32_t tint) const;
 	Part Glazed(uint32_t tint) const;
+	Part Windowed(Material wall, WindowGrid grid, uint32_t tint, DiagDirections fronts) const;
 	Part Facade(Material wall, WindowGrid grid, float height, uint32_t tint, DiagDirections fronts) const;
 	Part Facade(Finish finish, float height, uint32_t tint, DiagDirections fronts) const;
 

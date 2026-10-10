@@ -424,16 +424,26 @@ Part Part::Glazed(uint32_t tint) const
 	return this->With([tint](Solid &solid) { solid.glass_tint = tint; });
 }
 
-Part Part::Facade(Material wall, WindowGrid grid, float height, uint32_t tint, DiagDirections fronts) const
+Part Part::StoreyHeight(WindowGrid grid, float wall) const
 {
 	float cap = this->solid.role == SolidRole::Detail ? MAX_STRUCTURE_TILES : TALLEST_BUILDING_TILES;
-	return this->Height(FacadeHeight(grid, height, cap - this->solid.base)).With([wall, grid, tint, fronts](Solid &solid) {
+	return this->Height(FacadeHeight(grid, wall, cap - this->solid.base));
+}
+
+Part Part::Windowed(Material wall, WindowGrid grid, uint32_t tint, DiagDirections fronts) const
+{
+	return this->With([wall, grid, tint, fronts](Solid &solid) {
 		solid.wall_material = wall;
 		solid.windows = grid;
 		solid.wall_tint = tint;
 		solid.fronts = fronts;
 		if (wall == Material::Glass) solid.glass_tint = tint;
 	});
+}
+
+Part Part::Facade(Material wall, WindowGrid grid, float height, uint32_t tint, DiagDirections fronts) const
+{
+	return this->StoreyHeight(grid, height).Windowed(wall, grid, tint, fronts);
 }
 
 Part Part::Facade(Finish finish, float height, uint32_t tint, DiagDirections fronts) const
