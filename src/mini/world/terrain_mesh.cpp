@@ -51,10 +51,10 @@ static constexpr double STEEPEST_EARTH = 1.6;
 static constexpr int RAMP_BANK_ROWS = 12;
 static constexpr double RAMP_BANK_RUN = 1.2;
 static constexpr double GROUND_PROBE = 0.05;
-static constexpr double COPING_RISE = 0.02;
-static constexpr double COPING_DEPTH = 0.05;
-static constexpr double COPING_OVERHANG = 0.012;
-static constexpr double WING_THICKNESS = 0.035;
+static constexpr double COPING_RISE = 0.025;
+static constexpr double COPING_OVERHANG = 0.015;
+static constexpr double WING_THICKNESS = 0.12;
+static constexpr double COPING_DEPTH = WING_THICKNESS + COPING_OVERHANG;
 static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
