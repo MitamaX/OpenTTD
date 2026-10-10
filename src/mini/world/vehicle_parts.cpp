@@ -105,7 +105,6 @@ static std::vector<LoftRing> EndRings(double tip, double inward, const BodyEnd &
 		std::ranges::reverse(rings);
 		return rings;
 	}
-	if (steps.end <= 0) return {{tip, 1.0, 1.0}};
 	std::vector<LoftRing> rings;
 	for (int step = 0; step <= steps.end; step++) {
 		double angle = QUARTER_TURN * step / steps.end;

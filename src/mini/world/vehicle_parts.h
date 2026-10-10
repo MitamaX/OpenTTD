@@ -114,7 +114,7 @@ struct ShellSteps {
 };
 
 inline constexpr ShellSteps FULL_SHELL_STEPS = {2, 2};
-inline constexpr ShellSteps SIMPLE_SHELL_STEPS = {1, 0};
+inline constexpr ShellSteps SIMPLE_SHELL_STEPS = {1, 1};
 
 /* The parts a model is built of; fine parts are left out of the simple model and of the shadow a near one casts, and coarse ones stand in for them there. */
 class VehicleKit {

@@ -20,7 +20,6 @@
 #include "../../safeguards.h"
 
 static constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
-static constexpr ShellSteps STEPS = {1, 1};
 static constexpr double HALF_LENGTH = CAR_LENGTH * 0.5;
 static constexpr double HALF_WIDTH = CAR_WIDTH * 0.5;
 static constexpr double BODY_TOP = CAR_CLEARANCE + CAR_BODY_HEIGHT;
@@ -46,8 +45,8 @@ static constexpr double LAMP_HEIGHT = 0.022;
 static ModelMesh Car()
 {
 	VehicleKit kit(VehicleDetail::Full);
-	BodyRun body(BODY, -HALF_LENGTH, HALF_LENGTH, TAIL, NOSE, STEPS);
-	BodyRun cabin(CABIN, CABIN_BACK, CABIN_FRONT, BACKLIGHT, WINDSCREEN, STEPS);
+	BodyRun body(BODY, -HALF_LENGTH, HALF_LENGTH, TAIL, NOSE, SIMPLE_SHELL_STEPS);
+	BodyRun cabin(CABIN, CABIN_BACK, CABIN_FRONT, BACKLIGHT, WINDSCREEN, SIMPLE_SHELL_STEPS);
 	for (const BodyRun *shell : {&body, &cabin}) kit.Body(shell->Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(cabin.Stripe(WINDOWS, GLASS).Gloss(GLASS_GLOSS));
 	for (double axle : AXLES) kit.Body(Wheel(axle, 0.0, WHEEL_RADIUS, AXLE_SPAN));
