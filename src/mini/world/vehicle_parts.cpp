@@ -42,15 +42,35 @@ static Mat4 LyingAlongX()
 	return turn;
 }
 
-ModelMesh Hull(const HullProfile &profile, double back, double front)
+static double BevelOf(const HullProfile &profile)
+{
+	return std::min(profile.bevel, std::min(profile.half_width, profile.high - profile.low) * 0.5);
+}
+
+static std::array<MapVector, 6> ChamferSection(const HullProfile &profile)
 {
 	double w = profile.half_width;
-	double bevel = std::min(profile.bevel, std::min(w, profile.high - profile.low) * 0.5);
-	std::array<MapVector, 6> section = {{
+	double bevel = BevelOf(profile);
+	return {{
 		{-w, profile.low}, {w, profile.low}, {w, profile.high - bevel},
 		{w - bevel, profile.high}, {-w + bevel, profile.high}, {-w, profile.high - bevel},
 	}};
-	return Extrusion(section, front - back).Transform(Mat4::Translation({back, 0.0, 0.0}) * LyingAlongX());
+}
+
+static std::vector<LoftRing> TaperRings(double from, double to, const NoseShape &shape)
+{
+	std::vector<LoftRing> rings;
+	for (int ring = 0; ring <= NOSE_RINGS; ring++) {
+		double along = static_cast<double>(ring) / NOSE_RINGS;
+		double taper = std::pow(along, shape.curve);
+		rings.push_back({std::lerp(from, to, along), std::lerp(1.0, shape.width, taper), std::lerp(1.0, shape.height, taper)});
+	}
+	return rings;
+}
+
+ModelMesh Hull(const HullProfile &profile, double back, double front)
+{
+	return Extrusion(ChamferSection(profile), front - back).Transform(Mat4::Translation({back, 0.0, 0.0}) * LyingAlongX());
 }
 
 ModelMesh SideBand(double back, double front, double half_width, double low, double high, uint32_t tone)
@@ -60,16 +80,7 @@ ModelMesh SideBand(double back, double front, double half_width, double low, dou
 
 ModelMesh Nose(const HullProfile &profile, double from, double to, const NoseShape &shape, double base)
 {
-	ModelMesh nose;
-	for (int ring = 0; ring < NOSE_RINGS; ring++) {
-		nose.Append(Hull(profile, std::lerp(from, to, static_cast<double>(ring) / NOSE_RINGS), std::lerp(from, to, static_cast<double>(ring + 1) / NOSE_RINGS)));
-	}
-	for (ModelVertex &vertex : nose.vertices) {
-		Vec3 at = vertex.Position();
-		double t = std::pow(std::clamp((at.x - from) / (to - from), 0.0, 1.0), shape.curve);
-		vertex.Place({at.x, at.y * std::lerp(1.0, shape.width, t), base + (at.z - base) * std::lerp(1.0, shape.height, t)});
-	}
-	return nose.Facet();
+	return Loft(ChamferSection(profile), base, TaperRings(from, to, shape)).Facet();
 }
 
 ModelMesh Turned(std::span<const LatheRing> profile, int sides, double axis_z)

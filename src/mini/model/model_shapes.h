@@ -22,6 +22,12 @@ struct LatheRing {
 	double z;
 };
 
+struct LoftRing {
+	double x;
+	double across;
+	double up;
+};
+
 /* One point of a path a cross section is swept along, and how much the section is scaled there. */
 struct SweepPoint {
 	Vec3 at;
@@ -40,6 +46,8 @@ ModelMesh Box(const Vec3 &low, const Vec3 &high);
 
 /* A convex outline on the ground, counterclockwise from above, raised to a height and capped. */
 ModelMesh Extrusion(std::span<const MapVector> outline, double height);
+
+ModelMesh Loft(std::span<const MapVector> section, double foot, std::span<const LoftRing> rings);
 
 /* A regular polygon's corners about the origin, counterclockwise from the positive x axis, to sweep as a round section. */
 std::vector<MapVector> Circle(double radius, int sides);

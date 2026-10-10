@@ -22,6 +22,8 @@
 
 static constexpr Vec3 DOWN = {0.0, 0.0, -1.0};
 static constexpr Vec3 UP = {0.0, 0.0, 1.0};
+static constexpr Vec3 BACK = {-1.0, 0.0, 0.0};
+static constexpr Vec3 FORE = {1.0, 0.0, 0.0};
 
 static Vec3 RingPoint(double radius, double z, int side, int sides)
 {
@@ -48,6 +50,20 @@ static void JoinRings(ModelMesh &mesh, const std::vector<uint32_t> &low, const s
 			mesh.Triangle(low[side], low[next], high[0]);
 		} else {
 			mesh.Quad(low[side], low[next], high[next], high[side]);
+		}
+	}
+}
+
+static void Fan(ModelMesh &mesh, std::span<const Vec3> rim, const Vec3 &facing, const Vec3 &turning)
+{
+	uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
+	for (const Vec3 &corner : rim) mesh.Point(corner, facing);
+	bool along = Dot(facing, turning) > 0.0;
+	for (uint32_t corner = 1; corner + 1 < rim.size(); corner++) {
+		if (along) {
+			mesh.Triangle(first, first + corner, first + corner + 1);
+		} else {
+			mesh.Triangle(first, first + corner + 1, first + corner);
 		}
 	}
 }
@@ -183,17 +199,34 @@ ModelMesh Extrusion(std::span<const MapVector> outline, double height)
 		mesh.Quad(a, b, c, d);
 	}
 	for (double z : {0.0, height}) {
-		const Vec3 &facing = z > 0.0 ? UP : DOWN;
-		uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
-		for (const MapVector &corner : outline) mesh.Point({corner.x, corner.y, z}, facing);
-		for (uint32_t corner = 1; corner + 1 < count; corner++) {
-			if (z > 0.0) {
-				mesh.Triangle(first, first + corner, first + corner + 1);
-			} else {
-				mesh.Triangle(first, first + corner + 1, first + corner);
-			}
-		}
+		std::vector<Vec3> rim;
+		for (const MapVector &corner : outline) rim.push_back({corner.x, corner.y, z});
+		Fan(mesh, rim, z > 0.0 ? UP : DOWN, UP);
 	}
+	return mesh;
+}
+
+static std::vector<Vec3> LoftRim(std::span<const MapVector> section, double foot, const LoftRing &ring)
+{
+	std::vector<Vec3> rim;
+	for (const MapVector &corner : section) rim.push_back({ring.x, corner.x * ring.across, foot + (corner.y - foot) * ring.up});
+	return rim;
+}
+
+ModelMesh Loft(std::span<const MapVector> section, double foot, std::span<const LoftRing> rings)
+{
+	ModelMesh mesh;
+	int sides = static_cast<int>(section.size());
+	std::vector<uint32_t> behind;
+	for (const LoftRing &ring : rings) {
+		std::vector<uint32_t> here;
+		for (const Vec3 &corner : LoftRim(section, foot, ring)) here.push_back(mesh.Point(corner));
+		if (!behind.empty()) JoinRings(mesh, behind, here, sides);
+		behind = std::move(here);
+	}
+	mesh.Smooth();
+	Fan(mesh, LoftRim(section, foot, rings.front()), BACK, FORE);
+	Fan(mesh, LoftRim(section, foot, rings.back()), FORE, FORE);
 	return mesh;
 }
 
