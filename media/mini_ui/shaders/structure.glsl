@@ -93,7 +93,6 @@ const float DRAIN_SHARE = 0.35;
 const float DRAIN_RADIUS = 0.06;
 const float DRAIN_SHADE = 0.6;
 const SpeckLattice DRAIN_LATTICE = SpeckLattice(ivec2(1301, 727), 0.25, 0.7, 0.5);
-const float POOL_FLOOR_SUNLIT = 0.85;
 
 /* A point of a building before light, its facing told across, up and out of its face. */
 struct Clad {
@@ -328,7 +327,6 @@ Clad Rippled(vec2 p, vec3 tint)
 	Clad clad = Matte(tint, Roughened(WATER_ROUGHNESS, WaveSpread(RING_TILT) * (1.0 - rings) + RampSpread(RIPPLE_TILT) * (1.0 - ripples)));
 	clad.facing = vec3(tilt, 1.0);
 	clad.glass = 1.0;
-	clad.sunbeam = POOL_FLOOR_SUNLIT;
 	return clad;
 }
 
