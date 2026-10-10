@@ -23,8 +23,6 @@ const vec2 MEND_HALF_LENGTHS = vec2(0.22, 0.46);
 const vec2 MEND_HALF_WIDTHS = vec2(0.05, 0.15);
 const ivec2 MEND_SIZE_SEED = ivec2(101, 37);
 const float MENDS_TURNED_SHARE = 0.5;
-const vec2 MEND_RAGS_PER_CELL = vec2(37.0, 41.0);
-const float MEND_RAGGED = 0.025;
 const float MEND_FEATHER = 0.03;
 const float MENDED_SHADE = 0.84;
 const vec2 MENDED_FACING = vec2(0.7, 0.9);
@@ -111,9 +109,8 @@ float Mended(vec2 p, float facing_up)
 	vec2 size = Hash2(cell + MEND_SIZE_SEED);
 	vec2 half_size = vec2(mix(MEND_HALF_LENGTHS.x, MEND_HALF_LENGTHS.y, size.x), mix(MEND_HALF_WIDTHS.x, MEND_HALF_WIDTHS.y, size.y));
 	vec2 offset = abs(fract(q) - HALF_TILE);
-	vec2 outside = (dice < MENDED_SHARE * MENDS_TURNED_SHARE ? offset : offset.yx) - half_size;
-	vec2 rags = sin(q * MEND_RAGS_PER_CELL);
-	float edge = max(outside.x, outside.y) + rags.x * rags.y * MEND_RAGGED;
+	vec2 outside = mix(offset, offset.yx, step(dice, MENDED_SHARE * MENDS_TURNED_SHARE)) - half_size;
+	float edge = max(outside.x, outside.y);
 	return (1.0 - smoothstep(-pixel - MEND_FEATHER, pixel, edge)) * smoothstep(MENDED_FACING.x, MENDED_FACING.y, facing_up) * Resolved(MENDS_PER_TILE * 2.0);
 }
 
