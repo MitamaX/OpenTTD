@@ -24,7 +24,6 @@
 #include "../map/tile_shapes.h"
 #include "../map/train_route.h"
 #include "../map/vehicle_motion.h"
-#include "seabed.h"
 #include "shadow_map.h"
 #include "vehicle_looks.h"
 
@@ -125,14 +124,8 @@ bool FleetLayout::MayShow(const SceneView &view, const Vehicle *head, double rea
 	double grown = reach + PLACING_SLACK_TILES + (trails ? PaceOf(head) * TRAIL_TILES_PER_SECOND * PLUME_SECONDS : 0.0);
 	double length = ConsistTiles(head);
 	Vec3 spread = {grown + length, grown + length, grown + length * LevelRise()};
-	Vec3 low = TickPoint(head) - spread;
-	Vec3 high = TickPoint(head) + spread;
-
-	double floor = -DEEPEST_SINK * LevelRise();
-	MapVector fall = ShadowFall(view.sun);
-	double drop = high.z - floor;
-	low = {low.x + std::min(fall.x * drop, 0.0), low.y + std::min(fall.y * drop, 0.0), std::min(low.z, floor)};
-	high = {high.x + std::max(fall.x * drop, 0.0), high.y + std::max(fall.y * drop, 0.0), high.z};
+	Vec3 at = TickPoint(head);
+	auto [low, high] = SunSwept(view.sun, at - spread, at + spread);
 	return BoxMeets(view.frustum, low, high);
 }
 

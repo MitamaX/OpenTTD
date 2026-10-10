@@ -65,10 +65,11 @@ private:
 		int NextStep(int wanted_step) const { return wanted_step == 1 && (this->ground.Empty() || this->step > DRAFT_STEP) ? DRAFT_STEP : wanted_step; }
 	};
 
-	/* A block in the camera's view whose meshes are out of date and the step the view asks of it. */
+	/* A block whose meshes are out of date, the step the camera's view asks of it and whether it lies in that view or only casts its shadow into it. */
 	struct Due {
 		size_t index;
 		int step;
+		bool in_sight;
 	};
 
 	/* A block near enough to the eye for this frame's views to show, its box and how far its middle lies from the eye. */
@@ -80,6 +81,7 @@ private:
 	};
 
 	bool Shows(const Nearby &near, const SceneView &camera) const;
+	bool ShadowShows(const Nearby &near, const SceneView &camera) const;
 	void Lay(Dimension map);
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
 	std::pair<Vec3, Vec3> Bounds(size_t index);

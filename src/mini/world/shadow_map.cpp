@@ -75,10 +75,22 @@ static double SunRise(const Vec3 &sun)
 	return std::max(sun.z, LOWEST_SUN_RISE);
 }
 
-MapVector ShadowFall(const Vec3 &sun)
+/* How far across the map a shadow lands from beneath what casts it, for each unit of height the caster stands above where it lands. */
+static MapVector ShadowFall(const Vec3 &sun)
 {
 	double rise = SunRise(sun);
 	return {-sun.x / rise, -sun.y / rise};
+}
+
+std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high)
+{
+	double floor = -DEEPEST_SINK * LevelRise();
+	MapVector fall = ShadowFall(sun);
+	double drop = high.z - floor;
+	return {
+		{low.x + std::min(fall.x * drop, 0.0), low.y + std::min(fall.y * drop, 0.0), std::min(low.z, floor)},
+		{high.x + std::max(fall.x * drop, 0.0), high.y + std::max(fall.y * drop, 0.0), high.z},
+	};
 }
 
 static double Sunward(double height, const Vec3 &sun)

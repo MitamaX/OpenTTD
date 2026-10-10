@@ -11,12 +11,14 @@
 #include "terrain_field.h"
 
 #include <algorithm>
+#include <tuple>
 
 #include "../../map_func.h"
 #include "../gpu/frame_profile.h"
 #include "../map/way_course.h"
 #include "network_field.h"
 #include "seabed.h"
+#include "shadow_map.h"
 #include "water_mesh.h"
 
 #include "../../safeguards.h"
@@ -104,10 +106,10 @@ double TerrainField::Distance(size_t index, const Vec3 &eye) const
 	return Length(middle - eye);
 }
 
-/* The blocks in the camera's view are brought to the step its view of their nearest point asks for, and those the world changed under are built afresh.
- * A view with nothing yet to show has every block built whole at once; otherwise a block first coming into view is laid at once, the nearest no finer than a draft
- * where that would cost much and those past the slice of the frame at the coarsest step, and the rest are refined within what is left of the slice,
- * which hurries while any wait, each keeping its old meshes until its new ones are done. Shadows only draw the blocks there are. */
+/* The blocks in the camera's view, and those within the shadows' reach whose shadows may fall in it, are brought to the step the view of their nearest point asks for,
+ * and those the world changed under are built afresh. A view with nothing yet to show has every block in it built whole at once; otherwise a block first coming into view
+ * is laid at once, the nearest no finer than a draft where that would cost much and those past the slice of the frame at the coarsest step, and the rest are refined
+ * within what is left of the slice, which hurries while any in view wait, each keeping its old meshes until its new ones are done. */
 void TerrainField::Refresh(const SceneView &camera)
 {
 	this->nearby.clear();
@@ -118,26 +120,29 @@ void TerrainField::Refresh(const SceneView &camera)
 	});
 	std::ranges::sort(this->nearby, {}, &Nearby::distance);
 
+	double casting_pixels = camera.TilePixelsAt(camera.shadow_reach);
 	this->due.clear();
 	bool blank = true;
 	for (const Nearby &near : this->nearby) {
-		if (!BoxMeets(camera.frustum, near.low, near.high)) continue;
+		bool in_sight = BoxMeets(camera.frustum, near.low, near.high);
+		double nearest_pixels = camera.NearestTilePixels(near.low, near.high);
+		if (!in_sight && (nearest_pixels < casting_pixels || !this->ShadowShows(near, camera))) continue;
 		Chunk &chunk = this->chunks[near.index];
 		chunk.drawn = this->frame;
-		blank = blank && chunk.ground.Empty();
-		int step = StepFor(camera.NearestTilePixels(near.low, near.high));
+		if (in_sight) blank = blank && chunk.ground.Empty();
+		int step = StepFor(nearest_pixels);
 		if (chunk.Outdated(step)) {
-			this->due.push_back({near.index, step});
+			this->due.push_back({near.index, step, in_sight});
 		} else {
 			chunk.rebuild.reset();
 			chunk.due_since = 0;
 		}
 	}
 
-	BuildSlice slice(!this->due.empty());
+	BuildSlice slice(std::ranges::any_of(this->due, &Due::in_sight));
 	for (const Due &entry : this->due) {
 		const Chunk &chunk = this->chunks[entry.index];
-		if (!chunk.ground.Empty()) continue;
+		if (!entry.in_sight || !chunk.ground.Empty()) continue;
 		this->Build(entry.index, blank ? entry.step : slice.Spent() ? COARSEST_STEP : chunk.NextStep(entry.step));
 	}
 	std::erase_if(this->due, [&](const Due &entry) { return !this->chunks[entry.index].Outdated(entry.step); });
@@ -145,7 +150,7 @@ void TerrainField::Refresh(const SceneView &camera)
 		uint64_t &since = this->chunks[entry.index].due_since;
 		if (since == 0) since = this->frame;
 	}
-	std::ranges::stable_sort(this->due, {}, [&](const Due &entry) { return this->chunks[entry.index].due_since; });
+	std::ranges::stable_sort(this->due, {}, [&](const Due &entry) { return std::make_tuple(!entry.in_sight, this->chunks[entry.index].due_since); });
 	this->Refine(slice);
 }
 
@@ -158,8 +163,8 @@ void TerrainField::Build(size_t index, int step)
 	this->Finish(index);
 }
 
-/* The blocks that have waited longest go first, the nearest of them first, so a block the world keeps changing under cannot hold up the rest;
- * a build cut short by the end of the slice goes on from where it stopped. */
+/* The blocks in view go first, then those that have waited longest and the nearest of them, so neither the blocks casting shadows into the view
+ * nor a block the world keeps changing under can hold up the rest; a build cut short by the end of the slice goes on from where it stopped. */
 void TerrainField::Refine(const BuildSlice &slice)
 {
 	for (const Due &entry : this->due) {
@@ -206,6 +211,12 @@ void TerrainField::DrawGround(const Frustum &frustum)
 bool TerrainField::Shows(const Nearby &near, const SceneView &camera) const
 {
 	return !this->chunks[near.index].ground.Empty() && BoxMeets(camera.frustum, near.low, near.high);
+}
+
+bool TerrainField::ShadowShows(const Nearby &near, const SceneView &camera) const
+{
+	auto [low, high] = SunSwept(camera.sun, near.low, near.high);
+	return BoxMeets(camera.frustum, low, high);
 }
 
 void TerrainField::DrawWater(const SceneView &camera)

@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "shader_program.h"
@@ -24,8 +25,7 @@ ShaderProgram CasterProgram(std::span<const char *const> vertex_sources);
 ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::span<const char *const> fragment_sources);
 /* A depth only program for a pass's meshes as the eye sees them. */
 ShaderProgram DepthProgram(std::span<const char *const> vertex_sources);
-/* How far across the map a shadow lands from beneath what casts it, for each unit of height the caster stands above where it lands. */
-MapVector ShadowFall(const Vec3 &sun);
+std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high);
 
 class ShadowMap {
 public:
