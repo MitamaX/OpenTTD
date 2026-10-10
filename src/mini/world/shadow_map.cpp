@@ -35,7 +35,6 @@ static constexpr double CASTER_HEADROOM_LEVELS = 24.0;
 static constexpr double LOWEST_SUN_RISE = 0.1;
 static constexpr double DEPTH_MARGIN = 1.0;
 static constexpr double TURN_MARGIN = 0.05;
-static constexpr double UNSEEN_SWING_TEXELS = ShadowMap::FILTER_SPAN / 2.0;
 static constexpr int TURNS = ShadowMap::CASCADES - ShadowMap::FRESH_CASCADES;
 static constexpr float SLOPE_OFFSET = 2.0f;
 static constexpr float CONSTANT_OFFSET = 2.0f;
@@ -168,7 +167,7 @@ bool ShadowMap::Build()
 }
 
 /* The sphere about a slice of the view keeps its size however the camera turns, and moves in whole texels so shadow edges hold still while the camera pans. */
-ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, double near, double far, double margin) const
+ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, const Mat4 &sun_view, double near, double far, double margin) const
 {
 	double half_x = camera.viewport.width * 0.5 / camera.focal;
 	double half_y = camera.viewport.height * 0.5 / camera.focal;
@@ -176,52 +175,44 @@ ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, double near, dou
 	double ahead = std::min((near + far) * (1.0 + spread) * 0.5, far);
 	double radius = std::sqrt((far - ahead) * (far - ahead) + far * far * spread);
 
-	Mat4 view = SunView(camera.sun);
-	Vec3 middle = camera.eye - camera.Back() * ahead;
-	Vec3 seen = Transformed(view, middle);
+	Vec3 middle = Transformed(sun_view, camera.eye - camera.Back() * ahead);
 	double half = radius * (1.0 + margin);
 	double texel = 2.0 * half / RESOLUTION;
-	Vec3 centre = {std::floor(seen.x / texel) * texel, std::floor(seen.y / texel) * texel, seen.z};
+	Vec3 centre = {std::floor(middle.x / texel) * texel, std::floor(middle.y / texel) * texel, middle.z};
 
 	double sunward = Sunward(LandRelief() + CASTER_HEADROOM_LEVELS * LevelRise(), camera.sun);
 	Vec3 low = {centre.x - half, centre.y - half, centre.z - half - DEPTH_MARGIN};
 	Vec3 high = {centre.x + half, centre.y + half, centre.z + half + sunward};
-	return {Mat4::Orthographic(low, high) * view, far, texel, camera.sun, low, high, middle, radius};
+	return {Mat4::Orthographic(low, high) * sun_view, far, texel, low, high, middle, radius};
 }
 
 /* Whatever stands between a slice's sphere and the sun is pressed onto the box's near side, so only its far side must reach past the sphere. */
 bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 {
-	Vec3 centre = Transformed(SunView(this->sun), slice.middle);
-	return centre.x - slice.radius >= this->low.x && centre.x + slice.radius <= this->high.x &&
-		centre.y - slice.radius >= this->low.y && centre.y + slice.radius <= this->high.y &&
-		centre.z - slice.radius >= this->low.z;
-}
-
-bool ShadowMap::Cascade::Faces(const Vec3 &sun) const
-{
-	return Length(sun - this->sun) * Sunward(LandRelief(), this->sun) <= this->texel * UNSEEN_SWING_TEXELS;
+	return slice.middle.x - slice.radius >= this->low.x && slice.middle.x + slice.radius <= this->high.x &&
+		slice.middle.y - slice.radius >= this->low.y && slice.middle.y + slice.radius <= this->high.y &&
+		slice.middle.z - slice.radius >= this->low.z;
 }
 
 /* Cascades drawn in turn are given room to spare, so the camera may move a little before they no longer hold their slices. */
 std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneView &camera) const
 {
 	std::array<Cascade, CASCADES> cascades;
+	Mat4 sun_view = SunView(camera.sun);
 	double reach = std::max(camera.shadow_reach, camera.near * 2.0);
 	for (int index = 0; index < CASCADES; index++) {
 		double margin = index < FRESH_CASCADES ? 0.0 : TURN_MARGIN;
-		cascades[index] = this->FitSlice(camera, SplitDistance(camera.near, reach, index), SplitDistance(camera.near, reach, index + 1), margin);
+		cascades[index] = this->FitSlice(camera, sun_view, SplitDistance(camera.near, reach, index), SplitDistance(camera.near, reach, index + 1), margin);
 	}
 	return cascades;
 }
 
-/* A further cascade is drawn on its turn, and between turns as well once its slice of the view has moved out of the box it was last drawn over or the sun has turned too far from where it was drawn by. */
+/* A further cascade is drawn on its turn, and between turns as well once its slice of the view has moved out of the box it was last drawn over. */
 bool ShadowMap::Due(int cascade, const Cascade &fitted) const
 {
 	if (cascade < FRESH_CASCADES || !this->layers_hold_drawn) return true;
 	if (static_cast<int>(this->frame % TURNS) == cascade - FRESH_CASCADES) return true;
-	const Cascade &drawn = this->drawn[cascade];
-	return !drawn.Faces(fitted.sun) || !drawn.Holds(fitted);
+	return !this->drawn[cascade].Holds(fitted);
 }
 
 /* The block goes up once a frame, a copy for each cascade differing only in the caster's view, so no cascade waits on the GPU to finish with the one before. */
@@ -311,6 +302,11 @@ void ShadowMap::Warm(std::span<const std::unique_ptr<WorldPass>> passes)
 	this->BeginCasting();
 	for (const auto &pass : passes) pass->WarmCast();
 	EndCasting();
+	this->layers_hold_drawn = false;
+}
+
+void ShadowMap::Reload()
+{
 	this->layers_hold_drawn = false;
 }
 

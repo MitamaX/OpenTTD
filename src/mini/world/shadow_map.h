@@ -37,28 +37,27 @@ public:
 
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
 	void Warm(std::span<const std::unique_ptr<WorldPass>> passes);
+	void Reload();
 	void Bind() const;
 	void Release();
 
 private:
-	/* The box a cascade is drawn over lies in the sun's view, the sphere about its slice of the camera's view in the world. */
+	/* The box a cascade is drawn over and the sphere about its slice of the camera's view both lie in the sun's view. */
 	struct Cascade {
 		Mat4 view_projection;
 		double far;
 		double texel;
-		Vec3 sun;
 		Vec3 low;
 		Vec3 high;
 		Vec3 middle;
 		double radius;
 
 		bool Holds(const Cascade &slice) const;
-		bool Faces(const Vec3 &sun) const;
 	};
 
 	bool Build();
 	std::array<Cascade, CASCADES> Fit(const SceneView &camera) const;
-	Cascade FitSlice(const SceneView &camera, double near, double far, double margin) const;
+	Cascade FitSlice(const SceneView &camera, const Mat4 &sun_view, double near, double far, double margin) const;
 	bool Due(int cascade, const Cascade &fitted) const;
 	void Upload(const SceneView &camera);
 	void Aim(int cascade) const;

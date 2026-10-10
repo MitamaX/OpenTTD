@@ -87,6 +87,7 @@ void WorldPainter::Reload()
 {
 	this->post.Reload();
 	this->overlay.Reload();
+	this->shadows.Reload();
 	for (ShaderProgram *program : this->programs) program->Reload();
 	this->warmed.reset();
 }
