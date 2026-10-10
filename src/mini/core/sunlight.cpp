@@ -10,6 +10,7 @@
 #include "../../stdafx.h"
 #include "sunlight.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -18,9 +19,16 @@
 
 #include "../../safeguards.h"
 
+static constexpr double LOWEST_SUN_RISE = 0.1;
+
 Vec3 Sun()
 {
 	double elevation = _tuning.sun_elevation * std::numbers::pi / 180.0;
 	Vec3 level = Bearing(_tuning.sun_bearing) * std::cos(elevation);
 	return {level.x, level.y, std::sin(elevation)};
+}
+
+double SunRise(const Vec3 &sun)
+{
+	return std::max(sun.z, LOWEST_SUN_RISE);
 }

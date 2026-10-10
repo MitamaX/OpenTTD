@@ -124,7 +124,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		view.projection.Floats(),
 		view.view_projection.Floats(),
 		floats(view.eye.x, view.eye.y, view.eye.z, 1.0),
-		floats(view.sun.x, view.sun.y, view.sun.z, 0.0),
+		floats(view.sun.x, view.sun.y, view.sun.z, 1.0 / SunRise(view.sun)),
 		floats(view.near, view.far, view.fog_start, view.focus),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
 		floats(view.viewport.width, view.viewport.height, view.clock, view.phase),

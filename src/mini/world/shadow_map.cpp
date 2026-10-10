@@ -17,6 +17,7 @@
 
 #include "../../core/math_func.hpp"
 #include "../../debug.h"
+#include "../core/sunlight.h"
 #include "../gpu/frame_profile.h"
 #include "../gpu/gl_api.h"
 #include "../map/world_tiles.h"
@@ -32,7 +33,6 @@ static constexpr std::array<const char *, 1> CASTER_FRAGMENT_SOURCES = {
 static constexpr double LOG_SPLIT_SHARE = 0.75;
 static constexpr double FADE_START_SHARE = 0.85;
 static constexpr double CASTER_HEADROOM_LEVELS = 24.0;
-static constexpr double LOWEST_SUN_RISE = 0.1;
 static constexpr double DEPTH_MARGIN = 1.0;
 static constexpr double TURN_MARGIN = 0.05;
 static constexpr int TURNS = ShadowMap::CASCADES - ShadowMap::FRESH_CASCADES;
@@ -67,11 +67,6 @@ ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::sp
 ShaderProgram DepthProgram(std::span<const char *const> vertex_sources)
 {
 	return ShaderProgram(vertex_sources, CASTER_FRAGMENT_SOURCES);
-}
-
-static double SunRise(const Vec3 &sun)
-{
-	return std::max(sun.z, LOWEST_SUN_RISE);
 }
 
 /* How far across the map a shadow lands from beneath what casts it, for each unit of height the caster stands above where it lands. */

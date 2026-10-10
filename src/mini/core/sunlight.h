@@ -14,5 +14,6 @@
 
 /* The unit way to the sun along map X, map Y and straight up, from the elevation and the bearing from map north the tuning names. */
 Vec3 Sun();
+double SunRise(const Vec3 &sun);
 
 #endif /* MINI_CORE_SUNLIGHT_H */

@@ -7,6 +7,7 @@ const float CLOUD_SHADOW_DEPTH = 0.3;
 const float CLOUD_SHADOW_NEAR = 60.0;
 const float CLOUD_SHADOW_FAR = 260.0;
 const float CLOUD_SHADOW_FAR_DEPTH = 0.35;
+const float CLOUD_SHADOW_HEIGHT = 30.0;
 
 float Billow(vec2 p, int octaves)
 {
@@ -20,10 +21,11 @@ float Billow(vec2 p, int octaves)
 	return sum;
 }
 
-/* The cloud straight overhead shades a point. */
+/* The cloud the sun shines through on its way to a point shades it. */
 float CloudLight(vec3 position)
 {
-	float body = Billow(position.xy / CLOUD_SHADOW_SPAN + CLOUD_WIND * Clock(), CLOUD_SHADOW_OCTAVES);
+	vec2 under = position.xy + SunSlant() * max(CLOUD_SHADOW_HEIGHT - position.z, 0.0);
+	float body = Billow(under / CLOUD_SHADOW_SPAN + CLOUD_WIND * Clock(), CLOUD_SHADOW_OCTAVES);
 	float far = smoothstep(CLOUD_SHADOW_NEAR, CLOUD_SHADOW_FAR, distance(Eye(), position));
 	return 1.0 - CLOUD_SHADOW_DEPTH * mix(1.0, CLOUD_SHADOW_FAR_DEPTH, far) * smoothstep(CLOUD_SHADOW_FROM, CLOUD_SHADOW_TO, body);
 }

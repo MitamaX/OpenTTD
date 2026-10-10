@@ -92,6 +92,11 @@ vec2 Slant(vec3 way)
 	return way.xy / max(way.z, LOWEST_FACING);
 }
 
+vec2 SunSlant()
+{
+	return u_sun.xy * u_sun.w;
+}
+
 vec3 Eye()
 {
 	return u_eye.xyz;
