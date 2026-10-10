@@ -90,8 +90,7 @@ static ModelMesh Ferry(VehicleDetail detail)
 	MastLight(kit, 0.06, 0.199, 0.06);
 	for (double x : {-0.24, -0.12, 0.0, 0.12}) {
 		BodyRun boat(LIFEBOAT_BODY, x - LIFEBOAT_HALF_LENGTH, x + LIFEBOAT_HALF_LENGTH, LIFEBOAT_END, LIFEBOAT_END, kit.Steps());
-		ModelMesh side = boat.Shell().Move({0.0, LIFEBOAT_SIDE, 0.0}).Paint(LIFEBOAT).Gloss(PAINT_GLOSS);
-		kit.Fine(side.Append(Mirrored(side)));
+		kit.Fine(Flanked(boat.Shell().Move({0.0, LIFEBOAT_SIDE, 0.0}).Paint(LIFEBOAT).Gloss(PAINT_GLOSS)));
 	}
 	return kit.Done();
 }

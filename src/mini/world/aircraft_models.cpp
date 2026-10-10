@@ -33,8 +33,7 @@ static ModelMesh Fuselage(std::span<const LatheRing> profile, double axis_z)
 /* A flat outline seen from above, counterclockwise, raised to a thin slab at a height, and its mirror across the middle. */
 static ModelMesh Planform(std::span<const MapVector> outline, double z, double thickness, uint32_t tone)
 {
-	ModelMesh half = Extrusion(outline, thickness).Transform(Mat4::Translation({0.0, 0.0, z})).Paint(tone);
-	return half.Append(Mirrored(half));
+	return Flanked(Extrusion(outline, thickness).Transform(Mat4::Translation({0.0, 0.0, z})).Paint(tone));
 }
 
 /* A flat outline seen from the side, counterclockwise with x along and the second axis up, stood upright on the middle. */
@@ -94,8 +93,7 @@ static ModelMesh Jet(VehicleDetail detail)
 		kit.Body(Barrel(-0.04, 0.07, 0.022, 0.035, 8).Transform(Mat4::Translation({0.0, y, 0.0})).Paint(PRIMARY).Gloss(METAL_GLOSS));
 		kit.Fine(Plank({-0.01, y - 0.003, 0.05}, {0.04, y + 0.003, 0.06}, WING));
 	}
-	ModelMesh windows = Plank({-0.25, 0.046, AXIS + 0.012}, {0.26, 0.051, AXIS + 0.02}, GLASS);
-	kit.Fine(windows.Append(Mirrored(windows)).Gloss(GLASS_GLOSS));
+	kit.Fine(Flanked(Plank({-0.25, 0.046, AXIS + 0.012}, {0.26, 0.051, AXIS + 0.02}, GLASS)).Gloss(GLASS_GLOSS));
 	kit.Fine(Plank({0.29, -0.025, 0.09}, {0.32, 0.025, 0.105}, GLASS).Gloss(GLASS_GLOSS));
 	WingtipLamps(kit, -0.09, 0.34, 0.055);
 	Gear(kit, 0.27, -0.06, 0.07);

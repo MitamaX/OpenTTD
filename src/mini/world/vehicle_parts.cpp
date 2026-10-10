@@ -244,8 +244,7 @@ ModelMesh WheelPair(double x, double half_track, double radius, double width)
 ModelMesh Bogie(double x, double half_track, double radius)
 {
 	double reach = BOGIE_WHEELBASE + radius;
-	ModelMesh bogie = Plank({x - reach, half_track + BOGIE_WIDTH * 0.5, radius * 0.5}, {x + reach, half_track + BOGIE_WIDTH * 1.5, radius * 1.5}, RUNNING_GEAR);
-	bogie.Append(Mirrored(bogie));
+	ModelMesh bogie = Flanked(Plank({x - reach, half_track + BOGIE_WIDTH * 0.5, radius * 0.5}, {x + reach, half_track + BOGIE_WIDTH * 1.5, radius * 1.5}, RUNNING_GEAR));
 	bogie.Append(Plank({x - radius * 0.5, -half_track, radius * 1.2}, {x + radius * 0.5, half_track, radius * 2.0}, RUNNING_GEAR));
 	for (double axle : {x - BOGIE_WHEELBASE, x + BOGIE_WHEELBASE}) bogie.Append(WheelPair(axle, half_track, radius, BOGIE_WIDTH));
 	return bogie;
@@ -303,15 +302,19 @@ ModelMesh LampPair(double x, double half_spacing, double z, double half, uint32_
 {
 	double facing = x >= 0.0 ? 1.0 : -1.0;
 	double outer = x + facing * LAMP_DEPTH;
-	ModelMesh lamp = Box({std::min(x, outer), half_spacing - half, z - half}, {std::max(x, outer), half_spacing + half, z + half});
-	lamp.Append(Mirrored(lamp));
-	return lamp.Paint(tone).Glow(LAMP_GLOW);
+	return Flanked(Box({std::min(x, outer), half_spacing - half, z - half}, {std::max(x, outer), half_spacing + half, z + half})).Paint(tone).Glow(LAMP_GLOW);
 }
 
 ModelMesh Mirrored(const ModelMesh &part)
 {
 	ModelMesh mirrored = part;
 	return mirrored.Transform(Mat4::Scaling({1.0, -1.0, 1.0}));
+}
+
+ModelMesh Flanked(ModelMesh part)
+{
+	part.Append(Mirrored(part));
+	return part;
 }
 
 void HeadLamps(VehicleKit &kit, const BodyRun &nose, double z)

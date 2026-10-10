@@ -104,8 +104,7 @@ static ModelMesh Pantograph(double x, double roof)
 /* Skirts hanging either side of a guideway the unit straddles or floats in. */
 static ModelMesh GuidewaySkirts()
 {
-	ModelMesh skirt = Plank({-UNIT_REACH, 0.088, -0.075}, {UNIT_REACH, 0.112, 0.01}, DARK_SECONDARY);
-	return skirt.Append(Mirrored(skirt));
+	return Flanked(Plank({-UNIT_REACH, 0.088, -0.075}, {UNIT_REACH, 0.112, 0.01}, DARK_SECONDARY));
 }
 
 static ModelMesh SteamEngine(VehicleDetail detail)
@@ -345,8 +344,7 @@ static ModelMesh OpenWagon(VehicleDetail detail)
 	VehicleKit kit(detail);
 	Underframe(kit, 0.11);
 	kit.Body(Plank({-0.225, -0.125, FLOOR}, {0.225, 0.125, 0.075}, DARK_PRIMARY));
-	ModelMesh side = Plank({-0.225, 0.115, 0.075}, {0.225, 0.125, 0.17}, MUTED_PRIMARY);
-	kit.Body(side.Append(Mirrored(side)));
+	kit.Body(Flanked(Plank({-0.225, 0.115, 0.075}, {0.225, 0.125, 0.17}, MUTED_PRIMARY)));
 	for (double x : {-0.225, 0.215}) kit.Body(Plank({x, -0.115, 0.075}, {x + 0.01, 0.115, 0.17}, MUTED_PRIMARY));
 	kit.Body(Plank({-0.215, -0.115, 0.075}, {0.215, 0.115, 0.15}, CARGO));
 	kit.Body(Heap(0.2, 0.105, 0.15, 0.045));
@@ -373,10 +371,7 @@ static ModelMesh FlatWagon(VehicleDetail detail)
 	kit.Body(SideBand(-0.225, 0.225, 0.125, 0.058, 0.074, DARK_PRIMARY));
 	for (double y : {-0.07, 0.0, 0.07}) kit.Body(Barrel(-0.2, 0.2, 0.035, 0.113, 7).Transform(Mat4::Translation({0.0, y, 0.0})).Paint(CARGO));
 	for (double y : {-0.035, 0.035}) kit.Fine(Barrel(-0.19, 0.19, 0.033, 0.175, 7).Transform(Mat4::Translation({0.0, y, 0.0})).Paint(BRIGHT_CARGO));
-	for (double x : {-0.18, -0.06, 0.06, 0.18}) {
-		ModelMesh stake = Plank({x - 0.006, 0.112, 0.078}, {x + 0.006, 0.124, 0.15}, RUNNING_GEAR);
-		kit.Fine(stake.Append(Mirrored(stake)));
-	}
+	for (double x : {-0.18, -0.06, 0.06, 0.18}) kit.Fine(Flanked(Plank({x - 0.006, 0.112, 0.078}, {x + 0.006, 0.124, 0.15}, RUNNING_GEAR)));
 	return kit.Done();
 }
 

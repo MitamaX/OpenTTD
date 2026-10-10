@@ -196,6 +196,8 @@ ModelMesh Windscreen(double x, double half_width, double low, double high);
 /* A pair of lamps on the face at x, either side of the middle, glowing. */
 ModelMesh LampPair(double x, double half_spacing, double z, double half, uint32_t tone);
 ModelMesh Mirrored(const ModelMesh &part);
+/* A part beside the middle and its mirror across it. */
+ModelMesh Flanked(ModelMesh part);
 
 ModelMesh RailVehicleModel(VehicleLook look, VehicleDetail detail);
 ModelMesh RoadVehicleModel(VehicleLook look, VehicleDetail detail);

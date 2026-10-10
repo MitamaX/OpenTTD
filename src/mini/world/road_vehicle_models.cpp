@@ -103,8 +103,7 @@ static ModelMesh Bumper(const BodyRun &body, double from, double to)
 static ModelMesh Mirrors(const BodyRun &body, double x, const Band &band)
 {
 	double side = body.HalfWidthAt(x);
-	ModelMesh mirror = Plank({x - MIRROR_THICKNESS * 0.5, side, band.low}, {x + MIRROR_THICKNESS * 0.5, side + MIRROR_REACH, band.high}, TRIM).Gloss(TRIM_GLOSS);
-	return mirror.Append(Mirrored(mirror));
+	return Flanked(Plank({x - MIRROR_THICKNESS * 0.5, side, band.low}, {x + MIRROR_THICKNESS * 0.5, side + MIRROR_REACH, band.high}, TRIM).Gloss(TRIM_GLOSS));
 }
 
 static ModelMesh Seam(double x, double half_width, const Band &band)
@@ -119,24 +118,21 @@ static ModelMesh WheelArch(double x)
 		double angle = std::numbers::pi * side / ARCH_SIDES;
 		outline[side] = {x + ARCH_RADIUS * std::cos(angle), WHEEL_RADIUS + ARCH_RADIUS * std::sin(angle)};
 	}
-	ModelMesh arch = Upright(outline, ARCH_DEPTH).Move({0.0, HALF_WIDTH + ARCH_GAP + ARCH_DEPTH * 0.5, 0.0}).Paint(RUNNING_GEAR);
-	return arch.Append(Mirrored(arch));
+	return Flanked(Upright(outline, ARCH_DEPTH).Move({0.0, HALF_WIDTH + ARCH_GAP + ARCH_DEPTH * 0.5, 0.0}).Paint(RUNNING_GEAR));
 }
 
 static void Wheels(VehicleKit &kit, std::span<const Axle> axles)
 {
 	for (const Axle &axle : axles) {
 		kit.Fine(WheelPair(axle.x, HALF_TRACK, WHEEL_RADIUS, WHEEL_WIDTH));
-		ModelMesh hub = Hub(axle.x, HALF_TRACK + WHEEL_WIDTH * 0.5 + HUB_DEPTH * 0.5, WHEEL_RADIUS, WHEEL_RADIUS * HUB_SHARE, HUB_DEPTH);
-		kit.Fine(hub.Append(Mirrored(hub)));
+		kit.Fine(Flanked(Hub(axle.x, HALF_TRACK + WHEEL_WIDTH * 0.5 + HUB_DEPTH * 0.5, WHEEL_RADIUS, WHEEL_RADIUS * HUB_SHARE, HUB_DEPTH)));
 		if (axle.arched) kit.Fine(WheelArch(axle.x));
 	}
 }
 
 static ModelMesh Mudguard(double back_axle, double front_axle)
 {
-	ModelMesh guard = Plank({back_axle - WHEEL_RADIUS - MUDGUARD, HALF_TRACK - WHEEL_WIDTH * 0.5, LOAD_FLOOR - MUDGUARD}, {front_axle + WHEEL_RADIUS + MUDGUARD, HALF_TRACK + WHEEL_WIDTH * 0.5, LOAD_FLOOR}, TRIM);
-	return guard.Append(Mirrored(guard));
+	return Flanked(Plank({back_axle - WHEEL_RADIUS - MUDGUARD, HALF_TRACK - WHEEL_WIDTH * 0.5, LOAD_FLOOR - MUDGUARD}, {front_axle + WHEEL_RADIUS + MUDGUARD, HALF_TRACK + WHEEL_WIDTH * 0.5, LOAD_FLOOR}, TRIM));
 }
 
 static void Underbody(VehicleKit &kit, double back, double front)
@@ -212,10 +208,9 @@ static ModelMesh TankerTruck(VehicleDetail detail)
 
 static ModelMesh OpenBin(uint32_t tone)
 {
-	ModelMesh side = Plank({-FRONT, HALF_WIDTH - 0.008, LOAD_FLOOR}, {LOAD_FRONT, HALF_WIDTH, 0.12}, tone);
-	side.Append(Mirrored(side));
-	for (double x : {-FRONT, LOAD_FRONT - 0.008}) side.Append(Plank({x, -HALF_WIDTH, LOAD_FLOOR}, {x + 0.008, HALF_WIDTH, 0.12}, tone));
-	return side.Gloss(PAINT_GLOSS);
+	ModelMesh bin = Flanked(Plank({-FRONT, HALF_WIDTH - 0.008, LOAD_FLOOR}, {LOAD_FRONT, HALF_WIDTH, 0.12}, tone));
+	for (double x : {-FRONT, LOAD_FRONT - 0.008}) bin.Append(Plank({x, -HALF_WIDTH, LOAD_FLOOR}, {x + 0.008, HALF_WIDTH, 0.12}, tone));
+	return bin.Gloss(PAINT_GLOSS);
 }
 
 static ModelMesh TipperTruck(VehicleDetail detail)
