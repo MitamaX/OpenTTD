@@ -34,7 +34,7 @@ enum class StopLayout : uint8_t {
 static constexpr int LAYOUTS = 4;
 static constexpr double EDGE = 0.5;
 static constexpr double PLATFORM_INNER = 0.19;
-static constexpr double PLATFORM_TOP = 0.11;
+static constexpr double PLATFORM_MIDDLE = (PLATFORM_INNER + EDGE) * 0.5;
 static constexpr double PLATFORM_FOOT = -0.012;
 static constexpr double COPING_WIDTH = 0.03;
 static constexpr double COPING_RISE = 0.004;
@@ -140,6 +140,19 @@ public:
 	{
 		std::optional<double> roofed = this->RoofedSide();
 		return roofed.has_value() && Dot(foot - this->run.from, this->run.Right()) * *roofed >= PLATFORM_INNER;
+	}
+
+	std::vector<Stretch> OpenPlatforms() const
+	{
+		std::vector<Stretch> open;
+		if (IsRailWaypoint(this->tile)) return open;
+		std::optional<double> roofed = this->RoofedSide();
+		bool built = roofed.has_value() && LayoutOf(this->tile) == StopLayout::Building;
+		for (double side : {-1.0, 1.0}) {
+			if (built && side == *roofed) continue;
+			open.emplace_back(this->run.At(0.0, side * PLATFORM_MIDDLE), this->run.At(1.0, side * PLATFORM_MIDDLE));
+		}
+		return open;
 	}
 
 private:
@@ -257,6 +270,11 @@ private:
 bool UnderStationRoof(TileIndex tile, const MapVector &foot)
 {
 	return StopBuilder(tile, WayDetail::Full).Roofs(foot);
+}
+
+std::vector<Stretch> OpenPlatforms(TileIndex tile)
+{
+	return StopBuilder(tile, WayDetail::Full).OpenPlatforms();
 }
 
 void LayRailStop(ModelMesh &mesh, TileIndex tile, WayDetail detail)

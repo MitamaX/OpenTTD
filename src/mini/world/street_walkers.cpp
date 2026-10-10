@@ -16,11 +16,13 @@
 
 #include "../../map_func.h"
 #include "../../road_type.h"
+#include "../../station_map.h"
 #include "../core/seed.h"
 #include "../map/network_style.h"
 #include "../map/tile_shapes.h"
 #include "figure_models.h"
 #include "road_models.h"
+#include "station_models.h"
 #include "../gpu/draw_list.h"
 
 #include "../../safeguards.h"
@@ -34,6 +36,8 @@ static constexpr double CROWDED_WALKERS = 2.6;
 static constexpr double PAVEMENT_LINE = (ROAD_HALF + HALF_TILE) / 2.0;
 static constexpr double LINE_JITTER = 0.035;
 static constexpr double STANDING_SHARE = 0.15;
+static constexpr double WAITING_SHARE = 0.7;
+static constexpr int MOST_WAITING = 3;
 static constexpr SeedRange PACE = {0.12, 0.24};
 static constexpr double STRIDE = 0.045;
 static constexpr double BOB = 0.004;
@@ -84,6 +88,29 @@ static int RunOn(int tx, int ty, MapVector step, Axis axis)
 	return run;
 }
 
+static Walker Placed(SeedDice &dice, const MapVector &start, const MapVector &along, double length, double floor, double standing_share)
+{
+	Walker placed = {
+		static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(along.x), static_cast<float>(along.y),
+		static_cast<float>(length), static_cast<float>(dice.Share()), static_cast<float>(dice.Between(PACE)), static_cast<float>(floor),
+		InstanceColour(SHIRTS[dice.Below(SHIRTS.size())]), InstanceColour(TROUSERS[dice.Below(TROUSERS.size())]), static_cast<uint8_t>(dice.Below(FIGURE_BUILDS.size())),
+	};
+	if (dice.Share() < standing_share) placed.pace = 0.0f;
+	return placed;
+}
+
+static void AddWaiting(std::vector<Walker> &walkers, TileIndex tile)
+{
+	SeedDice dice(Hash32(WALKER_SALT ^ ~tile.base()));
+	for (const Stretch &platform : OpenPlatforms(tile)) {
+		int count = static_cast<int>(dice.Below(MOST_WAITING + 1));
+		for (int walker = 0; walker < count; walker++) {
+			MapVector start = platform.from + platform.Right() * dice.Between(-LINE_JITTER, LINE_JITTER);
+			walkers.push_back(Placed(dice, start, platform.Along(), platform.Span(), PLATFORM_TOP, WAITING_SHARE));
+		}
+	}
+}
+
 StreetWalkers::StreetWalkers() : blocks({ChangeKind::Cover, ChangeKind::Ways}, RUN_REACH + DENSITY_REACH)
 {
 }
@@ -99,7 +126,7 @@ void StreetWalkers::Refresh(const SceneView &camera, double shown_pixels, double
 	this->blocks.Refresh(camera, shown_pixels, cast_pixels, RUN_REACH, &StreetWalkers::Build);
 }
 
-/* Each pavement beside a house gets its walkers, pacing the stretch of street that runs straight on through their tile, or standing about on it. */
+/* Each pavement beside a house gets its walkers, pacing the stretch of street that runs straight on through their tile, or standing about on it; each open platform its few waiting. */
 void StreetWalkers::Build(const TileSpan &tiles, Pavement &pavement)
 {
 	std::vector<Walker> &walkers = pavement.walkers;
@@ -107,6 +134,7 @@ void StreetWalkers::Build(const TileSpan &tiles, Pavement &pavement)
 	pavement.moved = 0;
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
+			if (IsRailStationTile(TileXY(tx, ty))) AddWaiting(walkers, TileXY(tx, ty));
 			for (Axis axis : {AXIS_X, AXIS_Y}) {
 				if (!WalkedThrough(tx, ty, axis)) continue;
 				MapVector along = AlongAxis(axis);
@@ -120,13 +148,7 @@ void StreetWalkers::Build(const TileSpan &tiles, Pavement &pavement)
 					int count = static_cast<int>(SPARSE_WALKERS + CROWDED_WALKERS * Crowding(tx, ty) + dice.Share());
 					for (int walker = 0; walker < count; walker++) {
 						MapVector start = from + across * (side * (PAVEMENT_LINE + dice.Between(-LINE_JITTER, LINE_JITTER)));
-						Walker placed = {
-							static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(along.x), static_cast<float>(along.y),
-							static_cast<float>(Length(to - from)), static_cast<float>(dice.Share()), static_cast<float>(dice.Between(PACE)),
-							InstanceColour(SHIRTS[dice.Below(SHIRTS.size())]), InstanceColour(TROUSERS[dice.Below(TROUSERS.size())]),
-						};
-						if (dice.Share() < STANDING_SHARE) placed.pace = 0.0f;
-						walkers.push_back(placed);
+						walkers.push_back(Placed(dice, start, along, Length(to - from), PAVEMENT_TOP, STANDING_SHARE));
 					}
 				}
 			}
@@ -142,7 +164,7 @@ void StreetWalkers::Gather(const SceneView &view, const Frustum &frustum, double
 		if (pavement.moved != this->frame) this->Move(view, pavement);
 		for (const Stroll &stroll : pavement.strolls) {
 			if (stroll.tile_pixels < fewest_pixels) continue;
-			batch.Add(to_underlying(stroll.pose), stroll.instance);
+			batch.Add(FigureModel(stroll.build, stroll.pose), stroll.instance);
 			gathered++;
 		}
 		return gathered < MOST_WALKERS;
@@ -162,7 +184,7 @@ void StreetWalkers::Move(const SceneView &view, Pavement &pavement) const
 		double heading = (walking ? lap < 1.0 : walker.phase < 0.5) ? 1.0 : -1.0;
 		double x = walker.x + walker.along_x * share * walker.length;
 		double y = walker.y + walker.along_y * share * walker.length;
-		double z = GroundLevel(x, y) * LevelRise() + PAVEMENT_TOP;
+		double z = GroundLevel(x, y) * LevelRise() + walker.floor;
 
 		double steps = walked / STRIDE;
 		FigurePose pose = walking ? WALK_CYCLE[static_cast<size_t>(std::fmod(steps, 2.0) * 2.0) % WALK_CYCLE.size()] : FigurePose::Upright;
@@ -172,7 +194,7 @@ void StreetWalkers::Move(const SceneView &view, Pavement &pavement) const
 			static_cast<float>(x), static_cast<float>(y), static_cast<float>(z + bob), static_cast<float>(yaw), 0.0f, 0.0f, 1.0f,
 			walker.shirt, walker.trousers, {},
 		};
-		pavement.strolls.push_back({instance, pose, view.TilePixelsAt(Length(view.eye - Vec3{x, y, z}))});
+		pavement.strolls.push_back({instance, pose, walker.build, view.TilePixelsAt(Length(view.eye - Vec3{x, y, z}))});
 	}
 }
 

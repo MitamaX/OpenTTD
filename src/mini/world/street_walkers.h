@@ -26,18 +26,21 @@ struct Walker {
 	float length;
 	float phase;
 	float pace;
+	float floor;
 	std::array<uint8_t, 4> shirt;
 	std::array<uint8_t, 4> trousers;
+	uint8_t build;
 };
 
-/* A walker as it stands this frame: its copy, the pose it is drawn in and how many pixels a tile spans where it stands. */
+/* A walker as it stands this frame: its copy, the pose and build it is drawn in and how many pixels a tile spans where it stands. */
 struct Stroll {
 	VehicleInstance instance;
 	FigurePose pose;
+	uint8_t build;
 	double tile_pixels;
 };
 
-/* Walkers stand on the pavements of town streets that run straight on through a tile, more of them where houses crowd close.
+/* Walkers stand on the pavements of town streets that run straight on through a tile, more of them where houses crowd close, and wait about on the open platforms of rail stations.
  * A block is laid out again once the roads or houses about it change, and its walkers are moved once a frame however many views gather them. */
 class StreetWalkers final : public Scatter {
 public:
@@ -45,7 +48,7 @@ public:
 
 	void Sync(const WorldChanges &changes) override;
 	void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) override;
-	/* Each walker is gathered in the bucket of its pose. */
+	/* Each walker is gathered in the bucket of its build and pose. */
 	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) override;
 	void Release() override;
 

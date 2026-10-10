@@ -30,7 +30,20 @@ inline constexpr size_t FIGURE_POSES = to_underlying(FigurePose::End);
 /* One step after another runs through the poses as a walk does, standing upright between the strides. */
 inline constexpr std::array<FigurePose, 4> WALK_CYCLE = {FigurePose::LeftStride, FigurePose::Upright, FigurePose::RightStride, FigurePose::Upright};
 
-/* A figure stands at the origin facing along x, in tiles; its shirt takes the primary paintwork and its trousers the secondary. Listed by pose. */
+struct FigureBuild {
+	double height;
+	double girth;
+};
+
+inline constexpr std::array<FigureBuild, 4> FIGURE_BUILDS = {{{1.0, 1.0}, {1.09, 0.9}, {0.93, 1.15}, {0.96, 0.92}}};
+inline constexpr size_t FIGURE_MODELS = FIGURE_BUILDS.size() * FIGURE_POSES;
+
+constexpr size_t FigureModel(size_t build, FigurePose pose)
+{
+	return build * FIGURE_POSES + to_underlying(pose);
+}
+
+/* A figure stands at the origin facing along x, in tiles; its shirt takes the primary paintwork and its trousers the secondary. Listed by build, then by pose. */
 std::vector<ModelMesh> BuildFigureModels();
 
 #endif /* MINI_WORLD_FIGURE_MODELS_H */

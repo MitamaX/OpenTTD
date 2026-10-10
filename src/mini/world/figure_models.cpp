@@ -10,24 +10,37 @@
 #include "../../stdafx.h"
 #include "figure_models.h"
 
+#include <array>
+
 #include "../model/model_shapes.h"
 #include "vehicle_parts.h"
 
 #include "../../safeguards.h"
 
 static constexpr Vec3 SIDEWAYS = {0.0, 1.0, 0.0};
+static constexpr int BODY_SIDES = 6;
+static constexpr int LIMB_SIDES = 4;
 
 static constexpr double HIP_HEIGHT = 0.05;
-static constexpr double LEG_HALF = 0.0055;
+static constexpr double HIP_RADIUS = 0.0062;
+static constexpr double ANKLE_RADIUS = 0.0042;
 static constexpr double LEG_SPREAD = 0.0075;
 static constexpr double SHOULDER_HEIGHT = 0.086;
-static constexpr double ARM_HALF = 0.0035;
+static constexpr double SHOULDER_RADIUS = 0.0038;
+static constexpr double WRIST_RADIUS = 0.0027;
 static constexpr double ARM_LENGTH = 0.032;
 static constexpr double ARM_SPREAD = 0.0175;
-static constexpr Vec3 TORSO_LOW = {-0.0085, -0.014, HIP_HEIGHT - 0.004};
-static constexpr Vec3 TORSO_HIGH = {0.0085, 0.014, SHOULDER_HEIGHT + 0.003};
-static constexpr double NECK_HEIGHT = 0.004;
-static constexpr double HEAD_HALF = 0.0075;
+static constexpr double NECK_TOP = 0.093;
+static constexpr double TORSO_BREADTH = 1.6;
+static constexpr std::array<LatheRing, 4> TORSO_PROFILE = {{
+	{0.0086, HIP_HEIGHT - 0.004}, {0.0094, 0.078}, {0.0084, SHOULDER_HEIGHT + 0.002}, {0.0034, NECK_TOP},
+}};
+static constexpr double HEAD_RADIUS = 0.0078;
+static constexpr std::array<LatheRing, 4> HEAD_PROFILE = {{
+	{HEAD_RADIUS * 0.6, NECK_TOP}, {HEAD_RADIUS, NECK_TOP + HEAD_RADIUS * 0.9}, {HEAD_RADIUS * 0.75, NECK_TOP + HEAD_RADIUS * 1.75}, {0.0, NECK_TOP + HEAD_RADIUS * 2.1},
+}};
+static constexpr double HAIR_LINE = NECK_TOP + HEAD_RADIUS * 1.3;
+static constexpr double HAIR_BACK = -0.5 * HEAD_RADIUS;
 static constexpr double STRIDE_TURN = 0.38;
 static constexpr double SWING_TURN = 0.45;
 
@@ -36,28 +49,35 @@ static constexpr uint32_t TROUSERS = PaintworkTone(Paintwork::Secondary, 1.0);
 static constexpr uint32_t SKIN = 0xD9A57E;
 static constexpr uint32_t HAIR = 0x3B2A20;
 
-/* A limb hangs from its joint, swung forward by a turn about the axis across the body. */
-static ModelMesh Limb(double half, double length, double joint_height, double spread, double swing, uint32_t tone)
+/* A limb tapers down from its joint, swung forward by a turn about the axis across the body. */
+static ModelMesh Limb(double joint_radius, double end_radius, double length, double joint_height, double spread, double swing, uint32_t tone)
 {
-	ModelMesh limb = Box({-half, -half, -length}, {half, half, 0.0}).Paint(tone);
+	ModelMesh limb = Column(LIMB_SIDES, end_radius, joint_radius, length).Move({0.0, 0.0, -length}).Paint(tone);
 	return limb.Transform(Mat4::Translation({0.0, spread, joint_height}) * Mat4::Turn(SIDEWAYS, swing));
+}
+
+static ModelMesh Head()
+{
+	return Lathe(HEAD_PROFILE, BODY_SIDES).PaintBy([](const Vec3 &at) { return at.z > HAIR_LINE || at.x < HAIR_BACK ? HAIR : SKIN; });
 }
 
 /* Each leg swings one way and the arm on its side the other, so a stride shows from any side. */
 static ModelMesh Figure(double stride)
 {
-	ModelMesh figure = Box(TORSO_LOW, TORSO_HIGH).Paint(SHIRT);
-	double head_low = TORSO_HIGH.z + NECK_HEIGHT;
-	figure.Append(Box({-HEAD_HALF, -HEAD_HALF, head_low}, {HEAD_HALF, HEAD_HALF, head_low + 2.0 * HEAD_HALF}).Paint(SKIN));
-	figure.Append(Box({-HEAD_HALF - 0.001, -HEAD_HALF - 0.001, head_low + 1.4 * HEAD_HALF}, {HEAD_HALF * 0.4, HEAD_HALF + 0.001, head_low + 2.0 * HEAD_HALF + 0.002}).Paint(HAIR));
+	ModelMesh figure = Lathe(TORSO_PROFILE, BODY_SIDES).Transform(Mat4::Scaling({1.0, TORSO_BREADTH, 1.0})).Paint(SHIRT);
+	figure.Append(Head());
 	for (double side : {-1.0, 1.0}) {
-		figure.Append(Limb(LEG_HALF, HIP_HEIGHT, HIP_HEIGHT, side * LEG_SPREAD, side * stride * STRIDE_TURN, TROUSERS));
-		figure.Append(Limb(ARM_HALF, ARM_LENGTH, SHOULDER_HEIGHT, side * ARM_SPREAD, -side * stride * SWING_TURN, SHIRT));
+		figure.Append(Limb(HIP_RADIUS, ANKLE_RADIUS, HIP_HEIGHT, HIP_HEIGHT, side * LEG_SPREAD, side * stride * STRIDE_TURN, TROUSERS));
+		figure.Append(Limb(SHOULDER_RADIUS, WRIST_RADIUS, ARM_LENGTH, SHOULDER_HEIGHT, side * ARM_SPREAD, -side * stride * SWING_TURN, SHIRT));
 	}
-	return figure.Facet();
+	return figure;
 }
 
 std::vector<ModelMesh> BuildFigureModels()
 {
-	return {Figure(1.0), Figure(0.0), Figure(-1.0)};
+	std::vector<ModelMesh> models;
+	for (const FigureBuild &build : FIGURE_BUILDS) {
+		for (double stride : {1.0, 0.0, -1.0}) models.push_back(Figure(stride).Transform(Mat4::Scaling({build.girth, build.girth, build.height})));
+	}
+	return models;
 }

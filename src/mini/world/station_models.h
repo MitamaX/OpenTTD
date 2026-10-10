@@ -10,10 +10,15 @@
 #ifndef MINI_WORLD_STATION_MODELS_H
 #define MINI_WORLD_STATION_MODELS_H
 
+#include <vector>
+
 #include "../../tile_type.h"
 #include "way_shapes.h"
 
+inline constexpr double PLATFORM_TOP = 0.11;
+
 bool UnderStationRoof(TileIndex tile, const MapVector &foot);
+std::vector<Stretch> OpenPlatforms(TileIndex tile);
 void LayRailStop(ModelMesh &mesh, TileIndex tile, WayDetail detail);
 void LayBusShelter(ModelMesh &mesh, TileIndex tile, WayDetail detail);
 
