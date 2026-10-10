@@ -201,16 +201,23 @@ void TileTrack::ReachUnderBranches(size_t rank, Sleeper &sleeper) const
 	}
 }
 
-/* Pieces crossing on one tile, and the same piece on the tiles either side, stand a hair apart so their faces never fight; eased pieces never overlap. */
+bool TileTrack::Shared() const
+{
+	return TracksOverlap(this->site.bits);
+}
+
+/* The same piece on the tiles either side stands a hair apart so their faces never fight, and pieces crossing on one tile lie level as one bed; eased pieces never overlap. */
 double TileTrack::Lift(const TrackPiece &piece) const
 {
 	if (piece.Eased()) return 0.0;
 	int parity = (this->site.tx + this->site.ty) & 1;
-	return LIFT_STEP * (static_cast<int>(piece.Id()) + static_cast<int>(TRACK_END) * parity);
+	int order = this->Shared() ? 0 : static_cast<int>(piece.Id());
+	return LIFT_STEP * (order + static_cast<int>(TRACK_END) * parity);
 }
 
-uint32_t TileTrack::BallastSeed(const TrackPiece &piece) const
+std::optional<uint32_t> TileTrack::BallastSeed(const TrackPiece &piece) const
 {
+	if (this->Shared()) return std::nullopt;
 	return Hash32(TRACK_SALT ^ static_cast<uint32_t>(this->site.tx * TRACK_END + piece.Id()) ^ Hash32(this->site.ty));
 }
 

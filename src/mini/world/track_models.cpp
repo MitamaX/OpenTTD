@@ -103,11 +103,11 @@ static ModelMesh SleeperModel(const WayLine &line, const Sleeper &sleeper)
 	return timber.Paint(TIMBER).Vary(TIMBER_VARIETY, sleeper.seed);
 }
 
-static ModelMesh RailPiece(const TrackPiece &piece, WayDetail detail, uint32_t seed, std::span<const Sleeper> sleepers)
+static ModelMesh RailPiece(const TrackPiece &piece, WayDetail detail, std::optional<uint32_t> seed, std::span<const Sleeper> sleepers)
 {
 	if (detail == WayDetail::Simple) return piece.Body(DISTANT_BALLAST_SECTION, true);
 	ModelMesh mesh = piece.Body(BALLAST_SECTION, true);
-	mesh.Vary(BALLAST_VARIETY, seed);
+	if (seed.has_value()) mesh.Vary(BALLAST_VARIETY, *seed);
 	for (const Sleeper &sleeper : sleepers) mesh.Append(SleeperModel(piece.Line(), sleeper));
 	return mesh.Append(piece.Pair(RAIL_SECTION, GAUGE_HALF));
 }
