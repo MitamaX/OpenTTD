@@ -74,6 +74,19 @@ struct Bay {
 	ivec2 window;
 };
 
+struct Outlook {
+	vec3 eye;
+	vec3 sun;
+};
+
+struct Elevation {
+	uint grid;
+	uint seed;
+	bool front;
+	Outlook outlook;
+	float pixel;
+};
+
 Bay BayAt(uint grid, vec2 texel, bool front)
 {
 	float ground = FACADE_GROUND[grid];
@@ -93,11 +106,6 @@ Bay BayAt(uint grid, vec2 texel, bool front)
 	Opening opening = GROUND_OPENINGS[grid];
 	return Bay(opening, vec2(across, texel.y - opening.sill), ivec2(column, 0));
 }
-
-struct Outlook {
-	vec3 eye;
-	vec3 sun;
-};
 
 vec3 InTexels(vec3 way, float stretch)
 {

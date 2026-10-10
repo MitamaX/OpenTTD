@@ -80,10 +80,11 @@ vec3 LampPaint(ivec2 window, uint seed, bool offices)
 	return offices ? OFFICE_LAMPS[Pick(roll, OFFICE_LAMPS.length())] : HOME_LAMPS[Pick(roll, HOME_LAMPS.length())];
 }
 
-Room RoomBehind(Bay bay, uint grid, uint seed)
+Room RoomBehind(Bay bay, Elevation elevation)
 {
+	uint seed = elevation.seed;
 	ivec2 storey = ivec2(STOREY_COLUMN, bay.window.y);
-	bool offices = HoldsOffices(grid);
+	bool offices = HoldsOffices(elevation.grid);
 	bool lit_storey = offices && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
 	float lit = LampShare(bay.opening.kind == OPEN_SHOP ? LIT_SHOP_SHARE : lit_storey ? LIT_IN_LIT_STOREY : LIT_ROOM_SHARE);
 	Room room;
@@ -160,9 +161,10 @@ bool UnderCeilingLamp(Room room, vec2 spot, float half_width, float lamp_depth)
 	return length(spot - vec2(0.0, lamp_depth)) < HOME_FIXTURE_RADIUS;
 }
 
-Clad RoomSeen(Room room, Bay bay, uint grid, Outlook outlook)
+Clad RoomSeen(Room room, Bay bay, Elevation elevation)
 {
-	vec2 shift = SightShift(outlook);
+	uint grid = elevation.grid;
+	vec2 shift = SightShift(elevation.outlook);
 	vec2 heading = Heading(shift);
 	float half_width = FACADE_PITCH[grid] * 0.5 - ROOM_PARTITION;
 	float floor_height = -bay.opening.sill;
@@ -192,19 +194,19 @@ Clad Drape(vec3 paint, Room room)
 	return PaneOver(paint, 1.0, room.lamp * DRAPE_GLOW);
 }
 
-Clad SeenThrough(Room room, Bay bay, uint grid, Outlook outlook, float pixel)
+Clad SeenThrough(Room room, Bay bay, Elevation elevation)
 {
 	Opening opening = bay.opening;
 	if (bay.at.y > opening.height * (1.0 - room.drop)) return Drape(BlindPaint(room), room);
 	if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) return Drape(CurtainPaint(room), room);
-	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, pixel);
+	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, elevation.pixel);
 	Clad mean = RoomMean(room);
-	return resolved > 0.0 ? Mixed(mean, RoomSeen(room, bay, grid, outlook), resolved) : mean;
+	return resolved > 0.0 ? Mixed(mean, RoomSeen(room, bay, elevation), resolved) : mean;
 }
 
-Clad RoomFromAfar(Bay bay, uint grid, uint seed)
+Clad RoomFromAfar(Bay bay, Elevation elevation)
 {
-	Room room = RoomBehind(bay, grid, seed);
+	Room room = RoomBehind(bay, elevation);
 	Clad seen = RoomMean(room);
 	if (room.drawn > 0.0) seen = Mixed(seen, Drape(CurtainPaint(room), room), CURTAIN_SIDES * room.drawn);
 	return room.drop > 0.0 ? Mixed(seen, Drape(BlindPaint(room), room), room.drop) : seen;
