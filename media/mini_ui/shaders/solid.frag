@@ -184,7 +184,7 @@ vec3 Drifted(vec3 ground, uint bed, vec2 at, vec2 p, vec3 normal)
 	return mix(ground, Landscape() == LANDSCAPE_ARCTIC ? SNOW : SAND, lying * smoothstep(DRIFT_FACING.x, DRIFT_FACING.y, normal.z));
 }
 
-float Fades(float frequency)
+float WearShown(float frequency)
 {
 	return Weathers() ? Resolved(frequency) : 0.0;
 }
@@ -200,14 +200,14 @@ vec3 Trafficked(vec2 p, mat2 ground_span)
 	float along = along_x ? p.x : p.y;
 	float wheel = abs(abs(abs(lateral) - LANE_CENTRE) - WHEEL_HALF_GAUGE);
 	float unbroken = smoothstep(WHEEL_TRACK_BREAK_EDGES.x, WHEEL_TRACK_BREAK_EDGES.y, Noise(vec2(along * WHEEL_TRACK_BREAKS_PER_TILE, lateral * ROAD_CRACKS_PER_TILE)));
-	float tracks = Stroke(wheel, WHEEL_TRACK_HALF, PixelAcross(ground_span, along_x ? Y_AXIS : X_AXIS)) * unbroken * Fades(1.0 / WHEEL_TRACK_HALF);
-	float dust = smoothstep(ROAD_HALF - VERGE_DUST_REACH, ROAD_HALF, abs(lateral)) * Fades(1.0 / VERGE_DUST_REACH);
+	float tracks = Stroke(wheel, WHEEL_TRACK_HALF, PixelAcross(ground_span, along_x ? Y_AXIS : X_AXIS)) * unbroken * WearShown(1.0 / WHEEL_TRACK_HALF);
+	float dust = smoothstep(ROAD_HALF - VERGE_DUST_REACH, ROAD_HALF, abs(lateral)) * WearShown(1.0 / VERGE_DUST_REACH);
 	return mix(vec3(1.0), VERGE_DUST, dust) * mix(1.0, WHEEL_TRACK_SHADE, tracks);
 }
 
 float RoadCracks(vec2 p, mat2 pattern_span)
 {
-	float shown = Fades(ROAD_CRACKS_PER_TILE * 8.0);
+	float shown = WearShown(ROAD_CRACKS_PER_TILE * 8.0);
 	if (shown <= 0.0) return 1.0;
 	vec2 q = p * ROAD_CRACKS_PER_TILE;
 	vec2 jag = (vec2(Noise(q * ROAD_CRACK_JAGS), Noise(q * ROAD_CRACK_JAGS + ROAD_CRACK_SEED)) - 0.5) * ROAD_CRACK_JAGGED;
@@ -229,7 +229,7 @@ vec3 Marked(vec3 tone, vec3 position)
 {
 	vec2 p = PatternPoint(position) + MARK_WEAR_SEED;
 	float flaking = (Octave(p, MARK_FLAKES_PER_TILE) - 0.5) * MARK_FLAKING;
-	float worn = smoothstep(MARK_WEAR_EDGES.x, MARK_WEAR_EDGES.y, Octave(p, MARK_WEAR_PER_TILE) + flaking) * Fades(MARK_WEAR_PER_TILE);
+	float worn = smoothstep(MARK_WEAR_EDGES.x, MARK_WEAR_EDGES.y, Octave(p, MARK_WEAR_PER_TILE) + flaking) * WearShown(MARK_WEAR_PER_TILE);
 	return mix(tone, DISTANT_ROAD, worn * MARK_WEAR);
 }
 
@@ -279,7 +279,7 @@ float Receded()
 /* Solids fade out where they grow too small to show, dithered, handing over to what the ground paints in their place;
  * some first sink into the ground over a longer reach, thinning and lying flatter so their sides draw no dark lines.
  * Under the overlay, ways take their layer's accent, while solids keeping their own colours only sink when out of it.
- * A positive trait is how glossy the surface is, a negative one how brightly it glows; glass, the glossiest, mirrors the sky. */
+ * A trait is how glossy a surface is, how brightly it glows below zero, or the code of the bed a way is laid with. */
 void main()
 {
 	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
