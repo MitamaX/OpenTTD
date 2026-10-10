@@ -50,16 +50,20 @@ static double FurthestReach(std::span<const VehicleBounds> bounds)
 
 static Growth MostGrowthOf(VehicleLook look)
 {
-	if (look < VehicleLook::Ferry) return GROUND_GROWTH;
-	if (look < VehicleLook::PropPlane) return SHIP_GROWTH;
-	return AIRCRAFT_GROWTH;
+	switch (WayOf(look)) {
+		case VehicleWay::Water: return SHIP_GROWTH;
+		case VehicleWay::Air: return AIRCRAFT_GROWTH;
+		default: return GROUND_GROWTH;
+	}
 }
 
 static MiniLayer LayerOf(VehicleLook look)
 {
-	if (look < VehicleLook::Bus) return MiniLayer::Rail;
-	if (look < VehicleLook::Ferry) return MiniLayer::Road;
-	return MiniLayer::None;
+	switch (WayOf(look)) {
+		case VehicleWay::Rail: return MiniLayer::Rail;
+		case VehicleWay::Road: return MiniLayer::Road;
+		default: return MiniLayer::None;
+	}
 }
 
 VehiclePass::VehiclePass() : program(VEHICLE_VERTEX_SOURCES, VEHICLE_FRAGMENT_SOURCES), caster(CasterProgram(VEHICLE_VERTEX_SOURCES))

@@ -55,6 +55,28 @@ enum class VehicleLook : uint8_t {
 	End,
 };
 
+/** What a look's vehicle travels on, its looks listed together in that order. */
+enum class VehicleWay : uint8_t {
+	Rail,
+	Road,
+	Water,
+	Air,
+};
+
+constexpr VehicleWay WayOf(VehicleLook look)
+{
+	if (look < VehicleLook::Bus) return VehicleWay::Rail;
+	if (look < VehicleLook::Ferry) return VehicleWay::Road;
+	if (look < VehicleLook::PropPlane) return VehicleWay::Water;
+	return VehicleWay::Air;
+}
+
+constexpr bool OnGround(VehicleLook look)
+{
+	VehicleWay way = WayOf(look);
+	return way == VehicleWay::Rail || way == VehicleWay::Road;
+}
+
 /** How finely a vehicle is drawn: whole near the eye, its bare masses further off. */
 enum class VehicleDetail : uint8_t {
 	Full,

@@ -23,23 +23,23 @@
 static constexpr double SHIP_SCALE = 1.4;
 static constexpr double AIRCRAFT_SCALE = 1.3;
 
-static bool OnGround(VehicleLook look)
-{
-	return look < VehicleLook::Ferry;
-}
-
 static double ScaleOf(VehicleLook look)
 {
-	if (OnGround(look)) return 1.0;
-	return look < VehicleLook::PropPlane ? SHIP_SCALE : AIRCRAFT_SCALE;
+	switch (WayOf(look)) {
+		case VehicleWay::Water: return SHIP_SCALE;
+		case VehicleWay::Air: return AIRCRAFT_SCALE;
+		default: return 1.0;
+	}
 }
 
 static ModelMesh VehicleModel(VehicleLook look, VehicleDetail detail)
 {
-	if (look < VehicleLook::Bus) return RailVehicleModel(look, detail);
-	if (look < VehicleLook::Ferry) return RoadVehicleModel(look, detail);
-	if (look < VehicleLook::PropPlane) return ShipModel(look, detail);
-	return AircraftModel(look, detail);
+	switch (WayOf(look)) {
+		case VehicleWay::Rail: return RailVehicleModel(look, detail);
+		case VehicleWay::Road: return RoadVehicleModel(look, detail);
+		case VehicleWay::Water: return ShipModel(look, detail);
+		default: return AircraftModel(look, detail);
+	}
 }
 
 std::array<uint8_t, 4> InstanceColour(uint32_t rgb, double alpha)
