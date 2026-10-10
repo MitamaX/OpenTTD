@@ -179,7 +179,7 @@ double VehicleMotion::TurnRate(const Vehicle *v)
 
 TrackTaken VehicleMotion::TakenBy(const Vehicle *v) const
 {
-	if (v->type != VEH_TRAIN) return {};
+	if (v->type != VEH_TRAIN) return [](TileIndex) { return TRACK_BIT_NONE; };
 	std::vector<Passage> passages;
 	for (const Train *unit = Train::From(v->First()); unit != nullptr; unit = unit->Next()) {
 		passages.push_back({unit->tile, unit->track & TRACK_BIT_MASK});
