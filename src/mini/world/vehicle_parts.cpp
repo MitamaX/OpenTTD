@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
+#include <iterator>
 #include <numbers>
 #include <vector>
 
@@ -21,6 +23,7 @@
 static constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
 static constexpr Vec3 Y_AXIS = {0.0, 1.0, 0.0};
 static constexpr int NOSE_RINGS = 4;
+static constexpr double QUARTER_TURN = std::numbers::pi * 0.5;
 static constexpr int WHEEL_SIDES = 8;
 static constexpr double PROUD = 0.003;
 static constexpr double PANE_DEPTH = 0.004;
@@ -66,6 +69,103 @@ static std::vector<LoftRing> TaperRings(double from, double to, const NoseShape 
 		rings.push_back({std::lerp(from, to, along), std::lerp(1.0, shape.width, taper), std::lerp(1.0, shape.height, taper)});
 	}
 	return rings;
+}
+
+static void RoundCorner(std::vector<MapVector> &section, const MapVector &centre, double radius, double from, int arc)
+{
+	if (radius <= 0.0) {
+		section.insert(section.end(), 2, centre);
+		return;
+	}
+	for (int step = 0; step <= arc; step++) {
+		double angle = from + QUARTER_TURN * step / arc;
+		section.push_back({centre.x + radius * std::cos(angle), centre.y + radius * std::sin(angle)});
+	}
+}
+
+static std::vector<MapVector> RoundedSection(const HullProfile &profile, int arc)
+{
+	double w = profile.half_width;
+	double radius = BevelOf(profile);
+	std::vector<MapVector> section(2, {-w, profile.low});
+	section.insert(section.end(), 2, {w, profile.low});
+	RoundCorner(section, {w - radius, profile.high - radius}, radius, 0.0, arc);
+	RoundCorner(section, {radius - w, profile.high - radius}, radius, QUARTER_TURN, arc);
+	return section;
+}
+
+static std::vector<LoftRing> EndRings(double tip, double inward, const BodyEnd &end, ShellSteps steps)
+{
+	if (end.reach <= 0.0 || steps.end <= 0) return {{tip, 1.0, 1.0}};
+	std::vector<LoftRing> rings;
+	for (int step = 0; step <= steps.end; step++) {
+		double angle = QUARTER_TURN * step / steps.end;
+		double rounded = std::sin(angle);
+		rings.push_back({tip + inward * end.reach * (1.0 - std::cos(angle)), std::lerp(end.width, 1.0, rounded), std::lerp(end.height, 1.0, rounded)});
+	}
+	return rings;
+}
+
+BodyRun::BodyRun(const HullProfile &profile, double back, double front, const BodyEnd &back_end, const BodyEnd &front_end, ShellSteps steps) :
+	profile(profile), steps(steps), rings(EndRings(back, 1.0, back_end, steps))
+{
+	std::vector<LoftRing> front_rings = EndRings(front, -1.0, front_end, steps);
+	this->rings.insert(this->rings.end(), front_rings.rbegin(), front_rings.rend());
+	assert(std::ranges::is_sorted(this->rings, std::less<>{}, &LoftRing::x));
+}
+
+LoftRing BodyRun::RingAt(double x) const
+{
+	auto above = std::ranges::upper_bound(this->rings, x, std::less<>{}, &LoftRing::x);
+	if (above == this->rings.begin()) return {x, above->across, above->up};
+	auto below = std::prev(above);
+	if (above == this->rings.end()) return {x, below->across, below->up};
+	double share = (x - below->x) / (above->x - below->x);
+	return {x, std::lerp(below->across, above->across, share), std::lerp(below->up, above->up, share)};
+}
+
+std::vector<LoftRing> BodyRun::RingsOver(double from, double to) const
+{
+	std::vector<LoftRing> over = {this->RingAt(from)};
+	for (const LoftRing &ring : this->rings) {
+		if (ring.x > from && ring.x < to) over.push_back(ring);
+	}
+	over.push_back(this->RingAt(to));
+	return over;
+}
+
+ModelMesh BodyRun::Lofted(const HullProfile &section, std::span<const LoftRing> rings) const
+{
+	return Loft(RoundedSection(section, this->steps.arc), this->profile.low, rings);
+}
+
+ModelMesh BodyRun::Laid(const HullProfile &section, double from, double to) const
+{
+	return this->Lofted(section, this->RingsOver(from, to));
+}
+
+ModelMesh BodyRun::Shell() const
+{
+	return this->Laid(this->profile, this->Back(), this->Front());
+}
+
+ModelMesh BodyRun::Stripe(const Band &band, uint32_t tone) const
+{
+	return this->Stripe(band, this->Back(), this->Front(), tone);
+}
+
+ModelMesh BodyRun::Stripe(const Band &band, double from, double to, uint32_t tone) const
+{
+	assert(band.low >= this->profile.low && band.high <= this->profile.high - BevelOf(this->profile));
+	std::vector<LoftRing> over = this->RingsOver(from, to);
+	if (from <= this->Back()) over.front().x -= PROUD;
+	if (to >= this->Front()) over.back().x += PROUD;
+	return this->Lofted({this->profile.half_width + PROUD, band.low, band.high, 0.0}, over).Paint(tone);
+}
+
+double BodyRun::HalfWidthAt(double x) const
+{
+	return this->profile.half_width * this->RingAt(x).across;
 }
 
 ModelMesh Hull(const HullProfile &profile, double back, double front)

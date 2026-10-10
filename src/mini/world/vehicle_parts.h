@@ -12,6 +12,7 @@
 
 #include <span>
 #include <utility>
+#include <vector>
 
 #include "../model/model_shapes.h"
 #include "vehicle_models.h"
@@ -58,12 +59,39 @@ struct NoseShape {
 	double curve;
 };
 
+struct BodyEnd {
+	double reach;
+	double width;
+	double height;
+};
+
+constexpr BodyEnd RoundedEnd(double reach, double width, double height)
+{
+	return {reach, width, height};
+}
+
+inline constexpr BodyEnd SQUARE_END = RoundedEnd(0.0, 1.0, 1.0);
+
+struct Band {
+	double low;
+	double high;
+};
+
+struct ShellSteps {
+	int arc;
+	int end;
+};
+
+inline constexpr ShellSteps FULL_SHELL_STEPS = {2, 2};
+inline constexpr ShellSteps SIMPLE_SHELL_STEPS = {1, 0};
+
 /* The parts a model is built of; fine parts are left out of the simple model, and coarse ones stand in for them there. */
 class VehicleKit {
 public:
 	explicit VehicleKit(VehicleDetail detail) : detail(detail) {}
 
 	bool Full() const { return this->detail == VehicleDetail::Full; }
+	ShellSteps Steps() const { return this->Full() ? FULL_SHELL_STEPS : SIMPLE_SHELL_STEPS; }
 
 	VehicleKit &Body(const ModelMesh &part)
 	{
@@ -88,6 +116,28 @@ public:
 private:
 	VehicleDetail detail;
 	ModelMesh mesh;
+};
+
+class BodyRun {
+public:
+	BodyRun(const HullProfile &profile, double back, double front, const BodyEnd &back_end, const BodyEnd &front_end, ShellSteps steps);
+
+	ModelMesh Shell() const;
+	ModelMesh Laid(const HullProfile &section, double from, double to) const;
+	ModelMesh Stripe(const Band &band, uint32_t tone) const;
+	ModelMesh Stripe(const Band &band, double from, double to, uint32_t tone) const;
+	double HalfWidthAt(double x) const;
+	double Back() const { return this->rings.front().x; }
+	double Front() const { return this->rings.back().x; }
+
+private:
+	LoftRing RingAt(double x) const;
+	std::vector<LoftRing> RingsOver(double from, double to) const;
+	ModelMesh Lofted(const HullProfile &section, std::span<const LoftRing> rings) const;
+
+	HullProfile profile;
+	ShellSteps steps;
+	std::vector<LoftRing> rings;
 };
 
 ModelMesh Hull(const HullProfile &profile, double back, double front);

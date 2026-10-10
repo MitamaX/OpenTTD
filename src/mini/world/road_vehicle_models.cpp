@@ -32,6 +32,11 @@ static constexpr double LOAD_FRONT = 0.1;
 static constexpr double LOAD_CLEARANCE = 0.006;
 static constexpr double LOAD_FLOOR = WHEEL_RADIUS * 2.0 + LOAD_CLEARANCE;
 static constexpr double LAMP_HALF = 0.007;
+static constexpr double LAMP_HEIGHT = 0.05;
+static constexpr double TRAM_LAMP_HEIGHT = 0.06;
+static constexpr double TAIL_LAMP_RISE = 0.01;
+static constexpr double HEADLAMP_INSET = 0.016;
+static constexpr double TAIL_LAMP_INSET = 0.012;
 static constexpr double HUB_SHARE = 0.55;
 static constexpr double HUB_DEPTH = 0.003;
 static constexpr double ARCH_RADIUS = WHEEL_RADIUS * 1.3;
@@ -49,10 +54,38 @@ struct Axle {
 static constexpr std::array<Axle, 2> BUS_AXLES = {{{-0.1, true}, {0.12, true}}};
 static constexpr std::array<Axle, 3> LORRY_AXLES = {{{-0.16, false}, {-0.1, false}, {0.16, true}}};
 
-static void Lamps(VehicleKit &kit, double back, double front, double z)
+static constexpr HullProfile BUS_BODY = {HALF_WIDTH, CHASSIS_LOW, 0.165, 0.024};
+static constexpr BodyEnd BUS_ENDS = RoundedEnd(0.035, 0.84, 0.96);
+static constexpr Band BUS_GLASS = {0.098, 0.14};
+static constexpr Band BUS_WINDSCREEN = {0.084, 0.141};
+static constexpr Band BUS_BAND = {0.068, 0.082};
+static constexpr HullProfile CAB_BODY = {HALF_WIDTH, CHASSIS_LOW, 0.15, 0.02};
+static constexpr BodyEnd CAB_NOSE = RoundedEnd(0.025, 0.85, 0.86);
+static constexpr Band CAB_GLASS = {0.098, 0.13};
+static constexpr double CAB_GLASS_BACK = CAB_BACK + 0.03;
+static constexpr HullProfile BOX_BODY = {HALF_WIDTH + 0.002, LOAD_FLOOR, 0.17, 0.01};
+static constexpr HullProfile LIVESTOCK_BODY = {HALF_WIDTH + 0.002, LOAD_FLOOR, 0.165, 0.01};
+static constexpr BodyEnd BOX_ENDS = RoundedEnd(0.008, 0.94, 0.97);
+static constexpr Band BOX_BAND = {0.11, 0.135};
+static constexpr HullProfile TRAM_BODY = {HALF_WIDTH + 0.005, CHASSIS_LOW + 0.01, 0.19, 0.03};
+static constexpr BodyEnd TRAM_ENDS = RoundedEnd(0.035, 0.85, 0.9);
+static constexpr Band TRAM_GLASS = {0.105, 0.16};
+static constexpr Band TRAM_BAND = {CHASSIS_LOW + 0.01, 0.085};
+
+static void HeadLamps(VehicleKit &kit, const BodyRun &nose, double z)
 {
-	kit.Fine(LampPair(front, HALF_WIDTH - 0.018, z, LAMP_HALF, HEADLAMP));
-	kit.Fine(LampPair(back, HALF_WIDTH - 0.014, z + 0.01, LAMP_HALF, TAIL_LAMP));
+	kit.Fine(LampPair(nose.Front(), nose.HalfWidthAt(nose.Front()) - HEADLAMP_INSET, z, LAMP_HALF, HEADLAMP));
+}
+
+static void TailLamps(VehicleKit &kit, double x, double half_width, double z)
+{
+	kit.Fine(LampPair(x, half_width - TAIL_LAMP_INSET, z, LAMP_HALF, TAIL_LAMP));
+}
+
+static void BodyLamps(VehicleKit &kit, const BodyRun &body, double z)
+{
+	HeadLamps(kit, body, z);
+	TailLamps(kit, body.Back(), body.HalfWidthAt(body.Back()), z + TAIL_LAMP_RISE);
 }
 
 static ModelMesh WheelArch(double x)
@@ -85,14 +118,15 @@ static ModelMesh Mudguard(double back_axle, double front_axle)
 static ModelMesh Bus(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
-	kit.Body(Hull({HALF_WIDTH, CHASSIS_LOW, 0.165, 0.025}, -FRONT, FRONT).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(SideBand(-0.2, 0.19, HALF_WIDTH, 0.1, 0.15, GLASS).Gloss(GLASS_GLOSS));
-	kit.Body(SideBand(-FRONT, FRONT, HALF_WIDTH, 0.068, 0.082, SECONDARY));
-	kit.Fine(Windscreen(FRONT, HALF_WIDTH - 0.008, 0.09, 0.155));
-	kit.Fine(Windscreen(-FRONT, HALF_WIDTH - 0.014, 0.11, 0.15));
+	BodyRun body(BUS_BODY, -FRONT, FRONT, BUS_ENDS, BUS_ENDS, kit.Steps());
+	kit.Body(body.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	double windscreen = body.Front() - BUS_ENDS.reach;
+	kit.Body(body.Stripe(BUS_GLASS, body.Back(), windscreen, GLASS).Gloss(GLASS_GLOSS));
+	kit.Body(body.Stripe(BUS_WINDSCREEN, windscreen, body.Front(), GLASS).Gloss(GLASS_GLOSS));
+	kit.Body(body.Stripe(BUS_BAND, SECONDARY).Gloss(PAINT_GLOSS));
 	kit.Fine(Plank({-0.12, -0.04, 0.165}, {-0.02, 0.04, 0.178}, ROOF_GREY));
 	Wheels(kit, BUS_AXLES);
-	Lamps(kit, -FRONT, FRONT, 0.05);
+	BodyLamps(kit, body, LAMP_HEIGHT);
 	return kit.Done();
 }
 
@@ -100,20 +134,22 @@ static ModelMesh Bus(VehicleDetail detail)
 static void Lorry(VehicleKit &kit)
 {
 	kit.Body(Plank({-FRONT, -0.05, CHASSIS_LOW}, {CAB_BACK, 0.05, LOAD_FLOOR}, RUNNING_GEAR));
-	kit.Body(Hull({HALF_WIDTH, CHASSIS_LOW, 0.15, 0.02}, CAB_BACK, FRONT).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Fine(Windscreen(FRONT, HALF_WIDTH - 0.008, 0.1, 0.14));
-	kit.Fine(WindowRow(CAB_BACK + 0.04, FRONT - 0.015, 0.1, 0.138, HALF_WIDTH, 1));
+	BodyRun cab(CAB_BODY, CAB_BACK, FRONT, SQUARE_END, CAB_NOSE, kit.Steps());
+	kit.Body(cab.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(cab.Stripe(CAB_GLASS, CAB_GLASS_BACK, FRONT, GLASS).Gloss(GLASS_GLOSS));
 	Wheels(kit, LORRY_AXLES);
 	kit.Fine(Mudguard(LORRY_AXLES[0].x, LORRY_AXLES[1].x));
-	Lamps(kit, -FRONT, FRONT, 0.05);
+	HeadLamps(kit, cab, LAMP_HEIGHT);
+	TailLamps(kit, -FRONT, HALF_WIDTH, LAMP_HEIGHT + TAIL_LAMP_RISE);
 }
 
 static ModelMesh BoxTruck(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Lorry(kit);
-	kit.Body(Hull({HALF_WIDTH + 0.002, LOAD_FLOOR, 0.17, 0.008}, -FRONT, LOAD_FRONT).Paint(CREAM).Gloss(PAINT_GLOSS));
-	kit.Body(SideBand(-FRONT, LOAD_FRONT, HALF_WIDTH + 0.002, 0.11, 0.135, PRIMARY));
+	BodyRun box(BOX_BODY, -FRONT, LOAD_FRONT, BOX_ENDS, BOX_ENDS, kit.Steps());
+	kit.Body(box.Shell().Paint(CREAM).Gloss(PAINT_GLOSS));
+	kit.Body(box.Stripe(BOX_BAND, PRIMARY).Gloss(PAINT_GLOSS));
 	return kit.Done();
 }
 
@@ -161,7 +197,7 @@ static ModelMesh LivestockTruck(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
 	Lorry(kit);
-	kit.Body(Hull({HALF_WIDTH + 0.002, LOAD_FLOOR, 0.165, 0.008}, -FRONT, LOAD_FRONT).Paint(MUTED_PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(BodyRun(LIVESTOCK_BODY, -FRONT, LOAD_FRONT, BOX_ENDS, BOX_ENDS, kit.Steps()).Shell().Paint(MUTED_PRIMARY).Gloss(PAINT_GLOSS));
 	for (double z : {0.075, 0.11, 0.14}) kit.Fine(SideBand(-0.205, LOAD_FRONT - 0.01, HALF_WIDTH + 0.002, z, z + 0.01, SLAT_GAP));
 	return kit.Done();
 }
@@ -169,11 +205,10 @@ static ModelMesh LivestockTruck(VehicleDetail detail)
 static ModelMesh Tram(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
-	kit.Body(Hull({HALF_WIDTH + 0.005, CHASSIS_LOW + 0.01, 0.19, 0.03}, -UNIT_REACH, UNIT_REACH).Paint(PRIMARY).Gloss(PAINT_GLOSS));
-	kit.Body(SideBand(-UNIT_REACH, UNIT_REACH, HALF_WIDTH + 0.005, CHASSIS_LOW + 0.01, 0.085, SECONDARY));
-	kit.Body(SideBand(-0.21, 0.21, HALF_WIDTH + 0.005, 0.105, 0.165, GLASS).Gloss(GLASS_GLOSS));
-	kit.Fine(Windscreen(UNIT_REACH, HALF_WIDTH - 0.005, 0.1, 0.17));
-	kit.Fine(Windscreen(-UNIT_REACH, HALF_WIDTH - 0.005, 0.1, 0.17));
+	BodyRun body(TRAM_BODY, -UNIT_REACH, UNIT_REACH, TRAM_ENDS, TRAM_ENDS, kit.Steps());
+	kit.Body(body.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
+	kit.Body(body.Stripe(TRAM_BAND, SECONDARY).Gloss(PAINT_GLOSS));
+	kit.Body(body.Stripe(TRAM_GLASS, GLASS).Gloss(GLASS_GLOSS));
 	for (double x : {-0.15, 0.15}) kit.Fine(Bogie(x, TRAM_HALF_TRACK, 0.018));
 	kit.Fine(Plank({-0.03, -0.03, 0.19}, {0.03, 0.03, 0.2}, PANTOGRAPH));
 	for (double side : {-0.025, 0.025}) {
@@ -181,7 +216,7 @@ static ModelMesh Tram(VehicleDetail detail)
 		kit.Fine(Strut({0.03, side, 0.235}, {0.0, side, 0.27}, 0.003).Paint(PANTOGRAPH));
 	}
 	kit.Fine(Plank({-0.005, -0.05, 0.268}, {0.005, 0.05, 0.274}, PANTOGRAPH));
-	Lamps(kit, -UNIT_REACH, UNIT_REACH, 0.06);
+	BodyLamps(kit, body, TRAM_LAMP_HEIGHT);
 	return kit.Done();
 }
 
