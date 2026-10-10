@@ -70,6 +70,25 @@ const float RING_WAVES = 24.0;
 const float RING_TILT = 0.35;
 const float RING_REACH = 0.3;
 const float WATER_ROUGHNESS = 0.06;
+const float GRAVEL_GRAIN = 110.0;
+const vec2 PEBBLES_PER_TILE = vec2(16.0, 42.0);
+const vec2 PEBBLE_SEEDS = vec2(1.7, 6.4);
+const float PEBBLE_VARIETY = 0.2;
+const float SCOURS_PER_TILE = 1.6;
+const vec2 SCOUR_EDGES = vec2(0.66, 0.8);
+const float SCOUR_MEAN = 0.15;
+const float SCOUR_SEED = 8.3;
+const float SCOUR_SHADE = 0.72;
+const vec2 MEMBRANE_ROLLS = vec2(0.6, 6.0);
+const float MEMBRANE_LAP = 0.08;
+const float MEMBRANE_VARIETY = 0.09;
+const float MEMBRANE_LAP_LIFT = 1.08;
+const float MEMBRANE_ROUGHNESS = 0.8;
+const float DRAINS_PER_TILE = 1.2;
+const float DRAIN_SHARE = 0.35;
+const float DRAIN_RADIUS = 0.06;
+const float DRAIN_SHADE = 0.6;
+const SpeckLattice DRAIN_LATTICE = SpeckLattice(ivec2(1301, 727), 0.25, 0.7, 0.5);
 const float POOL_FLOOR_SUNLIT = 0.85;
 
 /* A point of a building before light, its facing told across, up and out of its face. */
@@ -195,6 +214,25 @@ Clad Mottled(vec2 p, vec3 tint, float frequency, float variety, float roughness)
 {
 	float noise = mix(0.5, Noise(p * frequency), Sharpness(p.x * frequency));
 	return Matte(tint * Varied(noise, variety), roughness);
+}
+
+Clad Gravelled(vec2 p, vec3 tint)
+{
+	float coarse = Faded(p * PEBBLES_PER_TILE.x, PEBBLE_SEEDS.x, vec2(0.0, 1.0), 0.5);
+	float fine = Faded(p * PEBBLES_PER_TILE.y, PEBBLE_SEEDS.y, vec2(0.0, 1.0), 0.5);
+	float scoured = Faded(p * SCOURS_PER_TILE, SCOUR_SEED, SCOUR_EDGES, SCOUR_MEAN);
+	vec3 stones = tint * Varied(coarse, PEBBLE_VARIETY) * Varied(fine, PEBBLE_VARIETY);
+	return Mottled(p, mix(stones, tint * SCOUR_SHADE, scoured), GRAVEL_GRAIN, 0.22, 0.95);
+}
+
+Clad Membrane(vec2 p, vec3 tint)
+{
+	Clad clad = Coursed(p, tint, MEMBRANE_ROLLS, MEMBRANE_LAP, MEMBRANE_VARIETY, tint * MEMBRANE_LAP_LIFT);
+	vec2 q = p * DRAINS_PER_TILE;
+	float drain = Speck(q, DRAIN_SHARE, vec2(1.0, 0.0), vec2(DRAIN_RADIUS), DRAIN_LATTICE) * Sharpness(q / (2.0 * DRAIN_RADIUS));
+	clad.albedo *= 1.0 - DRAIN_SHADE * drain;
+	clad.roughness = MEMBRANE_ROUGHNESS;
+	return clad;
 }
 
 Clad Panelled(vec2 p, vec3 tint, vec2 panels, float joint, float roughness)
@@ -372,8 +410,8 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_SHINGLE: return Tiled(p, aged, vec2(22.0, 50.0), SHINGLE_VARIETY, 0.8, 0.0);
 		case CLAD_THATCH: return Mottled(vec2(p.x * 8.0, p.y), tint, 9.0, 0.3, 0.95);
 		case CLAD_METAL_SEAM: return Ribbed(vec2(p.x * 0.25, p.y), tint, 80.0, 0.12, 0.28);
-		case CLAD_GRAVEL: return Mottled(p, aged, 110.0, 0.22, 0.95);
-		case CLAD_MEMBRANE: return Panelled(p, aged, vec2(4.0, 0.0), 0.015, 0.8);
+		case CLAD_GRAVEL: return Gravelled(p, aged);
+		case CLAD_MEMBRANE: return Membrane(p, aged);
 		case CLAD_ROOF_DECK: return Planked(p, tint, 30.0);
 		case CLAD_GLASS_ROOF: return Glazed(p, vec3(0.7), vec2(14.0, 5.0), 0.1);
 		case CLAD_ASPHALT: return Mottled(p, tint, 60.0, 0.12, 0.9);
