@@ -545,8 +545,8 @@ static WorldPoint Shifted(const WorldPoint &at, const MapVector &by, double rise
 
 static void AddStoneQuad(TerrainMesh &mesh, const std::array<WorldPoint, 4> &corners, const Vec3 &normal)
 {
-	uint32_t first = mesh.Add(corners[0], normal, WALL_MARK);
-	for (size_t corner = 1; corner < corners.size(); corner++) mesh.Add(corners[corner], normal, WALL_MARK);
+	uint32_t first = mesh.Add(corners[0], normal, MASONRY_MARK);
+	for (size_t corner = 1; corner < corners.size(); corner++) mesh.Add(corners[corner], normal, MASONRY_MARK);
 	mesh.Quad(first, first + 1, first + 2, first + 3);
 }
 

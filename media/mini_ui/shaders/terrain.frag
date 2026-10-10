@@ -46,6 +46,7 @@ const float TOY_ROUGHNESS = 0.72;
 const float SNOW_ROUGHNESS = 0.7;
 const float SAND_ROUGHNESS = 0.9;
 const float WALL_MARK = 0.75;
+const float RETAINING_MARK = 0.9375;
 const float EDGE_MARK = 0.375;
 const float FILL_MARK = 0.25;
 const float SUBMERGED_MARK = 0.08;
@@ -349,10 +350,24 @@ const float FAR_FLOOR_SHADE = 0.7;
 const float GRID_DEPTH = 0.6;
 const float HIDDEN_BAND_MARGIN = 1.1;
 
-const float COURSES_PER_TILE = 6.0;
-const float BLOCKS_PER_TILE = 3.0;
+const float COURSES_PER_TILE = 12.0;
+const float BLOCKS_PER_TILE = 6.0;
 const float MORTAR_SHARE = 0.08;
 const vec3 MASONRY = vec3(0.56, 0.53, 0.49);
+const float COPING_DEPTH = 0.035;
+const float COPING_LIFT = 1.15;
+const float DRIP_WIDTH = 0.012;
+const float DRIP_SHADE = 0.45;
+const float STREAKS_PER_TILE = 7.0;
+const vec2 STREAK_EDGES = vec2(0.5, 0.8);
+const float STREAK_REACH = 0.5;
+const float STREAK_SHADE = 0.7;
+const vec2 STREAK_SEEDS = vec2(2.3, 9.1);
+const float DAMP_REACH = 0.1;
+const float DAMP_RAGS_PER_TILE = 3.0;
+const float DAMP_RAGGED = 0.8;
+const float DAMP_SEED = 3.7;
+const vec3 DAMP_STONE = vec3(0.62, 0.68, 0.52);
 
 const int EARTH_STRATA_COUNT = 5;
 const vec3 EARTH_STRATA[EARTH_STRATA_COUNT] = vec3[EARTH_STRATA_COUNT](
@@ -1449,6 +1464,29 @@ vec4 Airfield(vec2 p)
 	return vec4(colour, 1.0);
 }
 
+float LevelToward(vec2 step)
+{
+	ivec2 tile = Clamped(ivec2(floor(v_world.xy + step)));
+	return FacetLevel(SurfaceOf(tile), clamp(v_world.xy - vec2(tile), 0.0, 1.0));
+}
+
+vec3 Damp(vec3 stone, float along, float rise)
+{
+	float reach = DAMP_REACH * Varied(Noise(vec2(along * DAMP_RAGS_PER_TILE, DAMP_SEED)), DAMP_RAGGED);
+	return stone * mix(DAMP_STONE, vec3(1.0), smoothstep(0.0, reach, rise));
+}
+
+vec3 Coped(vec3 stone, float along, float drop)
+{
+	float pixel = 1.0 / tile_pixels;
+	float cap = 1.0 - smoothstep(COPING_DEPTH - pixel, COPING_DEPTH + pixel, drop);
+	float drip = Stroke(abs(drop - COPING_DEPTH - DRIP_WIDTH), DRIP_WIDTH, pixel);
+	float reach = STREAK_REACH * Noise(vec2(along * STREAKS_PER_TILE * 0.5, STREAK_SEEDS.y));
+	float streaks = smoothstep(STREAK_EDGES.x, STREAK_EDGES.y, Noise(vec2(along * STREAKS_PER_TILE, STREAK_SEEDS.x))) * (1.0 - smoothstep(0.0, reach, drop)) * Resolved(STREAKS_PER_TILE);
+	vec3 face = stone * mix(1.0, STREAK_SHADE, streaks) * (1.0 - DRIP_SHADE * drip);
+	return mix(face, MASONRY * COPING_LIFT, cap);
+}
+
 /* Only foundations part the ground into walls, and they are laid in dressed stone courses. */
 vec3 WallFace(vec3 normal)
 {
@@ -1459,7 +1497,9 @@ vec3 WallFace(vec3 normal)
 	float mortar = smoothstep(0.5 - MORTAR_SHARE, 0.5, max(joint.x, joint.y));
 	float detail = Resolved(COURSES_PER_TILE);
 	vec3 stone = MASONRY * Varied(Hash(ivec2(floor(block), floor(course))), 0.18 * detail) * (1.0 - 0.3 * mortar * detail);
-	return Altitude(stone);
+	stone = Damp(stone, along, (v_world.z - LevelToward(normal.xy * HALF_TILE)) * LevelRise());
+	if (v_mark > RETAINING_MARK) stone = Coped(stone, along, (LevelToward(-normal.xy * HALF_TILE) - v_world.z) * LevelRise());
+	return stone;
 }
 
 vec3 EarthStratum(int layer)
@@ -1479,8 +1519,7 @@ vec3 EarthMean()
 /* The level of the ground along the top of the map's edge, on the tile just inside it. */
 float EdgeTop(vec3 normal)
 {
-	ivec2 tile = Clamped(ivec2(floor(v_world.xy - normal.xy * HALF_TILE)));
-	return FacetLevel(SurfaceOf(tile), clamp(v_world.xy - vec2(tile), 0.0, 1.0));
+	return LevelToward(-normal.xy * HALF_TILE);
 }
 
 /* How far below the ground's edge a band reaching this far down still shows, its foot ragged with roots and wavering along the cut. */

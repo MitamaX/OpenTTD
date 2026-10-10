@@ -33,6 +33,7 @@ inline constexpr std::array<VertexAttribute, 2> TERRAIN_LAYOUT = {{
 }};
 
 inline constexpr double WALL_MARK = 1.0;
+inline constexpr double MASONRY_MARK = 0.875;
 /* The face of earth the ground is cut down in at the map's edge. */
 inline constexpr double EDGE_MARK = 0.5;
 inline constexpr double DRY_MARK = 0.0;
