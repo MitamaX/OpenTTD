@@ -19,9 +19,14 @@ const vec3 STAIN_VARIETY = vec3(0.22, 0.16, 0.12);
 const vec3 STAIN_SEEDS = vec3(3.1, 7.3, 11.9);
 const float MENDS_PER_TILE = 1.4;
 const float MENDED_SHARE = 0.35;
-const vec2 MEND_HALF_SIZES = vec2(0.12, 0.42);
+const vec2 MEND_HALF_LENGTHS = vec2(0.22, 0.46);
+const vec2 MEND_HALF_WIDTHS = vec2(0.05, 0.15);
 const ivec2 MEND_SIZE_SEED = ivec2(101, 37);
-const float MENDED_SHADE = 0.78;
+const ivec2 MEND_TURN_SEED = ivec2(59, 211);
+const float MEND_RAGS_PER_CELL = 11.0;
+const float MEND_RAGGED = 0.05;
+const float MEND_FEATHER = 0.03;
+const float MENDED_SHADE = 0.84;
 const vec2 MENDED_FACING = vec2(0.7, 0.9);
 const float STONES_PER_TILE = 80.0;
 const ivec2 STONE_SEED = ivec2(613, 1949);
@@ -102,9 +107,12 @@ float Mended(vec2 p, float facing_up)
 	float pixel = length(fwidth(q));
 	ivec2 cell = ivec2(floor(q));
 	if (Hash(cell) > MENDED_SHARE) return 0.0;
-	vec2 half_size = mix(vec2(MEND_HALF_SIZES.x), vec2(MEND_HALF_SIZES.y), Hash2(cell + MEND_SIZE_SEED));
-	vec2 outside = abs(fract(q) - HALF_TILE) - half_size;
-	return (1.0 - smoothstep(-pixel, pixel, max(outside.x, outside.y))) * smoothstep(MENDED_FACING.x, MENDED_FACING.y, facing_up) * Resolved(MENDS_PER_TILE * 2.0);
+	vec2 size = Hash2(cell + MEND_SIZE_SEED);
+	vec2 half_size = vec2(mix(MEND_HALF_LENGTHS.x, MEND_HALF_LENGTHS.y, size.x), mix(MEND_HALF_WIDTHS.x, MEND_HALF_WIDTHS.y, size.y));
+	vec2 offset = abs(fract(q) - HALF_TILE);
+	vec2 outside = (Hash(cell + MEND_TURN_SEED) < 0.5 ? offset : offset.yx) - half_size;
+	float edge = max(outside.x, outside.y) + (Noise(q * MEND_RAGS_PER_CELL) - 0.5) * MEND_RAGGED;
+	return (1.0 - smoothstep(-pixel - MEND_FEATHER, pixel, edge)) * smoothstep(MENDED_FACING.x, MENDED_FACING.y, facing_up) * Resolved(MENDS_PER_TILE * 2.0);
 }
 
 float Worn(vec3 position, vec3 normal, float gloss)
