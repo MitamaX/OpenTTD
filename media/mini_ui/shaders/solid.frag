@@ -83,23 +83,10 @@ const float SLABS_PER_TILE = 7.0;
 const float SLAB_JOINT = 0.06;
 const float SLAB_JOINT_SHADE = 0.78;
 const float SLAB_VARIETY = 0.12;
-const vec2 X_AXIS = vec2(1.0, 0.0);
-const vec2 Y_AXIS = vec2(0.0, 1.0);
 
 vec2 PatternPoint(vec3 position)
 {
 	return position.xy + position.zz * PATTERN_SHEAR;
-}
-
-struct Footprint {
-	mat2 ground;
-	mat2 pattern;
-};
-
-Footprint FootprintOf(vec3 position)
-{
-	vec2 pattern = PatternPoint(position);
-	return Footprint(mat2(dFdx(position.xy), dFdy(position.xy)), mat2(dFdx(pattern), dFdy(pattern)));
 }
 
 /* Matte surfaces show a fine grain where they come near enough for it to resolve; glossy ones stay clean. */
@@ -114,11 +101,10 @@ float Stains(vec2 p)
 	return Varied(Octave(p + STAIN_SEEDS.x, STAINS_PER_TILE.x), STAIN_VARIETY.x) * Varied(Octave(p + STAIN_SEEDS.y, STAINS_PER_TILE.y), STAIN_VARIETY.y) * Varied(Octave(p + STAIN_SEEDS.z, STAINS_PER_TILE.z), STAIN_VARIETY.z);
 }
 
-float Mended(vec2 p, float facing_up, mat2 pattern_span)
+float Mended(vec2 p, float facing_up)
 {
 	vec2 q = p * MENDS_PER_TILE;
-	mat2 cells = pattern_span * MENDS_PER_TILE;
-	float pixel = length(vec2(PixelAcross(cells, X_AXIS), PixelAcross(cells, Y_AXIS)));
+	float pixel = length(fwidth(q));
 	ivec2 cell = ivec2(floor(q));
 	float dice = Hash(cell);
 	if (dice > MENDED_SHARE) return 0.0;
@@ -131,12 +117,12 @@ float Mended(vec2 p, float facing_up, mat2 pattern_span)
 	return (1.0 - smoothstep(-pixel - MEND_FEATHER, pixel, edge)) * smoothstep(MENDED_FACING.x, MENDED_FACING.y, facing_up) * Resolved(MENDS_PER_TILE * 2.0);
 }
 
-float Worn(vec3 position, vec3 normal, float gloss, mat2 pattern_span)
+float Worn(vec3 position, vec3 normal, float gloss)
 {
 	float worn = u_weathering * (1.0 - gloss);
 	if (worn <= 0.0 || !Weathers()) return 1.0;
 	vec2 p = PatternPoint(position);
-	return mix(1.0, Stains(p) * mix(1.0, MENDED_SHADE, Mended(p, normal.z, pattern_span)), worn);
+	return mix(1.0, Stains(p) * mix(1.0, MENDED_SHADE, Mended(p, normal.z)), worn);
 }
 
 bool WearsOut(uint bed)
@@ -191,7 +177,12 @@ float WearShown(float frequency)
 	return Weathers() ? Resolved(frequency) : 0.0;
 }
 
-vec3 Trafficked(vec2 p, mat2 ground_span)
+float PixelSpan(float x)
+{
+	return max(fwidth(x), LEAST_DIVISOR);
+}
+
+vec3 Trafficked(vec2 p)
 {
 	ivec2 tile = ivec2(floor(p));
 	uint ends = texelFetch(u_network, Clamped(tile), 0).y;
@@ -202,29 +193,28 @@ vec3 Trafficked(vec2 p, mat2 ground_span)
 	float along = along_x ? p.x : p.y;
 	float wheel = abs(abs(abs(lateral) - LANE_CENTRE) - WHEEL_HALF_GAUGE);
 	float unbroken = smoothstep(WHEEL_TRACK_BREAK_EDGES.x, WHEEL_TRACK_BREAK_EDGES.y, Noise(vec2(along * WHEEL_TRACK_BREAKS_PER_TILE, lateral * ROAD_CRACKS_PER_TILE)));
-	float tracks = Stroke(wheel, WHEEL_TRACK_HALF, PixelAcross(ground_span, along_x ? Y_AXIS : X_AXIS)) * unbroken * WearShown(1.0 / WHEEL_TRACK_HALF);
+	float tracks = Stroke(wheel, WHEEL_TRACK_HALF, PixelSpan(lateral)) * unbroken * WearShown(1.0 / WHEEL_TRACK_HALF);
 	float dust = smoothstep(ROAD_HALF - VERGE_DUST_REACH, ROAD_HALF, abs(lateral)) * WearShown(1.0 / VERGE_DUST_REACH);
 	return mix(vec3(1.0), VERGE_DUST, dust) * mix(1.0, WHEEL_TRACK_SHADE, tracks);
 }
 
-float RoadCracks(vec2 p, mat2 pattern_span)
+float RoadCracks(vec2 p)
 {
 	float shown = WearShown(ROAD_CRACKS_PER_TILE * 8.0);
 	if (shown <= 0.0) return 1.0;
 	vec2 q = p * ROAD_CRACKS_PER_TILE;
 	vec2 jag = (vec2(Noise(q * ROAD_CRACK_JAGS), Noise(q * ROAD_CRACK_JAGS + ROAD_CRACK_SEED)) - 0.5) * ROAD_CRACK_JAGGED;
 	vec3 crack = NoiseSlope(q + jag);
-	float steepness = max(length(crack.yz), LEAST_DIVISOR);
-	float vein = abs(crack.x - 0.5) / steepness;
+	float vein = abs(crack.x - 0.5) / max(length(crack.yz), LEAST_DIVISOR);
 	float runs = smoothstep(ROAD_CRACK_RUN_EDGES.x, ROAD_CRACK_RUN_EDGES.y, Noise(p * ROAD_CRACKS_PER_TILE * 0.8 + ROAD_CRACK_SEED));
-	return mix(1.0, ROAD_CRACK_SHADE, Stroke(vein, ROAD_CRACK_WIDTH, PixelAcross(pattern_span * ROAD_CRACKS_PER_TILE, crack.yz / steepness)) * runs * shown);
+	return mix(1.0, ROAD_CRACK_SHADE, Stroke(vein, ROAD_CRACK_WIDTH, PixelSpan(vein)) * runs * shown);
 }
 
-vec3 Asphalted(vec3 tone, vec3 position, Footprint footprint)
+vec3 Asphalted(vec3 tone, vec3 position)
 {
 	vec2 p = PatternPoint(position);
 	vec3 asphalt = tone * Varied(Layered(p, ASPHALT_GRAIN_PER_TILE), ASPHALT_GRAIN_VARIETY);
-	return asphalt * Trafficked(position.xy, footprint.ground) * RoadCracks(p, footprint.pattern);
+	return asphalt * Trafficked(position.xy) * RoadCracks(p);
 }
 
 vec3 Marked(vec3 tone, vec3 position)
@@ -235,14 +225,13 @@ vec3 Marked(vec3 tone, vec3 position)
 	return mix(tone, DISTANT_ROAD, worn * MARK_WEAR);
 }
 
-vec3 Paved(vec3 tone, vec3 position, mat2 ground_span)
+vec3 Paved(vec3 tone, vec3 position)
 {
 	vec2 q = position.xy * SLABS_PER_TILE;
 	q.x += 0.5 * floor(q.y);
 	vec2 joint = 0.5 - abs(fract(q) - 0.5);
 	float shown = Resolved(SLABS_PER_TILE * 2.0);
-	mat2 slabs = ground_span * SLABS_PER_TILE;
-	float joints = max(Stroke(joint.x, SLAB_JOINT, PixelAcross(slabs, X_AXIS)), Stroke(joint.y, SLAB_JOINT, PixelAcross(slabs, Y_AXIS))) * shown;
+	float joints = max(Stroke(joint.x, SLAB_JOINT, PixelSpan(q.x)), Stroke(joint.y, SLAB_JOINT, PixelSpan(q.y))) * shown;
 	float slab = Varied(Hash(ivec2(floor(q))), SLAB_VARIETY * shown);
 	return tone * slab * mix(1.0, SLAB_JOINT_SHADE, joints);
 }
@@ -260,14 +249,14 @@ vec3 Ballasted(vec3 tone, uint bed, vec3 position, vec3 normal)
 	return Drifted(ballast, bed, position.xy, p, normal);
 }
 
-vec3 Bedded(vec3 tone, uint bed, vec3 position, vec3 normal, Footprint footprint)
+vec3 Bedded(vec3 tone, uint bed, vec3 position, vec3 normal)
 {
 	switch (bed) {
 		case BED_BALLAST:
 		case BED_SHOULDER: return Ballasted(tone, bed, position, normal);
-		case BED_ASPHALT: return Asphalted(tone, position, footprint);
+		case BED_ASPHALT: return Asphalted(tone, position);
 		case BED_MARKING: return Marked(tone, position);
-		case BED_PAVING: return Paved(tone, position, footprint.ground);
+		case BED_PAVING: return Paved(tone, position);
 	}
 	return tone;
 }
@@ -286,13 +275,12 @@ void main()
 {
 	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
 	float receded = Receded();
-	Footprint footprint = FootprintOf(v_position);
 	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) * (1.0 - receded) <= ScreenNoise(gl_FragCoord.xy)) discard;
 	uint bed = BedOf(v_trait);
 	float gloss = bed == BED_PLAIN ? max(v_trait, 0.0) : 0.0;
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, LEAST_DIVISOR)));
-	vec3 bedded = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) : Bedded(v_colour.rgb, bed, v_position, normal, footprint);
-	vec3 grained = WearsOut(bed) ? bedded * Worn(v_position, normal, gloss, footprint.pattern) : bedded;
+	vec3 bedded = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) : Bedded(v_colour.rgb, bed, v_position, normal);
+	vec3 grained = WearsOut(bed) ? bedded * Worn(v_position, normal, gloss) : bedded;
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	frag_colour = Radiance(albedo, normal, v_position, CoatOf(gloss), v_colour.a) + vec4(Glowing(albedo, v_trait), 0.0);
 }
