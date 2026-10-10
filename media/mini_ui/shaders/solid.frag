@@ -115,6 +115,11 @@ float Worn(vec3 position, vec3 normal, float gloss)
 	return mix(1.0, Stains(p) * mix(1.0, MENDED_SHADE, Mended(p, normal.z)), worn);
 }
 
+bool WearsOut(uint bed)
+{
+	return bed == BED_PLAIN || bed == BED_ASPHALT || bed == BED_PAVING;
+}
+
 uint BedOf(float trait)
 {
 	uint code = uint(round(max(trait, 0.0) * TRAIT_SCALE));
@@ -195,10 +200,10 @@ float RoadCracks(vec2 p)
 	return mix(1.0, ROAD_CRACK_SHADE, Stroke(vein, ROAD_CRACK_WIDTH, PixelSpan(vein)) * runs * shown);
 }
 
-vec3 Asphalted(vec3 tone, vec3 position, vec3 normal)
+vec3 Asphalted(vec3 tone, vec3 position)
 {
 	vec2 p = PatternPoint(position);
-	vec3 asphalt = tone * Varied(Layered(p, ASPHALT_GRAIN_PER_TILE), ASPHALT_GRAIN_VARIETY) * Worn(position, normal, 0.0);
+	vec3 asphalt = tone * Varied(Layered(p, ASPHALT_GRAIN_PER_TILE), ASPHALT_GRAIN_VARIETY);
 	return asphalt * Trafficked(position.xy) * RoadCracks(p);
 }
 
@@ -210,7 +215,7 @@ vec3 Marked(vec3 tone, vec3 position)
 	return mix(tone, DISTANT_ROAD, worn * MARK_WEAR);
 }
 
-vec3 Paved(vec3 tone, vec3 position, vec3 normal)
+vec3 Paved(vec3 tone, vec3 position)
 {
 	vec2 q = position.xy * SLABS_PER_TILE;
 	q.x += 0.5 * floor(q.y);
@@ -218,7 +223,7 @@ vec3 Paved(vec3 tone, vec3 position, vec3 normal)
 	float shown = Resolved(SLABS_PER_TILE * 2.0);
 	float joints = max(Stroke(joint.x, SLAB_JOINT, PixelSpan(q.x)), Stroke(joint.y, SLAB_JOINT, PixelSpan(q.y))) * shown;
 	float slab = Varied(Hash(ivec2(floor(q))), SLAB_VARIETY * shown);
-	return tone * slab * mix(1.0, SLAB_JOINT_SHADE, joints) * Worn(position, normal, 0.0);
+	return tone * slab * mix(1.0, SLAB_JOINT_SHADE, joints);
 }
 
 vec3 Ballasted(vec3 tone, uint bed, vec3 position, vec3 normal)
@@ -239,9 +244,9 @@ vec3 Bedded(vec3 tone, uint bed, vec3 position, vec3 normal)
 	switch (bed) {
 		case BED_BALLAST:
 		case BED_SHOULDER: return Ballasted(tone, bed, position, normal);
-		case BED_ASPHALT: return Asphalted(tone, position, normal);
+		case BED_ASPHALT: return Asphalted(tone, position);
 		case BED_MARKING: return Marked(tone, position);
-		case BED_PAVING: return Paved(tone, position, normal);
+		case BED_PAVING: return Paved(tone, position);
 	}
 	return tone;
 }
@@ -264,7 +269,8 @@ void main()
 	uint bed = BedOf(v_trait);
 	float gloss = bed == BED_PLAIN ? max(v_trait, 0.0) : 0.0;
 	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, LEAST_DIVISOR)));
-	vec3 grained = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) * Worn(v_position, normal, gloss) : Bedded(v_colour.rgb, bed, v_position, normal);
+	vec3 bedded = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) : Bedded(v_colour.rgb, bed, v_position, normal);
+	vec3 grained = WearsOut(bed) ? bedded * Worn(v_position, normal, gloss) : bedded;
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	frag_colour = Radiance(albedo, normal, v_position, CoatOf(gloss), v_colour.a) + vec4(Glowing(albedo, v_trait), 0.0);
 }
