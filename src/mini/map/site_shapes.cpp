@@ -108,10 +108,15 @@ static constexpr float BASIN_RADIUS = 0.35f;
 static constexpr float BASIN_HEIGHT = 0.03f;
 static constexpr float POOL_RADIUS = 0.30f;
 static constexpr float POOL_DEPTH = 0.001f;
-static constexpr uint32_t POOL_TINT = 0xFF4F8FB0U;
-static constexpr float JET_RADIUS = 0.03f;
-static constexpr float JET_HEIGHT = 0.15f;
-static constexpr uint32_t JET_TINT = 0xFFBFD8E6U;
+static constexpr uint32_t POOL_TINT = 0xFF3E6F78U;
+static constexpr float JET_RADIUS = 0.018f;
+static constexpr float JET_HEIGHT = 0.22f;
+static constexpr float JET_TAPER = 0.35f;
+static constexpr float SPLASH_RADIUS = 0.06f;
+static constexpr float SPLASH_HEIGHT = 0.01f;
+static constexpr float SPLASH_RISE = 0.025f;
+static constexpr uint32_t JET_TINT = 0xFFE4EEF2U;
+static constexpr uint32_t SPLASH_TINT = 0xFFCFE0E6U;
 
 static constexpr Grid PILE_GRID = {3, 2, 0.25f, 0.35f};
 static constexpr float PILE_LOW = 0.06f;
@@ -694,10 +699,12 @@ void AddLatticeMast(BuildingForm &form, const Part &foot, float height)
 void AddFountain(BuildingForm &form, uint32_t basin_tint)
 {
 	Part basin = Part::Disc(LOT_CENTRE, LOT_CENTRE, BASIN_RADIUS).Height(BASIN_HEIGHT).Clad(Material::Stone, basin_tint);
-	Part pool = Part::Disc(LOT_CENTRE, LOT_CENTRE, POOL_RADIUS).On(LevelAbove(basin)).Height(POOL_DEPTH).Clad(Material::Plain, POOL_TINT);
+	Part pool = Part::Disc(LOT_CENTRE, LOT_CENTRE, POOL_RADIUS).On(LevelAbove(basin)).Height(POOL_DEPTH).Clad(Material::Water, POOL_TINT);
+	Part jet = Part::Disc(LOT_CENTRE, LOT_CENTRE, JET_RADIUS).On(LevelAbove(pool)).Height(JET_HEIGHT).Taper(JET_TAPER).Clad(Material::Plain, JET_TINT);
 	form.Add(basin);
 	form.Add(pool);
-	form.Add(Part::Disc(LOT_CENTRE, LOT_CENTRE, JET_RADIUS).On(LevelAbove(pool)).Height(JET_HEIGHT).Clad(Material::Plain, JET_TINT));
+	form.Add(jet);
+	form.Add(Part::Disc(LOT_CENTRE, LOT_CENTRE, SPLASH_RADIUS).Detailed().On(LevelAbove(pool)).Height(SPLASH_HEIGHT).Roof(RoofShape::Cone, SPLASH_RISE).Clad(Material::Plain, SPLASH_TINT));
 }
 
 FloraPatch GroveFlora(const SiteLook &look)

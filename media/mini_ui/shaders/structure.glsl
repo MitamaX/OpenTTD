@@ -63,6 +63,14 @@ const float SIGN_LINE_PITCH = 2.0;
 const float SIGN_LETTER_SCALE = 2.0;
 const float SIGN_GLOW = 0.8;
 const float SIGN_ROUGHNESS = 0.3;
+const float RIPPLES = 36.0;
+const float RIPPLE_TILT = 0.2;
+const vec2 RIPPLE_SEED = vec2(4.7, 9.3);
+const float RING_WAVES = 24.0;
+const float RING_TILT = 0.35;
+const float RING_REACH = 0.3;
+const float WATER_ROUGHNESS = 0.06;
+const float POOL_FLOOR_SUNLIT = 0.85;
 
 /* A point of a building before light, its facing told across, up and out of its face. */
 struct Clad {
@@ -265,6 +273,23 @@ Clad Lightbox(vec2 p, vec3 tint)
 	return face;
 }
 
+Clad Rippled(vec2 p, vec3 tint)
+{
+	vec2 q = p * RIPPLES;
+	vec2 from_jet = fract(p) - HALF_TILE;
+	float reach = length(from_jet);
+	float phase = reach * RING_WAVES;
+	float rings = Sharpness(phase);
+	float ripples = Sharpness(q);
+	float swell = RING_TILT * cos(TAU * phase) * (1.0 - smoothstep(0.0, RING_REACH, reach));
+	vec2 tilt = from_jet / max(reach, LEAST_DIVISOR) * swell * rings + (vec2(Noise(q), Noise(q + RIPPLE_SEED)) - 0.5) * RIPPLE_TILT * ripples;
+	Clad clad = Matte(tint, Roughened(WATER_ROUGHNESS, WaveSpread(RING_TILT) * (1.0 - rings) + RampSpread(RIPPLE_TILT) * (1.0 - ripples)));
+	clad.facing = vec3(tilt, 1.0);
+	clad.glass = 1.0;
+	clad.sunbeam = POOL_FLOOR_SUNLIT;
+	return clad;
+}
+
 Clad Leafy(vec2 p, vec3 tint)
 {
 	float sharp = Sharpness(p.x * 60.0);
@@ -356,6 +381,7 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_PICKETS: return Matte(tint, 0.7);
 		case CLAD_CANVAS: return Striped(p, tint);
 		case CLAD_SIGN: return Lightbox(p, tint);
+		case CLAD_WATER: return Rippled(p, tint);
 		default: return Mottled(p, tint, 10.0, 0.05, 0.85);
 	}
 }
