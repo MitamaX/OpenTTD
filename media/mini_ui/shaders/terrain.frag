@@ -50,6 +50,7 @@ const float WALL_MARK = 0.75;
 const float RETAINING_MARK = 0.9375;
 const float EDGE_MARK = 0.375;
 const float FILL_MARK = 0.25;
+const vec2 CHANNEL_WALL_LEVELS = vec2(0.42, 0.52);
 const float SUBMERGED_MARK = 0.08;
 const float RIVERBED_DEEP_MARK = 0.2;
 const float DROWNED_LEVELS = 0.6;
@@ -82,6 +83,10 @@ const float SANDED_SEA = 0.26;
 const vec2 SHORE_DAMP = vec2(0.18, 0.28);
 const vec2 BANK_DAMP = vec2(0.34, 0.14);
 const float DAMP_LEVEL = 0.5;
+const float BANK_SWAY = 0.3;
+const vec2 BANK_GRAVEL_LEVELS = vec2(0.42, 0.54);
+const float BANK_GRAVEL_RAGGED = 0.12;
+const float WET_GRAVEL_SHADE = 0.8;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
 const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
@@ -1207,20 +1212,25 @@ Water WaterAt(vec2 p)
 	return water;
 }
 
-/* Ground near water is damp, darkening toward the waterline; a river or a lake soaks its banks darker and further back than the sea's spray does. */
-vec3 Banks(vec3 land, Water water, vec3 beach)
-{
-	vec2 soaking = mix(SHORE_DAMP, BANK_DAMP, 1.0 - clamp(water.share.x, 0.0, 1.0));
-	vec3 damp = land * (1.0 - soaking.x * smoothstep(soaking.y, DAMP_LEVEL, water.level));
-	vec3 walled = mix(damp, BANK, smoothstep(0.3, 0.46, water.canal));
-	return mix(walled, beach, smoothstep(SANDED_SEA, 0.44, water.sea));
-}
-
 /* A river runs over pebbled gravel in its shallows and over mud down its deep middle. */
 vec3 Riverbed(Grain grain, float sunk)
 {
 	vec3 gravel = mix(RIVER_GRAVEL, PEBBLES, smoothstep(PEBBLE_EDGES.x, PEBBLE_EDGES.y, grain.stones));
 	return mix(gravel, MUD, sunk);
+}
+
+/* Ground near water is damp, darkening toward the waterline; a river or a lake soaks its banks darker and further back than the sea's spray does. */
+vec3 Banks(vec3 land, Water water, vec3 beach, Grain grain)
+{
+	float inland = 1.0 - clamp(water.share.x, 0.0, 1.0);
+	float level = water.level + (grain.local - 0.5) * BANK_SWAY * inland;
+	vec2 soaking = mix(SHORE_DAMP, BANK_DAMP, inland);
+	vec3 damp = land * (1.0 - soaking.x * smoothstep(soaking.y, DAMP_LEVEL, level));
+	float gravelled = Landscape() == LANDSCAPE_TOYLAND ? 0.0 : inland;
+	float strewn = smoothstep(BANK_GRAVEL_LEVELS.x, BANK_GRAVEL_LEVELS.y, level + (grain.stones - 0.5) * BANK_GRAVEL_RAGGED) * gravelled;
+	damp = mix(damp, RIVER_GRAVEL * WET_GRAVEL_SHADE, strewn);
+	vec3 walled = mix(damp, BANK, smoothstep(0.3, 0.46, water.canal));
+	return mix(walled, beach, smoothstep(SANDED_SEA, 0.44, water.sea));
 }
 
 /* The ground under water: wet sand along sea shores giving way to silt in the deep, a riverbed under rivers and dressed stone in canals. */
@@ -1650,7 +1660,7 @@ vec3 Ashore(vec2 p, Water water, Underfoot underfoot, vec3 surface)
 {
 	vec3 beach = underfoot.lie == LIE_BEACH ? Shore(underfoot.site).tone : vec3(0.0);
 	vec3 ground = Altitude(Composite(Composite(surface, Hedgerow(p + underfoot.seams.warp, underfoot.grain)), Airfield(p)));
-	return Banks(mix(ground, underfoot.blanket.tone, underfoot.blanket.cover), water, beach);
+	return Banks(mix(ground, underfoot.blanket.tone, underfoot.blanket.cover), water, beach, underfoot.grain);
 }
 
 Shade GroundShade(vec2 p, mat2 pixel, Water water, Detail detail, float levels_per_pixel, vec3 normal, Underfoot underfoot)
@@ -1699,6 +1709,7 @@ void main()
 	Relief relief = ReliefAt(normal, levels_per_pixel);
 	Detail detail = DetailAt(RenderPoint(v_world), normal);
 	relief.steep *= 1.0 - clamp(v_mark / FILL_MARK, 0.0, 1.0);
+	relief.steep *= 1.0 - smoothstep(CHANNEL_WALL_LEVELS.x, CHANNEL_WALL_LEVELS.y, water.level) * (1.0 - water.sea);
 	float face_pixels = 1.0 / max(max(length(pixel[0]), length(pixel[1])), levels_per_pixel * LevelRise());
 
 	bool edge = v_mark > EDGE_MARK && v_mark <= WALL_MARK;
