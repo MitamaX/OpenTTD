@@ -12,9 +12,12 @@ const vec2 FRONTAGE_HEIGHTS = vec2(0.25, 2.6);
 const float FRONTAGE_SHADED_SHARE = 0.5;
 const float FRONTAGE_STOREY = 0.13;
 const float FRONTAGE_RIBBON = 0.45;
-const float FRONTAGE_GLAZING_CONTRAST = 0.35;
-const float FRONTAGE_SATURATION = 0.35;
-const vec2 FRONTAGE_RESOLVED_STOREYS = vec2(0.25, 0.6);
+const float FRONTAGE_BAY = 0.07;
+const vec2 FRONTAGE_GLAZED_BAYS = vec2(0.4, 0.85);
+const float FRONTAGE_GLAZING_CONTRAST = 0.6;
+const float FRONTAGE_SATURATION = 0.2;
+const float FRONTAGE_STREET_OPENNESS = 0.45;
+const float FRONTAGE_CANYON_DEPTH = 0.8;
 const ivec2 FRONTAGE_SALT = ivec2(5923, 3301);
 const vec3 TOWN_WALL_PAINTS[] = TOWN_WALL_TONES;
 const vec3 CANDY_PAINTS[] = CANDY_TONES;
@@ -30,6 +33,7 @@ struct Frontage {
 	float height;
 	vec3 paint;
 	float sunlit;
+	float glazed;
 };
 
 float GroundBelow(vec2 at)
@@ -53,22 +57,35 @@ vec3 WallPaint(float roll)
 	return Landscape() == LANDSCAPE_TOYLAND ? CANDY_PAINTS[Pick(roll, CANDY_PAINTS.length())] : TOWN_WALL_PAINTS[Pick(roll, TOWN_WALL_PAINTS.length())];
 }
 
-Frontage FrontageAt(float along, float line)
+Frontage FrontageOf(ivec2 building)
 {
-	ivec2 building = ivec2(floor(along / FRONTAGE_BUILDING_WIDTH), floor(line));
 	vec2 shape = Hash2(building);
-	float shaded = Hash(building + FRONTAGE_SALT);
-	return Frontage(mix(FRONTAGE_HEIGHTS.x, FRONTAGE_HEIGHTS.y, shape.x), WallPaint(shape.y), shaded < FRONTAGE_SHADED_SHARE ? 0.0 : 1.0);
+	vec2 look = Hash2(building + FRONTAGE_SALT);
+	return Frontage(mix(FRONTAGE_HEIGHTS.x, FRONTAGE_HEIGHTS.y, shape.x), WallPaint(shape.y), look.x < FRONTAGE_SHADED_SHARE ? 0.0 : 1.0, mix(FRONTAGE_GLAZED_BAYS.x, FRONTAGE_GLAZED_BAYS.y, look.y));
 }
 
-vec3 FrontageSeen(Frontage frontage, float above, float footprint, vec2 outward)
+Frontage Blended(Frontage a, Frontage b, float share)
 {
-	float ribbon = abs(fract(above / FRONTAGE_STOREY) - 0.5) * 2.0 < FRONTAGE_RIBBON ? 1.0 : 0.0;
-	float shown = 1.0 - smoothstep(FRONTAGE_RESOLVED_STOREYS.x, FRONTAGE_RESOLVED_STOREYS.y, footprint / FRONTAGE_STOREY);
-	float glazed = mix(FRONTAGE_RIBBON, ribbon, shown);
+	return Frontage(mix(a.height, b.height, share), mix(a.paint, b.paint, share), mix(a.sunlit, b.sunlit, share), mix(a.glazed, b.glazed, share));
+}
+
+Frontage FrontageAt(float along, float line, float blur)
+{
+	float place = along / FRONTAGE_BUILDING_WIDTH;
+	float from_middle = fract(place) - 0.5;
+	ivec2 building = ivec2(floor(place), floor(line));
+	ivec2 neighbour = building + ivec2(from_middle < 0.0 ? -1 : 1, 0);
+	float to_edge = (0.5 - abs(from_middle)) * FRONTAGE_BUILDING_WIDTH;
+	return Blended(FrontageOf(building), FrontageOf(neighbour), 0.5 - 0.5 * smoothstep(0.0, 0.5 * blur, to_edge));
+}
+
+vec3 FrontageSeen(Frontage frontage, vec2 at, float blur, vec2 outward)
+{
+	float windows = LinesAt(at.x / FRONTAGE_BAY, frontage.glazed, blur / FRONTAGE_BAY) * LinesAt(at.y / FRONTAGE_STOREY, FRONTAGE_RIBBON, blur / FRONTAGE_STOREY);
+	float openness = mix(FRONTAGE_STREET_OPENNESS, 1.0, smoothstep(0.0, FRONTAGE_CANYON_DEPTH, at.y));
 	vec3 facing = vec3(-outward, 0.0);
 	vec3 wall = Saturated(Linear(frontage.paint), FRONTAGE_SATURATION);
-	return mix(wall, Linear(DIM_ROOM), glazed * FRONTAGE_GLAZING_CONTRAST) * (Sunlight(facing, frontage.sunlit) + AmbientLight(facing));
+	return mix(wall, Linear(DIM_ROOM), windows * FRONTAGE_GLAZING_CONTRAST) * (Sunlight(facing, frontage.sunlit) + AmbientLight(facing) * openness);
 }
 
 vec3 StreetSeen(Street street, vec3 way)
@@ -87,16 +104,23 @@ vec3 Beyond(Street street, vec3 way)
 	return Hazed(town, way, street.point, street.point + way * (rise / -way.z));
 }
 
-vec3 Mirrored(Street street, vec3 way)
+vec4 Opposite(Street street, vec3 way, float roughness)
 {
 	float across = dot(way.xy, street.outward);
-	if (across <= LEAST_ACROSS) return Beyond(street, way);
+	if (across <= LEAST_ACROSS) return vec4(0.0);
 	float run = street.width / across;
 	vec3 hit = street.point + way * run;
 	float above = hit.z - street.ground;
-	if (above < 0.0) return StreetSeen(street, way);
-	float along = dot(hit.xy, vec2(-street.outward.y, street.outward.x));
-	Frontage frontage = FrontageAt(along, dot(hit.xy, street.outward));
-	if (above >= frontage.height) return Beyond(street, way);
-	return FrontageSeen(frontage, above, 1.0 / TilePixelsAt(distance(Eye(), street.point) + run), street.outward);
+	if (above < 0.0) return vec4(StreetSeen(street, way), 1.0);
+	float blur = 1.0 / TilePixelsAt(distance(Eye(), street.point) + run) + roughness * roughness * run;
+	vec2 at = vec2(dot(hit.xy, vec2(-street.outward.y, street.outward.x)), above);
+	Frontage frontage = FrontageAt(at.x, dot(hit.xy, street.outward), blur);
+	float cover = 1.0 - smoothstep(-0.5 * blur, 0.5 * blur, above - frontage.height);
+	return vec4(FrontageSeen(frontage, at, blur, street.outward), 1.0) * cover;
+}
+
+vec3 Mirrored(Street street, vec3 way, float roughness)
+{
+	vec4 opposite = Opposite(street, way, roughness);
+	return opposite.a >= 1.0 ? opposite.rgb : Composite(Beyond(street, way), opposite);
 }

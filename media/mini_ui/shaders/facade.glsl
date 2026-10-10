@@ -19,6 +19,7 @@ const float SILL_PROJECTION = 0.8;
 const float UNDER_SILL_OPENNESS = 0.8;
 const vec3 SHOPFRONT_FRAME = vec3(0.22);
 const vec3 SPANDREL_BACKING = vec3(0.34, 0.35, 0.36);
+const float SPANDREL_GLAZING = 0.5;
 const vec3 SHUTTER_SLAT = vec3(0.62, 0.64, 0.66);
 const vec3 SHUTTER_GROOVE = vec3(0.50, 0.52, 0.54);
 const float SLATS_PER_TEXEL = 0.5;
@@ -233,7 +234,10 @@ float Drips(Bay bay, vec2 texel, uint grid)
 
 Clad Spandrel(vec3 tint)
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? Matte(tint, TOY_PANE_ROUGHNESS) : PaneOver(SPANDREL_BACKING, 1.0, vec3(0.0));
+	if (Landscape() == LANDSCAPE_TOYLAND) return Matte(tint, TOY_PANE_ROUGHNESS);
+	Clad spandrel = PaneOver(SPANDREL_BACKING, 1.0, vec3(0.0));
+	spandrel.glass = SPANDREL_GLAZING;
+	return spandrel;
 }
 
 /* Dressed stone about an opening: its own fine grain, and joints across it every few texels along the edge it follows. */
