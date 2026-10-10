@@ -132,11 +132,6 @@ static constexpr std::array<std::array<TreeTones, TONE_SETS>, TREE_KINDS> TONES 
 	{{{0xF07FB0, 0xF4EEE4}, {0x7FC8F0, 0xF4EEE4}, {0xF2B24A, 0xF4EEE4}}},
 }};
 
-static double FootOpenness(const Vec3 &at, double top)
-{
-	return std::lerp(SHADED_FOOT, LIT_TRUNK, std::clamp((at.z - FOOT) / (top - FOOT), 0.0, 1.0));
-}
-
 /* Where a canopy spans from its underside to its top, so its facets darken toward the trunk. */
 struct Crown {
 	Vec3 centre;
@@ -306,7 +301,7 @@ public:
 	/* Wood darkens toward the ground it stands in. */
 	void Wood(ModelMesh part, double top)
 	{
-		this->Wood(std::move(part), [top](const Vec3 &at) { return FootOpenness(at, top); });
+		this->Wood(std::move(part), UpwardOpenness{FOOT, top, SHADED_FOOT, LIT_TRUNK});
 	}
 
 	/* A trunk tapering from its foot radius to its top one. */

@@ -10,7 +10,9 @@
 #ifndef MINI_MODEL_MODEL_MESH_H
 #define MINI_MODEL_MODEL_MESH_H
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 
 #include "../core/space.h"
@@ -41,6 +43,15 @@ inline constexpr std::array<VertexAttribute, 3> MODEL_LAYOUT = {{
 }};
 
 inline constexpr uint32_t MODEL_WHITE = 0xFFFFFF;
+
+struct UpwardOpenness {
+	double foot;
+	double top;
+	double foot_openness;
+	double top_openness;
+
+	double operator()(const Vec3 &at) const { return std::lerp(this->foot_openness, this->top_openness, std::clamp((at.z - this->foot) / (this->top - this->foot), 0.0, 1.0)); }
+};
 
 /* A part starts welded, white, open to the sky and opaque. Shaping steps run on the welded part so displaced corners stay joined;
  * Facet then gives every triangle corners of its own with the triangle's normal, after which each triangle can be shaded apart.

@@ -45,6 +45,9 @@ static constexpr double ARCH_GAP = 0.0005;
 static constexpr double ARCH_DEPTH = 0.001;
 static constexpr double TANK_RISE = 0.055;
 static constexpr double MUDGUARD = 0.003;
+static constexpr double UNDERBODY_LIFT = 0.004;
+static constexpr double UNDERBODY_GAP = 0.003;
+static constexpr double UNDERBODY_INSET = 0.03;
 
 struct Axle {
 	double x;
@@ -115,6 +118,12 @@ static ModelMesh Mudguard(double back_axle, double front_axle)
 	return guard.Append(Mirrored(guard));
 }
 
+static void Underbody(VehicleKit &kit, double back, double front)
+{
+	double half = HALF_TRACK - WHEEL_WIDTH * 0.5 - UNDERBODY_GAP;
+	kit.Body(Plank({back + UNDERBODY_INSET, -half, UNDERBODY_LIFT}, {front - UNDERBODY_INSET, half, CHASSIS_LOW}, RUNNING_GEAR));
+}
+
 static ModelMesh Bus(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -125,6 +134,7 @@ static ModelMesh Bus(VehicleDetail detail)
 	kit.Body(body.Stripe(BUS_WINDSCREEN, windscreen, body.Front(), GLASS).Gloss(GLASS_GLOSS));
 	kit.Body(body.Stripe(BUS_BAND, SECONDARY).Gloss(PAINT_GLOSS));
 	kit.Fine(Plank({-0.12, -0.04, 0.165}, {-0.02, 0.04, 0.178}, ROOF_GREY));
+	Underbody(kit, body.Back(), body.Front());
 	Wheels(kit, BUS_AXLES);
 	BodyLamps(kit, body, LAMP_HEIGHT);
 	return kit.Done();
@@ -137,6 +147,7 @@ static void Lorry(VehicleKit &kit)
 	BodyRun cab(CAB_BODY, CAB_BACK, FRONT, SQUARE_END, CAB_NOSE, kit.Steps());
 	kit.Body(cab.Shell().Paint(PRIMARY).Gloss(PAINT_GLOSS));
 	kit.Body(cab.Stripe(CAB_GLASS, CAB_GLASS_BACK, FRONT, GLASS).Gloss(GLASS_GLOSS));
+	Underbody(kit, -FRONT, FRONT);
 	Wheels(kit, LORRY_AXLES);
 	kit.Fine(Mudguard(LORRY_AXLES[0].x, LORRY_AXLES[1].x));
 	HeadLamps(kit, cab, LAMP_HEIGHT);

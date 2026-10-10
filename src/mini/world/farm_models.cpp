@@ -243,7 +243,7 @@ static ModelMesh StoneWall()
 		foot = base;
 	}
 	wall.Round(DEEP_BELOW, GROUND_LIGHTING);
-	return wall.Occlude([](const Vec3 &at) { return FOOT_OPENNESS + (1.0 - FOOT_OPENNESS) * std::clamp(at.z / WALL_HEIGHT, 0.0, 1.0); });
+	return wall.Occlude(UpwardOpenness{0.0, WALL_HEIGHT, FOOT_OPENNESS, 1.0});
 }
 
 std::vector<ModelMesh> BuildFarmModels()

@@ -22,10 +22,16 @@
 /* Ships and aircraft are drawn larger than life beside the ways and buildings, so they read at a glance. */
 static constexpr double SHIP_SCALE = 1.4;
 static constexpr double AIRCRAFT_SCALE = 1.3;
+static constexpr UpwardOpenness GROUND_OPENNESS = {0.0, 0.09, 0.45, 1.0};
+
+static bool OnGround(VehicleLook look)
+{
+	return look < VehicleLook::Ferry;
+}
 
 static double ScaleOf(VehicleLook look)
 {
-	if (look < VehicleLook::Ferry) return 1.0;
+	if (OnGround(look)) return 1.0;
 	return look < VehicleLook::PropPlane ? SHIP_SCALE : AIRCRAFT_SCALE;
 }
 
@@ -47,8 +53,10 @@ std::vector<ModelMesh> BuildVehicleModels()
 	std::vector<ModelMesh> models(VEHICLE_MODELS);
 	for (size_t model = 0; model < VEHICLE_MODELS; model++) {
 		VehicleDetail detail = static_cast<VehicleDetail>(model % VEHICLE_DETAILS);
-		double scale = ScaleOf(LookOfModel(model));
-		models[model] = VehicleModel(LookOfModel(model), detail).Transform(Mat4::Scaling({scale, scale, scale}));
+		VehicleLook look = LookOfModel(model);
+		double scale = ScaleOf(look);
+		models[model] = VehicleModel(look, detail).Transform(Mat4::Scaling({scale, scale, scale}));
+		if (OnGround(look)) models[model].Occlude(GROUND_OPENNESS);
 	}
 	return models;
 }
