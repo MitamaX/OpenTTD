@@ -73,8 +73,9 @@ static bool Wired(TileIndex tile)
 
 static void LayWiredTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth = std::nullopt)
 {
-	LayTrack(mesh, site, footing);
-	LayCatenary(mesh, site, footing, mouth);
+	TileTrack track(site);
+	LayTrack(mesh, track, footing);
+	LayCatenary(mesh, track, footing, mouth);
 }
 
 static MiniLayer LayerOf(TransportType transport)
@@ -141,7 +142,7 @@ private:
 		if (!crossing) return;
 		TrackSite rails = this->TrackOf(tile, tx, ty);
 		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), rails, footing);
-		LayCatenary(this->meshes.Layer(MiniLayer::Rail), rails, footing, std::nullopt);
+		LayCatenary(this->meshes.Layer(MiniLayer::Rail), TileTrack(rails), footing, std::nullopt);
 	}
 
 	void Station(TileIndex tile, int tx, int ty)

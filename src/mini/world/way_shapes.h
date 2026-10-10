@@ -65,6 +65,14 @@ struct SectionPoint {
 
 using Section = std::span<const SectionPoint>;
 
+template <size_t N>
+constexpr std::array<SectionPoint, N> Shifted(const std::array<SectionPoint, N> &section, double lateral)
+{
+	std::array<SectionPoint, N> shifted = section;
+	for (SectionPoint &point : shifted) point.lateral += lateral;
+	return shifted;
+}
+
 /* How far below its footing a way's sides reach, where the ground or an eased way's bank meets them. */
 inline constexpr double WAY_FOOT = -0.012;
 

@@ -81,6 +81,7 @@ struct Piece {
 
 	Joint Other(const Joint &end) const { return end == this->from ? this->to : this->from; }
 	bool Meets(const Joint &joint) const { return this->from == joint || this->to == joint; }
+	MapVector From(const Joint &end) const { return Unit(this->Other(end).Point() - end.Point()); }
 	double Span() const { return std::hypot(this->to.hx - this->from.hx, this->to.hy - this->from.hy) * HALF_TILE; }
 };
 
@@ -119,5 +120,6 @@ std::optional<Piece> BestPieceAt(const TileCoord &tile, const Joint &joint, Rati
 
 std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, TrackBits among = TRACK_BIT_ALL);
 std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point, TrackBits among = TRACK_BIT_ALL);
+int StraightOnEnds(int tx, int ty, Track track);
 
 #endif /* MINI_MAP_TRACK_PIECES_H */

@@ -98,6 +98,8 @@ add_files(
     tile_grid.h
     tile_relief.cpp
     tile_relief.h
+    tile_track.cpp
+    tile_track.h
     track_models.cpp
     track_models.h
     tree_models.cpp

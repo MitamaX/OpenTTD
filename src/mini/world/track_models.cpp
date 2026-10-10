@@ -14,28 +14,19 @@
 #include <array>
 #include <cmath>
 #include <optional>
+#include <span>
 #include <utility>
 #include <vector>
 
-#include "../../map_func.h"
 #include "../../track_func.h"
-#include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
-#include "../map/track_pieces.h"
-#include "../map/way_course.h"
 
 #include "../../safeguards.h"
 
-static constexpr double ROWS_PER_TILE = 4.0;
-/* A piece's line turns no further than this from one row of its faces to the next, in radians, so its bends read as curves. */
-static constexpr double ROW_TURN_LIMIT = 0.08;
-static constexpr int TURN_SAMPLES = 8;
 static constexpr double MAGLEV_HOVER = 0.024;
-static constexpr double LIFT_STEP = 0.0012;
 static constexpr double BALLAST_VARIETY = 0.08;
 static constexpr double TIMBER_VARIETY = 0.18;
-static constexpr uint32_t TRACK_SALT = 0x7AC4B0A2U;
 
 static constexpr uint32_t BALLAST = COL_BALLAST;
 static constexpr uint32_t DISTANT_BALLAST = COL_DISTANT_BALLAST;
@@ -50,10 +41,6 @@ static constexpr double STEEL_GLOSS = 0.85;
 static constexpr double STRIP_GLOSS = 0.6;
 static constexpr double MAST_GLOSS = 0.4;
 
-static constexpr double GAUGE_HALF = 0.105;
-static constexpr double SLEEPERS_PER_TILE = 7.0;
-static constexpr Vec3 SLEEPER_LOW = {-0.02, -0.17, 0.026};
-static constexpr Vec3 SLEEPER_HIGH = {0.02, 0.17, 0.047};
 static constexpr double STRIP_GAP_HALF = 0.1;
 
 static constexpr double WIRE_HEIGHT = 0.36;
@@ -108,114 +95,20 @@ static constexpr std::array<SectionPoint, 4> ARM_SECTION = {{
 	{-0.008, ARM_LOW, MAST, MAST_GLOSS}, {-0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_LOW, MAST, MAST_GLOSS},
 }};
 
-/* A piece on the ground is laid along the line it is drawn on, at its course's level where it eases, meeting the pieces either side without a seam;
- * on a bridge it runs plainly from edge to edge. */
-class TrackPiece {
-public:
-	TrackPiece(const TrackSite &site, Track track) : site(site), track(track), drawn(Drawn(site, track)), rows(RowsAlong(this->drawn.line)) {}
+static ModelMesh SleeperModel(const WayLine &line, const Sleeper &sleeper)
+{
+	double half_length = (sleeper.right - sleeper.left) / 2.0;
+	MapVector middle = line.At(sleeper.share, (sleeper.left + sleeper.right) / 2.0);
+	ModelMesh timber = Block(middle, line.Along(sleeper.share), {-SLEEPER_HALF_WIDTH, -half_length, SLEEPER_FOOT}, {SLEEPER_HALF_WIDTH, half_length, SLEEPER_TOP});
+	return timber.Paint(TIMBER).Vary(TIMBER_VARIETY, sleeper.seed);
+}
 
-	const WayLine &Line() const { return this->drawn.line; }
-
-	/* Pieces crossing on one tile, and the same piece on the tiles either side, stand a hair apart so their faces never fight; eased pieces never overlap. */
-	double Lift() const
-	{
-		if (this->drawn.course.has_value()) return 0.0;
-		int parity = (this->site.tx + this->site.ty) & 1;
-		return LIFT_STEP * (static_cast<int>(this->track) + static_cast<int>(TRACK_END) * parity);
-	}
-
-	ModelMesh Body(Section section, bool capped) const
-	{
-		ModelMesh body = Laid(this->Line(), section, this->rows);
-		if (capped && this->drawn.open_first) body.Append(EndCap(this->Line(), section, false));
-		if (capped && this->drawn.open_last) body.Append(EndCap(this->Line(), section, true));
-		return body;
-	}
-
-	ModelMesh Pair(Section section, double gap_half) const
-	{
-		ModelMesh pair;
-		for (double side : {-1.0, 1.0}) {
-			std::array<SectionPoint, 4> shifted;
-			for (size_t point = 0; point < shifted.size(); point++) {
-				shifted[point] = section[point];
-				shifted[point].lateral += side * gap_half;
-			}
-			pair.Append(Laid(this->Line(), shifted, this->rows));
-		}
-		return pair;
-	}
-
-	/* Sleepers lie on equal slots along the piece, so the same pitch runs on across every seam. */
-	ModelMesh Sleepers() const
-	{
-		const WayLine &line = this->Line();
-		ModelMesh sleepers;
-		int count = std::max(1, static_cast<int>(std::lround(line.Span() * SLEEPERS_PER_TILE)));
-		SeedDice dice(Hash32(TRACK_SALT + static_cast<uint32_t>(TileXY(this->site.tx, this->site.ty).base() * TRACK_END + this->track)));
-		for (int slot = 0; slot < count; slot++) {
-			double share = (slot + 0.5) / count;
-			ModelMesh sleeper = Block(line.At(share, 0.0), line.Along(share), SLEEPER_LOW, SLEEPER_HIGH);
-			sleepers.Append(sleeper.Paint(TIMBER).Vary(TIMBER_VARIETY, dice.Next()));
-		}
-		return sleepers;
-	}
-
-	std::optional<std::pair<double, double>> Distances() const
-	{
-		if (!this->drawn.course.has_value()) return std::nullopt;
-		return this->drawn.course->Distances();
-	}
-
-	/* An eased piece is laid at its course's level; any other on what it stands on. */
-	Footing FootingOn(const Footing &ground) const
-	{
-		if (!this->drawn.course.has_value()) return ground;
-		return [course = *this->drawn.course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
-	}
-
-private:
-	static DrawnTrack Drawn(const TrackSite &site, Track track)
-	{
-		if (site.grounded) return DrawnTrack::Of(site.tx, site.ty, track);
-		MapVector origin = {static_cast<double>(site.tx), static_cast<double>(site.ty)};
-		auto [from, to] = TRACK_ENDS[track];
-		MapVector along = Unit(to - from);
-		return {site.tx, site.ty, origin + from, origin + to, Bend(origin + from, origin + to, along, along), std::nullopt, false, false};
-	}
-
-	/* How far a line turns along its length, turns either way both counted. */
-	static double Turn(const WayLine &line)
-	{
-		double turn = 0.0;
-		MapVector previous = line.Along(0.0);
-		for (int sample = 1; sample <= TURN_SAMPLES; sample++) {
-			MapVector next = line.Along(static_cast<double>(sample) / TURN_SAMPLES);
-			turn += std::acos(std::clamp(Dot(previous, next), -1.0, 1.0));
-			previous = next;
-		}
-		return turn;
-	}
-
-	static int RowsAlong(const WayLine &line)
-	{
-		int along = static_cast<int>(std::lround(line.Span() * ROWS_PER_TILE));
-		int turning = static_cast<int>(std::ceil(Turn(line) / ROW_TURN_LIMIT));
-		return std::max({1, along, turning});
-	}
-
-	const TrackSite &site;
-	Track track;
-	DrawnTrack drawn;
-	int rows;
-};
-
-static ModelMesh RailPiece(const TrackPiece &piece, WayDetail detail, uint32_t seed)
+static ModelMesh RailPiece(const TrackPiece &piece, WayDetail detail, uint32_t seed, std::span<const Sleeper> sleepers)
 {
 	if (detail == WayDetail::Simple) return piece.Body(DISTANT_BALLAST_SECTION, true);
 	ModelMesh mesh = piece.Body(BALLAST_SECTION, true);
 	mesh.Vary(BALLAST_VARIETY, seed);
-	mesh.Append(piece.Sleepers());
+	for (const Sleeper &sleeper : sleepers) mesh.Append(SleeperModel(piece.Line(), sleeper));
 	return mesh.Append(piece.Pair(RAIL_SECTION, GAUGE_HALF));
 }
 
@@ -236,12 +129,13 @@ double RideHeight(RailLook look)
 	}
 }
 
-static ModelMesh PieceModel(const TrackSite &site, const TrackPiece &piece, uint32_t seed)
+static ModelMesh PieceModel(const TileTrack &track, const TrackPiece &piece, std::span<const Sleeper> sleepers)
 {
+	const TrackSite &site = track.Site();
 	switch (site.look) {
 		case RailLook::Monorail: return piece.Body(MONORAIL_SECTION, true);
 		case RailLook::Maglev: return MaglevPiece(piece, site.detail);
-		default: return RailPiece(piece, site.detail, seed);
+		default: return RailPiece(piece, site.detail, track.BallastSeed(piece), sleepers);
 	}
 }
 
@@ -251,12 +145,13 @@ static void Lay(ModelMesh &mesh, ModelMesh piece, double lift, const Footing &fo
 	mesh.Append(Drape(piece, footing));
 }
 
-void LayTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
+void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing)
 {
-	for (Track track : SetTrackBitIterator(site.bits)) {
-		TrackPiece piece(site, track);
-		uint32_t seed = Hash32(TRACK_SALT ^ static_cast<uint32_t>(site.tx * TRACK_END + track) ^ Hash32(site.ty));
-		Lay(mesh, PieceModel(site, piece, seed), piece.Lift(), piece.FootingOn(footing));
+	const std::vector<TrackPiece> &pieces = track.Pieces();
+	std::vector<std::vector<Sleeper>> sleepers = track.Sleepers();
+	for (size_t rank = 0; rank < pieces.size(); rank++) {
+		const TrackPiece &piece = pieces[rank];
+		Lay(mesh, PieceModel(track, piece, sleepers[rank]), track.Lift(piece), piece.FootingOn(footing));
 	}
 }
 
@@ -264,7 +159,7 @@ void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &foo
 {
 	if (site.detail == WayDetail::Simple) return;
 	for (Track track : SetTrackBitIterator(site.bits)) {
-		TrackPiece piece(TrackSite{site.tx, site.ty, site.bits, site.look, site.wired, false, site.detail}, track);
+		TrackPiece piece(site.tx, site.ty, track, false);
 		Lay(mesh, piece.Pair(SET_RAIL_SECTION, GAUGE_HALF), 0.0, footing);
 	}
 }
@@ -340,23 +235,22 @@ static bool InMouth(const MapVector &at, const std::optional<MapVector> &mouth)
 	return mouth.has_value() && Length(at - *mouth) < HALF_TILE;
 }
 
-/* Masts stand evenly along an eased run; on any other tile one stands at the start of its first piece. */
-void LayCatenary(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth)
+/* Masts stand evenly along an eased run; on any other tile one stands at the start of its main line. */
+void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const std::optional<MapVector> &mouth)
 {
+	const TrackSite &site = track.Site();
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
-	bool first = true;
-	for (Track track : SetTrackBitIterator(site.bits)) {
-		TrackPiece piece(site, track);
+	const TrackPiece &main = track.Pieces().front();
+	for (const TrackPiece &piece : track.Pieces()) {
 		const WayLine &line = piece.Line();
 		WireRun wires = WiresOf(piece);
 		ModelMesh parts = piece.Body(WIRE_SECTION, false);
 		parts.Append(Messenger(line, wires));
-		if (piece.Distances().has_value() || first) {
+		if (piece.Distances().has_value() || &piece == &main) {
 			for (double share : wires.SharesAt(0.0)) {
 				if (!InMouth(line.At(share, 0.0), mouth)) parts.Append(Mast(line, share));
 			}
 		}
-		first = false;
-		Lay(mesh, std::move(parts), piece.Lift(), piece.FootingOn(footing));
+		Lay(mesh, std::move(parts), track.Lift(piece), piece.FootingOn(footing));
 	}
 }

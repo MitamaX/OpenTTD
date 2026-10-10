@@ -59,7 +59,7 @@ MapVector TrainAhead(const MapVector &from, MapVector heading, double reach, con
 	Joint exit = Dot(piece.to.Point() - piece.from.Point(), heading) >= 0.0 ? piece.to : piece.from;
 	MapVector at = from;
 	for (;;) {
-		heading = Unit(exit.Point() - piece.Other(exit).Point());
+		heading = piece.From(exit) * -1.0;
 		double left = std::max(Dot(exit.Point() - at, heading), 0.0);
 		if (reach <= left) break;
 		reach -= left;

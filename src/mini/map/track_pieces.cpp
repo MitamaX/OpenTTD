@@ -19,6 +19,8 @@
 
 #include "../../safeguards.h"
 
+static constexpr double STRAIGHT_ON_COSINE = 0.99;
+
 TileCoord TileOf(const MapVector &point)
 {
 	return {static_cast<int>(std::floor(point.x)), static_cast<int>(std::floor(point.y))};
@@ -51,10 +53,22 @@ TrackBits TrackBitsOf(int tx, int ty)
 
 std::optional<Piece> StraightestAt(const TileCoord &tile, const Joint &joint, const MapVector &heading, TrackBits among)
 {
-	return BestPieceAt(tile, joint, [&](const Piece &piece) { return Dot(Unit(piece.Other(joint).Point() - joint.Point()), heading); }, among);
+	return BestPieceAt(tile, joint, [&](const Piece &piece) { return Dot(piece.From(joint), heading); }, among);
 }
 
 std::optional<Track> TrackUnder(const TileCoord &tile, const MapVector &point, TrackBits among)
 {
 	return BestTrackAt(tile, [&](const Piece &piece) -> std::optional<double> { return -SegmentDistance(point, piece.from.Point(), piece.to.Point()); }, among);
+}
+
+int StraightOnEnds(int tx, int ty, Track track)
+{
+	Piece piece = PieceOf(tx, ty, track);
+	int straight = 0;
+	for (const Joint &end : {piece.from, piece.to}) {
+		MapVector outward = piece.From(end) * -1.0;
+		std::optional<Piece> beyond = StraightestAt(end.Beyond({tx, ty}), end, outward);
+		if (beyond.has_value() && Dot(beyond->From(end), outward) >= STRAIGHT_ON_COSINE) straight++;
+	}
+	return straight;
 }

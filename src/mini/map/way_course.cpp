@@ -416,7 +416,7 @@ MapVector WayCourse::HeldHeading(const MapVector &point, bool leaving) const
 	MapVector chord = Unit(this->to - this->from);
 	std::optional<Piece> beyond = StraightestAt(joint.Beyond({this->tx, this->ty}), joint, leaving ? chord * -1.0 : chord);
 	if (!beyond.has_value()) return chord;
-	MapVector onward = Unit(beyond->Other(joint).Point() - point);
+	MapVector onward = beyond->From(joint);
 	return leaving ? onward * -1.0 : onward;
 }
 
@@ -502,7 +502,7 @@ static PieceEnd PieceEndAt(int tx, int ty, const MapVector &joint, const MapVect
 		Piece piece = PieceOf(nx, ny, track);
 		if (!piece.Meets(at)) continue;
 		std::optional<WayCourse> course = WayCourse::OfTrack(nx, ny, track);
-		end.run = course.has_value() ? course->OnwardFrom(joint) : Unit(piece.Other(at).Point() - joint);
+		end.run = course.has_value() ? course->OnwardFrom(joint) : piece.From(at);
 		end.open = false;
 		partners++;
 	}
