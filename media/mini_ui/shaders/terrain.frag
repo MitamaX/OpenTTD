@@ -271,6 +271,9 @@ const float RIPPLE_SHADE = 0.05;
 const float CROSS_RIPPLES_PER_TILE = 6.3;
 const float RIPPLE_BLEND_FREQUENCY = 0.08;
 const float TOY_GRAIN = 0.45;
+const float TOY_PEBBLE_DRIFTS_PER_TILE = 2.4;
+const vec2 TOY_PEBBLE_SEED = vec2(8.3, 4.1);
+const vec2 TOY_PEBBLE_BLEND = vec2(0.2, 0.8);
 
 const int TOY_STRATA_COUNT = 4;
 const vec3 TOY_STRATA[TOY_STRATA_COUNT] = vec3[TOY_STRATA_COUNT](
@@ -708,15 +711,22 @@ vec3 Stratum(int layer)
 	return mix(ROCK, ROCK_WARM, Hash(ivec2(layer, 7))) * Varied(Hash(ivec2(layer, 19)), LAYER_VARIETY);
 }
 
-vec3 LooseStone()
+vec3 ToyPebbles(vec2 p)
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? ToyStrataMean() : SCREE;
+	float drift = Octave(p + TOY_PEBBLE_SEED, TOY_PEBBLE_DRIFTS_PER_TILE) * float(TOY_STRATA_COUNT);
+	vec3 pebbles = mix(ToyStratum(int(drift)), ToyStratum(int(drift) + 1), smoothstep(TOY_PEBBLE_BLEND.x, TOY_PEBBLE_BLEND.y, fract(drift)));
+	return mix(ToyStrataMean(), pebbles, Resolved(TOY_PEBBLE_DRIFTS_PER_TILE));
+}
+
+vec3 LooseStone(vec2 p)
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyPebbles(p) : SCREE;
 }
 
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
 vec3 Scree(Grain grain, vec2 p)
 {
-	vec3 tone = LooseStone() * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
+	vec3 tone = LooseStone(p) * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
 	float strewn = grain.stones * mix(SCREE_SPARSE, 1.0, Octave(p + SCREE_DRIFT_SEED, SCREE_DRIFTS_PER_TILE));
 	return tone * mix(1.0, 1.18, strewn) * Hollowed(grain, STONY_HOLLOWS);
 }
@@ -823,7 +833,7 @@ Patch Rough(Site site)
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
 	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
 	float open = smoothstep(0.58, 0.8, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
-	vec3 stony = mix(Soil(), LooseStone(), 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
+	vec3 stony = mix(Soil(), LooseStone(p), 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
 	return Patch(mix(scrub, stony, open * (Landscape() == LANDSCAPE_TOYLAND ? TOY_ROUGH_BARE : ROUGH_BARE)), ROUGH_RUGGED);
 }
 
