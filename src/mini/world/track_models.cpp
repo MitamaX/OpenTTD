@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <span>
 #include <utility>
@@ -21,6 +22,8 @@
 #include "../../track_func.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
+#include "../map/track_pieces.h"
+#include "../map/way_course.h"
 
 #include "../../safeguards.h"
 
@@ -44,8 +47,10 @@ static constexpr double MAST_GLOSS = 0.4;
 static constexpr double STRIP_GAP_HALF = 0.1;
 
 static constexpr double WIRE_HEIGHT = 0.36;
-static constexpr double MAST_LATERAL = -0.31;
+static constexpr double MAST_OFFSET = 0.31;
+static constexpr std::array<double, 2> MAST_SIDES = {-1.0, 1.0};
 static constexpr double MAST_HALF = 0.016;
+static constexpr double MAST_CLEARANCE = BALLAST_HALF + MAST_HALF;
 static constexpr double MAST_HEIGHT = 0.46;
 static constexpr double ARM_REACH = 0.05;
 static constexpr double ARM_LOW = 0.41;
@@ -222,25 +227,52 @@ static ModelMesh Messenger(const WayLine &line, const WireRun &wires)
 	return messenger.Paint(WIRE);
 }
 
+static MapVector MastFoot(const WayLine &line, double share, double side)
+{
+	return line.At(share, side * MAST_OFFSET);
+}
+
 /* A mast beside the track with its arm reaching over to hold the wires. */
-static ModelMesh Mast(const WayLine &line, double share)
+static ModelMesh Mast(const WayLine &line, double share, double side)
 {
-	MapVector foot = line.At(share, MAST_LATERAL);
+	MapVector foot = MastFoot(line, share, side);
 	ModelMesh mast = Block(foot, line.Along(share), {-MAST_HALF, -MAST_HALF, -0.02}, {MAST_HALF, MAST_HALF, MAST_HEIGHT}).Paint(MAST).Gloss(MAST_GLOSS);
-	return mast.Append(Laid(Stretch{foot, line.At(share, ARM_REACH)}, ARM_SECTION, 1));
+	return mast.Append(Laid(Stretch{foot, line.At(share, -side * ARM_REACH)}, ARM_SECTION, 1));
 }
 
-static bool InMouth(const MapVector &at, const std::optional<MapVector> &mouth)
+static double TrackGap(const MapVector &foot)
 {
-	return mouth.has_value() && Length(at - *mouth) < HALF_TILE;
+	auto [cx, cy] = TileOf(foot);
+	double gap = std::numeric_limits<double>::infinity();
+	for (int ty = cy - 1; ty <= cy + 1; ty++) {
+		for (int tx = cx - 1; tx <= cx + 1; tx++) {
+			if (!OnMap(tx, ty)) continue;
+			for (Track track : SetTrackBitIterator(TrackBitsOf(tx, ty))) {
+				const Bend &line = DrawnTrack::Of(tx, ty, track).line;
+				gap = std::min(gap, Length(foot - line.Centre(line.ShareOf(foot))));
+			}
+		}
+	}
+	return gap;
 }
 
-/* Masts stand evenly along an eased run; on any other tile one stands at the start of its main line. */
-void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const std::optional<MapVector> &mouth)
+static std::optional<double> MastSide(const WayLine &line, double share, bool clearing, const MastBan &banned)
+{
+	std::span<const double> sides = clearing ? std::span(MAST_SIDES) : std::span(MAST_SIDES).first(1);
+	for (double side : sides) {
+		MapVector foot = MastFoot(line, share, side);
+		if ((!clearing || TrackGap(foot) >= MAST_CLEARANCE) && !(banned && banned(foot))) return side;
+	}
+	return std::nullopt;
+}
+
+/* Masts stand evenly along an eased run; on any other tile one stands at the start of its main line, on the ground on the first side clear of every track's ballast. */
+void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned)
 {
 	const TrackSite &site = track.Site();
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
 	const std::vector<TrackPiece> &pieces = track.Pieces();
+	bool run = std::ranges::any_of(pieces, [](const TrackPiece &piece) { return piece.Distances().has_value(); });
 	for (size_t rank = 0; rank < pieces.size(); rank++) {
 		const TrackPiece &piece = pieces[rank];
 		const WayLine &line = piece.Line();
@@ -249,7 +281,8 @@ void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing
 		if (!track.Branch(rank)) parts.Append(Messenger(line, wires));
 		if (piece.Distances().has_value() || rank == 0) {
 			for (double share : wires.SharesAt(0.0)) {
-				if (!InMouth(line.At(share, 0.0), mouth)) parts.Append(Mast(line, share));
+				std::optional<double> side = MastSide(line, share, site.grounded && !run, banned);
+				if (side.has_value()) parts.Append(Mast(line, share, *side));
 			}
 		}
 		Lay(mesh, std::move(parts), track.Lift(piece), piece.FootingOn(footing));

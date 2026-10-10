@@ -10,7 +10,7 @@
 #ifndef MINI_WORLD_TRACK_MODELS_H
 #define MINI_WORLD_TRACK_MODELS_H
 
-#include <optional>
+#include <functional>
 
 #include "tile_track.h"
 #include "way_shapes.h"
@@ -22,7 +22,9 @@ inline constexpr double BALLAST_HALF = 0.27;
 double RideHeight(RailLook look);
 void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing);
 void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
-/* Where the track runs into a tunnel's mouth its wires run on into the dark, and no mast stands. */
-void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const std::optional<MapVector> &mouth);
+using MastBan = std::function<bool(const MapVector &foot)>;
+
+/* No mast stands with its foot where the ban holds, as by a tunnel's mouth, into which the wires run on into the dark. */
+void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned);
 
 #endif /* MINI_WORLD_TRACK_MODELS_H */

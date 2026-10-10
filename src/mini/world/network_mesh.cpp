@@ -71,11 +71,21 @@ static bool Wired(TileIndex tile)
 	return HasRailCatenaryDrawn(GetRailType(tile));
 }
 
-static void LayWiredTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const std::optional<MapVector> &mouth = std::nullopt)
+static void LayWiredTrack(ModelMesh &mesh, const TrackSite &site, const Footing &footing, const MastBan &banned = {})
 {
 	TileTrack track(site);
 	LayTrack(mesh, track, footing);
-	LayCatenary(mesh, track, footing, mouth);
+	LayCatenary(mesh, track, footing, banned);
+}
+
+static bool Everywhere(const MapVector &)
+{
+	return true;
+}
+
+static MastBan NearMouth(TileIndex tunnel)
+{
+	return [mouth = TunnelMouth(tunnel)](const MapVector &foot) { return Length(foot - mouth) < HALF_TILE; };
 }
 
 static MiniLayer LayerOf(TransportType transport)
@@ -113,9 +123,9 @@ private:
 		return {tx, ty, static_cast<TrackBits>(texel.track), static_cast<RailLook>(texel.style & NETWORK_RAIL_LOOK_MASK), Wired(tile), true, this->detail};
 	}
 
-	void LayTrackOn(const TrackSite &site, const Footing &footing)
+	void LayTrackOn(const TrackSite &site, const Footing &footing, const MastBan &banned = {})
 	{
-		LayWiredTrack(this->meshes.Layer(MiniLayer::Rail), site, footing);
+		LayWiredTrack(this->meshes.Layer(MiniLayer::Rail), site, footing, banned);
 	}
 
 	RoadSite RoadOf(TileIndex tile, int tx, int ty, bool crossing) const
@@ -128,7 +138,7 @@ private:
 
 	void Railway(TileIndex tile, int tx, int ty)
 	{
-		this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
+		this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty), IsRailDepot(tile) ? Everywhere : MastBan{});
 		if (IsPlainRailTile(tile) && HasSignals(tile)) this->Signals(tile, tx, ty);
 	}
 
@@ -142,7 +152,7 @@ private:
 		if (!crossing) return;
 		TrackSite rails = this->TrackOf(tile, tx, ty);
 		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), rails, footing);
-		LayCatenary(this->meshes.Layer(MiniLayer::Rail), TileTrack(rails), footing, std::nullopt);
+		LayCatenary(this->meshes.Layer(MiniLayer::Rail), TileTrack(rails), footing, {});
 	}
 
 	void Station(TileIndex tile, int tx, int ty)
@@ -170,7 +180,7 @@ private:
 		}
 		TransportType transport = GetTunnelBridgeTransportType(tile);
 		if (transport == TRANSPORT_RAIL) {
-			LayWiredTrack(this->meshes.Layer(MiniLayer::Rail), this->TrackOf(tile, tx, ty), GroundFooting(tx, ty), TunnelMouth(tile));
+			this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty), NearMouth(tile));
 		} else {
 			LayRoad(this->meshes.Layer(MiniLayer::Road), this->RoadOf(tile, tx, ty, false), GroundFooting(tx, ty));
 		}
