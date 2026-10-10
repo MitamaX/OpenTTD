@@ -97,13 +97,12 @@ struct ShellSteps {
 inline constexpr ShellSteps FULL_SHELL_STEPS = {2, 2};
 inline constexpr ShellSteps SIMPLE_SHELL_STEPS = {1, 0};
 
-/* The parts a model is built of; fine parts are left out of the simple model, and coarse ones stand in for them there. */
+/* The parts a model is built of; fine parts are left out of the simple model and of the shadow a near one casts, and coarse ones stand in for them there. */
 class VehicleKit {
 public:
 	explicit VehicleKit(VehicleDetail detail) : detail(detail) {}
 
-	bool Full() const { return this->detail == VehicleDetail::Full; }
-	ShellSteps Steps() const { return this->Full() ? FULL_SHELL_STEPS : SIMPLE_SHELL_STEPS; }
+	ShellSteps Steps() const { return this->detail == VehicleDetail::Simple ? SIMPLE_SHELL_STEPS : FULL_SHELL_STEPS; }
 
 	VehicleKit &Body(const ModelMesh &part)
 	{
@@ -113,13 +112,13 @@ public:
 
 	VehicleKit &Fine(const ModelMesh &part)
 	{
-		if (this->Full()) this->mesh.Append(part);
+		if (this->detail == VehicleDetail::Full) this->mesh.Append(part);
 		return *this;
 	}
 
 	VehicleKit &Coarse(const ModelMesh &part)
 	{
-		if (!this->Full()) this->mesh.Append(part);
+		if (this->detail != VehicleDetail::Full) this->mesh.Append(part);
 		return *this;
 	}
 

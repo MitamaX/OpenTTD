@@ -59,6 +59,7 @@ enum class VehicleLook : uint8_t {
 enum class VehicleDetail : uint8_t {
 	Full,
 	Simple,
+	Shadow,
 	End,
 };
 
