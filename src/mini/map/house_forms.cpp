@@ -249,12 +249,7 @@ static constexpr float PARK_BENCH_HEIGHT = 0.028f;
 static constexpr float PARK_BENCH_GAP = 0.012f;
 static constexpr uint32_t PARK_BENCH_TINT = 0xFF86603EU;
 
-static constexpr float PLINTH_SIDE = 0.36f;
-static constexpr float PLINTH_HEIGHT = 0.06f;
 static constexpr uint32_t PLINTH_TINT = 0xFFC8C0AEU;
-static constexpr float FIGURE_SIDE = 0.10f;
-static constexpr float FIGURE_HEIGHT = 0.22f;
-static constexpr uint32_t FIGURE_TINT = 0xFF5F7A64U;
 
 static constexpr float IGLOO_RADIUS = 0.30f;
 static constexpr float IGLOO_RISE = 0.26f;
@@ -1004,9 +999,7 @@ static void BuildPark(BuildingForm &form, const HouseSite &site)
 
 static void BuildStatue(BuildingForm &form, const HouseSite &)
 {
-	Part plinth = Part::Square(LOT_CENTRE, LOT_CENTRE, PLINTH_SIDE).Height(PLINTH_HEIGHT).Clad(Material::Stone, PLINTH_TINT);
-	Place(form, plinth);
-	Place(form, Part::Square(LOT_CENTRE, LOT_CENTRE, FIGURE_SIDE).On(LevelAbove(plinth)).Height(FIGURE_HEIGHT).Clad(Material::Metal, FIGURE_TINT));
+	AddStatue(form, PLINTH_TINT, PLINTH_TINT);
 }
 
 static void BuildFountain(BuildingForm &form, const HouseSite &site)

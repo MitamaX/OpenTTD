@@ -45,14 +45,6 @@ static constexpr float KEEPER_HEIGHT = 0.25f;
 static constexpr uint KEEPER_ACROSS_BIT = 18;
 static constexpr uint KEEPER_ALONG_BIT = 19;
 
-static constexpr float PLINTH_INSET = 0.25f;
-static constexpr float PLINTH_HEIGHT = 0.2f;
-static constexpr float RIM_WIDTH = 0.04f;
-static constexpr float FIGURE_RADIUS = 0.07f;
-static constexpr float FIGURE_TAPER = 0.14f;
-static constexpr float FIGURE_HEIGHT = 0.28f;
-static constexpr uint32_t BRONZE_TINT = 0xFF5E8A6EU;
-
 static constexpr float POLE_SIDE = 0.02f;
 static constexpr float POLE_HEIGHT = 0.32f;
 static constexpr float FLAG_THICKNESS = 0.01f;
@@ -142,14 +134,7 @@ static void BuildLighthouse(BuildingForm &form, const SiteLot &lot, uint32_t)
 
 static void BuildStatue(BuildingForm &form, const SiteLot &lot, uint32_t trim)
 {
-	uint32_t stone = FinishTint(Finish::Stone, lot.seed);
-	Plot top = Plot{}.Inset(PLINTH_INSET);
-	Part plinth = Part::Box(top).Height(PLINTH_HEIGHT).Clad(Material::Stone, stone);
-	float level = LevelAbove(plinth);
-	form.Add(plinth);
-	form.Add(Part::Decal(top).On(level).Covered(Material::Plain, trim));
-	form.Add(Part::Decal(top.Inset(RIM_WIDTH)).On(level).Covered(Material::Stone, stone));
-	form.Add(Part::Disc(LOT_CENTRE, LOT_CENTRE, FIGURE_RADIUS).On(level).Height(FIGURE_HEIGHT).Taper(FIGURE_TAPER).Clad(Material::Metal, BRONZE_TINT));
+	AddStatue(form, FinishTint(Finish::Stone, lot.seed), trim);
 }
 
 static void BuildOwnedLand(BuildingForm &form, const SiteLot &lot, uint32_t trim)

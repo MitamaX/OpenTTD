@@ -247,6 +247,7 @@ void AddHelipad(BuildingForm &form, const Plot &deck, float level);
 void AddStriped(BuildingForm &form, const Spire &spire, uint bands, const std::array<uint32_t, 2> &tints);
 void AddLatticeMast(BuildingForm &form, const Part &foot, float height);
 void AddFountain(BuildingForm &form, uint32_t basin_tint);
+void AddStatue(BuildingForm &form, uint32_t stone, uint32_t trim);
 
 FloraPatch GroveFlora(const SiteLook &look);
 void BuildSite(BuildingForm &form, const SiteLot &lot, const SiteLook &look, const SiteLivery &livery);
