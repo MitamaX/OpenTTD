@@ -80,15 +80,8 @@ double ChannelRelief::Curved(double x, double y) const
 /* How deep the water stands at a point once well inside its outline: the depth under the middles of the tiles around, spread between them. */
 double ChannelRelief::Depth(double x, double y, double level) const
 {
-	double qx = x - HALF_TILE;
-	double qy = y - HALF_TILE;
-	int cx = static_cast<int>(std::floor(qx));
-	int cy = static_cast<int>(std::floor(qy));
-	double fx = qx - cx;
-	double fy = qy - cy;
-	double north = std::lerp(this->CentreDepth(cx, cy, level), this->CentreDepth(cx + 1, cy, level), fx);
-	double south = std::lerp(this->CentreDepth(cx, cy + 1, level), this->CentreDepth(cx + 1, cy + 1, level), fx);
-	return std::lerp(north, south, fy);
+	LatticeCell cell = CellOf(x - HALF_TILE, y - HALF_TILE);
+	return Bicubic([&](int cx, int cy) { return this->CentreDepth(cx, cy, level); }, cell, BsplineWeights(cell.u), BsplineWeights(cell.v));
 }
 
 double ChannelRelief::CentreDepth(int cx, int cy, double level) const
