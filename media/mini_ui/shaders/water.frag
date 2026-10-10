@@ -522,10 +522,10 @@ vec3 SunOnWater(Surface surface, vec3 view, vec2 p, float sunlit, float sparkle)
 
 /* The sky the water mirrors, a little deepened, seen never quite at the horizon, and never mirrored whole however low the view.
  * Where the wind ruffles it the water mirrors less, and that from higher in the sky, so gusts darken it in patches between bright slicks. */
-vec3 SkyOnWater(vec3 way, Surface surface, vec3 view, float reflectance, out float reflected)
+vec3 SkyOnWater(vec3 way, Surface surface, vec3 settled, vec3 view, float reflectance, out float reflected)
 {
 	float ceiling = Landscape() == LANDSCAPE_TOYLAND ? TOY_REFLECTANCE_CEILING : REFLECTANCE_CEILING;
-	reflected = min(Fresnel(dot(surface.normal, view), reflectance), ceiling) * (1.0 - surface.ruffled * RUFFLED_DIMMING);
+	reflected = min(Fresnel(dot(settled, view), reflectance), ceiling) * (1.0 - surface.ruffled * RUFFLED_DIMMING);
 	return MirroredSky(way + UP * surface.ruffled * RUFFLED_SPREAD, REFLECTED_LIFT) * REFLECTED_SKY;
 }
 
@@ -807,9 +807,9 @@ void main()
 
 	float reflected;
 	vec3 way = reflect(sight, waves.normal);
-	vec3 sky = SkyOnWater(way, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
-	vec3 world_way = reflect(sight, normalize(mix(facing, waves.normal, MIRROR_SWAY)));
-	vec3 mirrored = WorldOver(sky, v_position, Skyward(world_way, REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
+	vec3 settled = normalize(mix(facing, waves.normal, MIRROR_SWAY));
+	vec3 sky = SkyOnWater(way, waves, settled, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
+	vec3 mirrored = WorldOver(sky, v_position, Skyward(reflect(sight, settled), REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
