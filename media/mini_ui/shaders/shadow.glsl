@@ -103,3 +103,8 @@ float SunVisibility(vec3 position, vec3 normal)
 {
 	return SunVisibility(position, normal, CloudLight(position));
 }
+
+float FacingSunVisibility(vec3 position, vec3 normal)
+{
+	return dot(normal, SunDirection()) > 0.0 ? SunVisibility(position, normal) : 0.0;
+}

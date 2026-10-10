@@ -23,7 +23,7 @@ void main()
 	vec3 view = ToEye(v_position);
 	vec3 albedo = Linear(Kept(v_colour.rgb, u_way));
 	Coat coat = CoatOf(max(v_trait, 0.0));
-	float sunlit = SunVisibility(v_position, normal);
+	float sunlit = FacingSunVisibility(v_position, normal);
 	if (v_trait >= PANE_GLOSS) frag_colour = Glazed(albedo, normal, view, coat.roughness, sunlit);
 	else frag_colour = SunlitRadiance(albedo, normal, view, coat, v_colour.a, 0.0, sunlit) + vec4(Glowing(albedo, v_trait), 0.0);
 }

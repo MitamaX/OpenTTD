@@ -112,7 +112,7 @@ vec4 SunlitRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlus
 /* The light a surface point sends toward the eye, the sun's shut out where it is shadowed, with albedo in linear light and the point and normal in render space. */
 vec4 Radiance(vec3 albedo, vec3 normal, vec3 position, Coat coat, float occlusion)
 {
-	return SunlitRadiance(albedo, normal, ToEye(position), coat, occlusion, 0.0, SunVisibility(position, normal));
+	return SunlitRadiance(albedo, normal, ToEye(position), coat, occlusion, 0.0, FacingSunVisibility(position, normal));
 }
 
 /* The sun through something thin: it wraps on past where the surface turns away from it, and glows through where it is seen against it. */
