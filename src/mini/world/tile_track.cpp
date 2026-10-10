@@ -30,6 +30,7 @@ static constexpr int TURN_SAMPLES = 8;
 static constexpr double LIFT_STEP = 0.0012;
 static constexpr uint32_t TRACK_SALT = 0x7AC4B0A2U;
 static constexpr double SLEEPERS_PER_TILE = 7.0;
+static constexpr double SLEEPER_GAP = 0.03;
 
 static DrawnTrack Drawn(int tx, int ty, Track track, bool grounded)
 {
@@ -85,6 +86,32 @@ Footing TrackPiece::FootingOn(const Footing &ground) const
 	return [course = *this->drawn.course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
 }
 
+struct Plank {
+	MapVector middle;
+	MapVector length;
+	double half_length;
+	double half_width;
+
+	static Plank Of(const WayLine &line, const Sleeper &sleeper)
+	{
+		return {line.At(sleeper.share, sleeper.Middle()), RightOf(line.Along(sleeper.share)), sleeper.HalfLength(), SLEEPER_HALF_WIDTH + SLEEPER_GAP / 2.0};
+	}
+
+	static double Reach(const Plank &plank, const MapVector &axis)
+	{
+		return std::abs(Dot(plank.length, axis)) * plank.half_length + std::abs(Dot(RightOf(plank.length), axis)) * plank.half_width;
+	}
+
+	bool Overlaps(const Plank &other) const
+	{
+		MapVector between = other.middle - this->middle;
+		for (const MapVector &axis : {this->length, RightOf(this->length), other.length, RightOf(other.length)}) {
+			if (std::abs(Dot(between, axis)) > Reach(*this, axis) + Reach(other, axis)) return false;
+		}
+		return true;
+	}
+};
+
 using TrackRank = std::tuple<int, bool, int>;
 
 static TrackRank RankOf(int tx, int ty, Track track)
@@ -117,11 +144,20 @@ std::vector<std::vector<Sleeper>> TileTrack::Sleepers() const
 {
 	std::vector<std::vector<Sleeper>> laid(this->pieces.size());
 	if (this->site.look != RailLook::Rail || this->site.detail != WayDetail::Full) return laid;
+	std::vector<Plank> above;
 	for (size_t rank = 0; rank < this->pieces.size(); rank++) {
-		const TrackPiece &piece = this->pieces[rank];
-		int count = std::max(1, static_cast<int>(std::lround(piece.Line().Span() * SLEEPERS_PER_TILE)));
-		SeedDice dice(Hash32(TRACK_SALT + static_cast<uint32_t>(TileXY(this->site.tx, this->site.ty).base() * TRACK_END + piece.Id())));
-		for (int slot = 0; slot < count; slot++) laid[rank].push_back({(slot + 0.5) / count, -SLEEPER_HALF_LENGTH, SLEEPER_HALF_LENGTH, dice.Next()});
+		const WayLine &line = this->pieces[rank].Line();
+		std::vector<Plank> planks;
+		int count = std::max(1, static_cast<int>(std::lround(line.Span() * SLEEPERS_PER_TILE)));
+		SeedDice dice(Hash32(TRACK_SALT + static_cast<uint32_t>(TileXY(this->site.tx, this->site.ty).base() * TRACK_END + this->pieces[rank].Id())));
+		for (int slot = 0; slot < count; slot++) {
+			Sleeper sleeper = {(slot + 0.5) / count, -SLEEPER_HALF_LENGTH, SLEEPER_HALF_LENGTH, dice.Next()};
+			Plank plank = Plank::Of(line, sleeper);
+			if (std::ranges::any_of(above, [&](const Plank &placed) { return placed.Overlaps(plank); })) continue;
+			laid[rank].push_back(sleeper);
+			planks.push_back(plank);
+		}
+		above.insert(above.end(), planks.begin(), planks.end());
 	}
 	return laid;
 }

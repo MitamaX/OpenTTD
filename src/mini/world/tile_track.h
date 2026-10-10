@@ -72,6 +72,9 @@ struct Sleeper {
 	double left;
 	double right;
 	uint32_t seed;
+
+	double Middle() const { return (this->left + this->right) / 2.0; }
+	double HalfLength() const { return (this->right - this->left) / 2.0; }
 };
 
 class TileTrack {

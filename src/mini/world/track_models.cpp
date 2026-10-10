@@ -97,8 +97,8 @@ static constexpr std::array<SectionPoint, 4> ARM_SECTION = {{
 
 static ModelMesh SleeperModel(const WayLine &line, const Sleeper &sleeper)
 {
-	double half_length = (sleeper.right - sleeper.left) / 2.0;
-	MapVector middle = line.At(sleeper.share, (sleeper.left + sleeper.right) / 2.0);
+	double half_length = sleeper.HalfLength();
+	MapVector middle = line.At(sleeper.share, sleeper.Middle());
 	ModelMesh timber = Block(middle, line.Along(sleeper.share), {-SLEEPER_HALF_WIDTH, -half_length, SLEEPER_FOOT}, {SLEEPER_HALF_WIDTH, half_length, SLEEPER_TOP});
 	return timber.Paint(TIMBER).Vary(TIMBER_VARIETY, sleeper.seed);
 }
