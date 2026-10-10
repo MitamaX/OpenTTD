@@ -32,7 +32,8 @@ const float LEAF_RELIEF = 0.018;
 const float LEAST_FACING = 0.1;
 const float LEAF_ROUGHNESS = 0.6;
 const float BARK_ROUGHNESS = 0.9;
-const float INSIDE_OPENNESS = 0.35;
+const float INSIDE_OPENNESS = 0.7;
+const float INSIDE_SCREEN_OCCLUSION = 0.0;
 
 float Leafy()
 {
@@ -120,5 +121,6 @@ void main()
 	float upward = FacetNormal(across, down, normal).z + (clumps - 0.5) * SNOW_CLUMPING * foliage;
 	vec3 albedo = Albedo(upward) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, dome), foliage);
 	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Leafy()), DIELECTRIC_REFLECTANCE);
-	frag_colour = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, openness, sunlit, v_crown_sunlit * clouds);
+	vec4 radiance = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, openness, sunlit, v_crown_sunlit * clouds);
+	frag_colour = vec4(radiance.rgb, radiance.a * (gl_FrontFacing ? 1.0 : INSIDE_SCREEN_OCCLUSION));
 }
