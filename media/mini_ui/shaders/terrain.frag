@@ -104,8 +104,8 @@ const float MOISTURE_DRIFT_FREQUENCY = 0.09;
 const float WATERSIDE_LOD = 3.0;
 const float WATERSIDE_WETTING = 1.5;
 const float WATERSIDE_MOST = 0.3;
-const float UPLAND_DRYING = 0.05;
-const float SUNNY_SLOPE_DRYING = 0.06;
+const float UPLAND_DRYING = 0.07;
+const float SUNNY_SLOPE_DRYING = 0.11;
 const vec2 SUNNY_SIDE = vec2(0.6, 0.8);
 const vec2 LUSH_MOISTURE = vec2(0.56, 0.8);
 const vec2 PARCHED_MOISTURE = vec2(0.0, 0.34);
@@ -141,8 +141,6 @@ const vec3 KNAPWEED = vec3(0.7, 0.44, 0.76);
 const vec3 ROCK = vec3(0.50, 0.49, 0.47);
 const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
 const vec3 SCREE = vec3(0.55, 0.52, 0.47);
-const vec3 DARK_SCREE = vec3(0.43, 0.42, 0.4);
-const vec2 SCREE_SOURCE_EDGES = vec2(0.35, 0.75);
 const vec3 SCOURED_SNOW = vec3(0.76, 0.82, 0.9);
 const vec3 RED_SAND = vec3(0.85, 0.64, 0.43);
 const vec3 GRAVEL = vec3(0.74, 0.62, 0.48);
@@ -172,14 +170,6 @@ const float STRATA_BOW_SEED = 5.3;
 const float BED_THICKNESS_PER_LEVEL = 0.7;
 const float BED_THICKNESS_SEED = 3.1;
 const vec2 SHELF_EDGES = vec2(0.7, 0.95);
-const vec2 LEDGE_SLOPES = vec2(0.45, 1.2);
-const float LAMINAE_PER_BED = 3.0;
-const float LAMINA_VARIETY = 0.18;
-const int LAMINA_SEED = 31;
-const vec2 RISER_SHARES = vec2(0.2, 0.4);
-const vec2 RISER_TILTS = vec2(1.6, 2.4);
-const float RISER_BLEND = 0.08;
-const int TERRACE_SEED = 37;
 const float LAYER_VARIETY = 0.3;
 const float LEDGE_SHADE = 0.8;
 const float LEDGE_LIT = 1.08;
@@ -204,8 +194,7 @@ const float CRACK_DEPTH = 0.18;
 const float OUTCROPS_PER_TILE = 0.9;
 const float STONE_PATCHES_PER_TILE = 1.7;
 const float STONE_GAPS = 0.3;
-const float PALE_STONE = 1.05;
-const float STONE_LIFT = 1.06;
+const float PALE_STONE = 1.15;
 const float BOULDERS_PER_TILE = 5.5;
 const float GULLIES_PER_TILE = 2.8;
 const float GULLY_WANDER = 0.7;
@@ -227,7 +216,6 @@ const float MICRO_PER_TILE = 17.0;
 const float CLUMPS_PER_TILE = 3.3;
 const float LOCAL_PER_TILE = 1.3;
 const float RELIEF_DEPTH = 0.035;
-const float STONE_RELIEF_DEPTH = 0.06;
 const float STONY_HOLLOWS = 1.0;
 const float GRAIN_MEAN = 0.5;
 const vec2 BUMP_HEIGHT_SHARES = vec2(0.65, 0.35);
@@ -431,7 +419,6 @@ struct Relief {
 	float slope;
 	float steep;
 	float strata;
-	float laminae;
 	vec2 facing;
 };
 
@@ -440,15 +427,14 @@ struct Exposure {
 	float rock;
 };
 
-/* The loose and the solid stone this point would show where its ground wears through, how far it lies on the shelf atop a layer of the rock and how its ledges tilt the slope. */
+/* The loose and the solid stone this point would show where its ground wears through, and how far it lies on the shelf atop a layer of the rock. */
 struct Bare {
 	vec3 scree;
 	vec3 rock;
 	float shelf;
-	float tilt;
 };
 
-const Bare NO_BARE = Bare(vec3(0.0), vec3(0.0), 0.0, 1.0);
+const Bare NO_BARE = Bare(vec3(0.0), vec3(0.0), 0.0);
 
 /* A ground's colour and how much its fine bumps and its stones stand out of it. */
 struct Patch {
@@ -601,16 +587,11 @@ float BeddingAt(vec2 p)
 	return levelled + dot(p, STRATA_DIP) + thickness + warp + bow;
 }
 
-float LayersShown(float layer_pixels)
-{
-	return smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS * 2.0, layer_pixels);
-}
-
 Relief ReliefAt(vec3 normal, float levels_per_pixel)
 {
 	float slope = SlopeOf(normal);
 	float layer_pixels = 1.0 / (levels_per_pixel * StrataPerLevel());
-	return Relief(slope, smoothstep(STANDARD_SLOPE, STEEPEST_SLOPE, slope), LayersShown(layer_pixels), LayersShown(layer_pixels / LAMINAE_PER_BED), normal.xy);
+	return Relief(slope, smoothstep(STANDARD_SLOPE, STEEPEST_SLOPE, slope), smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS * 2.0, layer_pixels), normal.xy);
 }
 
 float AltitudeShare()
@@ -753,18 +734,17 @@ vec3 ToyPebbles(vec2 p)
 	return mix(ToyStrataMean(), pebbles, Resolved(TOY_PEBBLE_DRIFTS_PER_TILE));
 }
 
-vec3 LooseStone(Grain grain, vec2 p)
+vec3 LooseStone(vec2 p)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return ToyPebbles(p);
-	return mix(SCREE, DARK_SCREE, smoothstep(SCREE_SOURCE_EDGES.x, SCREE_SOURCE_EDGES.y, grain.broad));
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyPebbles(p) : SCREE;
 }
 
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
 vec3 Scree(Grain grain, vec2 p)
 {
-	vec3 tone = LooseStone(grain, p) * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
+	vec3 tone = LooseStone(p) * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
 	float strewn = grain.stones * mix(SCREE_SPARSE, 1.0, Octave(p + SCREE_DRIFT_SEED, SCREE_DRIFTS_PER_TILE));
-	return tone * mix(1.0, STONE_LIFT, strewn) * Hollowed(grain, STONY_HOLLOWS);
+	return tone * mix(1.0, 1.18, strewn) * Hollowed(grain, STONY_HOLLOWS);
 }
 
 float Channels(float down, float across)
@@ -802,12 +782,6 @@ float LedgeRun(vec2 p, float bedding)
 	return smoothstep(LEDGE_RUN_EDGES.x, LEDGE_RUN_EDGES.y, Noise(p * LEDGE_RUNS_PER_TILE + shift));
 }
 
-float Laminated(float bedding, float shown)
-{
-	if (shown <= 0.0) return 1.0;
-	return Varied(Hash(ivec2(int(floor(bedding * LAMINAE_PER_BED)), LAMINA_SEED)), LAMINA_VARIETY * shown);
-}
-
 vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 {
 	vec3 bed = Stratum(int(floor(bedding)));
@@ -815,29 +789,20 @@ vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 	if (Landscape() == LANDSCAPE_TOYLAND) return mix(ToyStrataMean(), bed * ledge, ledges);
 	float slab = Varied(Octave(p + SLAB_SEED, SLABS_PER_TILE), SLAB_VARIETY);
 	vec3 slabs = mix(ROCK, ROCK_WARM, SLAB_WARMTH) * slab;
-	vec3 rock = mix(mix(slabs, bed, LEVEL_BEDDING), bed * ledge * slab * Laminated(bedding, relief.laminae), ledges);
+	vec3 rock = mix(mix(slabs, bed, LEVEL_BEDDING), bed * ledge * slab, ledges);
 	vec3 weathered = mix(rock, rock * ROCK_WEATHERING, smoothstep(ROCK_WEATHERING_EDGES.x, ROCK_WEATHERING_EDGES.y, Octave(p + ROCK_WEATHERING_SEED, ROCK_WEATHERING_PER_TILE)));
 	return weathered * Varied(grain.fine, ROCK_GRAIN_VARIETY.x) * Varied(grain.micro, ROCK_GRAIN_VARIETY.y) * (1.0 - CRACK_DEPTH * (1.0 - relief.steep) * Cracks(p));
-}
-
-float Terrace(float bedding)
-{
-	vec2 dice = Hash2(ivec2(int(floor(bedding)), TERRACE_SEED));
-	float share = mix(RISER_SHARES.x, RISER_SHARES.y, dice.x);
-	float rise = mix(RISER_TILTS.x, RISER_TILTS.y, dice.y);
-	float shelf = (1.0 - rise * share) / (1.0 - share);
-	return mix(shelf, rise, 1.0 - smoothstep(share - RISER_BLEND, share + RISER_BLEND, fract(bedding)));
 }
 
 Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
 {
 	float bedding = BeddingAt(p);
-	float standing = smoothstep(LEDGE_SLOPES.x, LEDGE_SLOPES.y, relief.slope) * relief.strata;
+	float standing = relief.steep * relief.strata;
 	float runs = Landscape() == LANDSCAPE_TOYLAND || standing <= 0.0 ? 1.0 : LedgeRun(p, bedding);
 	float ledges = standing * runs;
 	float gullied = Gullied(p, relief);
 	vec3 rock = rocky ? Rock(p, bedding, ledges, relief, grain) * gullied : vec3(0.0);
-	return Bare(Scree(grain, p) * gullied, rock, smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * ledges, mix(1.0, Terrace(bedding), ledges));
+	return Bare(Scree(grain, p) * gullied, rock, smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * ledges);
 }
 
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
@@ -884,7 +849,7 @@ Patch Rough(Site site)
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
 	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
 	float open = smoothstep(0.58, 0.8, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
-	vec3 stony = mix(Soil(), LooseStone(grain, p), 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
+	vec3 stony = mix(Soil(), LooseStone(p), 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
 	return Patch(mix(scrub, stony, open * (Landscape() == LANDSCAPE_TOYLAND ? TOY_ROUGH_BARE : ROUGH_BARE)), ROUGH_RUGGED);
 }
 
@@ -893,7 +858,7 @@ Patch Rocks(Site site)
 {
 	Grain grain = site.grain;
 	vec2 p = site.p;
-	Bare bare = Bare(Capped(site.bare.scree, site), Capped(site.bare.rock, site), site.bare.shelf, site.bare.tilt);
+	Bare bare = Bare(Capped(site.bare.scree, site), Capped(site.bare.rock, site), site.bare.shelf);
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
@@ -1201,16 +1166,10 @@ vec4 Hedgerow(vec2 p, Grain grain)
 	return Over(Over(grass, vec4(0.0, 0.0, 0.0, fringe * HEDGE_FRINGE_SHADE)), leaves);
 }
 
-vec3 Terraced(vec3 normal, Site site, float bared)
-{
-	float tilt = mix(1.0, site.bare.tilt, site.exposure.rock * bared);
-	return normalize(vec3(normal.xy * tilt, normal.z));
-}
-
 /* Fine bumps and stones catch the light up close: soft on grass and fields, sharp on scree and rock. */
 vec3 Roughened(vec3 normal, Detail detail, vec2 rugged)
 {
-	return normalize(normal - detail.slope * rugged.x * RELIEF_DEPTH - detail.stone_slope * rugged.y * STONE_RELIEF_DEPTH);
+	return normalize(normal - (detail.slope * rugged.x + detail.stone_slope * rugged.y) * RELIEF_DEPTH);
 }
 
 float CavityOpenness(Grain grain, vec2 rugged)
@@ -1700,7 +1659,6 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Detail detail, float levels_p
 	Patch surface = Littered(underfoot.ground, forest, p, grain);
 	float dry = 1.0 - water.cover;
 	float blanketed = blanket.cover * dry;
-	normal = Terraced(normal, underfoot.site, dry - blanketed);
 	normal = normalize(normal - vec3(blanket.slope * blanketed, 0.0));
 	vec2 rugged = mix(surface.rugged, blanket.rugged, blanket.cover) * dry;
 	normal = Roughened(normal, detail, rugged);
