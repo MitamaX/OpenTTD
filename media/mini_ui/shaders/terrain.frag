@@ -446,11 +446,14 @@ struct Seams {
 	float settled;
 };
 
+const uint LIE_DRY = 0u;
+const uint LIE_BEACH = 1u;
+const uint LIE_SUNKEN = 2u;
+
 struct Footing {
 	Relief relief;
 	float armoured;
-	bool beached;
-	bool sunken;
+	uint lie;
 };
 
 struct Blanket {
@@ -1063,7 +1066,7 @@ Site SiteAt(vec2 p, Seams seams, Grain grain, Footing footing, Ground corners[4]
 	float trodden = Landscape() == LANDSCAPE_TROPIC ? smoothstep(TRODDEN_EDGES.x, TRODDEN_EDGES.y, seams.settled + ragged * TRODDEN_RAGGED) : 0.0;
 	Exposure exposure = ExposureAt(footing.relief, grain, climate.blanket);
 	bool rocky = exposure.rock > 0.0 || HasCorner(corners, MAT_ROCKS);
-	bool bared = !footing.sunken && (exposure.scree > 0.0 || footing.armoured > 0.0 || rocky);
+	bool bared = footing.lie != LIE_SUNKEN && (exposure.scree > 0.0 || footing.armoured > 0.0 || rocky);
 	Bare bare = bared ? BareAt(p, footing.relief, grain, rocky) : NO_BARE;
 	return Site(p, grain, footing.relief, exposure, bare, footing.armoured, climate, ragged, trodden, vec3(0.0));
 }
@@ -1078,7 +1081,7 @@ Patch Surface(vec2 p, Seams seams, Grain grain, Footing footing, out Site site)
 	Ground corners[4] = Ground[4](GroundAt(cell), GroundAt(cell + ivec2(1, 0)), GroundAt(cell + ivec2(0, 1)), GroundAt(cell + ivec2(1, 1)));
 	float shares[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
 	site = SiteAt(p, seams, grain, footing, corners);
-	if (footing.sunken) return NO_PATCH;
+	if (footing.lie == LIE_SUNKEN) return NO_PATCH;
 	Ground distinct[4];
 	float weights[4];
 	int count = 0;
@@ -1097,7 +1100,7 @@ Patch Surface(vec2 p, Seams seams, Grain grain, Footing footing, out Site site)
 	Patch blend = NO_PATCH;
 	bool bladed = false;
 	for (int k = 0; k < count; k++) {
-		if (!bladed && (footing.beached || Grassed(distinct[k].material))) {
+		if (!bladed && (footing.lie == LIE_BEACH || Grassed(distinct[k].material))) {
 			site.blades = Blades(site);
 			bladed = true;
 		}
@@ -1538,7 +1541,7 @@ Blanket BlanketOver(Site site)
 struct Underfoot {
 	Grain grain;
 	Seams seams;
-	Footing footing;
+	uint lie;
 	Site site;
 	Patch ground;
 	Blanket blanket;
@@ -1549,7 +1552,7 @@ Underfoot UnderfootAt(vec2 p, Grain grain, Footing footing)
 	Underfoot underfoot;
 	underfoot.grain = grain;
 	underfoot.seams = SeamsAt(p);
-	underfoot.footing = footing;
+	underfoot.lie = footing.lie;
 	underfoot.ground = Surface(p, underfoot.seams, grain, footing, underfoot.site);
 	underfoot.blanket = BlanketOver(underfoot.site);
 	return underfoot;
@@ -1573,13 +1576,13 @@ bool Sunken(Water water)
 
 Footing EdgeFooting(float levels_per_pixel)
 {
-	return Footing(ReliefAt(UPRIGHT, levels_per_pixel), 0.0, false, false);
+	return Footing(ReliefAt(UPRIGHT, levels_per_pixel), 0.0, LIE_DRY);
 }
 
 Footing FootingAt(vec2 p, Water water, Relief relief)
 {
-	if (Sunken(water)) return Footing(relief, 0.0, false, true);
-	return Footing(relief, water.sea > 0.0 ? Armoured(p) : 0.0, water.sea > SANDED_SEA, false);
+	if (Sunken(water)) return Footing(relief, 0.0, LIE_SUNKEN);
+	return Footing(relief, water.sea > 0.0 ? Armoured(p) : 0.0, water.sea > SANDED_SEA ? LIE_BEACH : LIE_DRY);
 }
 
 /* Where the network's meshes stand opaque they hide its bands, which are then not worked out at all. */
@@ -1591,7 +1594,7 @@ Network BandsAt(vec2 p, mat2 pixel)
 
 vec3 Ashore(vec2 p, Water water, Underfoot underfoot, vec3 surface)
 {
-	vec3 beach = underfoot.footing.beached ? Shore(underfoot.site).tone : vec3(0.0);
+	vec3 beach = underfoot.lie == LIE_BEACH ? Shore(underfoot.site).tone : vec3(0.0);
 	vec3 ground = Altitude(Composite(Composite(surface, Hedgerow(p + underfoot.seams.warp, underfoot.grain)), Airfield(p)));
 	return Banks(mix(ground, underfoot.blanket.tone, underfoot.blanket.cover), water, beach);
 }
@@ -1611,8 +1614,8 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Detail detail, float levels_p
 	normal = Roughened(normal, detail, rugged);
 	float drowned = Drowned(water);
 	vec3 bed = Seabed(water, grain, smoothstep(0.0, RIVERBED_DEEP_MARK, -v_mark));
-	vec3 land = underfoot.footing.sunken ? bed : mix(Ashore(p, water, underfoot, surface.tone), bed, drowned);
-	normal = normalize(mix(normal, UPRIGHT, drowned * water.sea * smoothstep(DROWNED_SHEER.x, DROWNED_SHEER.y, underfoot.footing.relief.slope)));
+	vec3 land = underfoot.lie == LIE_SUNKEN ? bed : mix(Ashore(p, water, underfoot, surface.tone), bed, drowned);
+	normal = normalize(mix(normal, UPRIGHT, drowned * water.sea * smoothstep(DROWNED_SHEER.x, DROWNED_SHEER.y, underfoot.site.relief.slope)));
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 
 	vec3 colour = Composite(land, network.paint);
