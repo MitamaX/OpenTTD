@@ -18,6 +18,7 @@
 #include "../../core/enum_type.hpp"
 #include "../gpu/instanced_meshes.h"
 #include "../model/model_mesh.h"
+#include "shader_program.h"
 
 enum class VehicleLook : uint8_t {
 	SteamEngine,
@@ -181,19 +182,12 @@ inline constexpr std::array<const char *, 2> VEHICLE_VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/vehicle.vert",
 };
-inline constexpr std::array<const char *, 11> VEHICLE_FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
+inline constexpr auto VEHICLE_FRAGMENT_SOURCES = Joined(LIT_SOURCES, std::array{
 	"mini_ui/shaders/overlay.glsl",
 	"mini_ui/shaders/coat.glsl",
 	"mini_ui/shaders/pane.glsl",
 	"mini_ui/shaders/vehicle.frag",
-};
+});
 
 inline constexpr double TRIM_GLOSS = 0.3;
 inline constexpr double PAINT_GLOSS = 0.6;

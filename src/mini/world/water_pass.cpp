@@ -22,17 +22,10 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/water.vert",
 };
-static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
+static constexpr auto FRAGMENT_SOURCES = Joined(LIT_SOURCES, std::array{
 	"mini_ui/shaders/climate.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/water.frag",
-};
+});
 
 /* A wake trails this many ship lengths behind a ship at its top speed, and shows only where a tile spans enough pixels for its foam to read. */
 static constexpr double WAKE_LENGTHS = 5.0;

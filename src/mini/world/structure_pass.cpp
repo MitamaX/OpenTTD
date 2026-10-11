@@ -22,43 +22,25 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/structure.vert",
 };
-static constexpr std::array<const char *, 15> FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
+static constexpr auto CLAD_SOURCES = Joined(LIT_SOURCES, std::array{
 	"mini_ui/shaders/clouds.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/overlay.glsl",
 	"mini_ui/shaders/cover.glsl",
 	"mini_ui/shaders/structure.glsl",
 	"mini_ui/shaders/pane.glsl",
 	"mini_ui/shaders/glazing.glsl",
+});
+static constexpr auto FRAGMENT_SOURCES = Joined(CLAD_SOURCES, std::array{
 	"mini_ui/shaders/structure_lit.glsl",
 	"mini_ui/shaders/structure.frag",
-};
-static constexpr std::array<const char *, 18> FACADE_FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/clouds.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
-	"mini_ui/shaders/overlay.glsl",
-	"mini_ui/shaders/cover.glsl",
-	"mini_ui/shaders/structure.glsl",
-	"mini_ui/shaders/pane.glsl",
-	"mini_ui/shaders/glazing.glsl",
+});
+static constexpr auto FACADE_FRAGMENT_SOURCES = Joined(CLAD_SOURCES, std::array{
 	"mini_ui/shaders/bays.glsl",
 	"mini_ui/shaders/rooms.glsl",
 	"mini_ui/shaders/facade.glsl",
 	"mini_ui/shaders/structure_lit.glsl",
 	"mini_ui/shaders/structure_facade.frag",
-};
+});
 static constexpr std::array<const char *, 5> DEPTH_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",

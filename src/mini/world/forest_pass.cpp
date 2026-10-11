@@ -28,17 +28,11 @@ static constexpr std::array<const char *, 8> VERTEX_SOURCES = {
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/tree.vert",
 };
-static constexpr std::array<const char *, 9> FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
+static constexpr auto FRAGMENT_SOURCES = Joined(LIT_SOURCES, std::array{
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/leaves.glsl",
 	"mini_ui/shaders/tree.frag",
-};
+});
 static constexpr std::array<const char *, 5> DEPTH_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",

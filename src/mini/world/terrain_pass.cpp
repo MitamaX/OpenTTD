@@ -25,21 +25,14 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/terrain.vert",
 };
-static constexpr std::array<const char *, 13> FRAGMENT_SOURCES = {
-	"mini_ui/shaders/scene.glsl",
-	"mini_ui/shaders/noise.glsl",
-	"mini_ui/shaders/common.glsl",
+static constexpr auto FRAGMENT_SOURCES = Joined(LIT_SOURCES, std::array{
 	"mini_ui/shaders/climate.glsl",
 	"mini_ui/shaders/detail.glsl",
-	"mini_ui/shaders/sky.glsl",
-	"mini_ui/shaders/cloud_field.glsl",
-	"mini_ui/shaders/shadow.glsl",
-	"mini_ui/shaders/lighting.glsl",
 	"mini_ui/shaders/overlay.glsl",
 	"mini_ui/shaders/network.glsl",
 	"mini_ui/shaders/flora.glsl",
 	"mini_ui/shaders/terrain.frag",
-};
+});
 
 TerrainPass::TerrainPass(const WorldTextures &textures, TerrainField &field) :
 	textures(textures), field(field), program(VERTEX_SOURCES, FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), depth(DepthProgram(VERTEX_SOURCES))
