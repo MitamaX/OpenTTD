@@ -69,6 +69,7 @@ struct Mat4 {
 	double At(int row, int column) const { return this->m[column * 4 + row]; }
 
 	std::array<float, 16> Floats() const;
+	bool Reflects() const;
 	Mat4 operator*(const Mat4 &other) const;
 
 	static Mat4 Identity();

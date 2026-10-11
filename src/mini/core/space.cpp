@@ -26,6 +26,16 @@ std::array<float, 16> Mat4::Floats() const
 	return floats;
 }
 
+static Vec3 LinearColumn(const Mat4 &transform, int column)
+{
+	return {transform.At(0, column), transform.At(1, column), transform.At(2, column)};
+}
+
+bool Mat4::Reflects() const
+{
+	return Dot(LinearColumn(*this, 0), Cross(LinearColumn(*this, 1), LinearColumn(*this, 2))) < 0.0;
+}
+
 Mat4 Mat4::operator*(const Mat4 &other) const
 {
 	Mat4 product;
@@ -132,14 +142,14 @@ Vec3 Transformed(const Mat4 &transform, const Vec3 &point)
 /* Through the cofactors of the transform's linear part, so a normal stays square to its surface under any scaling. */
 Vec3 TransformedNormal(const Mat4 &transform, const Vec3 &normal)
 {
-	auto column = [&](int c) { return Vec3{transform.At(0, c), transform.At(1, c), transform.At(2, c)}; };
-	Vec3 x = column(0);
-	Vec3 y = column(1);
-	Vec3 z = column(2);
+	Vec3 x = LinearColumn(transform, 0);
+	Vec3 y = LinearColumn(transform, 1);
+	Vec3 z = LinearColumn(transform, 2);
 	Vec3 cofactor_x = Cross(y, z);
 	Vec3 cofactor_y = Cross(z, x);
 	Vec3 cofactor_z = Cross(x, y);
-	return Normalised(cofactor_x * normal.x + cofactor_y * normal.y + cofactor_z * normal.z);
+	double outward = transform.Reflects() ? -1.0 : 1.0;
+	return Normalised((cofactor_x * normal.x + cofactor_y * normal.y + cofactor_z * normal.z) * outward);
 }
 
 static Plane PlaneOf(const Mat4 &clip, int row, double sign)

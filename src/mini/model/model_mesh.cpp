@@ -95,6 +95,9 @@ ModelMesh &ModelMesh::Transform(const Mat4 &transform)
 		vertex.Place(Transformed(transform, vertex.Position()));
 		vertex.Face(TransformedNormal(transform, vertex.Normal()));
 	}
+	if (transform.Reflects()) {
+		for (size_t first = 0; first + 2 < this->indices.size(); first += 3) std::swap(this->indices[first + 1], this->indices[first + 2]);
+	}
 	return *this;
 }
 
