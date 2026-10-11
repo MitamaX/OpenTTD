@@ -858,6 +858,12 @@ Patch Rough(Site site)
 	return Patch(mix(scrub, stony, open * (Landscape() == LANDSCAPE_TOYLAND ? TOY_ROUGH_BARE : ROUGH_BARE)), ROUGH_RUGGED);
 }
 
+float SolidStonesShare()
+{
+	if (Landscape() == LANDSCAPE_TOYLAND) return 0.0;
+	return smoothstep(ROCK_SHOWN_PIXELS, ROCK_SOLID_PIXELS, TilePixelsAt(RenderPoint(v_world)));
+}
+
 /* Rocky ground: grass with stones gathered in patches over it, and pale rock breaking through here and there, capped with snow where snow lies. */
 Patch Rocks(Site site)
 {
@@ -867,7 +873,7 @@ Patch Rocks(Site site)
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
-	float paleness = mix(PALE_STONE, STONE_BED_SHADE, smoothstep(ROCK_SHOWN_PIXELS, ROCK_SOLID_PIXELS, TilePixelsAt(RenderPoint(v_world))));
+	float paleness = mix(PALE_STONE, STONE_BED_SHADE, SolidStonesShare());
 	vec3 strewn = mix(Meadow(site), bare.scree * paleness, stones);
 	return Patch(mix(strewn, bare.rock * paleness, outcrop), mix(mix(GRASS_RUGGED, StoneRugged(SCREE_RUGGED), patches), StoneRugged(ROCK_RUGGED), outcrop));
 }
