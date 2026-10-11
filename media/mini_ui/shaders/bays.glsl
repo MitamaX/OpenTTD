@@ -1,5 +1,9 @@
 const float SHADOW_SOFTNESS = 0.3;
 const float TOY_ROUNDING = 0.6;
+const vec2 TOY_WIDTHS = vec2(0.7, 1.0);
+const vec2 TOY_HEIGHTS = vec2(0.75, 1.15);
+const float TOY_ROUND_SHARE = 0.25;
+const float TOY_FRAME_ROOM = 1.0;
 
 const ivec2 WINDOW_SALT = ivec2(7, 13);
 const int ROLL_STRIDE = 7919;
@@ -20,6 +24,7 @@ const int ROLL_PIECE = 13;
 const int ROLL_PIECE_CHOICE = 15;
 const int ROLL_FITTING_KIND = 17;
 const int ROLL_PARTITION = 18;
+const int ROLL_TOY_SHAPE = 19;
 
 /* Where a point of a facade lies: the opening of its bay, the point measured from that opening's foot at its middle, and which window it is. */
 struct Bay {
@@ -41,8 +46,42 @@ struct Elevation {
 	float pixel;
 };
 
-Bay BayAt(uint grid, vec2 texel, bool front)
+ivec2 Die(ivec2 window, uint seed, int roll)
 {
+	return window * WINDOW_SALT + ivec2(int(seed), roll * ROLL_STRIDE);
+}
+
+float Roll(ivec2 window, uint seed, int roll)
+{
+	return Hash(Die(window, seed, roll));
+}
+
+uint Picked(ivec2 window, uint seed, int roll, int count)
+{
+	return Pick(Roll(window, seed, roll), count);
+}
+
+float Chosen(float rolled, float share, vec2 span)
+{
+	return rolled < share ? mix(span.x, span.y, rolled / share) : 0.0;
+}
+
+Opening ToyShaped(Opening opening, ivec2 window, uint seed, float pitch, float band)
+{
+	if (Landscape() != LANDSCAPE_TOYLAND || opening.kind == OPEN_NONE) return opening;
+	float middle = opening.sill + opening.height * 0.5;
+	float width = min(opening.width * mix(TOY_WIDTHS.x, TOY_WIDTHS.y, Roll(ivec2(window.x, STOREY_COLUMN), seed, ROLL_TOY_SHAPE)), pitch - TOY_FRAME_ROOM);
+	float height = min(opening.height * mix(TOY_HEIGHTS.x, TOY_HEIGHTS.y, Roll(ivec2(STOREY_COLUMN, window.y), seed, ROLL_TOY_SHAPE)), 2.0 * min(middle, band - middle) - TOY_FRAME_ROOM);
+	opening.arch = Roll(window, seed, ROLL_TOY_SHAPE) < TOY_ROUND_SHARE;
+	opening.width = opening.arch ? min(width, height) : width;
+	opening.height = opening.arch ? opening.width : height;
+	opening.sill = middle - opening.height * 0.5;
+	return opening;
+}
+
+Bay BayAt(Elevation elevation, vec2 texel)
+{
+	uint grid = elevation.grid;
 	float ground = FACADE_GROUND[grid];
 	float storey = FACADE_STOREY[grid];
 	float pitch = FACADE_PITCH[grid];
@@ -50,15 +89,17 @@ Bay BayAt(uint grid, vec2 texel, bool front)
 	float across = texel.x - (column + 0.5) * pitch;
 	if (texel.y >= ground) {
 		float level = floor((texel.y - ground) / storey);
-		Opening upper = UPPER_OPENINGS[grid];
-		return Bay(upper, vec2(across, texel.y - ground - level * storey - upper.sill), ivec2(column, level + 1.0));
+		ivec2 window = ivec2(column, level + 1.0);
+		Opening upper = ToyShaped(UPPER_OPENINGS[grid], window, elevation.seed, pitch, storey);
+		return Bay(upper, vec2(across, texel.y - ground - level * storey - upper.sill), window);
 	}
 
 	Opening entrance = ENTRANCES[grid];
 	float from_entrance = mod(texel.x, TEXELS) - FACADE_BAY[grid] * 0.5;
-	if (front && entrance.kind != OPEN_NONE && abs(from_entrance) < entrance.width * 0.5 + 1.0) return Bay(entrance, vec2(from_entrance, texel.y), ivec2(-1, 0));
-	Opening opening = GROUND_OPENINGS[grid];
-	return Bay(opening, vec2(across, texel.y - opening.sill), ivec2(column, 0));
+	if (elevation.front && entrance.kind != OPEN_NONE && abs(from_entrance) < entrance.width * 0.5 + 1.0) return Bay(entrance, vec2(from_entrance, texel.y), ivec2(-1, 0));
+	ivec2 window = ivec2(column, 0);
+	Opening opening = ToyShaped(GROUND_OPENINGS[grid], window, elevation.seed, pitch, ground);
+	return Bay(opening, vec2(across, texel.y - opening.sill), window);
 }
 
 vec3 InTexels(vec3 way, float stretch)
@@ -91,14 +132,14 @@ vec2 ReachIn(vec2 from, vec2 heading, vec2 low, vec2 high)
 	return ReachOut(from, heading, high, low);
 }
 
-float ToyCornerRadius(vec2 half_size)
+float ToyCornerRadius(vec2 half_size, bool full)
 {
-	return min(half_size.x, half_size.y) * TOY_ROUNDING;
+	return min(half_size.x, half_size.y) * (full ? 1.0 : TOY_ROUNDING);
 }
 
-vec3 RoundedEdge(vec2 half_size, vec2 from_centre)
+vec3 RoundedEdge(vec2 half_size, vec2 from_centre, bool full)
 {
-	float radius = ToyCornerRadius(half_size);
+	float radius = ToyCornerRadius(half_size, full);
 	vec2 corner = abs(from_centre) - half_size + radius;
 	vec2 rounding = max(corner, 0.0);
 	float rounded = length(rounding);
@@ -111,7 +152,7 @@ vec3 RoundedEdge(vec2 half_size, vec2 from_centre)
 vec3 NearestEdge(Opening opening, vec2 at)
 {
 	float half_width = opening.width * 0.5;
-	if (Landscape() == LANDSCAPE_TOYLAND) return RoundedEdge(vec2(half_width, opening.height * 0.5), at - vec2(0.0, opening.height * 0.5));
+	if (Landscape() == LANDSCAPE_TOYLAND) return RoundedEdge(vec2(half_width, opening.height * 0.5), at - vec2(0.0, opening.height * 0.5), opening.arch);
 	float spring = opening.height - half_width;
 	if (opening.arch && at.y > spring) {
 		vec2 from_centre = vec2(at.x, at.y - spring);
@@ -147,26 +188,6 @@ bool OnMuntin(Opening opening, vec2 at, float pixel)
 		case MUNTIN_GRID: return abs(fract((at.x + opening.width * 0.5) / 4.0 + 0.5) - 0.5) * 4.0 < bar || abs(fract(at.y / 4.0 + 0.5) - 0.5) * 4.0 < bar;
 		default: return false;
 	}
-}
-
-ivec2 Die(ivec2 window, uint seed, int roll)
-{
-	return window * WINDOW_SALT + ivec2(int(seed), roll * ROLL_STRIDE);
-}
-
-float Roll(ivec2 window, uint seed, int roll)
-{
-	return Hash(Die(window, seed, roll));
-}
-
-uint Picked(ivec2 window, uint seed, int roll, int count)
-{
-	return Pick(Roll(window, seed, roll), count);
-}
-
-float Chosen(float rolled, float share, vec2 span)
-{
-	return rolled < share ? mix(span.x, span.y, rolled / share) : 0.0;
 }
 
 bool HoldsOffices(uint grid)

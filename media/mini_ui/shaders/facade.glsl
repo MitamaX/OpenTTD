@@ -127,7 +127,7 @@ Clad ToyDressed(Clad pane, Bay bay, Elevation elevation)
 Clad Bulged(Clad pane, Opening opening, vec2 at)
 {
 	vec3 edge = NearestEdge(opening, at);
-	float radius = ToyCornerRadius(vec2(opening.width, opening.height) * 0.5);
+	float radius = ToyCornerRadius(vec2(opening.width, opening.height) * 0.5, opening.arch);
 	pane.facing = vec3(edge.xy * TOY_BULGE * smoothstep(-radius, 0.0, edge.z), 1.0);
 	return pane;
 }
@@ -294,7 +294,7 @@ Clad Windowed(Clad wall, Elevation elevation, vec2 texel)
 {
 	uint grid = elevation.grid;
 	float pixel = elevation.pixel;
-	Bay bay = BayAt(grid, texel, elevation.front);
+	Bay bay = BayAt(elevation, texel);
 	Opening opening = bay.opening;
 	Clad clad = wall;
 	clad.albedo *= Drips(bay, texel, grid);
@@ -335,7 +335,7 @@ Clad FillingFromAfar(Bay bay, Elevation elevation)
 Clad Banded(Clad wall, Elevation elevation, vec2 texel, vec2 pixel)
 {
 	uint grid = elevation.grid;
-	Bay bay = BayAt(grid, texel, elevation.front);
+	Bay bay = BayAt(elevation, texel);
 	Opening opening = bay.opening;
 	if (opening.kind == OPEN_NONE) return wall;
 	float pitch = FACADE_PITCH[grid];
