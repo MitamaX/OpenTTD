@@ -48,8 +48,15 @@ private:
 		ChangeKinds kinds;
 	};
 
+	struct ChangedSpan {
+		Rect area;
+		int64_t changed;
+	};
+
 	Source SourceOf(uint unit) const;
 	void Allocate(uint unit);
+	void Take(const Rect &changed);
+	void Coalesce();
 	void SendSpans(uint unit, const void *texels);
 	void ResurveyShore(std::span<const Rect> water_moves);
 	void ResurveyFlow(std::span<const Rect> water_moves);
@@ -57,7 +64,7 @@ private:
 	std::array<DataTexture, UNIT_COUNT> textures;
 	ShoreField shore;
 	FlowField flow;
-	std::vector<Rect> spans;
+	std::vector<ChangedSpan> spans;
 };
 
 #endif /* MINI_WORLD_WORLD_TEXTURES_H */
