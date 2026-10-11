@@ -11,6 +11,7 @@
 #define MINI_WORLD_SHORE_RELIEF_H
 
 #include <array>
+#include <optional>
 
 #include "../map/tile_shapes.h"
 #include "sea_banks.h"
@@ -28,16 +29,18 @@ public:
 	ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners, BankSite banks);
 
 	Vec3 Normal(double x, double y, const Vec3 &faceted) const override;
-	bool Banked() const { return !this->banks.Empty(); }
+	bool Banked() const;
 
 private:
 	double Curved(double x, double y) const override;
 	bool Curves(int nx, int ny) const override { return LiesAlongShore(this->bed, nx, ny); }
 	double Held(double, double, double corner) const override { return corner; }
 	double Lift(double x, double y, double ground) const override { return this->banks.Lift(x, y, ground); }
+	bool LiftsAnywhere() const;
 
 	const Seabed &bed;
 	BankSite banks;
+	mutable std::optional<bool> banked;
 };
 
 /* The ground of a river and its bare banks: its own facets out to the water's curved outline, and falling away inside it to the depth the water has there. */

@@ -27,6 +27,7 @@ static constexpr double CHANNEL_STRAIGHTENING_REACH = 0.2;
 static constexpr double CHANNEL_LIP = 0.03;
 static constexpr double CHANNEL_FALL = 0.15;
 static constexpr double RAPIDS_DEPTH = 0.3;
+static constexpr int BANK_PROBES_PER_SIDE = 4;
 
 bool IsBareCoast(int tx, int ty)
 {
@@ -52,6 +53,24 @@ Vec3 ShoreRelief::Normal(double x, double y, const Vec3 &faceted) const
 {
 	Vec3 curved = ClimbNormal(ClimbOf([this](double px, double py) { return this->Level(px, py); }, x, y, SLOPE_PROBE));
 	return Normalised(Lerp(TileRelief::Normal(x, y, faceted), curved, this->Freedom(x, y)));
+}
+
+bool ShoreRelief::Banked() const
+{
+	if (!this->banked.has_value()) this->banked = !this->banks.Empty() && this->LiftsAnywhere();
+	return *this->banked;
+}
+
+bool ShoreRelief::LiftsAnywhere() const
+{
+	for (int j = 0; j <= BANK_PROBES_PER_SIDE; j++) {
+		for (int i = 0; i <= BANK_PROBES_PER_SIDE; i++) {
+			double x = this->tx + static_cast<double>(i) / BANK_PROBES_PER_SIDE;
+			double y = this->ty + static_cast<double>(j) / BANK_PROBES_PER_SIDE;
+			if (this->Lift(x, y, this->Ground(x, y)) > 0.0) return true;
+		}
+	}
+	return false;
 }
 
 /* The spline runs through every corner of the bed, so it agrees with the tile's own corners wherever it is free to show. */

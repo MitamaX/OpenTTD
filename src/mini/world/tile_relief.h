@@ -79,6 +79,7 @@ protected:
 	/* The level the tile's facets are held at about a corner where no neighbour keeps its facets. */
 	virtual double Held(double x, double y, double corner) const = 0;
 	virtual double Lift(double, double, double) const { return 0.0; }
+	double Ground(double x, double y) const;
 	double Freedom(double x, double y) const;
 
 	int tx;

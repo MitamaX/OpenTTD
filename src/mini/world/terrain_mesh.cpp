@@ -56,7 +56,7 @@ static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int LEAST_SHORE_DIVISIONS = 2;
-static constexpr int BANK_DIVISIONS_PER_GRAIN = 4;
+static constexpr int BANK_EXTRA_DIVISIONS = 1;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -256,8 +256,6 @@ struct OpenSides {
 	bool high_y;
 };
 
-static constexpr OpenSides EVERY_SIDE = {true, true, true, true};
-
 static OpenSides OpenSidesOf(const TileSpan &block, const TileSpan &area)
 {
 	return {
@@ -292,7 +290,7 @@ static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, si
 static int ReliefDivisionsOf(const LaidGround &laid, int grained)
 {
 	if (laid.Rolls()) return grained;
-	return laid.Banked() ? grained * BANK_DIVISIONS_PER_GRAIN : std::max(grained, LEAST_SHORE_DIVISIONS);
+	return std::max(grained + (laid.Banked() ? BANK_EXTRA_DIVISIONS : 0), LEAST_SHORE_DIVISIONS);
 }
 
 void TerrainBuild::AddTile(int tx, int ty)
@@ -319,7 +317,7 @@ void TerrainBuild::AddTile(int tx, int ty)
 		int divisions = ReliefDivisionsOf(laid, this->DivisionsOf(tx, ty));
 		std::vector<uint32_t> grid = AddRelief(mesh, *relief, corners, tx, ty, divisions);
 		OpenSides open = laid.Rolls() ? ReliefSidesOf(this->tiles, tx, ty, [&](int nx, int ny) { return this->CutApart(tx, ty, nx, ny); }) : OpenSidesOf(this->tiles, {tx, ty, tx, ty});
-		SkirtOpenSides(mesh, grid, divisions + 1, laid.Banked() ? EVERY_SIDE : open, RELIEF_SKIRT_LEVELS);
+		SkirtOpenSides(mesh, grid, divisions + 1, open, RELIEF_SKIRT_LEVELS);
 		return;
 	}
 	if (WaterFormOf(tx, ty) == WaterForm::Open) {
