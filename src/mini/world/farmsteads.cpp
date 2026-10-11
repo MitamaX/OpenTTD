@@ -34,7 +34,8 @@ static constexpr uint32_t BALED_FIELD_ODDS = 3;
 static constexpr int PADDOCK_BLOCK_TILES = 5;
 static constexpr uint32_t PADDOCK_ODDS = 2;
 static constexpr int PADDOCK_LEAST_TILES = 2;
-static constexpr int PADDOCK_MOST_STEPS = 4 * PADDOCK_BLOCK_TILES;
+static constexpr int PADDOCK_MOST_TILES = PADDOCK_BLOCK_TILES - 1;
+static constexpr int PADDOCK_MOST_STEPS = 4 * PADDOCK_MOST_TILES;
 static constexpr double PADDOCK_LEAST_STANDING = 0.6;
 static constexpr double STEEPEST_BOUNDARY_RISE = 1.0;
 static constexpr double BOUNDARY_SAG = 0.03;
@@ -262,8 +263,8 @@ static std::optional<Paddock> PaddockIn(int bx, int by)
 	SeedDice dice(Hash32(BOUNDARY_SALT ^ Hash32(static_cast<uint32_t>(bx) * PADDOCK_COLUMN_STRIDE ^ static_cast<uint32_t>(by))));
 	if (dice.Below(PADDOCK_ODDS) != 0) return std::nullopt;
 	auto span = [&](int block) {
-		int length = PADDOCK_LEAST_TILES + static_cast<int>(dice.Below(PADDOCK_BLOCK_TILES - PADDOCK_LEAST_TILES + 1));
-		int from = block * PADDOCK_BLOCK_TILES + static_cast<int>(dice.Below(PADDOCK_BLOCK_TILES - length + 1));
+		int length = PADDOCK_LEAST_TILES + static_cast<int>(dice.Below(PADDOCK_MOST_TILES - PADDOCK_LEAST_TILES + 1));
+		int from = block * PADDOCK_BLOCK_TILES + static_cast<int>(dice.Below(PADDOCK_MOST_TILES - length + 1));
 		return std::pair{from, from + length};
 	};
 	auto [x0, x1] = span(bx);
