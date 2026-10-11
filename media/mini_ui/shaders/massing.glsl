@@ -1,6 +1,5 @@
 uniform usampler2D u_massing;
 
-const vec3 UPWARD = vec3(0.0, 0.0, 1.0);
 const uint MASSING_LOW_BYTE = 255u;
 const uvec3 RGB565_SHIFTS = uvec3(11u, 5u, 0u);
 const uvec3 RGB565_MASKS = uvec3(31u, 63u, 31u);
@@ -78,7 +77,7 @@ Massing MassingAt(ivec2 tile)
 
 Sighting Unsighted(vec3 from, ivec2 tile)
 {
-	return Sighting(SEEN_NOTHING, from, UPWARD, 0.0, tile);
+	return Sighting(SEEN_NOTHING, from, UP, 0.0, tile);
 }
 
 struct Strike {
@@ -143,5 +142,5 @@ Sighting Traced(vec3 from, vec3 way, ivec2 own)
 		cell += across_x ? ivec2(stride.x, 0) : ivec2(0, stride.y);
 		next += across_x ? vec2(per_cell.x, 0.0) : vec2(0.0, per_cell.y);
 	}
-	return Sighting(struck.seen, from + way * struck.run, struck.seen == SEEN_WALL ? vec3(struck.across, 0.0) : UPWARD, struck.run, cell);
+	return Sighting(struck.seen, from + way * struck.run, struck.seen == SEEN_WALL ? vec3(struck.across, 0.0) : UP, struck.run, cell);
 }

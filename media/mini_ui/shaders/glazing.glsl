@@ -35,7 +35,7 @@ float RunToGround(vec3 from, vec3 way)
 vec3 Beyond(vec3 from, vec3 way)
 {
 	if (way.z >= 0.0) return CloudedSky(way, MIRRORED_CLOUD_OCTAVES);
-	vec3 town = DISTANT_TOWN * (Sunlight(UPWARD, 1.0) + AmbientLight(UPWARD));
+	vec3 town = DISTANT_TOWN * (Sunlight(UP, 1.0) + AmbientLight(UP));
 	return Hazed(town, way, from, from + way * RunToGround(from, way));
 }
 
@@ -44,7 +44,7 @@ Sighting Landed(vec3 from, vec3 way)
 	if (way.z >= 0.0) return Unsighted(from, ivec2(floor(from.xy)));
 	float run = RunToGround(from, way);
 	vec3 point = from + way * run;
-	return Sighting(SEEN_GROUND, point, UPWARD, run, Clamped(ivec2(floor(point.xy))));
+	return Sighting(SEEN_GROUND, point, UP, run, Clamped(ivec2(floor(point.xy))));
 }
 
 float WithinReach(vec3 way, float run)
@@ -81,7 +81,7 @@ Seen WallSeen(Sighting sighting, Massing massing, float blur)
 Seen RoofSeen(Sighting sighting, Massing massing)
 {
 	bool snowed = Landscape() == LANDSCAPE_ARCTIC && sighting.point.z / LevelRise() > SnowLine();
-	return Seen(Linear(snowed ? SNOW : massing.roof), UPWARD, 1.0, vec3(0.0), 1.0);
+	return Seen(Linear(snowed ? SNOW : massing.roof), UP, 1.0, vec3(0.0), 1.0);
 }
 
 bool Along(uint ends, uint way, float across)
@@ -113,9 +113,9 @@ Seen GroundSeen(Sighting sighting, vec3 way)
 		albedo = Linear(DISTANT_BALLAST);
 	} else if (TileWater(tile).r > HALF_TILE) {
 		albedo = Linear(DISTANT_WATER);
-		sheen = Surroundings(reflect(way, UPWARD)) * MIRRORED_WATER_SHEEN;
+		sheen = Surroundings(reflect(way, UP)) * MIRRORED_WATER_SHEEN;
 	}
-	return Seen(albedo, UPWARD, MIRRORED_STREET_OPENNESS, sheen, 1.0);
+	return Seen(albedo, UP, MIRRORED_STREET_OPENNESS, sheen, 1.0);
 }
 
 Seen SeenAt(Sighting sighting, vec3 way, float blur)

@@ -27,7 +27,6 @@ const float INDEX_CONTOUR_EVERY = 5.0;
 const float INDEX_CONTOUR_WEIGHT = 1.6;
 const float CROWDED_CONTOUR_PIXELS = 3.0;
 const float SPACED_CONTOUR_PIXELS = 9.0;
-const vec3 UPRIGHT = vec3(0.0, 0.0, 1.0);
 const vec3 LOWLAND = vec3(0.90, 0.95, 0.86);
 const vec3 HIGHLAND = vec3(1.06, 1.04, 0.98);
 const float TERRAIN_ROUGHNESS = 0.85;
@@ -1661,7 +1660,7 @@ bool Sunken(Water water)
 
 Footing EdgeFooting(float levels_per_pixel)
 {
-	return Footing(ReliefAt(UPRIGHT, levels_per_pixel), 0.0, LIE_DRY);
+	return Footing(ReliefAt(UP, levels_per_pixel), 0.0, LIE_DRY);
 }
 
 Footing FootingAt(vec2 p, Water water, Relief relief)
@@ -1701,7 +1700,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Detail detail, float levels_p
 	float drowned = Drowned(water);
 	vec3 bed = Seabed(water, grain, smoothstep(0.0, RIVERBED_DEEP_MARK, -v_mark));
 	vec3 land = underfoot.lie == LIE_SUNKEN ? bed : mix(Ashore(p, water, underfoot, surface.tone), bed, drowned);
-	normal = normalize(mix(normal, UPRIGHT, drowned * water.sea * smoothstep(DROWNED_SHEER.x, DROWNED_SHEER.y, underfoot.site.relief.slope)));
+	normal = normalize(mix(normal, UP, drowned * water.sea * smoothstep(DROWNED_SHEER.x, DROWNED_SHEER.y, underfoot.site.relief.slope)));
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 
 	vec3 colour = Composite(land, network.paint);

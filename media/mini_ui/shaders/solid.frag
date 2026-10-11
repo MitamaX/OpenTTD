@@ -280,7 +280,7 @@ void main()
 	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) * (1.0 - receded) <= ScreenNoise(gl_FragCoord.xy)) discard;
 	uint bed = BedOf(v_trait);
 	float gloss = bed == BED_PLAIN ? max(v_trait, 0.0) : 0.0;
-	vec3 normal = normalize(mix(normalize(v_normal), vec3(0.0, 0.0, 1.0), receded / max(u_recede.y, LEAST_DIVISOR)));
+	vec3 normal = normalize(mix(normalize(v_normal), UP, receded / max(u_recede.y, LEAST_DIVISOR)));
 	vec3 grained = bed == BED_PLAIN ? v_colour.rgb * Grain(v_position, gloss) * Worn(v_position, normal, gloss, footprint.pattern) : Bedded(v_colour.rgb, bed, v_position, normal, footprint);
 	vec3 albedo = Linear(u_own_colours ? Kept(grained, u_way) : Overlaid(grained, u_way));
 	frag_colour = Radiance(albedo, normal, v_position, CoatOf(gloss), v_colour.a) + vec4(Glowing(albedo, v_trait), 0.0);

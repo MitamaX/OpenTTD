@@ -10,7 +10,6 @@ in vec3 v_position;
 out vec4 frag_colour;
 
 const float TAU = 6.2831853;
-const vec3 UP = vec3(0.0, 0.0, 1.0);
 
 const int WAVE_OCTAVES = 5;
 const int BROAD_OCTAVES = 2;

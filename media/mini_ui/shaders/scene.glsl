@@ -15,6 +15,7 @@ const vec3 SNOW = vec3(0.87, 0.9, 0.95);
 const vec3 SAND = vec3(0.87, 0.76, 0.54);
 const float GAMMA = 2.2;
 const float LOWEST_FACING = 0.05;
+const vec3 UP = vec3(0.0, 0.0, 1.0);
 
 layout(std140) uniform Shadows {
 	mat4 u_cascades[CASCADES];
