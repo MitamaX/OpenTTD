@@ -10,8 +10,10 @@
 #ifndef MINI_CORE_GROUND_TRACE_H
 #define MINI_CORE_GROUND_TRACE_H
 
+#include <memory>
 #include <optional>
 
+#include "camera.h"
 #include "space.h"
 
 /* The origin and the direction are in render space, where a level stands rise tiles high; the hit comes back in levels. */
@@ -28,6 +30,22 @@ struct GroundHit {
 	double y;
 	double level;
 };
+
+class GroundSpan {
+public:
+	virtual ~GroundSpan() = default;
+	virtual bool Curves(int tx, int ty) const = 0;
+	virtual double CurvedLevel(int tx, int ty, double x, double y) const = 0;
+};
+
+class GroundForm {
+public:
+	virtual ~GroundForm() = default;
+	virtual std::unique_ptr<GroundSpan> Over(const TileSpan &tiles) const = 0;
+};
+
+void RegisterGroundForm(const GroundForm &form);
+std::unique_ptr<GroundSpan> GroundOver(const TileSpan &tiles);
 
 /* A wall between two tiles belongs to the higher one, so a sight line meeting it lands on that tile's edge. */
 std::optional<GroundHit> TraceGround(const SightLine &sight, double reach);

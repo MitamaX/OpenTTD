@@ -23,6 +23,8 @@
 
 static constexpr double HALF_PIXEL = 0.5;
 static constexpr double GROUND_PATH_STEP = 0.5;
+static constexpr int CURVED_SHAPE_DIVISIONS = 4;
+static constexpr int GROUND_PATH_REACH = 8;
 
 /* A stroke's half width once it keeps a pixel across, and the alpha it fades to for the width it lacks. */
 struct VisibleStroke {
@@ -75,6 +77,29 @@ double TileGround::Level(double x, double y) const
 double TileGround::Lowest() const
 {
 	return this->surface.Lowest();
+}
+
+DrawnTile::DrawnTile(const GroundSpan &span, int tx, int ty) : span(span), facets(tx, ty), tx(tx), ty(ty), curves(span.Curves(tx, ty))
+{
+}
+
+WorldPoint DrawnTile::At(double x, double y) const
+{
+	return this->curves ? WorldPoint{x, y, this->span.CurvedLevel(this->tx, this->ty, x, y)} : this->facets.At(x, y);
+}
+
+int DrawnTile::Divisions() const
+{
+	return this->curves ? CURVED_SHAPE_DIVISIONS : 1;
+}
+
+DrawnGround::DrawnGround(const TileSpan &tiles) : tiles(tiles), span(GroundOver(tiles))
+{
+}
+
+bool DrawnGround::Holds(int tx, int ty) const
+{
+	return tx >= this->tiles.tx0 && ty >= this->tiles.ty0 && tx <= this->tiles.tx1 && ty <= this->tiles.ty1;
 }
 
 WorldPoint Between(const WorldPoint &from, const WorldPoint &to, double share)
@@ -188,22 +213,30 @@ static VisibleStroke Widened(MapVector along, double half_width, uint alpha)
 	return {half, FadedAlpha(half_width / half, alpha)};
 }
 
-std::array<WorldPoint, 4> TileQuad(int tx, int ty)
+static void FillOn(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha)
 {
-	TileGround ground(tx, ty);
-	return {ground.At(tx, ty), ground.At(tx + 1, ty), ground.At(tx + 1, ty + 1), ground.At(tx, ty + 1)};
+	int divisions = tile.Divisions();
+	for (int j = 0; j < divisions; j++) {
+		for (int i = 0; i < divisions; i++) {
+			auto at = [&](int across, int down) { return tile.At(tx + static_cast<double>(i + across) / divisions, ty + static_cast<double>(j + down) / divisions); };
+			_canvas.FillWorldQuad({at(0, 0), at(1, 0), at(1, 1), at(0, 1)}, c, alpha);
+		}
+	}
 }
 
 void FillTile(int tx, int ty, uint32_t c, uint alpha)
 {
-	_canvas.FillWorldQuad(TileQuad(tx, ty), c, alpha);
+	FillOn(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), tx, ty, c, alpha);
 }
 
 void FillArea(int tx0, int ty0, int tx1, int ty1, uint32_t c, uint alpha)
 {
 	TileSpan seen = _camera.VisibleTiles();
-	for (int tx = std::max(tx0, seen.tx0); tx <= std::min(tx1, seen.tx1); tx++) {
-		for (int ty = std::max(ty0, seen.ty0); ty <= std::min(ty1, seen.ty1); ty++) FillTile(tx, ty, c, alpha);
+	TileSpan shown = {std::max(tx0, seen.tx0), std::max(ty0, seen.ty0), std::min(tx1, seen.tx1), std::min(ty1, seen.ty1)};
+	if (shown.tx0 > shown.tx1 || shown.ty0 > shown.ty1) return;
+	DrawnGround ground(shown);
+	for (int tx = shown.tx0; tx <= shown.tx1; tx++) {
+		for (int ty = shown.ty0; ty <= shown.ty1; ty++) FillOn(ground.Tile(tx, ty), tx, ty, c, alpha);
 	}
 }
 
@@ -217,15 +250,20 @@ static void AddDistinct(std::vector<WorldPoint> &ring, const WorldPoint &point)
 	if (ring.empty() || !SamePoint(ring.back(), point)) ring.push_back(point);
 }
 
-/* Walking a side left to right as seen from outside, each tile adds its own two corners on that side. */
-static void AddSideCorners(std::vector<WorldPoint> &ring, int tx, int ty, DiagDirection side, int tiles)
+/* Walking a side left to right as seen from outside, each tile adds its own two corners on that side, and the points between them where its ground curves. */
+static void AddSideCorners(std::vector<WorldPoint> &ring, const DrawnGround &ground, int tx, int ty, DiagDirection side, int tiles)
 {
 	TileIndexDiffC walk = TileIndexDiffCByDiagDir(ChangeDiagDir(side, DIAGDIRDIFF_90LEFT));
+	auto [first, last] = SIDE_CORNERS[side];
 	for (int i = 0; i < tiles; i++) {
 		int x = tx + walk.x * i;
 		int y = ty + walk.y * i;
-		TileGround ground(x, y);
-		for (CornerOffset corner : SIDE_CORNERS[side]) AddDistinct(ring, ground.At(x + corner.x, y + corner.y));
+		DrawnTile tile = ground.Tile(x, y);
+		int divisions = tile.Divisions();
+		for (int step = 0; step <= divisions; step++) {
+			double share = static_cast<double>(step) / divisions;
+			AddDistinct(ring, tile.At(x + first.x + (last.x - first.x) * share, y + first.y + (last.y - first.y) * share));
+		}
 	}
 }
 
@@ -234,13 +272,19 @@ void FrameArea(int tx0, int ty0, int tx1, int ty1, int width, uint32_t c, uint a
 {
 	int tiles_x = tx1 + 1 - tx0;
 	int tiles_y = ty1 + 1 - ty0;
+	DrawnGround ground({tx0, ty0, tx1, ty1});
 	std::vector<WorldPoint> ring;
-	AddSideCorners(ring, tx0, ty0, DIAGDIR_NW, tiles_x);
-	AddSideCorners(ring, tx1, ty0, DIAGDIR_SW, tiles_y);
-	AddSideCorners(ring, tx1, ty1, DIAGDIR_SE, tiles_x);
-	AddSideCorners(ring, tx0, ty1, DIAGDIR_NE, tiles_y);
+	AddSideCorners(ring, ground, tx0, ty0, DIAGDIR_NW, tiles_x);
+	AddSideCorners(ring, ground, tx1, ty0, DIAGDIR_SW, tiles_y);
+	AddSideCorners(ring, ground, tx1, ty1, DIAGDIR_SE, tiles_x);
+	AddSideCorners(ring, ground, tx0, ty1, DIAGDIR_NE, tiles_y);
 	if (SamePoint(ring.front(), ring.back())) ring.pop_back();
 	_canvas.FrameWorldRing(ring, width, c, alpha);
+}
+
+static int ClampedTile(double at, uint last)
+{
+	return std::clamp(static_cast<int>(std::floor(at)), 0, static_cast<int>(last));
 }
 
 std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to)
@@ -249,16 +293,20 @@ std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to)
 	int steps = std::max(1, static_cast<int>(std::ceil(span / GROUND_PATH_STEP)));
 	std::vector<WorldPoint> path;
 	path.reserve(steps + 1);
+	std::optional<DrawnGround> ground;
 	for (int step = 0; step <= steps; step++) {
 		double share = static_cast<double>(step) / steps;
 		double x = from.first + (to.first - from.first) * share;
 		double y = from.second + (to.second - from.second) * share;
-		path.push_back({x, y, GroundLevel(x, y)});
+		int tx = ClampedTile(x, Map::MaxX());
+		int ty = ClampedTile(y, Map::MaxY());
+		if (!ground.has_value() || !ground->Holds(tx, ty)) ground.emplace(TileSpan{tx - GROUND_PATH_REACH, ty - GROUND_PATH_REACH, tx + GROUND_PATH_REACH, ty + GROUND_PATH_REACH});
+		path.push_back(ground->Tile(tx, ty).At(x, y));
 	}
 	return path;
 }
 
-void FillGroundStroke(const TileGround &ground, TilePoint from, TilePoint to, double half_width, uint32_t c, uint alpha)
+void FillGroundStroke(const DrawnTile &tile, TilePoint from, TilePoint to, double half_width, uint32_t c, uint alpha)
 {
 	auto [from_x, from_y] = from;
 	auto [to_x, to_y] = to;
@@ -269,18 +317,18 @@ void FillGroundStroke(const TileGround &ground, TilePoint from, TilePoint to, do
 	VisibleStroke stroke = Widened(along, half_width, alpha);
 	double side_x = along.y / length * stroke.half;
 	double side_y = -along.x / length * stroke.half;
-	_canvas.FillWorldQuad({
-		ground.At(from_x - side_x, from_y - side_y),
-		ground.At(from_x + side_x, from_y + side_y),
-		ground.At(to_x + side_x, to_y + side_y),
-		ground.At(to_x - side_x, to_y - side_y),
-	}, c, stroke.alpha);
+	int divisions = tile.Divisions();
+	auto at = [&](int step, double side) {
+		double share = static_cast<double>(step) / divisions;
+		return tile.At(std::lerp(from_x, to_x, share) + side_x * side, std::lerp(from_y, to_y, share) + side_y * side);
+	};
+	for (int step = 0; step < divisions; step++) _canvas.FillWorldQuad({at(step, -1.0), at(step, 1.0), at(step + 1, 1.0), at(step + 1, -1.0)}, c, stroke.alpha);
 }
 
 void DrawTrackPiece(Track track, int tx, int ty, double half_width, uint32_t c, uint alpha)
 {
 	Trackdir td = TrackToTrackdir(track);
-	FillGroundStroke(TileGround(tx, ty), EdgeMidpoint(tx, ty, EntrySide(td)), EdgeMidpoint(tx, ty, TrackdirToExitdir(td)), half_width, c, alpha);
+	FillGroundStroke(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), EdgeMidpoint(tx, ty, EntrySide(td)), EdgeMidpoint(tx, ty, TrackdirToExitdir(td)), half_width, c, alpha);
 }
 
 void DrawAxisBand(Axis axis, int tx, int ty, double half_width, uint32_t c, uint alpha)
@@ -290,7 +338,7 @@ void DrawAxisBand(Axis axis, int tx, int ty, double half_width, uint32_t c, uint
 
 void DrawFacing(int tx, int ty, DiagDirection direction, double half_width, uint32_t c)
 {
-	FillGroundStroke(TileGround(tx, ty), TileCentre(tx, ty), EdgeMidpoint(tx, ty, direction), half_width, c);
+	FillGroundStroke(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), TileCentre(tx, ty), EdgeMidpoint(tx, ty, direction), half_width, c);
 }
 
 WorldPoint TrackdirGroundPoint(int tx, int ty, Trackdir td, double along, double lateral)

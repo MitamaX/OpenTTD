@@ -14,6 +14,7 @@
 #include <optional>
 
 #include "../core/camera.h"
+#include "../core/ground_trace.h"
 #include "lazy_lattice.h"
 #include "tile_relief.h"
 
@@ -73,6 +74,22 @@ private:
 	int tx;
 	int ty;
 	std::optional<HillRelief> relief;
+};
+
+class RolledSpan : public GroundSpan {
+public:
+	explicit RolledSpan(const TileSpan &tiles) : land(tiles) {}
+
+	bool Curves(int tx, int ty) const override { return this->land.Bends(tx, ty); }
+	double CurvedLevel(int tx, int ty, double x, double y) const override { return HillRelief(this->land, tx, ty).Level(x, y); }
+
+private:
+	Landform land;
+};
+
+class RolledLand : public GroundForm {
+public:
+	std::unique_ptr<GroundSpan> Over(const TileSpan &tiles) const override { return std::make_unique<RolledSpan>(tiles); }
 };
 
 #endif /* MINI_WORLD_HILL_RELIEF_H */

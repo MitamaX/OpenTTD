@@ -23,6 +23,28 @@ static constexpr double NEVER = std::numeric_limits<double>::infinity();
 static constexpr double PARALLEL = 1e-12;
 static constexpr double WALL_INSET = 1e-6;
 static constexpr double WALL_TOLERANCE = 1e-6;
+static constexpr double MOST_CURVE_LEVELS = 1.0;
+static constexpr int CURVE_SAMPLES = 8;
+static constexpr int CURVE_REFINES = 12;
+
+class FacetedSpan : public GroundSpan {
+public:
+	bool Curves(int, int) const override { return false; }
+	double CurvedLevel(int tx, int ty, double x, double y) const override { return FacetLevel(_world_tiles.SurfaceAt(TileXY(tx, ty)), x - tx, y - ty); }
+};
+
+static const GroundForm *_ground_form = nullptr;
+
+void RegisterGroundForm(const GroundForm &form)
+{
+	_ground_form = &form;
+}
+
+std::unique_ptr<GroundSpan> GroundOver(const TileSpan &tiles)
+{
+	if (_ground_form == nullptr) return std::make_unique<FacetedSpan>();
+	return _ground_form->Over(tiles);
+}
 
 /* The span of t over which the line runs above the map's plan, if it crosses it at all. */
 static std::optional<std::pair<double, double>> PlanSpan(const SightLine &sight, double reach)
@@ -125,7 +147,7 @@ public:
 		return west_to_east ? (1.0 - fx - fy) / rate : (fy - fx) / rate;
 	}
 
-	std::optional<double> FirstHit(double from, double to) const
+	std::optional<double> FirstHit(double from, double to, double lift = 0.0) const
 	{
 		std::array<double, 3> marks = {from, to, to};
 		size_t count = 2;
@@ -133,10 +155,10 @@ public:
 			marks = {from, *fold, to};
 			count = 3;
 		}
-		double above = this->At(marks[0]);
+		double above = this->At(marks[0]) - lift;
 		if (above < 0.0) return from;
 		for (size_t i = 1; i < count; i++) {
-			double next = this->At(marks[i]);
+			double next = this->At(marks[i]) - lift;
 			if (next <= 0.0) return std::lerp(marks[i - 1], marks[i], above / (above - next));
 			above = next;
 		}
@@ -148,6 +170,70 @@ private:
 	int tx;
 	int ty;
 	SurfaceTexel surface;
+};
+
+class DrawnClearance {
+public:
+	DrawnClearance(const SightLine &sight, int tx, int ty) : sight(sight), tx(tx), ty(ty), facets(sight, tx, ty)
+	{
+	}
+
+	bool EntersBelow(double t) const
+	{
+		double facet = this->facets.At(t);
+		if (facet >= -WALL_TOLERANCE) return false;
+		return facet < -this->Margin() || !this->Curves() || this->CurvedAt(t) < -WALL_TOLERANCE;
+	}
+
+	std::optional<double> FirstHit(double from, double to) const
+	{
+		std::optional<double> near = this->facets.FirstHit(from, to, this->Margin());
+		if (!near.has_value()) return std::nullopt;
+		return this->Curves() ? this->CurvedHit(*near, to) : this->facets.FirstHit(*near, to);
+	}
+
+private:
+	double Margin() const
+	{
+		return MOST_CURVE_LEVELS * this->sight.rise;
+	}
+
+	bool Curves() const
+	{
+		if (this->ground == nullptr) this->ground = GroundOver({this->tx, this->ty, this->tx, this->ty});
+		return this->ground->Curves(this->tx, this->ty);
+	}
+
+	double CurvedAt(double t) const
+	{
+		Vec3 at = this->sight.At(t);
+		return at.z - this->ground->CurvedLevel(this->tx, this->ty, at.x, at.y) * this->sight.rise;
+	}
+
+	std::optional<double> CurvedHit(double from, double to) const
+	{
+		if (this->CurvedAt(from) <= 0.0) return from;
+		double above = from;
+		for (int sample = 1; sample <= CURVE_SAMPLES; sample++) {
+			double below = std::lerp(from, to, static_cast<double>(sample) / CURVE_SAMPLES);
+			if (this->CurvedAt(below) > 0.0) {
+				above = below;
+				continue;
+			}
+			for (int refine = 0; refine < CURVE_REFINES; refine++) {
+				double middle = (above + below) * 0.5;
+				(this->CurvedAt(middle) > 0.0 ? above : below) = middle;
+			}
+			return below;
+		}
+		return std::nullopt;
+	}
+
+	const SightLine &sight;
+	int tx;
+	int ty;
+	TileClearance facets;
+	mutable std::unique_ptr<GroundSpan> ground;
 };
 
 static GroundHit HitAt(const SightLine &sight, double t)
@@ -165,8 +251,8 @@ std::optional<GroundHit> TraceGround(const SightLine &sight, double reach)
 	TileWalk walk(sight, span->first);
 	bool crossed = false;
 	do {
-		TileClearance clearance(sight, walk.Tx(), walk.Ty());
-		if (crossed && clearance.At(walk.Entry()) < -WALL_TOLERANCE) return HitAt(sight, walk.Entry() + WALL_INSET);
+		DrawnClearance clearance(sight, walk.Tx(), walk.Ty());
+		if (crossed && clearance.EntersBelow(walk.Entry())) return HitAt(sight, walk.Entry() + WALL_INSET);
 
 		double exit = std::min(walk.Exit(), span->second);
 		if (std::optional<double> hit = clearance.FirstHit(walk.Entry(), exit); hit.has_value()) return HitAt(sight, *hit);

@@ -12,6 +12,7 @@
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "../../track_type.h"
 #include "../core/camera.h"
 #include "../core/canvas.h"
+#include "../core/ground_trace.h"
 #include "world_tiles.h"
 
 inline constexpr double HALF_TILE = 0.5;
@@ -41,6 +43,34 @@ private:
 	int tx;
 	int ty;
 	SurfaceTexel surface;
+};
+
+class DrawnTile {
+public:
+	DrawnTile(const GroundSpan &span, int tx, int ty);
+
+	WorldPoint At(double x, double y) const;
+	WorldPoint At(TilePoint at) const { return this->At(at.first, at.second); }
+	int Divisions() const;
+
+private:
+	const GroundSpan &span;
+	TileGround facets;
+	int tx;
+	int ty;
+	bool curves;
+};
+
+class DrawnGround {
+public:
+	explicit DrawnGround(const TileSpan &tiles);
+
+	bool Holds(int tx, int ty) const;
+	DrawnTile Tile(int tx, int ty) const { return DrawnTile(*this->span, tx, ty); }
+
+private:
+	TileSpan tiles;
+	std::unique_ptr<GroundSpan> span;
 };
 
 /* The upright face where a tile's own edge stands above its neighbour's, its corners going round counterclockwise as seen from outside. */
@@ -91,8 +121,6 @@ ArcPlace PlaceAlong(std::span<const Point> path, double arc, Flatten flat = {})
 TilePoint TileCentre(int tx, int ty);
 TilePoint Shifted(TilePoint from, DiagDirection side, double tiles);
 
-/* Ground corners go round from the north corner along map X first. */
-std::array<WorldPoint, 4> TileQuad(int tx, int ty);
 void FillTile(int tx, int ty, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 /* Tile by tile so the fill follows the terrain, over the tiles that can show. */
 void FillArea(int tx0, int ty0, int tx1, int ty1, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
@@ -102,7 +130,7 @@ void FrameArea(int tx0, int ty0, int tx1, int ty1, int width, uint32_t c, uint a
 std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to);
 
 /* A band of a tile's ground between two of its points, kept a pixel across like FillAxisLine. */
-void FillGroundStroke(const TileGround &ground, TilePoint from, TilePoint to, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
+void FillGroundStroke(const DrawnTile &tile, TilePoint from, TilePoint to, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawTrackPiece(Track track, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawAxisBand(Axis axis, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawFacing(int tx, int ty, DiagDirection direction, double half_width, uint32_t c);

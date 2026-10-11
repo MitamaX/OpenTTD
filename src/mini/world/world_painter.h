@@ -18,6 +18,7 @@
 #include "../../vehicle_type.h"
 #include "../ui/shader_painter.h"
 #include "ground_overlay.h"
+#include "hill_relief.h"
 #include "post_chain.h"
 #include "scene_view.h"
 #include "shadow_map.h"
@@ -56,6 +57,7 @@ private:
 	WorldTarget target;
 	WorldTextures textures;
 	TerrainField field;
+	RolledLand land;
 	ShadowMap shadows;
 	SceneUniforms scene;
 	PostChain post;
