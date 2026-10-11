@@ -49,13 +49,13 @@ static constexpr uint32_t HAIR = 0x3B2A20;
 
 static ModelMesh Head()
 {
-	return Lathe(HEAD_PROFILE, BODY_SIDES).PaintBy([](const Vec3 &at) { return at.z > HAIR_LINE || at.x < HAIR_BACK ? HAIR : SKIN; });
+	return Lathe(HEAD_PROFILE, BODY_SIDES, Capped::Top).PaintBy([](const Vec3 &at) { return at.z > HAIR_LINE || at.x < HAIR_BACK ? HAIR : SKIN; });
 }
 
 /* Each leg swings one way and the arm on its side the other, so a stride shows from any side. */
 static ModelMesh Figure(double stride)
 {
-	ModelMesh figure = Torso(TORSO_PROFILE, BODY_SIDES).Paint(SHIRT);
+	ModelMesh figure = Torso(TORSO_PROFILE, BODY_SIDES, Capped::Neither).Paint(SHIRT);
 	figure.Append(Head());
 	for (double side : {-1.0, 1.0}) {
 		figure.Append(Limb(LIMB_SIDES, HIP_RADIUS, ANKLE_RADIUS, HIP_HEIGHT, {0.0, side * LEG_SPREAD, HIP_HEIGHT}, side * stride * STRIDE_TURN).Paint(TROUSERS));

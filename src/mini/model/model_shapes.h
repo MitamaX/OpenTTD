@@ -42,7 +42,7 @@ ModelMesh Column(int sides, double low_radius, double high_radius, double height
 ModelMesh Prism(int sides, double radius, double height, Capped capped = Capped::Both);
 ModelMesh Cone(int sides, double radius, double height, Capped capped = Capped::Both);
 ModelMesh Limb(int sides, double joint_radius, double end_radius, double length, const Vec3 &joint, double swing, double splay = 0.0);
-ModelMesh Torso(std::span<const LatheRing> profile, int sides);
+ModelMesh Torso(std::span<const LatheRing> profile, int sides, Capped capped = Capped::Both);
 
 /* A sphere of unit radius, from an icosahedron whose faces are split into four this many times over. */
 ModelMesh Icosphere(int subdivisions);

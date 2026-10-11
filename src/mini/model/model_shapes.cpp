@@ -125,9 +125,9 @@ ModelMesh Limb(int sides, double joint_radius, double end_radius, double length,
 	return limb.Transform(Mat4::Translation(joint) * Mat4::Turn(SIDEWAYS, swing) * Mat4::Turn(FORE, splay));
 }
 
-ModelMesh Torso(std::span<const LatheRing> profile, int sides)
+ModelMesh Torso(std::span<const LatheRing> profile, int sides, Capped capped)
 {
-	return Lathe(profile, sides).Transform(Mat4::Scaling({1.0, TORSO_BREADTH, 1.0}));
+	return Lathe(profile, sides, capped).Transform(Mat4::Scaling({1.0, TORSO_BREADTH, 1.0}));
 }
 
 /* The midpoint of an edge, made once however many faces share the edge. */
