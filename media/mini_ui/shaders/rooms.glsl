@@ -164,18 +164,19 @@ Room RoomBehind(Bay bay, Elevation elevation)
 {
 	uint seed = elevation.seed;
 	ivec2 storey = ivec2(STOREY_COLUMN, bay.window.y);
-	bool offices = HoldsOffices(elevation.grid);
+	bool hall = HoldsHalls(elevation.grid);
+	bool offices = HoldsOffices(elevation.grid) || hall;
 	bool lit_storey = offices && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
 	bool blinded_storey = offices && Roll(storey, seed, ROLL_BLIND) < BLINDED_STOREY_SHARE;
 	float lit = LampShare(bay.opening.kind == OPEN_SHOP ? LIT_SHOP_SHARE : lit_storey ? LIT_IN_LIT_STOREY : LIT_ROOM_SHARE);
 	Room room;
-	room.window = bay.window;
+	room.window = hall ? storey : bay.window;
 	room.seed = seed;
 	room.offices = offices;
 	room.kind = RoomKind(bay, elevation.grid, seed, offices);
-	room.tone = mix(ROOM_TONES.x, ROOM_TONES.y, Roll(bay.window, seed, ROLL_TONE)) * (Landscape() == LANDSCAPE_TROPIC ? TROPIC_ROOM_SHADE : 1.0);
-	room.lamp = Roll(bay.window, seed, ROLL_LAMP) < lit ? LampPaint(bay.window, seed, offices) * LAMP_LIGHT : vec3(0.0);
-	room.drop = Chosen(Roll(bay.window, seed, ROLL_BLIND), blinded_storey ? BLINDED_IN_STOREY : BLINDED_ROOM_SHARE, BLIND_DROPS);
+	room.tone = mix(ROOM_TONES.x, ROOM_TONES.y, Roll(room.window, seed, ROLL_TONE)) * (Landscape() == LANDSCAPE_TROPIC ? TROPIC_ROOM_SHADE : 1.0);
+	room.lamp = Roll(room.window, seed, ROLL_LAMP) < lit ? LampPaint(room.window, seed, offices) * LAMP_LIGHT : vec3(0.0);
+	room.drop = hall ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_BLIND), blinded_storey ? BLINDED_IN_STOREY : BLINDED_ROOM_SHARE, BLIND_DROPS);
 	room.drawn = offices ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
 	return room;
 }
