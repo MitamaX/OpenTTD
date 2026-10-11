@@ -32,11 +32,19 @@ const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 const float WALL_BLOTCHES = 2.2;
 const float WALL_VARIETY = 0.18;
 const float WALL_STREAK_DEPTH = 0.3;
+const float CONCRETE_STREAK_DEPTH = 0.8;
 const float GRIME_HEIGHT = 0.18;
 const float GRIME_SHADE = 0.75;
 const float GRIME_RAGS = 9.0;
 const float GRIME_RAGGED = 0.08;
 const float GRIME_SEED = 2.9;
+const float PANEL_JOINT_SHADE = 0.3;
+const vec2 CONCRETE_PANELS = vec2(4.0, 8.0);
+const float CONCRETE_JOINT = 0.06;
+const float CONCRETE_PANEL_VARIETY = 0.2;
+const float CONCRETE_ROUGHNESS = 0.85;
+const float CONCRETE_GRAIN = 47.0;
+const float CONCRETE_GRAIN_VARIETY = 0.16;
 const float FLAT_ROOF_VARIETY = 0.12;
 const float CLAY_TILE_VARIETY = 0.14;
 const float SLATE_VARIETY = 0.16;
@@ -186,12 +194,12 @@ vec3 PondStains(vec2 p)
 	return mix(vec3(1.0), POND_STAIN, ponds);
 }
 
-vec3 Grimed(vec2 p, vec3 tint)
+vec3 Grimed(vec2 p, vec3 tint, float streak_depth)
 {
 	if (!Weathers()) return tint;
 	float ragged = (Faded(vec2(p.x * GRIME_RAGS, 0.0), GRIME_SEED, vec2(0.0, 1.0), 0.5) - 0.5) * GRIME_RAGGED;
 	float splashed = 1.0 - smoothstep(0.0, GRIME_HEIGHT, p.y + ragged);
-	return Stained(p, tint, WALL_BLOTCHES, WALL_VARIETY, WALL_STREAK_DEPTH) * mix(1.0, GRIME_SHADE, splashed);
+	return Stained(p, tint, WALL_BLOTCHES, WALL_VARIETY, streak_depth) * mix(1.0, GRIME_SHADE, splashed);
 }
 
 /* Overlapping courses, each shaded under the one above it and lit along its own lower edge. */
@@ -238,12 +246,18 @@ Clad Membrane(vec2 p, vec3 tint)
 	return clad;
 }
 
-Clad Panelled(vec2 p, vec3 tint, vec2 panels, float joint, float roughness)
+Clad Panelled(vec2 p, Clad clad, vec2 panels, float joint)
 {
 	float joints = max(Lines(p.x * panels.x, joint), Lines(p.y * panels.y, joint));
-	Clad clad = Mottled(p, tint, 9.0, 0.08, roughness);
-	clad.albedo *= 1.0 - 0.3 * joints;
+	clad.albedo *= 1.0 - PANEL_JOINT_SHADE * joints;
 	return clad;
+}
+
+Clad Precast(vec2 p, vec3 tint)
+{
+	vec2 panel = p * CONCRETE_PANELS;
+	vec3 cast = tint * UnitVaried(panel, CONCRETE_PANEL_VARIETY, Sharpness(panel));
+	return Panelled(p, Mottled(p, cast, CONCRETE_GRAIN, CONCRETE_GRAIN_VARIETY, CONCRETE_ROUGHNESS), CONCRETE_PANELS, CONCRETE_JOINT);
 }
 
 Clad Ribbed(vec2 p, vec3 tint, float frequency, float depth, float roughness)
@@ -360,7 +374,7 @@ bool Grimes(uint material)
 vec3 Walled(uint material, vec2 p, vec3 albedo, float upright)
 {
 	vec3 walled = albedo * Plinth(material, p);
-	if (Grimes(material)) walled = Grimed(p, walled);
+	if (Grimes(material)) walled = Grimed(p, walled, material == CLAD_CONCRETE ? CONCRETE_STREAK_DEPTH : WALL_STREAK_DEPTH);
 	return mix(albedo, walled, step(UPRIGHT_WALL, upright));
 }
 
@@ -400,11 +414,11 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_STONE: return Coursed(p, tint, vec2(16.0, 32.0), 0.1, 0.12, mortar);
 		case CLAD_FOUNDATION: return Coursed(p, tint * 0.9, vec2(12.0, 24.0), 0.1, 0.25, mortar * 0.8);
 		case CLAD_RENDER: return Mottled(p, tint, 14.0, 0.07, 0.9);
-		case CLAD_CONCRETE: return Panelled(p, tint, vec2(6.0, 8.0), 0.03, 0.85);
+		case CLAD_CONCRETE: return Precast(p, tint);
 		case CLAD_TIMBER: return Boarded(p, tint, 56.0, 0.85);
 		case CLAD_PLANKS: return Planked(p, tint, 36.0);
 		case CLAD_CORRUGATED: return Ribbed(p, tint, 70.0, 0.35, 0.35);
-		case CLAD_METAL: return Panelled(p, tint, vec2(9.0, 0.0), 0.04, 0.3);
+		case CLAD_METAL: return Panelled(p, Mottled(p, tint, 9.0, 0.08, 0.3), vec2(9.0, 0.0), 0.04);
 		case CLAD_GLASS: return Glazed(p, tint, vec2(12.0, 10.0), 0.08);
 		case CLAD_LATTICE: return Matte(tint, 0.5);
 		case CLAD_CLAY_TILE: return Tiled(p, aged, vec2(34.0, 42.0), CLAY_TILE_VARIETY, 0.7, 0.3);
