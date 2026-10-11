@@ -26,9 +26,11 @@ inline constexpr int FINE_RELIEF_DIVISIONS = 2;
 inline constexpr double RELIEF_CELL_PIXELS = 32.0;
 inline constexpr double FINE_RELIEF_PIXELS = RELIEF_CELL_PIXELS * FINE_RELIEF_DIVISIONS;
 inline constexpr double FINE_RELIEF_LEAD = 1.4;
-inline constexpr double FINE_RELIEF_LAG = 2.0;
+inline constexpr double FINE_RELIEF_LAG = 1.25;
+inline constexpr double FINE_RELIEF_MOVING_LAG = 2.0;
 inline constexpr double FINE_RELIEF_CHOSEN_PIXELS = FINE_RELIEF_PIXELS / FINE_RELIEF_LEAD;
 inline constexpr double FINE_RELIEF_KEPT_PIXELS = FINE_RELIEF_CHOSEN_PIXELS / FINE_RELIEF_LAG;
+inline constexpr double FINE_RELIEF_MOVING_KEPT_PIXELS = FINE_RELIEF_CHOSEN_PIXELS / FINE_RELIEF_MOVING_LAG;
 
 class Landform {
 public:
@@ -90,7 +92,7 @@ public:
 
 	double Level(double x, double y) const override { return this->relief.Level(x, y); }
 	bool Curves() const override { return true; }
-	int Divisions(double tile_pixels) const override { return tile_pixels >= FINE_RELIEF_KEPT_PIXELS ? FINE_RELIEF_DIVISIONS : 1; }
+	int Divisions(double tile_pixels) const override { return tile_pixels >= FINE_RELIEF_MOVING_KEPT_PIXELS ? FINE_RELIEF_DIVISIONS : 1; }
 
 private:
 	std::shared_ptr<const Landform> land;

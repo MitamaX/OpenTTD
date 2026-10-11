@@ -88,6 +88,7 @@ private:
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
 	std::pair<Vec3, Vec3> Bounds(size_t index);
 	GroundGrain GrainOf(const Nearby &near, const SceneView &camera, double nearest_pixels) const;
+	double KeptPixels() const;
 	BlockTiles FineTiles(const Nearby &near, const SceneView &camera, double nearest_pixels) const;
 	double Distance(size_t index, const Vec3 &eye) const;
 	void Build(size_t index, GroundGrain grain);
@@ -103,6 +104,8 @@ private:
 	std::vector<Due> due;
 	std::vector<Nearby> nearby;
 	uint64_t frame = 0;
+	Vec3 last_eye{};
+	bool moving = false;
 };
 
 #endif /* MINI_WORLD_TERRAIN_FIELD_H */
