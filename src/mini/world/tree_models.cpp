@@ -28,6 +28,18 @@ static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 static constexpr double TAU = 2.0 * std::numbers::pi;
 static constexpr double FOOT = -0.06;
 
+/* How many sides, rings or points a part is built with up close and further off. */
+struct DetailCount {
+	int full;
+	int simple;
+
+	int At(TreeDetail detail) const { return detail == TreeDetail::Full ? this->full : this->simple; }
+};
+
+static constexpr DetailCount TRUNK_SIDES = {6, 4};
+static constexpr int SPINDLE_SIDES = 5;
+static constexpr int NARROW_SPINDLE_SIDES = 4;
+
 static constexpr double FACET_SPREAD = 0.07;
 static constexpr double CANOPY_ROUNDING = 0.45;
 static constexpr double SOFT_CANOPY_ROUNDING = 0.6;
@@ -54,6 +66,7 @@ static constexpr double LIMB_SKIP = 0.04;
 
 static constexpr SeedRange CONIFER_GIRTH = {0.9, 1.1};
 static constexpr SeedRange CONIFER_TRUNK = {0.02, 0.012};
+static constexpr DetailCount CONIFER_TRUNK_SIDES = {5, 4};
 static constexpr double CONIFER_TRUNK_TOP = 0.2;
 static constexpr uint32_t CONIFER_DEEP_GREEN = 0x2C5A44;
 static constexpr uint CONIFER_DEEP_SHARE = 110;
@@ -70,8 +83,11 @@ static constexpr double PALM_UNDERSIDE = 0.12;
 static constexpr double PALM_TOP = 0.06;
 static constexpr double PALM_TRUNK = 0.02;
 static constexpr double PALM_TRUNK_TAPER = 0.3;
+static constexpr DetailCount PALM_TRUNK_RINGS = {6, 3};
 static constexpr double PALM_SPREAD = 0.19;
 static constexpr int PALM_FRONDS_FEWEST = 7;
+static constexpr int PALM_EXTRA_FRONDS = 2;
+static constexpr int PALM_SIMPLE_FRONDS = 5;
 static constexpr Vec3 PALM_NUTS = {0.03, 0.03, 0.025};
 static constexpr SeedRange FROND_SCATTER = {-0.2, 0.2};
 static constexpr SeedRange FROND_LENGTH = {0.17, 0.22};
@@ -81,11 +97,14 @@ static constexpr double FROND_WIDEST = 0.8;
 static constexpr double FROND_RIB = 0.004;
 static constexpr double FROND_ARCH = 0.06;
 static constexpr double FROND_FOLD = 0.25;
+static constexpr DetailCount FROND_POINTS = {5, 3};
 
 static constexpr SeedRange CACTUS_HEIGHT = {0.24, 0.3};
 static constexpr double CACTUS_FOOT = -0.04;
 static constexpr double CACTUS_RADIUS = 0.034;
 static constexpr double CACTUS_DOME = 0.05;
+static constexpr DetailCount CACTUS_STEM_SIDES = {8, 5};
+static constexpr DetailCount CACTUS_ARM_SIDES = {6, 4};
 /* The stem's rings as radius and depth below its top; its foot stands in the ground. */
 static constexpr std::array<LatheRing, 5> CACTUS_STEM = {{{0.032, 0.0}, {0.035, 0.09}, {0.03, 0.04}, {0.018, 0.01}, {0.0, 0.0}}};
 static constexpr double CACTUS_ARM_RADIUS = 0.02;
@@ -109,6 +128,7 @@ static constexpr int TOY_GUMDROPS = 3;
 static constexpr double TOY_GUMDROP_HEIGHT = 0.1;
 static constexpr double TOY_GUMDROP_TAPER = 0.75;
 static constexpr double TOY_GUMDROP_STEP = 0.2;
+static constexpr DetailCount TOY_GUMDROP_SIDES = {8, 5};
 static constexpr double TOY_CUBE_HALF = 0.09;
 static constexpr uint8_t TOY_FORMS = 3;
 
@@ -370,15 +390,15 @@ static void Canopy(TreeBuilder &tree, TreeDetail detail, const CrownHabit &habit
 	double trunk_top = base + TRUNK_INSET;
 	switch (detail) {
 		case TreeDetail::Full:
-			tree.Trunk(6, habit.trunk, trunk_top, lean);
+			tree.Trunk(TRUNK_SIDES.full, habit.trunk, trunk_top, lean);
 			tree.Leaves(Clusters(tree, habit, crown, lean + Vec3{0.0, 0.0, trunk_top}), crown);
 			break;
 		case TreeDetail::Simple:
-			tree.Trunk(4, habit.trunk, trunk_top, lean);
+			tree.Trunk(TRUNK_SIDES.simple, habit.trunk, trunk_top, lean);
 			tree.Leaves(tree.Lump(crown.centre, habit.hull, 0, MASS_ROUGHNESS), crown);
 			break;
 		default:
-			tree.Spindle({{habit.trunk.low, FOOT}, {habit.trunk.low, base}, {habit.hull.x, crown.centre.z}, {0.0, crown.top}}, 5, base, LEAF_TRANSLUCENCY);
+			tree.Spindle({{habit.trunk.low, FOOT}, {habit.trunk.low, base}, {habit.hull.x, crown.centre.z}, {0.0, crown.top}}, SPINDLE_SIDES, base, LEAF_TRANSLUCENCY);
 			break;
 	}
 }
@@ -405,7 +425,7 @@ static void Conifer(TreeBuilder &tree, TreeDetail detail, const ConiferHabit &ha
 	Crown crown = {{0.0, 0.0, (habit.boughs + top) * 0.5}, habit.boughs, top, radius};
 	switch (detail) {
 		case TreeDetail::Full: {
-			tree.Trunk(5, CONIFER_TRUNK, std::max(habit.boughs, CONIFER_TRUNK_TOP));
+			tree.Trunk(CONIFER_TRUNK_SIDES.full, CONIFER_TRUNK, std::max(habit.boughs, CONIFER_TRUNK_TOP));
 			int tiers = habit.tiers + static_cast<int>(dice.Below(habit.extra_tiers + 1));
 			for (int tier = 0; tier < tiers; tier++) {
 				double share = static_cast<double>(tier) / tiers;
@@ -419,11 +439,11 @@ static void Conifer(TreeBuilder &tree, TreeDetail detail, const ConiferHabit &ha
 			break;
 		}
 		case TreeDetail::Simple:
-			tree.Trunk(4, CONIFER_TRUNK, habit.boughs);
+			tree.Trunk(CONIFER_TRUNK_SIDES.simple, CONIFER_TRUNK, habit.boughs);
 			tree.Leaves(Skirt(habit, std::max(habit.tips / 2, CONIFER_SIMPLE_TIPS), radius, top - habit.boughs).Transform(Mat4::Translation({0.0, 0.0, habit.boughs})), crown);
 			break;
 		default:
-			tree.Spindle({{CONIFER_TRUNK.low, FOOT}, {CONIFER_TRUNK.low, habit.boughs}, {radius, habit.boughs}, {0.0, top}}, 4, habit.boughs, LEAF_TRANSLUCENCY);
+			tree.Spindle({{CONIFER_TRUNK.low, FOOT}, {CONIFER_TRUNK.low, habit.boughs}, {radius, habit.boughs}, {0.0, top}}, NARROW_SPINDLE_SIDES, habit.boughs, LEAF_TRANSLUCENCY);
 			break;
 	}
 }
@@ -452,25 +472,25 @@ static void Palm(TreeBuilder &tree, TreeDetail detail)
 	Vec3 crown_at = {lean, 0.0, height};
 	Crown crown = {crown_at, height - PALM_UNDERSIDE, height + PALM_TOP};
 	if (detail == TreeDetail::Crude) {
-		tree.Spindle({{PALM_TRUNK, FOOT}, {PALM_TRUNK, crown.underside}, {PALM_SPREAD, height}, {0.0, crown.top}}, 5, crown.underside, FROND_TRANSLUCENCY);
+		tree.Spindle({{PALM_TRUNK, FOOT}, {PALM_TRUNK, crown.underside}, {PALM_SPREAD, height}, {0.0, crown.top}}, SPINDLE_SIDES, crown.underside, FROND_TRANSLUCENCY);
 		return;
 	}
 
 	bool full = detail == TreeDetail::Full;
-	int rings = full ? 6 : 3;
+	int rings = PALM_TRUNK_RINGS.At(detail);
 	std::vector<SweepPoint> spine;
 	for (int ring = 0; ring < rings; ring++) {
 		double share = static_cast<double>(ring) / (rings - 1);
 		spine.push_back({{lean * share * share, 0.0, FOOT + (height - FOOT) * share}, 1.0 - PALM_TRUNK_TAPER * share});
 	}
-	tree.Wood(Sweep(Circle(PALM_TRUNK, full ? 6 : 4), true, spine, {0.0, 1.0, 0.0}), height);
+	tree.Wood(Sweep(Circle(PALM_TRUNK, TRUNK_SIDES.At(detail)), true, spine, {0.0, 1.0, 0.0}), height);
 
-	int fronds = full ? PALM_FRONDS_FEWEST + static_cast<int>(dice.Below(3)) : PALM_FRONDS_FEWEST - 2;
+	int fronds = full ? PALM_FRONDS_FEWEST + static_cast<int>(dice.Below(PALM_EXTRA_FRONDS + 1)) : PALM_SIMPLE_FRONDS;
 	double turn = dice.Between(0.0, TAU);
 	ModelMesh leaves;
 	for (int frond = 0; frond < fronds; frond++) {
 		double angle = turn + TAU * frond / fronds + dice.Between(FROND_SCATTER);
-		leaves.Append(Frond(crown_at, angle, dice.Between(FROND_LENGTH), dice.Between(FROND_DROOP), full ? 5 : 3, full));
+		leaves.Append(Frond(crown_at, angle, dice.Between(FROND_LENGTH), dice.Between(FROND_DROOP), FROND_POINTS.At(detail), full));
 	}
 	if (full) leaves.Append(tree.Lump(crown_at - Vec3{0.0, 0.0, PALM_NUTS.z * 0.6}, PALM_NUTS, 0, MASS_ROUGHNESS));
 	tree.Leaves(std::move(leaves), crown, FROND_TRANSLUCENCY);
@@ -497,22 +517,22 @@ static void Cactus(TreeBuilder &tree, TreeDetail detail)
 			std::array<LatheRing, CACTUS_STEM.size()> stem;
 			std::ranges::transform(CACTUS_STEM, stem.begin(), [&](const LatheRing &ring) { return LatheRing{ring.radius, height - ring.z}; });
 			stem.front().z = CACTUS_FOOT;
-			ModelMesh flesh = Lathe(stem, 8);
+			ModelMesh flesh = Lathe(stem, CACTUS_STEM_SIDES.full);
 			int arms = 1 + static_cast<int>(dice.Below(2));
 			double turn = dice.Between(0.0, TAU);
-			for (int arm = 0; arm < arms; arm++) flesh.Append(CactusArm(turn + std::numbers::pi * arm + dice.Between(CACTUS_ARM_SCATTER), dice.Between(CACTUS_ARM_FROM), 6, true));
+			for (int arm = 0; arm < arms; arm++) flesh.Append(CactusArm(turn + std::numbers::pi * arm + dice.Between(CACTUS_ARM_SCATTER), dice.Between(CACTUS_ARM_FROM), CACTUS_ARM_SIDES.full, true));
 			tree.Leaves(std::move(flesh), crown, FLESH_TRANSLUCENCY);
 			tree.Leaves(tree.Lump({0.0, 0.0, height}, CACTUS_FLOWER, 0, MASS_ROUGHNESS), crown, tree.Tones().wood, FLESH_TRANSLUCENCY);
 			break;
 		}
 		case TreeDetail::Simple: {
-			ModelMesh flesh = Lathe(std::array<LatheRing, 3>{{{CACTUS_RADIUS, CACTUS_FOOT}, {CACTUS_RADIUS, height - CACTUS_DOME}, {0.0, height}}}, 5);
-			flesh.Append(CactusArm(dice.Between(0.0, TAU), CACTUS_ARM_FROM.low, 4, false));
+			ModelMesh flesh = Lathe(std::array<LatheRing, 3>{{{CACTUS_RADIUS, CACTUS_FOOT}, {CACTUS_RADIUS, height - CACTUS_DOME}, {0.0, height}}}, CACTUS_STEM_SIDES.simple);
+			flesh.Append(CactusArm(dice.Between(0.0, TAU), CACTUS_ARM_FROM.low, CACTUS_ARM_SIDES.simple, false));
 			tree.Leaves(std::move(flesh), crown, FLESH_TRANSLUCENCY);
 			break;
 		}
 		default:
-			tree.Spindle({{CACTUS_RADIUS, CACTUS_FOOT}, {CACTUS_RADIUS, height - CACTUS_DOME}, {0.0, height}}, 4, CACTUS_FOOT, FLESH_TRANSLUCENCY);
+			tree.Spindle({{CACTUS_RADIUS, CACTUS_FOOT}, {CACTUS_RADIUS, height - CACTUS_DOME}, {0.0, height}}, NARROW_SPINDLE_SIDES, CACTUS_FOOT, FLESH_TRANSLUCENCY);
 			break;
 	}
 }
@@ -524,12 +544,12 @@ static void Toy(TreeBuilder &tree, TreeDetail detail, uint8_t variant)
 	double crown_z = dice.Between(TOY_CROWN);
 	Crown crown = {{0.0, 0.0, crown_z}, crown_z - TOY_CANDY, crown_z + TOY_CANDY};
 	if (detail == TreeDetail::Crude) {
-		tree.Spindle({{TOY_STICK.low, FOOT}, {TOY_STICK.low, crown.underside}, {TOY_CANDY, crown_z}, {0.0, crown.top}}, 5, crown.underside, CANDY_TRANSLUCENCY);
+		tree.Spindle({{TOY_STICK.low, FOOT}, {TOY_STICK.low, crown.underside}, {TOY_CANDY, crown_z}, {0.0, crown.top}}, SPINDLE_SIDES, crown.underside, CANDY_TRANSLUCENCY);
 		return;
 	}
 
 	bool full = detail == TreeDetail::Full;
-	tree.Trunk(full ? 6 : 4, TOY_STICK, crown.underside + TOY_STICK_INSET);
+	tree.Trunk(TRUNK_SIDES.At(detail), TOY_STICK, crown.underside + TOY_STICK_INSET);
 	switch (variant % TOY_FORMS) {
 		case 0:
 			tree.Leaves(tree.Lump(crown.centre, TOY_LOLLIPOP, full ? 1 : 0, 0.0), crown, CANDY_TRANSLUCENCY);
@@ -540,7 +560,7 @@ static void Toy(TreeBuilder &tree, TreeDetail detail, uint8_t variant)
 			for (int drop = 0; drop < drops; drop++) {
 				double share = static_cast<double>(drop) / drops;
 				double height = full ? TOY_GUMDROP_HEIGHT : crown.top - crown.underside;
-				stack.Append(Cone(full ? 8 : 5, TOY_CANDY * (1.0 - share * TOY_GUMDROP_TAPER), height).Transform(Mat4::Translation({0.0, 0.0, crown.underside + share * TOY_GUMDROP_STEP})));
+				stack.Append(Cone(TOY_GUMDROP_SIDES.At(detail), TOY_CANDY * (1.0 - share * TOY_GUMDROP_TAPER), height).Transform(Mat4::Translation({0.0, 0.0, crown.underside + share * TOY_GUMDROP_STEP})));
 			}
 			tree.Leaves(std::move(stack), crown, CANDY_TRANSLUCENCY);
 			break;
