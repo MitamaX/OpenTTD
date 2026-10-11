@@ -93,10 +93,13 @@ float SunnyPitch(vec3 normal)
 	return smoothstep(SUNNY_PITCH_EDGES.x, SUNNY_PITCH_EDGES.y, dot(normal.xy, normalize(SunDirection().xy)));
 }
 
-float SnowDepth(vec2 drift, float sunny)
+float SnowLying()
 {
-	float lying = clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * SNOW_LINE_PER_TILE) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
-	if (lying <= 0.0) return lying - SNOW_SETTLES;
+	return clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * SNOW_LINE_PER_TILE) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
+}
+
+float SnowDepth(vec2 drift, float lying, float sunny)
+{
 	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying) * lying;
 	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Layered(drift, SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
 	float thawed = smoothstep(THAW_EDGES.x, THAW_EDGES.y, Layered(drift, THAWS_PER_TILE)) * THAW_DEPTH * sunny;
@@ -108,9 +111,11 @@ Clad Snowed(Clad clad, vec3 normal)
 {
 	float upward = smoothstep(SNOW_FACING_EDGES.x, SNOW_FACING_EDGES.y, normal.z);
 	if (Landscape() != LANDSCAPE_ARCTIC || upward <= 0.0) return clad;
+	float lying = SnowLying();
+	if (lying <= 0.0) return clad;
 	vec2 drift = DriftPoint(normal);
 	float sunny = SunnyPitch(normal);
-	float depth = SnowDepth(drift, sunny);
+	float depth = SnowDepth(drift, lying, sunny);
 	float soft = max(SNOW_EDGE_SOFTNESS, SNOW_PATCHES_PER_TILE / tile_pixels);
 	float cover = smoothstep(-soft, soft, depth) * upward;
 	float buried = smoothstep(0.0, SNOW_BURIES, depth - SUNNY_THINNING * sunny);
