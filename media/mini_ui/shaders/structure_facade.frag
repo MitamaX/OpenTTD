@@ -18,7 +18,8 @@ Outlook OutlookOf(mat3 frame)
 
 void main()
 {
-	DropUnseen(v_position, v_surface.x, v_pattern);
+	tile_pixels = TilePixelsAt(v_position);
+	DropUnseen(tile_pixels, v_surface.x, v_pattern);
 	mat3 frame = FaceFrame();
 	Clad wall = Worn(v_surface.x == CLAD_GLASS ? Spandrel(v_colour.rgb) : CladOf(v_surface.x, v_pattern, v_colour.rgb), frame);
 	Clad clad = Facade(wall, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_seed, OutlookOf(frame));

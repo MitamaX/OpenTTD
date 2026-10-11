@@ -4,5 +4,5 @@ flat in uvec4 v_surface;
 
 void main()
 {
-	DropUnseen(v_position, v_surface.x, v_pattern);
+	DropUnseen(TilePixelsAt(v_position), v_surface.x, v_pattern);
 }

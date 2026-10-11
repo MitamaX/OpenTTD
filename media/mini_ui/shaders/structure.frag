@@ -1,7 +1,8 @@
 /* Buildings fade out dithered where they grow too small to show, and far off the sun's highlight spreads matte over a roof too small to make out. */
 void main()
 {
-	DropUnseen(v_position, v_surface.x, v_pattern);
+	tile_pixels = TilePixelsAt(v_position);
+	DropUnseen(tile_pixels, v_surface.x, v_pattern);
 	mat3 frame = FaceFrame();
 	Clad clad = Worn(CladOf(v_surface.x, v_pattern, v_colour.rgb), frame);
 	if (Has(SURFACE_ROOF)) clad.albedo = Snowed(clad.albedo, frame[2]);
