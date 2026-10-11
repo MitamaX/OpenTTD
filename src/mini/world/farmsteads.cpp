@@ -358,8 +358,8 @@ void FieldBoundaries::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 	if (_settings_game.game_creation.landscape == LandscapeType::Toyland) return;
 	auto owns = [&](int tx, int ty) { return tx >= tiles.tx0 && tx <= tiles.tx1 && ty >= tiles.ty0 && ty <= tiles.ty1; };
 	Landform land(tiles);
-	for (int by = BlockOf(tiles.ty0 - 1); by <= BlockOf(tiles.ty1); by++) {
-		for (int bx = BlockOf(tiles.tx0 - 1); bx <= BlockOf(tiles.tx1); bx++) {
+	for (int by = BlockOf(tiles.ty0); by <= BlockOf(tiles.ty1); by++) {
+		for (int bx = BlockOf(tiles.tx0); bx <= BlockOf(tiles.tx1); bx++) {
 			std::optional<Paddock> paddock = PaddockIn(bx, by);
 			if (paddock.has_value()) Enclose(copies, land, *paddock, owns);
 		}
