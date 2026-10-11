@@ -31,7 +31,8 @@
 
 #include "../../safeguards.h"
 
-static constexpr int SURVEY_MARGIN = 1;
+static constexpr int TALUS_REACH = 2;
+static constexpr int SURVEY_MARGIN = TALUS_REACH;
 static constexpr int STONE_CELLS = 3;
 static constexpr double STONE_JITTER = 0.3;
 static constexpr double ROCKY_STONES = 0.75;
@@ -53,6 +54,10 @@ static constexpr double CRAG_RUN_SHARE = 0.7;
 static constexpr double BUTTRESS_SHARE = 0.35;
 static constexpr SeedRange CRAG_GROWTH = {0.8, 1.2};
 static constexpr double CRAG_YAW_JITTER = 0.25;
+static constexpr double TALUS_DROP = 0.75;
+static constexpr double TALUS_STONES = 0.8;
+static constexpr double TALUS_LEAN = 0.4;
+static constexpr double TALUS_GROWTH = 1.4;
 static constexpr uint32_t CRAG_SALT = 0x4F1BD2E9U;
 static constexpr uint32_t ROCK_SALT = 0x2C9E51A7U;
 static constexpr uint32_t GATHER_SALT = 0x6A1D0F3BU;
@@ -84,18 +89,33 @@ static constexpr std::array<RockPick, 3> OUTCROP_PICKS = {{
 	{RockModel::Boulder, 0.3},
 }};
 
+static constexpr std::array<RockPick, 4> TALUS_PICKS = {{
+	{RockModel::Block, 0.35},
+	{RockModel::Rubble, 0.35},
+	{RockModel::Boulder, 0.2},
+	{RockModel::Split, 0.1},
+}};
+
 struct BareTile {
 	double level;
 	MapVector climb;
 	GroundTexel ground;
 	bool holds;
 	double bare;
+	double crag;
+};
+
+struct Talus {
+	double share;
+	MapVector uphill;
 };
 
 struct StoneRule {
 	double chance;
 	std::span<const RockPick> picks;
 	bool layered;
+	MapVector lean;
+	double growth;
 };
 
 struct Crag {
@@ -137,6 +157,12 @@ static bool HoldsStones(int tx, int ty, const GroundTexel &ground)
 	}
 }
 
+static double CragShare(double bare, const MapVector &climb)
+{
+	double share = ExposedShare(bare, ROCK_EXPOSURE) * SmoothStep(CRAG_SLOPES.low, CRAG_SLOPES.high, Length(climb));
+	return share < CRAG_LEAST_SHARE ? 0.0 : share;
+}
+
 class RockSurvey {
 public:
 	explicit RockSurvey(const TileSpan &tiles) :
@@ -153,11 +179,11 @@ private:
 		if (!OnMap(tx, ty)) return {};
 		TileIndex index = TileXY(tx, ty);
 		GroundTexel ground = _world_tiles.GroundAt(index);
-		if (!HoldsStones(tx, ty, ground)) return {0.0, {}, ground, false, 0.0};
 		SurfaceTexel surface = _world_tiles.SurfaceAt(index);
 		double level = MiddleLevel(surface);
 		MapVector climb = CornerClimb(surface);
-		return {level, climb, ground, true, BareShare(SteepShare(Length(climb)), AltitudeShare(level), BlanketDepth(ground))};
+		double bare = BareShare(SteepShare(Length(climb)), AltitudeShare(level), BlanketDepth(ground));
+		return {level, climb, ground, HoldsStones(tx, ty, ground), bare, CragShare(bare, climb)};
 	}
 
 	Landform land;
@@ -197,15 +223,33 @@ static RockLook LookOf(uint32_t family, const BareTile &tile, SeedDice &dice)
 	return {body, Mix(body, LITTER_MOSS_TONE, MixShare(moss))};
 }
 
-static StoneRule RuleOf(const BareTile &tile)
+static Talus TalusOf(const RockSurvey &survey, const BareTile &home, int tx, int ty)
+{
+	Talus talus = {0.0, {}};
+	for (int dy = -TALUS_REACH; dy <= TALUS_REACH; dy++) {
+		for (int dx = -TALUS_REACH; dx <= TALUS_REACH; dx++) {
+			double distance = std::hypot(dx, dy);
+			if (distance == 0.0 || distance > TALUS_REACH) continue;
+			BareTile source = survey.At(tx + dx, ty + dy);
+			if (source.crag <= 0.0 || source.level - home.level < TALUS_DROP) continue;
+			double share = source.crag * (1.0 - distance / (TALUS_REACH + 1));
+			if (share > talus.share) talus = {share, MapVector{static_cast<double>(dx), static_cast<double>(dy)} * (1.0 / distance)};
+		}
+	}
+	talus.share *= 1.0 - SteepShare(Length(home.climb));
+	return talus;
+}
+
+static StoneRule RuleOf(const BareTile &tile, const Talus &talus)
 {
 	bool rocky = tile.ground.material == GroundMaterial::Rocks;
 	bool rough = tile.ground.material == GroundMaterial::Rough;
-	std::array<StoneRule, 4> rules = {{
-		{rocky ? ROCKY_STONES : 0.0, ROCKY_PICKS, false},
-		{rough ? ROUGH_STONES : 0.0, ROCKY_PICKS, false},
-		{ExposedShare(tile.bare, SCREE_EXPOSURE) * SCREE_STONES, SCREE_PICKS, true},
-		{ExposedShare(tile.bare, ROCK_EXPOSURE) * OUTCROP_STONES, OUTCROP_PICKS, true},
+	std::array<StoneRule, 5> rules = {{
+		{rocky ? ROCKY_STONES : 0.0, ROCKY_PICKS, false, {}, 1.0},
+		{rough ? ROUGH_STONES : 0.0, ROCKY_PICKS, false, {}, 1.0},
+		{ExposedShare(tile.bare, SCREE_EXPOSURE) * SCREE_STONES, SCREE_PICKS, true, {}, 1.0},
+		{ExposedShare(tile.bare, ROCK_EXPOSURE) * OUTCROP_STONES, OUTCROP_PICKS, true, {}, 1.0},
+		{talus.share * TALUS_STONES, TALUS_PICKS, true, talus.uphill * (TALUS_LEAN * STONE_CELLS), std::lerp(1.0, TALUS_GROWTH, talus.share)},
 	}};
 	return *std::ranges::max_element(rules, {}, &StoneRule::chance);
 }
@@ -236,15 +280,10 @@ static int FirstBedFrom(double bedding)
 	return static_cast<int>(std::ceil(bedding / CRAG_BED_STRIDE)) * CRAG_BED_STRIDE;
 }
 
-static double CragShare(const BareTile &tile)
-{
-	double share = ExposedShare(tile.bare, ROCK_EXPOSURE) * SmoothStep(CRAG_SLOPES.low, CRAG_SLOPES.high, Length(tile.climb));
-	return share < CRAG_LEAST_SHARE ? 0.0 : share;
-}
-
-static std::vector<Crag> CragsOf(const BareTile &tile, double share, int tx, int ty, bool hemmed)
+static std::vector<Crag> CragsOf(const BareTile &tile, int tx, int ty, bool hemmed)
 {
 	std::vector<Crag> crags;
+	double share = tile.crag;
 	if (share <= 0.0) return crags;
 	double slope = Length(tile.climb);
 	MapVector rise = tile.climb * StrataPerLevel() + STRATA_DIP;
@@ -283,14 +322,16 @@ static void StrewStones(const LaidGround &ground, const BareTile &tile, const St
 {
 	uint32_t base = TileXY(tx, ty).base();
 	SeedDice dice(Hash32(ROCK_SALT ^ base));
+	MapVector middle = {tx + 0.5, ty + 0.5};
 	for (int cell = 0; cell < STONE_CELLS * STONE_CELLS; cell++) {
 		MapVector at = {tx + (cell % STONE_CELLS + 0.5 + dice.Between(-STONE_JITTER, STONE_JITTER)) / STONE_CELLS, ty + (cell / STONE_CELLS + 0.5 + dice.Between(-STONE_JITTER, STONE_JITTER)) / STONE_CELLS};
 		double chance = dice.Share();
 		RockModel model = Picked(rule.picks, dice.Share());
 		RockFit fit = FitOf(model);
-		double radius = std::min(dice.Between(fit.radius), MOST_CELL_SHARE / STONE_CELLS);
+		double radius = std::min(dice.Between(fit.radius), MOST_CELL_SHARE / STONE_CELLS) * rule.growth;
 		double yaw = AnyBearing(dice);
-		if (chance >= rule.chance * Gathering(at) || UnderCrag(at, crags)) continue;
+		double leaning = 1.0 + Dot(at - middle, rule.lean);
+		if (chance >= rule.chance * leaning * Gathering(at) || UnderCrag(at, crags)) continue;
 		if (hemmed) at = Inset(at, tx, ty, fit.Farthest() * radius);
 		WorldPoint seat = ground.At(at);
 		uint32_t family = rule.layered ? static_cast<uint32_t>(static_cast<int>(std::floor(BeddingOf(at, seat.level)))) : base;
@@ -298,7 +339,7 @@ static void StrewStones(const LaidGround &ground, const BareTile &tile, const St
 	}
 }
 
-Rockfall::Rockfall() : BlockScatter(ROCK_MODELS, LANDFORM_REACH, OPEN_LAND_READS | ChangeKind::Flora | ChangeKind::Relief, ROCK_BLOCK_MARGIN)
+Rockfall::Rockfall() : BlockScatter(ROCK_MODELS, LANDFORM_REACH + TALUS_REACH, OPEN_LAND_READS | ChangeKind::Flora | ChangeKind::Relief, ROCK_BLOCK_MARGIN)
 {
 }
 
@@ -310,11 +351,10 @@ void Rockfall::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			BareTile tile = survey.At(tx, ty);
 			if (!tile.holds) continue;
-			StoneRule rule = RuleOf(tile);
-			double crag_share = CragShare(tile);
-			if (rule.chance <= 0.0 && crag_share <= 0.0) continue;
+			StoneRule rule = RuleOf(tile, TalusOf(survey, tile, tx, ty));
+			if (rule.chance <= 0.0 && tile.crag <= 0.0) continue;
 			bool hemmed = !ClearAround(tx, ty, 1);
-			std::vector<Crag> crags = CragsOf(tile, crag_share, tx, ty, hemmed);
+			std::vector<Crag> crags = CragsOf(tile, tx, ty, hemmed);
 			LaidGround ground(survey.Land(), tx, ty);
 			RaiseCrags(ground, tile, crags, copies);
 			StrewStones(ground, tile, rule, crags, tx, ty, hemmed, copies);
