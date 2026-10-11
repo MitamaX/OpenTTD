@@ -57,6 +57,7 @@ static constexpr double WING_LEAST_RISE = 0.05;
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int LEAST_SHORE_DIVISIONS = 2;
 static constexpr int BANK_EXTRA_DIVISIONS = 1;
+static constexpr int NO_SHORE_CUTS = 0;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -267,13 +268,6 @@ static OpenSides OpenSidesOf(const TileSpan &block, const TileSpan &area)
 	};
 }
 
-template <class CutApart>
-static OpenSides ReliefSidesOf(const TileSpan &block, int tx, int ty, CutApart cut_apart)
-{
-	OpenSides open = OpenSidesOf(block, {tx, ty, tx, ty});
-	return {open.low_x || cut_apart(tx - 1, ty), open.high_x || cut_apart(tx + 1, ty), open.low_y || cut_apart(tx, ty - 1), open.high_y || cut_apart(tx, ty + 1)};
-}
-
 static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, size_t columns, const OpenSides &open, double drop)
 {
 	size_t rows = grid.size() / columns;
@@ -288,10 +282,34 @@ static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, si
 	}
 }
 
-static int ReliefDivisionsOf(const LaidGround &laid, int grained)
+static int ShoreCutsOf(const Landform &land, int grained, int tx, int ty)
 {
-	if (laid.Rolls()) return grained;
+	if (!OnMap(tx, ty) || IsRiverside(tx, ty)) return NO_SHORE_CUTS;
+	LaidGround laid(land, tx, ty);
+	if (laid.Rolls()) return NO_SHORE_CUTS;
+	if (laid.Relief() == nullptr) return WaterFormOf(tx, ty) == WaterForm::Open ? LEAST_SHORE_DIVISIONS : NO_SHORE_CUTS;
 	return std::max(grained + (laid.Banked() ? BANK_EXTRA_DIVISIONS : 0), LEAST_SHORE_DIVISIONS);
+}
+
+int TerrainBuild::ShoreCuts(int tx, int ty) const
+{
+	return this->shore_cuts.At(tx, ty, [this](int x, int y) { return ShoreCutsOf(this->land, this->DivisionsOf(x, y), x, y); });
+}
+
+static bool CutApart(int cuts, int other)
+{
+	return cuts != NO_SHORE_CUTS && other != NO_SHORE_CUTS && cuts != other;
+}
+
+template <class Apart>
+static OpenSides SkirtedSides(const TileSpan &block, int tx, int ty, const Apart &apart)
+{
+	OpenSides sides = OpenSidesOf(block, {tx, ty, tx, ty});
+	sides.low_x = sides.low_x || apart(tx - 1, ty);
+	sides.high_x = sides.high_x || apart(tx + 1, ty);
+	sides.low_y = sides.low_y || apart(tx, ty - 1);
+	sides.high_y = sides.high_y || apart(tx, ty + 1);
+	return sides;
 }
 
 void TerrainBuild::AddTile(int tx, int ty)
@@ -315,10 +333,11 @@ void TerrainBuild::AddTile(int tx, int ty)
 	}
 	LaidGround laid(this->land, tx, ty);
 	if (const TileRelief *relief = laid.Relief(); relief != nullptr) {
-		int divisions = ReliefDivisionsOf(laid, this->DivisionsOf(tx, ty));
+		int cuts = this->ShoreCuts(tx, ty);
+		int divisions = cuts == NO_SHORE_CUTS ? this->DivisionsOf(tx, ty) : cuts;
 		std::vector<uint32_t> grid = AddRelief(mesh, *relief, corners, tx, ty, divisions);
-		OpenSides open = laid.Rolls() ? ReliefSidesOf(this->tiles, tx, ty, [&](int nx, int ny) { return this->CutApart(tx, ty, nx, ny); }) : OpenSidesOf(this->tiles, {tx, ty, tx, ty});
-		SkirtOpenSides(mesh, grid, divisions + 1, open, RELIEF_SKIRT_LEVELS);
+		OpenSides skirted = SkirtedSides(this->tiles, tx, ty, [&](int nx, int ny) { return cuts == NO_SHORE_CUTS ? this->RollingApart(tx, ty, nx, ny) : CutApart(cuts, this->ShoreCuts(nx, ny)); });
+		SkirtOpenSides(mesh, grid, divisions + 1, skirted, RELIEF_SKIRT_LEVELS);
 		return;
 	}
 	if (WaterFormOf(tx, ty) == WaterForm::Open) {
@@ -330,10 +349,12 @@ void TerrainBuild::AddTile(int tx, int ty)
 
 int TerrainBuild::DivisionsOf(int tx, int ty) const
 {
-	return this->grain.fine[BlockBit(this->tiles, tx, ty)] ? FINE_RELIEF_DIVISIONS : 1;
+	int inside_x = std::clamp(tx, this->tiles.tx0, this->tiles.tx1);
+	int inside_y = std::clamp(ty, this->tiles.ty0, this->tiles.ty1);
+	return this->grain.fine[BlockBit(this->tiles, inside_x, inside_y)] ? FINE_RELIEF_DIVISIONS : 1;
 }
 
-bool TerrainBuild::CutApart(int tx, int ty, int nx, int ny) const
+bool TerrainBuild::RollingApart(int tx, int ty, int nx, int ny) const
 {
 	return this->tiles.Holds(nx, ny) && this->land.Bends(nx, ny) && this->DivisionsOf(nx, ny) != this->DivisionsOf(tx, ty);
 }
@@ -797,7 +818,8 @@ static void AddShelves(TerrainMesh &mesh, const Seabed &bed, std::span<const Map
 	}
 }
 
-TerrainBuild::TerrainBuild(const TileSpan &tiles, GroundGrain grain) : tiles(tiles), grain(grain), next_row(tiles.ty0), land(tiles), normals(tiles)
+TerrainBuild::TerrainBuild(const TileSpan &tiles, GroundGrain grain) :
+	tiles(tiles), grain(grain), next_row(tiles.ty0), land(tiles), normals(tiles), shore_cuts(tiles.tx0 - 1, tiles.ty0 - 1, tiles.tx1 - tiles.tx0 + 3, tiles.ty1 - tiles.ty0 + 3)
 {
 }
 

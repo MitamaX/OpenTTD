@@ -19,6 +19,7 @@
 #include "../core/camera.h"
 #include "../gpu/mesh_buffer.h"
 #include "hill_relief.h"
+#include "lazy_lattice.h"
 #include "seabed.h"
 
 /* Positions run in tiles and height levels; the normal is in render space and its last byte marks a wall, or how far below the water the ground has sunk. */
@@ -100,13 +101,15 @@ public:
 private:
 	void AddTile(int tx, int ty);
 	int DivisionsOf(int tx, int ty) const;
-	bool CutApart(int tx, int ty, int nx, int ny) const;
+	bool RollingApart(int tx, int ty, int nx, int ny) const;
+	int ShoreCuts(int tx, int ty) const;
 
 	TileSpan tiles;
 	GroundGrain grain;
 	int next_row;
 	Landform land;
 	CornerNormals normals;
+	LazyLattice<int> shore_cuts;
 	TerrainMesh mesh;
 };
 
