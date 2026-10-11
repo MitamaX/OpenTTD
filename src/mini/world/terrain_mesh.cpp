@@ -39,10 +39,6 @@
 
 static constexpr double SKIRT_LEVELS_PER_STEP = 2.0;
 static constexpr double RELIEF_SKIRT_LEVELS = 0.25;
-static constexpr double STEEP_BANK_RUN = 0.35;
-static constexpr double LONGEST_BANK_RUN = 1.0;
-static constexpr double LEAST_BANK_FALL = 0.25;
-static constexpr double BANK_PROBE = 0.25;
 static constexpr double EARTH_BANK_RUN_PER_RISE = 2.5;
 static constexpr double OPEN_EARTH_BANK_RUN = 1.0;
 static constexpr double FAR_EARTH_BANK_RUN = 2.0;
@@ -60,6 +56,7 @@ static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int LEAST_SHORE_DIVISIONS = 2;
+static constexpr int BANK_DIVISIONS_PER_GRAIN = 4;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -259,6 +256,8 @@ struct OpenSides {
 	bool high_y;
 };
 
+static constexpr OpenSides EVERY_SIDE = {true, true, true, true};
+
 static OpenSides OpenSidesOf(const TileSpan &block, const TileSpan &area)
 {
 	return {
@@ -292,7 +291,8 @@ static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, si
 
 static int ReliefDivisionsOf(const LaidGround &laid, int grained)
 {
-	return laid.Rolls() ? grained : std::max(grained, LEAST_SHORE_DIVISIONS);
+	if (laid.Rolls()) return grained;
+	return laid.Banked() ? grained * BANK_DIVISIONS_PER_GRAIN : std::max(grained, LEAST_SHORE_DIVISIONS);
 }
 
 void TerrainBuild::AddTile(int tx, int ty)
@@ -319,7 +319,7 @@ void TerrainBuild::AddTile(int tx, int ty)
 		int divisions = ReliefDivisionsOf(laid, this->DivisionsOf(tx, ty));
 		std::vector<uint32_t> grid = AddRelief(mesh, *relief, corners, tx, ty, divisions);
 		OpenSides open = laid.Rolls() ? ReliefSidesOf(this->tiles, tx, ty, [&](int nx, int ny) { return this->CutApart(tx, ty, nx, ny); }) : OpenSidesOf(this->tiles, {tx, ty, tx, ty});
-		SkirtOpenSides(mesh, grid, divisions + 1, open, RELIEF_SKIRT_LEVELS);
+		SkirtOpenSides(mesh, grid, divisions + 1, laid.Banked() ? EVERY_SIDE : open, RELIEF_SKIRT_LEVELS);
 		return;
 	}
 	if (WaterFormOf(tx, ty) == WaterForm::Open) {
@@ -344,72 +344,9 @@ static bool StandsInSea(int tx, int ty)
 	return OnMap(tx, ty) && _world_tiles.WaterAt(TileXY(tx, ty)).sea > 0;
 }
 
-/* How many tiles out a bank runs for each level it falls: on along the ground above where that falls toward the water, so the two meet without a fold, and steeply where it does not. */
-static double BankRun(int tx, int ty, const StepFace &step)
-{
-	TileGround ground(tx, ty);
-	WorldPoint middle = Between(step.ring[0], step.ring[3], HALF_TILE);
-	double inner = ground.Level(middle.x - step.outward.x * BANK_PROBE, middle.y - step.outward.y * BANK_PROBE);
-	double fall = (inner - ground.Level(middle.x, middle.y)) / BANK_PROBE;
-	return fall >= LEAST_BANK_FALL ? 1.0 / fall : STEEP_BANK_RUN;
-}
-
-static Vec3 FaceNormal(const std::array<WorldPoint, 4> &ring)
-{
-	Vec3 normal = Normalised(Cross(RenderPoint(ring[2]) - RenderPoint(ring[0]), RenderPoint(ring[3]) - RenderPoint(ring[1])));
-	return normal.z < 0.0 ? normal * -1.0 : normal;
-}
-
 static bool AtCorner(const WorldPoint &at)
 {
 	return at.x == std::floor(at.x) && at.y == std::floor(at.y);
-}
-
-/* A bank's corners sink with the seabed as the ground's own corners do, so the two meet without a gap. */
-static WorldPoint Settled(const Seabed &bed, const WorldPoint &at)
-{
-	if (!AtCorner(at)) return at;
-	return {at.x, at.y, at.level - bed.Sink(static_cast<int>(at.x), static_cast<int>(at.y))};
-}
-
-/* Where a sea bank's top reaches a corner of its tile: the corner, how far out the bank's foot leans there and the way its face looks. */
-struct BankCorner {
-	WorldPoint top;
-	WorldPoint foot;
-	Vec3 face;
-};
-
-/* A step whose foot stands in the sea leans out into it as a bank of the ground above, instead of standing upright; along its top it shades on as the ground it hangs from. */
-static std::array<BankCorner, 2> AddBank(TerrainMesh &mesh, const Seabed &bed, int tx, int ty, const StepFace &step)
-{
-	double run = BankRun(tx, ty, step);
-	auto lean = [&](const WorldPoint &top, const WorldPoint &foot) {
-		double reach = std::min((top.level - foot.level) * run, LONGEST_BANK_RUN);
-		return WorldPoint{foot.x + step.outward.x * reach, foot.y + step.outward.y * reach, foot.level};
-	};
-	std::array<WorldPoint, 4> ring = {step.ring[0], lean(step.ring[0], step.ring[1]), lean(step.ring[3], step.ring[2]), step.ring[3]};
-	Vec3 face = FaceNormal(ring);
-	auto normal = [&](const WorldPoint &at, bool top) {
-		return top && AtCorner(at) ? SmoothNormal(static_cast<int>(at.x), static_cast<int>(at.y), static_cast<uint8_t>(at.level)) : face;
-	};
-	std::array<uint32_t, 4> corners;
-	for (size_t i = 0; i < ring.size(); i++) corners[i] = mesh.Add(Settled(bed, ring[i]), normal(ring[i], i == 0 || i == 3), DRY_MARK);
-	mesh.Quad(corners[0], corners[1], corners[2], corners[3]);
-	return {{{ring[0], ring[1], face}, {ring[3], ring[2], face}}};
-}
-
-/* Two sea banks leaning out from the sides of a corner part around it, which a face between their feet closes. */
-static void CloseSeaBankCorners(TerrainMesh &mesh, const Seabed &bed, std::span<const BankCorner> corners)
-{
-	for (size_t a = 0; a < corners.size(); a++) {
-		for (size_t b = a + 1; b < corners.size(); b++) {
-			const BankCorner &first = corners[a];
-			const BankCorner &second = corners[b];
-			if (first.top.x != second.top.x || first.top.y != second.top.y || !AtCorner(first.top)) continue;
-			Vec3 face = Normalised(first.face + second.face);
-			mesh.Triangle(mesh.Add(Settled(bed, first.top), face, DRY_MARK), mesh.Add(Settled(bed, first.foot), face, DRY_MARK), mesh.Add(Settled(bed, second.foot), face, DRY_MARK));
-		}
-	}
 }
 
 static Groundwork GroundworkAt(int tx, int ty)
@@ -533,21 +470,18 @@ static void AddWall(TerrainMesh &mesh, const StepFace &step)
 	mesh.Quad(ring[0], ring[1], ring[2], ring[3]);
 }
 
-static void AddWalls(TerrainMesh &mesh, const Seabed &bed, const Landform &land, int tx, int ty)
+static void AddWalls(TerrainMesh &mesh, const Landform &land, int tx, int ty)
 {
 	std::vector<BankEdge> bank_edges;
 	std::vector<double> bank_marks;
-	std::vector<BankCorner> sea_corners;
 	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
 		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
 		if (!step.has_value()) continue;
 		TileIndexDiffC across = TileIndexDiffCByDiagDir(side);
 		int nx = tx + across.x;
 		int ny = ty + across.y;
-		if (StandsInSea(nx, ny)) {
-			std::array<BankCorner, 2> ends = AddBank(mesh, bed, tx, ty, *step);
-			sea_corners.insert(sea_corners.end(), ends.begin(), ends.end());
-		} else if (std::optional<EarthBank> bank = EarthBankOf(tx, ty, nx, ny); bank.has_value() && bank->Holds(*step)) {
+		std::optional<EarthBank> bank = StandsInSea(nx, ny) ? std::nullopt : EarthBankOf(tx, ty, nx, ny);
+		if (bank.has_value() && bank->Holds(*step)) {
 			std::array<BankEdge, 2> edges = AddEarthBank(mesh, land, LaidGround(land, nx, ny), *step, *bank);
 			bank_edges.insert(bank_edges.end(), edges.begin(), edges.end());
 			bank_marks.insert(bank_marks.end(), 2, bank->fill ? FILL_MARK : DRY_MARK);
@@ -556,7 +490,6 @@ static void AddWalls(TerrainMesh &mesh, const Seabed &bed, const Landform &land,
 		}
 	}
 	CloseBankCorners(mesh, bank_edges, bank_marks);
-	CloseSeaBankCorners(mesh, bed, sea_corners);
 }
 
 static WorldPoint Grounded(const Landform &land, const WorldPoint &at)
@@ -879,7 +812,7 @@ void TerrainBuild::Advance()
 	int ty = this->next_row++;
 	for (int tx = this->tiles.tx0; tx <= this->tiles.tx1; tx++) {
 		this->AddTile(tx, ty);
-		AddWalls(this->mesh, this->land.Bed(), this->land, tx, ty);
+		AddWalls(this->mesh, this->land, tx, ty);
 		AddFormations(this->mesh, this->land, tx, ty);
 		AddRampBank(this->mesh, this->land, tx, ty);
 	}

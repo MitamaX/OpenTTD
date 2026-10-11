@@ -26,17 +26,6 @@ TileCoord TileOf(const MapVector &point)
 	return {static_cast<int>(std::floor(point.x)), static_cast<int>(std::floor(point.y))};
 }
 
-double ShareAlong(const MapVector &point, const MapVector &from, const MapVector &to)
-{
-	MapVector along = to - from;
-	return std::clamp(Dot(point - from, along) / Dot(along, along), 0.0, 1.0);
-}
-
-static double SegmentDistance(const MapVector &point, const MapVector &from, const MapVector &to)
-{
-	return Length(from + (to - from) * ShareAlong(point, from, to) - point);
-}
-
 Piece PieceOf(int tx, int ty, Track track)
 {
 	MapVector origin = {static_cast<double>(tx), static_cast<double>(ty)};

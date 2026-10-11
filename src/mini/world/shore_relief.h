@@ -13,6 +13,7 @@
 #include <array>
 
 #include "../map/tile_shapes.h"
+#include "sea_banks.h"
 #include "seabed.h"
 #include "tile_relief.h"
 #include "water_sheet.h"
@@ -24,16 +25,19 @@ bool LiesAlongShore(const Seabed &bed, int tx, int ty);
 /* A bare coast's ground: a spline through the bed's corners. */
 class ShoreRelief : public TileRelief {
 public:
-	ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners);
+	ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners, BankSite banks);
 
 	Vec3 Normal(double x, double y, const Vec3 &faceted) const override;
+	bool Banked() const { return !this->banks.Empty(); }
 
 private:
 	double Curved(double x, double y) const override;
 	bool Curves(int nx, int ny) const override { return LiesAlongShore(this->bed, nx, ny); }
 	double Held(double, double, double corner) const override { return corner; }
+	double Lift(double x, double y, double ground) const override { return this->banks.Lift(x, y, ground); }
 
 	const Seabed &bed;
+	BankSite banks;
 };
 
 /* The ground of a river and its bare banks: its own facets out to the water's curved outline, and falling away inside it to the depth the water has there. */

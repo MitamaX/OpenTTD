@@ -76,6 +76,17 @@ inline MapVector Unit(const MapVector &v)
 	return length > 0.0 ? v * (1.0 / length) : v;
 }
 
+inline double ShareAlong(const MapVector &point, const MapVector &from, const MapVector &to)
+{
+	MapVector along = to - from;
+	return std::clamp(Dot(point - from, along) / Dot(along, along), 0.0, 1.0);
+}
+
+inline double SegmentDistance(const MapVector &point, const MapVector &from, const MapVector &to)
+{
+	return Length(from + (to - from) * ShareAlong(point, from, to) - point);
+}
+
 /* Where a point lies on the map, whatever its level. */
 constexpr MapVector Flat(const WorldPoint &point)
 {

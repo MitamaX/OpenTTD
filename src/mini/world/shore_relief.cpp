@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "../../map_func.h"
 #include "../map/tile_shapes.h"
@@ -42,7 +43,8 @@ bool LiesAlongShore(const Seabed &bed, int tx, int ty)
 	return IsBareCoast(tx, ty) || bed.Shallow(tx, ty);
 }
 
-ShoreRelief::ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners) : TileRelief(tx, ty, corners, SHORE_STRAIGHTENING_REACH), bed(bed)
+ShoreRelief::ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners, BankSite banks) :
+	TileRelief(tx, ty, corners, SHORE_STRAIGHTENING_REACH), bed(bed), banks(std::move(banks))
 {
 }
 

@@ -71,13 +71,14 @@ public:
 	virtual Vec3 Normal(double x, double y, const Vec3 &faceted) const;
 	virtual bool HoldsWater() const { return true; }
 	/* Whether the ground at a point is held to the tile's facets by a neighbour that keeps them. */
-	bool Pinned(double x, double y) const { return this->Freedom(x, y) <= 0.0; }
+	bool Pinned(double x, double y) const { return this->Freedom(x, y) <= 0.0 && this->Lift(x, y, this->Faceted(x, y)) <= 0.0; }
 
 protected:
 	virtual double Curved(double x, double y) const = 0;
 	virtual bool Curves(int nx, int ny) const = 0;
 	/* The level the tile's facets are held at about a corner where no neighbour keeps its facets. */
 	virtual double Held(double x, double y, double corner) const = 0;
+	virtual double Lift(double, double, double) const { return 0.0; }
 	double Freedom(double x, double y) const;
 
 	int tx;

@@ -18,6 +18,7 @@
 #include "../map/way_course.h"
 #include "hill_relief.h"
 #include "network_field.h"
+#include "sea_banks.h"
 #include "seabed.h"
 #include "shadow_map.h"
 #include "water_mesh.h"
@@ -75,8 +76,9 @@ void TerrainField::Survey(Chunk &chunk, const TileSpan &tiles) const
 {
 	chunk.low = UINT8_MAX;
 	chunk.high = 0;
-	for (int ty = std::max(tiles.ty0 - ROLL_SPREAD, 0); ty <= std::min(tiles.ty1 + ROLL_SPREAD, static_cast<int>(Map::MaxY())); ty++) {
-		for (int tx = std::max(tiles.tx0 - ROLL_SPREAD, 0); tx <= std::min(tiles.tx1 + ROLL_SPREAD, static_cast<int>(Map::MaxX())); tx++) {
+	int spread = std::max(ROLL_SPREAD, SEA_BANK_REACH);
+	for (int ty = std::max(tiles.ty0 - spread, 0); ty <= std::min(tiles.ty1 + spread, static_cast<int>(Map::MaxY())); ty++) {
+		for (int tx = std::max(tiles.tx0 - spread, 0); tx <= std::min(tiles.tx1 + spread, static_cast<int>(Map::MaxX())); tx++) {
 			SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
 			chunk.low = std::min(chunk.low, surface.Lowest());
 			chunk.high = std::max(chunk.high, surface.Highest());

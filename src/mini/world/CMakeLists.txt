@@ -58,6 +58,8 @@ add_files(
     scatter_pass.h
     scene_view.cpp
     scene_view.h
+    sea_banks.cpp
+    sea_banks.h
     sea_frame.cpp
     sea_frame.h
     seabed.cpp

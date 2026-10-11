@@ -36,7 +36,8 @@ static bool IsRollingLand(int tx, int ty)
 Landform::Landform(const TileSpan &tiles) :
 	rolling(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * LANDFORM_MARGIN),
 	corners(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 2 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 2 + 2 * LANDFORM_MARGIN),
-	bed(tiles)
+	bed(tiles),
+	banks(tiles)
 {
 }
 
@@ -132,7 +133,7 @@ Vec3 HillRelief::Normal(double x, double y, const Vec3 &faceted) const
 LaidGround::LaidGround(const Landform &land, int tx, int ty) : tx(tx), ty(ty)
 {
 	if (LiesAlongShore(land.Bed(), tx, ty)) {
-		this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty));
+		this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty), land.BanksAround(tx, ty));
 	} else if (land.Bends(tx, ty)) {
 		this->relief.emplace<HillRelief>(land, tx, ty);
 	}
@@ -142,6 +143,12 @@ double LaidGround::Level(double x, double y) const
 {
 	const TileRelief *relief = this->Relief();
 	return relief != nullptr ? relief->Level(x, y) : BedLevel(this->tx, this->ty, x, y);
+}
+
+bool LaidGround::Banked() const
+{
+	const ShoreRelief *shore = std::get_if<ShoreRelief>(&this->relief);
+	return shore != nullptr && shore->Banked();
 }
 
 const TileRelief *LaidGround::Relief() const

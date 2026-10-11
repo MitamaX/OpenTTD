@@ -77,7 +77,8 @@ TileRelief::TileRelief(int tx, int ty, const std::array<double, 4> &corners, dou
 
 double TileRelief::Level(double x, double y) const
 {
-	return std::lerp(this->Faceted(x, y), this->Curved(x, y), this->Freedom(x, y));
+	double ground = std::lerp(this->Faceted(x, y), this->Curved(x, y), this->Freedom(x, y));
+	return ground + this->Lift(x, y, ground);
 }
 
 Vec3 TileRelief::Normal(double x, double y, const Vec3 &faceted) const
@@ -95,7 +96,7 @@ double TileRelief::Faceted(double x, double y) const
 		for (size_t i = 0; i < held.size(); i++) {
 			double cx = this->tx + static_cast<double>(i % 2);
 			double cy = this->ty + static_cast<double>(i / 2);
-			held[i] = this->Pinned(cx, cy) ? this->corners[i] : this->Held(cx, cy, this->corners[i]);
+			held[i] = this->Freedom(cx, cy) <= 0.0 ? this->corners[i] : this->Held(cx, cy, this->corners[i]);
 		}
 		this->held = held;
 	}

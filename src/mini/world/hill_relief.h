@@ -50,6 +50,7 @@ public:
 	double Rolled(double x, double y) const;
 	Vec3 RolledNormal(double x, double y) const;
 	const Seabed &Bed() const { return this->bed; }
+	BankSite BanksAround(int tx, int ty) const { return this->banks.Around(this->bed, tx, ty); }
 
 private:
 	double Corner(int cx, int cy) const;
@@ -59,6 +60,7 @@ private:
 	LazyLattice<bool> rolling;
 	LazyLattice<double> corners;
 	Seabed bed;
+	SeaBanks banks;
 };
 
 class HillRelief : public TileRelief {
@@ -85,6 +87,7 @@ public:
 	WorldPoint At(const MapVector &at) const { return {at.x, at.y, this->Level(at)}; }
 	const TileRelief *Relief() const;
 	bool Rolls() const { return std::holds_alternative<HillRelief>(this->relief); }
+	bool Banked() const;
 
 private:
 	int tx;

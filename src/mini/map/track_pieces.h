@@ -86,7 +86,6 @@ struct Piece {
 };
 
 TileCoord TileOf(const MapVector &point);
-double ShareAlong(const MapVector &point, const MapVector &from, const MapVector &to);
 Piece PieceOf(int tx, int ty, Track track);
 /* The rail pieces a tile carries as far as the track beside it goes, a rail bridge's head among them. */
 TrackBits TrackBitsOf(int tx, int ty);
