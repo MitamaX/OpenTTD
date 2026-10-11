@@ -91,11 +91,12 @@ ModelMesh &ModelMesh::Append(const ModelMesh &part)
 
 ModelMesh &ModelMesh::Transform(const Mat4 &transform)
 {
+	NormalTransform normals(transform);
 	for (ModelVertex &vertex : this->vertices) {
 		vertex.Place(Transformed(transform, vertex.Position()));
-		vertex.Face(TransformedNormal(transform, vertex.Normal()));
+		vertex.Face(normals(vertex.Normal()));
 	}
-	if (transform.Reflects()) {
+	if (normals.Reflects()) {
 		for (size_t first = 0; first + 2 < this->indices.size(); first += 3) std::swap(this->indices[first + 1], this->indices[first + 2]);
 	}
 	return *this;

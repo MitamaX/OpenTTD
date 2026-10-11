@@ -76,7 +76,6 @@ struct Mat4 {
 	double At(int row, int column) const { return this->m[column * 4 + row]; }
 
 	std::array<float, 16> Floats() const;
-	bool Reflects() const;
 	Mat4 operator*(const Mat4 &other) const;
 
 	static Mat4 Identity();
@@ -89,7 +88,18 @@ struct Mat4 {
 };
 
 Vec3 Transformed(const Mat4 &transform, const Vec3 &point);
-Vec3 TransformedNormal(const Mat4 &transform, const Vec3 &normal);
+
+class NormalTransform {
+public:
+	explicit NormalTransform(const Mat4 &transform);
+
+	bool Reflects() const { return this->reflects; }
+	Vec3 operator()(const Vec3 &normal) const;
+
+private:
+	std::array<Vec3, 3> cofactors;
+	bool reflects;
+};
 
 /* A plane as its unit normal and offset; points with a positive distance lie on its inner side. */
 struct Plane {
