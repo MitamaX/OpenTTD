@@ -94,13 +94,25 @@ const float SCOUR_SHADE = 0.72;
 const vec2 MEMBRANE_ROLLS = vec2(0.6, 6.0);
 const float MEMBRANE_LAP = 0.08;
 const float MEMBRANE_VARIETY = 0.09;
-const float MEMBRANE_LAP_LIFT = 1.08;
+const float MEMBRANE_LAP_SHADE = 0.86;
 const float MEMBRANE_ROUGHNESS = 0.8;
 const float DRAINS_PER_TILE = 1.2;
 const float DRAIN_SHARE = 0.35;
 const float DRAIN_RADIUS = 0.06;
 const float DRAIN_SHADE = 0.6;
 const SpeckLattice DRAIN_LATTICE = SpeckLattice(ivec2(1301, 727), 0.25, 0.7, 0.5);
+const float POND_RADIUS = 0.16;
+const vec2 POND_EDGES = vec2(0.2, 0.5);
+const float POND_RAGS_PER_TILE = 16.0;
+const float POND_RAGGED = 0.7;
+const float POND_ROUGHNESS = 0.45;
+const float PATCHES_PER_TILE = 3.5;
+const float PATCH_SHARE = 0.3;
+const float PATCH_MARGIN = 0.3;
+const vec2 PATCH_HALVES = vec2(0.08, 0.22);
+const ivec2 PATCH_SALT = ivec2(613, 2087);
+const float PATCH_LAP = 0.012;
+const float OUTSIDE_EVERY_PATCH = -1.0;
 
 /* A point of a building before light, its facing told across, up and out of its face. */
 struct Clad {
@@ -236,13 +248,32 @@ Clad Gravelled(vec2 p, vec3 tint)
 	return Mottled(p, mix(stones, tint * SCOUR_SHADE, scoured), GRAVEL_GRAIN, GRAVEL_VARIETY, GRAVEL_ROUGHNESS);
 }
 
-Clad Membrane(vec2 p, vec3 tint)
+float PatchInside(vec2 q, float share)
 {
-	Clad clad = Coursed(p, tint, MEMBRANE_ROLLS, MEMBRANE_LAP, MEMBRANE_VARIETY, tint * MEMBRANE_LAP_LIFT);
+	ivec2 cell = ivec2(floor(q));
+	vec2 roll = Hash2(cell + PATCH_SALT);
+	if (roll.x > share) return OUTSIDE_EVERY_PATCH;
+	vec2 centre = mix(vec2(PATCH_MARGIN), vec2(1.0 - PATCH_MARGIN), Hash2(cell));
+	vec2 half_size = mix(PATCH_HALVES.xx, PATCH_HALVES.yy, vec2(roll.y, 1.0 - roll.y));
+	vec2 outside = abs(fract(q) - centre) - half_size;
+	return -max(outside.x, outside.y);
+}
+
+Clad Membrane(vec2 p, vec3 tint, vec3 aged)
+{
+	Clad clad = Coursed(p, aged, MEMBRANE_ROLLS, MEMBRANE_LAP, MEMBRANE_VARIETY, aged * MEMBRANE_LAP_SHADE);
 	vec2 q = p * DRAINS_PER_TILE;
 	float drain = Speck(q, DRAIN_SHARE, vec2(1.0, 0.0), vec2(DRAIN_RADIUS), DRAIN_LATTICE) * Sharpness(q / (2.0 * DRAIN_RADIUS));
-	clad.albedo *= 1.0 - DRAIN_SHADE * drain;
-	clad.roughness = MEMBRANE_ROUGHNESS;
+	float pond = Speck(q, DRAIN_SHARE, vec2(1.0, 0.0), vec2(POND_RADIUS), DRAIN_LATTICE) + (Noise(p * POND_RAGS_PER_TILE) - 0.5) * POND_RAGGED;
+	float ponded = smoothstep(POND_EDGES.x, POND_EDGES.y, pond) * Sharpness(q / (2.0 * POND_RADIUS));
+	vec2 patch_at = p * PATCHES_PER_TILE;
+	float inside = PatchInside(patch_at, PATCH_SHARE);
+	float edge = fwidth(patch_at.x);
+	float patched = smoothstep(-edge, edge, inside) * Sharpness(patch_at);
+	float lapped = smoothstep(-edge, edge, PATCH_LAP * PATCHES_PER_TILE - abs(inside)) * patched;
+	vec3 laid = mix(clad.albedo, tint * mix(1.0, MEMBRANE_LAP_SHADE, lapped), patched);
+	clad.albedo = mix(laid, laid * POND_STAIN, ponded) * (1.0 - DRAIN_SHADE * drain);
+	clad.roughness = mix(MEMBRANE_ROUGHNESS, POND_ROUGHNESS, ponded);
 	return clad;
 }
 
@@ -427,7 +458,7 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_THATCH: return Mottled(vec2(p.x * 8.0, p.y), tint, 9.0, 0.3, 0.95);
 		case CLAD_METAL_SEAM: return Ribbed(vec2(p.x * 0.25, p.y), tint, 80.0, 0.12, 0.28);
 		case CLAD_GRAVEL: return Gravelled(p, aged);
-		case CLAD_MEMBRANE: return Membrane(p, aged);
+		case CLAD_MEMBRANE: return Membrane(p, tint, aged);
 		case CLAD_ROOF_DECK: return Planked(p, tint, 30.0);
 		case CLAD_GLASS_ROOF: return Glazed(p, vec3(0.7), vec2(14.0, 5.0), 0.1);
 		case CLAD_ASPHALT: return Mottled(p, tint, 60.0, 0.12, 0.9);
