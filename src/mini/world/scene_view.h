@@ -47,7 +47,6 @@ struct SceneView {
 	/* How far from the eye the corners of the far plane lie, beyond which nothing shows. */
 	double Reach() const;
 	Vec3 Back() const { return {this->view.At(2, 0), this->view.At(2, 1), this->view.At(2, 2)}; }
-	/* The part of the view between two depths ahead of the eye, bounded by planes or by its corners. */
 	Frustum Slice(double near, double far) const;
 	std::array<Vec3, 8> SliceCorners(double near, double far) const;
 };
@@ -55,8 +54,7 @@ struct SceneView {
 std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high);
 
 /* How the sun sees the world for one shadow cascade; meshes keep the detail the camera asks of them, so what casts matches what receives.
- * A cascade whose texels are coarser than a pass's casters would only speckle the ground with them, so the pass leaves it be.
- * A cascade sees only what may cast its shadow down the sun's rays onto the part of the camera's view it decides, grown by as far as its lookups reach. */
+ * A cascade whose texels are coarser than a pass's casters would only speckle the ground with them, so the pass leaves it be. */
 struct ShadowView {
 	Mat4 view_projection;
 	Frustum frustum;
@@ -67,14 +65,12 @@ struct ShadowView {
 	bool Resolves(double caster_width) const { return this->texel <= caster_width; }
 };
 
-/* What a view draws: the boxes its frustum meets, and for a shadow cascade only those of them whose shadow may fall on what it decides. */
 class Sight {
 public:
 	Sight(const SceneView &view) : frustum(view.frustum) {}
 	Sight(const ShadowView &view) : frustum(view.frustum), decided(&view.decided), sun(view.camera.sun) {}
 
 	bool Sees(const Vec3 &low, const Vec3 &high) const;
-	/* Whether every box within this one is seen. */
 	bool SeesWhole(const Vec3 &low, const Vec3 &high) const;
 
 private:

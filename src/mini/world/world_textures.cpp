@@ -37,14 +37,12 @@ static Rect Joined(const Rect &a, const Rect &b)
 	return TakingIn(TakingIn(a, b.left, b.top), b.right, b.bottom);
 }
 
-/* A span to send, and how many texels the changes it took in cover. */
 struct Sent {
 	Rect area;
 	int64_t taken;
 };
 
-/* Spans lying over or close by one another are joined, so a texture is sent each area once a frame and in as few pieces as it takes;
- * a joined span weighs only what its changes cover, so joins cannot snowball across the untouched texels between changes spread over the map. */
+/* Spans lying over or close by one another are joined, so a texture is sent each area once a frame and in as few pieces as it takes. */
 static void Coalesce(std::vector<Rect> &spans)
 {
 	std::vector<Sent> sent;

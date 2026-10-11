@@ -163,7 +163,6 @@ bool Sight::Sees(const Vec3 &low, const Vec3 &high) const
 	return BoxMeets(*this->decided, shadow_low, shadow_high);
 }
 
-/* A box lying wholly in what a cascade decides casts its shadow from inside it. */
 bool Sight::SeesWhole(const Vec3 &low, const Vec3 &high) const
 {
 	return BoxWithin(this->frustum, low, high) && (this->decided == nullptr || BoxWithin(*this->decided, low, high));

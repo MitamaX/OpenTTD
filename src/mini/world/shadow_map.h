@@ -33,9 +33,7 @@ public:
 	static constexpr int FRESH_CASCADES = 2;
 	static constexpr int RESOLUTION = 2048;
 	static constexpr double FILTER_SPAN = 4.0;
-	/* How many texels a point is pushed off its surface before its shadow is looked up, more where the sun grazes it. */
 	static constexpr double NORMAL_OFFSET_TEXELS = 1.2;
-	/* The share of each cascade's slice, at its far end, over which it hands over to the next. */
 	static constexpr double CASCADE_BLEND = 0.12;
 
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
@@ -45,8 +43,7 @@ public:
 	void Release();
 
 private:
-	/* The box a cascade is drawn over and the sphere about its slice of the camera's view both lie in the sun's view;
-	 * the part of the camera's view whose shadows it decides is kept as planes grown by the room it is given and as its own corners. */
+	/* The box a cascade is drawn over and the sphere about its slice of the camera's view both lie in the sun's view. */
 	struct Cascade {
 		Mat4 view_projection;
 		double far;

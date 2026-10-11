@@ -94,7 +94,6 @@ struct Plane {
 using Frustum = std::array<Plane, 6>;
 
 Frustum FrustumOf(const Mat4 &view_projection);
-/* The frustum with each of its planes moved out by a distance. */
 Frustum Grown(const Frustum &frustum, double distance);
 bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high);
 bool BoxWithin(const Frustum &frustum, const Vec3 &low, const Vec3 &high);

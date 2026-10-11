@@ -36,9 +36,8 @@ static constexpr double CASTER_HEADROOM_LEVELS = 24.0;
 static constexpr double DEPTH_MARGIN = 1.0;
 static constexpr double TURN_MARGIN = 0.05;
 static constexpr int TURNS = ShadowMap::CASCADES - ShadowMap::FRESH_CASCADES;
-/* How many texels from the point it shades a lookup may read: a filter's box to either side of the texel it lands in, pushed off the surface by up to twice its offset. */
 static constexpr double LOOKUP_REACH_TEXELS = ShadowMap::FILTER_SPAN + 2.0 * ShadowMap::NORMAL_OFFSET_TEXELS;
-/* How far off the surface a pixel shows a shader may look its shadow up, from a tree's crown top over its foot to a puff of smoke's middle. */
+/* Must reach as far off a shown surface as any shader looks its shadow up. */
 static constexpr double OFF_SURFACE_REACH = 4.0;
 static constexpr float SLOPE_OFFSET = 2.0f;
 static constexpr float CONSTANT_OFFSET = 2.0f;
@@ -167,15 +166,13 @@ ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, const Mat4 &sun_
 	return {Mat4::Orthographic(low, high) * sun_view, far, texel, low, high, middle, radius};
 }
 
-/* A cascade given room to spare decides a little more than its slice of the view, by the same share of the sphere about it. */
 void ShadowMap::Cascade::Decide(const SceneView &camera, double from, double margin)
 {
 	this->decided = Grown(camera.Slice(from, this->far), this->radius * margin);
 	this->decided_corners = camera.SliceCorners(from, this->far);
 }
 
-/* Whatever stands between a slice's sphere and the sun is pressed onto the box's near side, so only its far side must reach past the sphere;
- * what the slice decides must lie within what the cascade was drawn to decide. */
+/* Whatever stands between a slice's sphere and the sun is pressed onto the box's near side, so only its far side must reach past the sphere. */
 bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 {
 	return slice.middle.x - slice.radius >= this->low.x && slice.middle.x + slice.radius <= this->high.x &&
@@ -184,8 +181,7 @@ bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 		std::ranges::all_of(slice.decided_corners, [&](const Vec3 &corner) { return PointWithin(this->decided, corner); });
 }
 
-/* Where a cascade starts deciding shadows: where the cascade before starts handing over to it, the first of them from the eye's near plane;
- * the band before the second starts from the eye, as the shaders count it. */
+/* Must match where the shaders start handing over to a cascade, which count the first cascade's slice from the eye. */
 static double DecidedFrom(const SceneView &camera, double reach, int index)
 {
 	if (index == 0) return camera.near;
