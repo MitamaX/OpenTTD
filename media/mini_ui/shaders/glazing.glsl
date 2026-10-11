@@ -139,10 +139,11 @@ vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float
 	vec4 near = vec4(0.0);
 	if (traced > 0.0) {
 		Sighting sighting = own != NO_ANCHOR ? Traced(from, way, own) : Landed(from, way);
-		if (sighting.seen != SEEN_NOTHING) {
+		float reach = WithinReach(way, sighting.run);
+		if (sighting.seen != SEEN_NOTHING && reach > 0.0) {
 			float blur = 1.0 / TilePixelsAt(far + sighting.run) + roughness * roughness * sighting.run;
 			Seen seen = SeenAt(sighting, way, blur);
-			near = vec4(Hazed(LitAt(seen, sighting.point, clouds), way, from, sighting.point), 1.0) * seen.cover * traced * WithinReach(way, sighting.run);
+			near = vec4(Hazed(LitAt(seen, sighting.point, clouds), way, from, sighting.point), 1.0) * seen.cover * traced * reach;
 		}
 	}
 	return near.a >= 1.0 ? near.rgb : Composite(Beyond(from, way), near);
