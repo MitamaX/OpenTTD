@@ -215,6 +215,7 @@ const vec2 GRASS_RUGGED = vec2(0.45, 0.0);
 const vec2 ROUGH_RUGGED = vec2(0.7, 0.25);
 const vec2 SCREE_RUGGED = vec2(0.6, 1.0);
 const vec2 ROCK_RUGGED = vec2(1.0, 0.55);
+const vec2 TOY_STONE_RUGGED = vec2(0.3, 0.1);
 const vec2 FIELD_RUGGED = vec2(0.35, 0.05);
 const vec2 SAND_RUGGED = vec2(0.2, 0.05);
 const vec2 PAVED_RUGGED = vec2(0.1, 0.0);
@@ -261,9 +262,11 @@ const float RIPPLE_SHADE = 0.05;
 const float CROSS_RIPPLES_PER_TILE = 6.3;
 const float RIPPLE_BLEND_FREQUENCY = 0.08;
 const float TOY_GRAIN = 0.45;
-const float TOY_PEBBLE_DRIFTS_PER_TILE = 2.4;
+const float TOY_PEBBLE_DRIFTS_PER_TILE = 0.9;
 const vec2 TOY_PEBBLE_SEED = vec2(8.3, 4.1);
-const vec2 TOY_PEBBLE_BLEND = vec2(0.2, 0.8);
+const float TOY_PEBBLE_SWAY = 0.6;
+const vec2 TOY_PEBBLE_BLEND = vec2(0.88, 1.0);
+const float TOY_PEBBLE_VARIETY = 0.12;
 
 const vec3 TOY_STRATA[TOY_STRATA_COUNT] = TOY_STRATA_TONES;
 
@@ -718,9 +721,15 @@ vec3 Stratum(int layer)
 
 vec3 ToyPebbles(vec2 p)
 {
-	float drift = Octave(p + TOY_PEBBLE_SEED, TOY_PEBBLE_DRIFTS_PER_TILE) * float(TOY_STRATA_COUNT);
-	vec3 pebbles = mix(ToyStratum(int(drift)), ToyStratum(int(drift) + 1), smoothstep(TOY_PEBBLE_BLEND.x, TOY_PEBBLE_BLEND.y, fract(drift)));
-	return mix(ToyStrataMean(), pebbles, Resolved(TOY_PEBBLE_DRIFTS_PER_TILE));
+	float band = v_world.z * TOY_STRATA_PER_LEVEL + (Octave(p + TOY_PEBBLE_SEED, TOY_PEBBLE_DRIFTS_PER_TILE) - 0.5) * TOY_PEBBLE_SWAY;
+	int layer = int(floor(band));
+	vec3 pebbles = mix(ToyStratum(layer), ToyStratum(layer + 1), smoothstep(TOY_PEBBLE_BLEND.x, TOY_PEBBLE_BLEND.y, fract(band)));
+	return mix(ToyStrataMean(), pebbles, Resolved(TOY_STRATA_PER_LEVEL));
+}
+
+vec2 StoneRugged(vec2 natural)
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? TOY_STONE_RUGGED : natural;
 }
 
 vec3 LooseStone(vec2 p)
@@ -731,6 +740,7 @@ vec3 LooseStone(vec2 p)
 /* Loose stones shed from rock: gravel speckled light and dark, with pebbles strewn over it and dark gaps between them. */
 vec3 Scree(Grain grain, vec2 p)
 {
+	if (Landscape() == LANDSCAPE_TOYLAND) return ToyPebbles(p) * Varied(grain.local, TOY_PEBBLE_VARIETY);
 	vec3 tone = LooseStone(p) * Varied(grain.local, 0.18) * Varied(grain.fine, 0.14) * Varied(grain.micro, 0.45);
 	float strewn = grain.stones * mix(SCREE_SPARSE, 1.0, Octave(p + SCREE_DRIFT_SEED, SCREE_DRIFTS_PER_TILE));
 	return tone * mix(1.0, 1.18, strewn) * Hollowed(grain, STONY_HOLLOWS);
@@ -749,6 +759,7 @@ float Channels(float down, float across)
 
 float Gullied(vec2 p, Relief relief)
 {
+	if (Landscape() == LANDSCAPE_TOYLAND) return 1.0;
 	float lean = length(relief.facing);
 	float shown = Resolved(GULLIES_PER_TILE * 2.0) * smoothstep(GULLY_SLOPES.x, GULLY_SLOPES.y, relief.slope);
 	if (shown <= 0.0 || lean <= LEAST_DIVISOR) return 1.0;
@@ -827,7 +838,7 @@ vec3 Capped(vec3 stone, Site site)
 Patch Exposed(Patch ground, Site site)
 {
 	vec3 tone = mix(mix(ground.tone, Capped(site.bare.scree, site), site.exposure.scree), Capped(site.bare.rock, site), site.exposure.rock);
-	vec2 rugged = mix(mix(ground.rugged, SCREE_RUGGED, site.exposure.scree), ROCK_RUGGED, site.exposure.rock);
+	vec2 rugged = mix(mix(ground.rugged, StoneRugged(SCREE_RUGGED), site.exposure.scree), StoneRugged(ROCK_RUGGED), site.exposure.rock);
 	return Patch(tone, rugged);
 }
 
@@ -856,7 +867,7 @@ Patch Rocks(Site site)
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
 	vec3 strewn = mix(Meadow(site), bare.scree * PALE_STONE, stones);
-	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, SCREE_RUGGED, patches), ROCK_RUGGED, outcrop));
+	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, StoneRugged(SCREE_RUGGED), patches), StoneRugged(ROCK_RUGGED), outcrop));
 }
 
 /* A field's crop grows in rows across it, ripening and thinning unevenly, with bare soil between the rows and a pair of wheel tracks every so often;
