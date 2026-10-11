@@ -12,6 +12,7 @@ const float MIRRORED_GLAZED_BODY = 0.35;
 const float MIRRORED_WINDOW_SHEEN = 0.15;
 const float MIRRORED_WATER_SHEEN = 0.3;
 const float MIRRORED_GRASS_TONE = 0.5;
+const vec2 MIRRORED_REACH_CELLS = float(MASSING_CELLS) * vec2(0.5, 1.0);
 
 struct Seen {
 	vec3 albedo;
@@ -44,6 +45,11 @@ Sighting Landed(vec3 from, vec3 way)
 	float run = RunToGround(from, way);
 	vec3 point = from + way * run;
 	return Sighting(SEEN_GROUND, point, UPWARD, run, Clamped(ivec2(floor(point.xy))));
+}
+
+float WithinReach(vec3 way, float run)
+{
+	return 1.0 - smoothstep(MIRRORED_REACH_CELLS.x, MIRRORED_REACH_CELLS.y, run * (abs(way.x) + abs(way.y)));
 }
 
 float CanyonOpenness(float above_foot)
@@ -136,7 +142,7 @@ vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float
 		if (sighting.seen != SEEN_NOTHING) {
 			float blur = 1.0 / TilePixelsAt(far + sighting.run) + roughness * roughness * sighting.run;
 			Seen seen = SeenAt(sighting, way, blur);
-			near = vec4(Hazed(LitAt(seen, sighting.point, clouds), way, from, sighting.point), 1.0) * seen.cover * traced;
+			near = vec4(Hazed(LitAt(seen, sighting.point, clouds), way, from, sighting.point), 1.0) * seen.cover * traced * WithinReach(way, sighting.run);
 		}
 	}
 	return near.a >= 1.0 ? near.rgb : Composite(Beyond(from, way), near);
