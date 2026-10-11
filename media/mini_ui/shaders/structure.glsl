@@ -45,6 +45,8 @@ const float CONCRETE_PANEL_VARIETY = 0.2;
 const float CONCRETE_ROUGHNESS = 0.85;
 const float CONCRETE_GRAIN = 47.0;
 const float CONCRETE_GRAIN_VARIETY = 0.16;
+const vec3 MORTAR = vec3(0.78, 0.75, 0.70);
+const float MORTAR_SHARE = 0.7;
 const float FLAT_ROOF_VARIETY = 0.12;
 const float CLAY_TILE_VARIETY = 0.14;
 const float SLATE_VARIETY = 0.16;
@@ -440,20 +442,31 @@ vec3 Aged(uint material, vec2 p, vec3 tint)
 	return Ponds(material) ? aged * PondStains(p) : aged;
 }
 
-Clad CladOf(uint material, vec2 p, vec3 tint)
+vec3 Mortar(vec3 tint)
 {
-	vec3 mortar = mix(tint, vec3(0.78, 0.75, 0.70), 0.7);
-	vec3 aged = Aged(material, p, tint);
+	return mix(tint, MORTAR, MORTAR_SHARE);
+}
+
+Clad WallCladOf(uint material, vec2 p, vec3 tint)
+{
 	switch (material) {
-		case CLAD_BRICK: return Coursed(p, tint, vec2(40.0, 80.0), 0.18, 0.18, mortar);
-		case CLAD_STONE: return Coursed(p, tint, vec2(16.0, 32.0), 0.1, 0.12, mortar);
-		case CLAD_FOUNDATION: return Coursed(p, tint * 0.9, vec2(12.0, 24.0), 0.1, 0.25, mortar * 0.8);
+		case CLAD_BRICK: return Coursed(p, tint, vec2(40.0, 80.0), 0.18, 0.18, Mortar(tint));
+		case CLAD_STONE: return Coursed(p, tint, vec2(16.0, 32.0), 0.1, 0.12, Mortar(tint));
 		case CLAD_RENDER: return Mottled(p, tint, 14.0, 0.07, 0.9);
 		case CLAD_CONCRETE: return Precast(p, tint);
 		case CLAD_TIMBER: return Boarded(p, tint, 56.0, 0.85);
-		case CLAD_PLANKS: return Planked(p, tint, 36.0);
 		case CLAD_CORRUGATED: return Ribbed(p, tint, 70.0, 0.35, 0.35);
 		case CLAD_METAL: return Panelled(p, Mottled(p, tint, 9.0, 0.08, 0.3), vec2(9.0, 0.0), 0.04);
+		default: return Mottled(p, tint, 10.0, 0.05, 0.85);
+	}
+}
+
+Clad CladOf(uint material, vec2 p, vec3 tint)
+{
+	vec3 aged = Aged(material, p, tint);
+	switch (material) {
+		case CLAD_FOUNDATION: return Coursed(p, tint * 0.9, vec2(12.0, 24.0), 0.1, 0.25, Mortar(tint) * 0.8);
+		case CLAD_PLANKS: return Planked(p, tint, 36.0);
 		case CLAD_GLASS: return Glazed(p, tint, vec2(12.0, 10.0), 0.08);
 		case CLAD_LATTICE: return Matte(tint, 0.5);
 		case CLAD_CLAY_TILE: return Tiled(p, aged, vec2(34.0, 42.0), CLAY_TILE_VARIETY, 0.7, 0.3);
@@ -471,6 +484,6 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 		case CLAD_CANVAS: return Striped(p, tint);
 		case CLAD_SIGN: return Lightbox(p, tint);
 		case CLAD_WATER: return Rippled(p, tint);
-		default: return Mottled(p, tint, 10.0, 0.05, 0.85);
+		default: return WallCladOf(material, p, tint);
 	}
 }
