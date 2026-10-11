@@ -10,6 +10,7 @@
 #ifndef MINI_WORLD_BLOCK_SCATTER_H
 #define MINI_WORLD_BLOCK_SCATTER_H
 
+#include <array>
 #include <vector>
 
 #include "chunk_grid.h"
@@ -25,9 +26,11 @@ bool ClearAround(int tx, int ty, int reach);
 /* The copies of each model a block holds. */
 using ScatterCopies = std::vector<std::vector<VehicleInstance>>;
 
+VehicleInstance StrewnCopy(const Vec3 &at, const Vec3 &attitude, double scale, const std::array<uint8_t, 4> &primary, const std::array<uint8_t, 4> &secondary);
+
 class BlockScatter : public Scatter {
 public:
-	BlockScatter(size_t models, int reach, ChangeKinds reads) : models(models), blocks(reads, reach) {}
+	BlockScatter(size_t models, int reach, ChangeKinds reads, int margin = 0) : models(models), margin(margin), blocks(reads, reach) {}
 
 	void Sync(const WorldChanges &changes) final;
 	void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) final;
@@ -40,6 +43,7 @@ protected:
 
 private:
 	size_t models;
+	int margin;
 	StrewnBlocks<ScatterCopies> blocks;
 };
 

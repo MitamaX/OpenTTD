@@ -47,7 +47,7 @@ void ScatterPass::Refresh(const SceneView &view)
 
 void ScatterPass::Cast(const ShadowView &view)
 {
-	if (!this->caster.Ready()) return;
+	if (!this->caster.Ready() || !view.Resolves(this->look.caster_width)) return;
 	this->batch.Clear(this->look.models);
 	this->scatter->Gather(Sight(view), this->look.cast_pixels, this->batch);
 	this->caster.Use();
@@ -81,6 +81,7 @@ void ScatterPass::Warm()
 void ScatterPass::DrawBatch(const ShaderProgram &program)
 {
 	glUniform2f(program.Uniform("u_most_growth"), NO_GROWTH, NO_GROWTH);
+	glUniform1i(program.Uniform("u_whole_scale"), this->look.scale == CopyScale::Whole);
 	this->batch.Draw(this->models, [](size_t mesh) { return mesh; });
 }
 

@@ -63,11 +63,7 @@ static std::array<uint8_t, 4> TuftGreen(const GrassGreens &greens, double share,
 
 static VehicleInstance TuftOn(const LaidGround &ground, double x, double y, double turn, double scale, const std::array<uint8_t, 4> &colour)
 {
-	double z = ground.Level(x, y) * LevelRise() - SINK;
-	return VehicleInstance{
-		static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), static_cast<float>(turn), 0.0f, 0.0f,
-		static_cast<float>(scale), colour, colour, {},
-	};
+	return StrewnCopy({x, y, ground.Level(x, y) * LevelRise() - SINK}, {turn, 0.0, 0.0}, scale, colour, colour);
 }
 
 /* How thickly scrub gathers about a point: in clumps across the desert with open sand between, and in smaller knots within them. */

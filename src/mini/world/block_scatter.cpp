@@ -32,6 +32,15 @@ bool ClearAround(int tx, int ty, int reach)
 	return true;
 }
 
+VehicleInstance StrewnCopy(const Vec3 &at, const Vec3 &attitude, double scale, const std::array<uint8_t, 4> &primary, const std::array<uint8_t, 4> &secondary)
+{
+	return VehicleInstance{
+		static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z),
+		static_cast<float>(attitude.x), static_cast<float>(attitude.y), static_cast<float>(attitude.z),
+		static_cast<float>(scale), primary, secondary, {},
+	};
+}
+
 void BlockScatter::Sync(const WorldChanges &changes)
 {
 	this->blocks.Sync(changes);
@@ -39,7 +48,7 @@ void BlockScatter::Sync(const WorldChanges &changes)
 
 void BlockScatter::Refresh(const SceneView &camera, double shown_pixels, double cast_pixels)
 {
-	this->blocks.Refresh(camera, shown_pixels, cast_pixels, 0, [&](const TileSpan &tiles, ScatterCopies &copies) {
+	this->blocks.Refresh(camera, shown_pixels, cast_pixels, this->margin, [&](const TileSpan &tiles, ScatterCopies &copies) {
 		copies.assign(this->models, {});
 		this->Strew(tiles, copies);
 	});
@@ -47,7 +56,7 @@ void BlockScatter::Refresh(const SceneView &camera, double shown_pixels, double 
 
 void BlockScatter::Gather(const Sight &sight, double fewest_pixels, VehicleBatch &batch)
 {
-	this->blocks.ForEachSeen(sight, fewest_pixels, 0, [&](const ScatterCopies &copies) {
+	this->blocks.ForEachSeen(sight, fewest_pixels, this->margin, [&](const ScatterCopies &copies) {
 		for (size_t model = 0; model < copies.size(); model++) batch.Add(model, copies[model]);
 		return true;
 	});

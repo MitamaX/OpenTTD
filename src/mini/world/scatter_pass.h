@@ -10,12 +10,18 @@
 #ifndef MINI_WORLD_SCATTER_PASS_H
 #define MINI_WORLD_SCATTER_PASS_H
 
+#include <limits>
 #include <memory>
 #include <vector>
 
 #include "scatter.h"
 #include "shader_program.h"
 #include "world_pass.h"
+
+enum class CopyScale : uint8_t {
+	Lengthwise,
+	Whole,
+};
 
 /* How a scatter shows: the models its copies are drawn with, and where a tile spans enough pixels for them to show, to stand solid and to cast shadows. */
 struct ScatterLook {
@@ -25,6 +31,8 @@ struct ScatterLook {
 	double shown_pixels;
 	double solid_pixels;
 	double cast_pixels;
+	CopyScale scale = CopyScale::Lengthwise;
+	double caster_width = std::numeric_limits<double>::infinity();
 };
 
 class ScatterPass final : public WorldPass {

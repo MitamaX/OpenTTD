@@ -83,8 +83,7 @@ static uint32_t Pick(const std::array<uint32_t, N> &tones, SeedDice &dice)
 template <typename Piece>
 static void Place(ScatterCopies &copies, Piece piece, const WorldPoint &at, double turn, uint32_t primary, uint32_t secondary = 0, double pitch = 0.0)
 {
-	float z = static_cast<float>(at.level * LevelRise());
-	copies[to_underlying(piece)].push_back({static_cast<float>(at.x), static_cast<float>(at.y), z, static_cast<float>(turn), static_cast<float>(pitch), 0.0f, 1.0f, InstanceColour(primary), InstanceColour(secondary), {}});
+	copies[to_underlying(piece)].push_back(StrewnCopy({at.x, at.y, at.level * LevelRise()}, {turn, pitch, 0.0}, 1.0, InstanceColour(primary), InstanceColour(secondary)));
 }
 
 static bool IsFlat(const SurfaceTexel &surface)

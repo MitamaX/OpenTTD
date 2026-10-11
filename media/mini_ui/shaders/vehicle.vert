@@ -10,6 +10,7 @@ layout(location = 8) in vec4 i_cargo;
 layout(location = 9) in vec2 i_leans;
 
 uniform vec2 u_most_growth;
+uniform bool u_whole_scale;
 uniform float u_readable_pixels;
 uniform float u_view_pixels;
 
@@ -78,10 +79,15 @@ float Lean(float x)
 	return (x > 0.0 ? i_leans.y : i_leans.x) * share;
 }
 
+vec3 Stretch()
+{
+	return u_whole_scale ? vec3(i_length) : vec3(i_length, 1.0, 1.0);
+}
+
 /* Cargo shows only while the unit carries some; empty, it folds away to nothing. */
 void main()
 {
-	vec3 scale = vec3(i_length, 1.0, 1.0) * Growth();
+	vec3 scale = Stretch() * Growth();
 	vec3 local = a_position * scale;
 	vec3 normal = a_normal.xyz / scale;
 	float lean = Lean(a_position.x);
