@@ -17,6 +17,7 @@
 #include "../gpu/data_texture.h"
 #include "../map/world_tiles.h"
 #include "flow_field.h"
+#include "massing_field.h"
 #include "shader_program.h"
 #include "shore_field.h"
 
@@ -31,12 +32,15 @@ public:
 		BENDS_UNIT,
 		SHORE_UNIT,
 		FLOW_UNIT,
+		MASSING_UNIT,
 		UNIT_COUNT,
 	};
 
 	void Sync(const WorldChanges &changes);
 	void Bind() const;
 	void Release();
+
+	MassingField &Massing() { return this->massing; }
 
 	static void BindSamplers(const ShaderProgram &program);
 
@@ -64,6 +68,7 @@ private:
 	std::array<DataTexture, UNIT_COUNT> textures;
 	ShoreField shore;
 	FlowField flow;
+	MassingField massing;
 	std::vector<ChangedSpan> spans;
 };
 

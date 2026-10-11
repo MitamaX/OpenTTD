@@ -88,6 +88,7 @@ set(MINI_UI_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ground_overlay.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/leaves.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lighting.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/massing.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/network.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/noise.glsl
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/occlusion.frag

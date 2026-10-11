@@ -21,6 +21,7 @@
 struct TexelLayout {
 	GLint internal_format;
 	GLenum pixel_format;
+	GLenum type;
 	size_t bytes;
 	bool filtered;
 	GLint wrap;
@@ -29,11 +30,12 @@ struct TexelLayout {
 static TexelLayout LayoutOf(TexelFormat format)
 {
 	switch (format) {
-		case TexelFormat::FilteredRgba: return {GL_RGBA8, GL_RGBA, 4, true, GL_CLAMP_TO_EDGE};
-		case TexelFormat::FilteredRed: return {GL_R8, GL_RED, 1, true, GL_CLAMP_TO_EDGE};
-		case TexelFormat::FilteredRg: return {GL_RG8, GL_RG, 2, true, GL_CLAMP_TO_EDGE};
-		case TexelFormat::TiledRgba: return {GL_RGBA8, GL_RGBA, 4, true, GL_REPEAT};
-		default: return {GL_RGBA8UI, GL_RGBA_INTEGER, 4, false, GL_CLAMP_TO_EDGE};
+		case TexelFormat::FilteredRgba: return {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 4, true, GL_CLAMP_TO_EDGE};
+		case TexelFormat::FilteredRed: return {GL_R8, GL_RED, GL_UNSIGNED_BYTE, 1, true, GL_CLAMP_TO_EDGE};
+		case TexelFormat::FilteredRg: return {GL_RG8, GL_RG, GL_UNSIGNED_BYTE, 2, true, GL_CLAMP_TO_EDGE};
+		case TexelFormat::TiledRgba: return {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 4, true, GL_REPEAT};
+		case TexelFormat::ExactRgba16: return {GL_RGBA16UI, GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, 8, false, GL_CLAMP_TO_EDGE};
+		default: return {GL_RGBA8UI, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, 4, false, GL_CLAMP_TO_EDGE};
 	}
 }
 
@@ -84,14 +86,14 @@ void DataTexture::Allocate(TexelFormat format, Dimension size, const void *texel
 	} else {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 	}
-	glTexImage2D(GL_TEXTURE_2D, 0, layout.internal_format, static_cast<GLsizei>(size.width), static_cast<GLsizei>(size.height), 0, layout.pixel_format, GL_UNSIGNED_BYTE, texels);
+	glTexImage2D(GL_TEXTURE_2D, 0, layout.internal_format, static_cast<GLsizei>(size.width), static_cast<GLsizei>(size.height), 0, layout.pixel_format, layout.type, texels);
 	ResetPixelUnpack();
 	if (!layout.filtered) return;
 
 	for (Dimension level_size = size; level_size.width > 1 || level_size.height > 1;) {
 		level_size = Halved(level_size);
 		this->levels.emplace_back(static_cast<size_t>(level_size.width) * level_size.height * layout.bytes);
-		glTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(this->levels.size()), layout.internal_format, static_cast<GLsizei>(level_size.width), static_cast<GLsizei>(level_size.height), 0, layout.pixel_format, GL_UNSIGNED_BYTE, nullptr);
+		glTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(this->levels.size()), layout.internal_format, static_cast<GLsizei>(level_size.width), static_cast<GLsizei>(level_size.height), 0, layout.pixel_format, layout.type, nullptr);
 	}
 	this->Refilter({0, 0, static_cast<int>(size.width) - 1, static_cast<int>(size.height) - 1}, static_cast<const std::byte *>(texels));
 }
@@ -112,7 +114,7 @@ void DataTexture::Upload(int level, Dimension level_size, const Rect &area, cons
 	glBindTexture(GL_TEXTURE_2D, this->name);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(level_size.width));
-	glTexSubImage2D(GL_TEXTURE_2D, level, area.left, area.top, area.Width(), area.Height(), layout.pixel_format, GL_UNSIGNED_BYTE, texels + first);
+	glTexSubImage2D(GL_TEXTURE_2D, level, area.left, area.top, area.Width(), area.Height(), layout.pixel_format, layout.type, texels + first);
 	ResetPixelUnpack();
 }
 

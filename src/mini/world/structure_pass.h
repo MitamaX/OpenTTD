@@ -21,7 +21,7 @@
 
 class StructurePass final : public WorldPass {
 public:
-	explicit StructurePass(const WorldTextures &textures);
+	StructurePass(const WorldTextures &textures, MassingField &massing);
 
 	std::string_view Name() const override { return "structures"; }
 	std::vector<ShaderProgram *> Programs() override;

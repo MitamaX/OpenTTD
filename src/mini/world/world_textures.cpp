@@ -20,7 +20,7 @@
 
 #include "../../safeguards.h"
 
-static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_shore", "u_flow"};
+static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_shore", "u_flow", "u_massing"};
 /* Two spans go up as one where the area bounding both is at most this many times what they cover, or at most this many texels. */
 static constexpr int64_t MOST_JOINED_SPREAD = 2;
 static constexpr int64_t FREELY_JOINED_TEXELS = 128 * 128;
@@ -47,6 +47,7 @@ WorldTextures::Source WorldTextures::SourceOf(uint unit) const
 		case BENDS_UNIT: return {TexelFormat::ExactRgba, _way_bends.Texels(), {}};
 		case SHORE_UNIT: return {TexelFormat::FilteredRed, this->shore.Texels(), {}};
 		case FLOW_UNIT: return {TexelFormat::FilteredRg, this->flow.Texels(), {}};
+		case MASSING_UNIT: return {TexelFormat::ExactRgba16, this->massing.Texels(), {}};
 		default: NOT_REACHED();
 	}
 }
@@ -69,6 +70,7 @@ void WorldTextures::Sync(const WorldChanges &changes)
 			ProfileScope profile("build", "flow", ProfileClock::Cpu);
 			this->flow.Survey(_world_tiles.Size());
 		}
+		this->massing.Clear(_world_tiles.Size());
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) this->Allocate(unit);
 	} else {
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) {
@@ -79,6 +81,9 @@ void WorldTextures::Sync(const WorldChanges &changes)
 			}
 			this->SendSpans(unit, source.texels);
 		}
+		this->spans.clear();
+		for (const Rect &moved : this->massing.TakeMoved()) this->Take(moved);
+		this->SendSpans(MASSING_UNIT, this->massing.Texels());
 		std::vector<Rect> water_moves;
 		for (ChangeKind kind : WATER_MOVES) std::ranges::copy(changes.Of(kind), std::back_inserter(water_moves));
 		if (!water_moves.empty()) {

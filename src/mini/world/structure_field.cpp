@@ -63,11 +63,17 @@ static uint32_t SolidDigest(uint32_t digest, const Solid &solid)
 }
 
 /* What a tile stands as, when the tile anchors a form; a tile anchoring none, or only a part of a form anchored elsewhere, has none. */
-static std::optional<BuildingForm> AnchoredForm(TileIndex tile)
+static std::optional<BuildingForm> Anchored(TileIndex tile, std::optional<BuildingForm> form)
 {
-	std::optional<BuildingForm> form = StructureForm(tile);
 	if (!form.has_value() || TileXY(form->tx, form->ty) != tile) return std::nullopt;
 	return form;
+}
+
+static std::optional<BuildingForm> NotedForm(TileIndex tile, MassingField &massing)
+{
+	std::optional<BuildingForm> form = StructureForm(tile);
+	massing.Note(tile, MassingTexelOf(tile, form));
+	return Anchored(tile, std::move(form));
 }
 
 static uint32_t DigestOf(const std::optional<BuildingForm> &form)
@@ -106,7 +112,7 @@ void StructureField::Notice(TileIndex tile)
 	for (int ty = std::max(y - NEIGHBOUR_REACH, 0); ty <= std::min<int>(y + NEIGHBOUR_REACH, map.height - 1); ty++) {
 		for (int tx = std::max(x - NEIGHBOUR_REACH, 0); tx <= std::min<int>(x + NEIGHBOUR_REACH, map.width - 1); tx++) {
 			TileIndex near = TileXY(tx, ty);
-			uint32_t digest = DigestOf(AnchoredForm(near));
+			uint32_t digest = DigestOf(NotedForm(near, this->massing));
 			if (digest == this->digests[near.base()]) continue;
 			this->digests[near.base()] = digest;
 			StructureChunk &chunk = this->chunks[this->grid.IndexOf(tx, ty)];
@@ -134,15 +140,15 @@ void StructureField::Survey(StructureChunk &chunk, size_t index) const
 	chunk.surveyed = true;
 }
 
-StructureBuild::StructureBuild(const TileSpan &tiles, StructureDetail detail, std::span<uint32_t> digests) :
-	tiles(tiles), detail(detail), digests(digests), next_tx(tiles.tx0), next_ty(tiles.ty0)
+StructureBuild::StructureBuild(const TileSpan &tiles, StructureDetail detail, std::span<uint32_t> digests, MassingField &massing) :
+	tiles(tiles), detail(detail), digests(digests), massing(massing), next_tx(tiles.tx0), next_ty(tiles.ty0)
 {
 }
 
 void StructureBuild::Advance()
 {
 	TileIndex tile = TileXY(this->next_tx, this->next_ty);
-	std::optional<BuildingForm> form = AnchoredForm(tile);
+	std::optional<BuildingForm> form = NotedForm(tile, this->massing);
 	this->digests[tile.base()] = DigestOf(form);
 	if (form.has_value()) BuildStructure(*form, this->detail, LayerOf(tile), this->parts);
 	if (++this->next_tx <= this->tiles.tx1) return;
@@ -200,7 +206,7 @@ void StructureField::Refine()
 		StructureDetail detail = chunk.NextDetail(entry.detail, entry.in_sight);
 		if (chunk.rebuild.has_value() && chunk.rebuild->build.Detail() != detail) chunk.rebuild.reset();
 		if (!chunk.rebuild.has_value()) {
-			chunk.rebuild.emplace(StructureBuild(this->grid.TilesOf(entry.index), detail, this->digests));
+			chunk.rebuild.emplace(StructureBuild(this->grid.TilesOf(entry.index), detail, this->digests, this->massing));
 			this->building.Begin(entry.index);
 		}
 		if (!slice.Carry(chunk.rebuild->build)) return;

@@ -1,5 +1,4 @@
 const int MIRRORED_CLOUD_OCTAVES = 3;
-const vec3 UPWARD = vec3(0.0, 0.0, 1.0);
 const vec2 STREET_WIDTHS = vec2(1.0, 2.4);
 const int SIDE_KEY_STRIDE = 3;
 const float STREET_SUNLIT = 0.5;

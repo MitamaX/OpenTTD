@@ -37,6 +37,8 @@ add_files(
     laid_depth.cpp
     laid_depth.h
     lazy_lattice.h
+    massing_field.cpp
+    massing_field.h
     network_field.cpp
     network_field.h
     network_mesh.cpp

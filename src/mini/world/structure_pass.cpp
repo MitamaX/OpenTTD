@@ -28,6 +28,7 @@ static constexpr auto CLAD_SOURCES = Joined(LIT_SOURCES, std::array{
 	"mini_ui/shaders/cover.glsl",
 	"mini_ui/shaders/structure.glsl",
 	"mini_ui/shaders/pane.glsl",
+	"mini_ui/shaders/massing.glsl",
 	"mini_ui/shaders/glazing.glsl",
 });
 static constexpr auto FRAGMENT_SOURCES = Joined(CLAD_SOURCES, std::array{
@@ -57,8 +58,8 @@ static constexpr std::array<const char *, 6> OPEN_CASTER_FRAGMENT_SOURCES = {
 	"mini_ui/shaders/structure_caster.frag",
 };
 
-StructurePass::StructurePass(const WorldTextures &textures) :
-	textures(textures), program(VERTEX_SOURCES, FRAGMENT_SOURCES), facades(VERTEX_SOURCES, FACADE_FRAGMENT_SOURCES), depth(VERTEX_SOURCES, DEPTH_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), open_caster(CasterProgram(VERTEX_SOURCES, OPEN_CASTER_FRAGMENT_SOURCES))
+StructurePass::StructurePass(const WorldTextures &textures, MassingField &massing) :
+	textures(textures), field(massing), program(VERTEX_SOURCES, FRAGMENT_SOURCES), facades(VERTEX_SOURCES, FACADE_FRAGMENT_SOURCES), depth(VERTEX_SOURCES, DEPTH_FRAGMENT_SOURCES), caster(CasterProgram(VERTEX_SOURCES)), open_caster(CasterProgram(VERTEX_SOURCES, OPEN_CASTER_FRAGMENT_SOURCES))
 {
 }
 

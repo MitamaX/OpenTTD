@@ -42,6 +42,7 @@
 #include "flow_field.h"
 #include "forest_field.h"
 #include "frame_units.h"
+#include "massing_field.h"
 #include "network_field.h"
 #include "scene_view.h"
 #include "seabed.h"
@@ -221,6 +222,17 @@ static std::string ShaderHeader()
 	DefineInt(header, "WINDOW_GRIDS", static_cast<int>(WINDOW_GRID_NAMES.size()));
 	DefineInt(header, "TEXELS_PER_TILE", TEXELS_PER_TILE);
 	DefineFloat(header, "FORM_HEIGHT_SCALE", FORM_HEIGHT_SCALE);
+	DefineFloat(header, "TALLEST_STRUCTURE", MAX_STRUCTURE_TILES * FORM_HEIGHT_SCALE);
+	DefineUnsigned(header, "MASSING_GRID_MASK", MASSING_GRID_MASK);
+	DefineUnsigned(header, "MASSING_FAR_X_BIT", MASSING_FAR_X_BIT);
+	DefineUnsigned(header, "MASSING_FAR_Y_BIT", MASSING_FAR_Y_BIT);
+	DefineUnsigned(header, "MASSING_RAISED_SHIFT", MASSING_RAISED_SHIFT);
+	DefineUnsigned(header, "MASSING_RAISED_MOST", MASSING_RAISED_MOST);
+	DefineUnsigned(header, "MASSING_INSET_SHIFT", MASSING_INSET_SHIFT);
+	DefineUnsigned(header, "MASSING_INSET_BITS", MASSING_INSET_BITS);
+	DefineUnsigned(header, "MASSING_INSET_MOST", MASSING_INSET_MOST);
+	DefineFloat(header, "MASSING_INSET_STEPS", MASSING_INSET_STEPS);
+	DefineUnsigned(header, "MASSING_EAVES_SHIFT", MASSING_EAVES_SHIFT);
 	DefineFacadeTexels(header, "FACADE_GROUND", &FacadeMetrics::ground_texels);
 	DefineFacadeTexels(header, "FACADE_STOREY", &FacadeMetrics::storey_texels);
 	DefineFacadeTexels(header, "FACADE_BAY", &FacadeMetrics::bay_texels);

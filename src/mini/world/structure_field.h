@@ -18,6 +18,7 @@
 #include "build_slice.h"
 #include "chunk_grid.h"
 #include "chunk_keep.h"
+#include "massing_field.h"
 #include "scene_view.h"
 #include "structure_mesh.h"
 
@@ -28,7 +29,7 @@ inline constexpr double STRUCTURE_FADE_END = 2.2;
 /* A block's buildings, built a tile at a time so the work may be spread over frames, each tile's form noted in the digests as it is read. */
 class StructureBuild {
 public:
-	StructureBuild(const TileSpan &tiles, StructureDetail detail, std::span<uint32_t> digests);
+	StructureBuild(const TileSpan &tiles, StructureDetail detail, std::span<uint32_t> digests, MassingField &massing);
 
 	StructureDetail Detail() const { return this->detail; }
 	bool Done() const { return this->next_ty > this->tiles.ty1; }
@@ -39,6 +40,7 @@ private:
 	TileSpan tiles;
 	StructureDetail detail;
 	std::span<uint32_t> digests;
+	MassingField &massing;
 	int next_tx;
 	int next_ty;
 	StructureParts parts;
@@ -81,6 +83,8 @@ class StructureField {
 public:
 	static constexpr int CHUNK_TILES = 16;
 
+	explicit StructureField(MassingField &massing) : massing(massing) {}
+
 	void Sync(const WorldChanges &changes);
 	void Prepare(const SceneView &camera);
 	void Gather(const Sight &sight, std::vector<const StructureChunk *> &shown);
@@ -103,6 +107,7 @@ private:
 	void Finish(size_t index);
 	void Evict();
 
+	MassingField &massing;
 	ChunkGrid grid{CHUNK_TILES};
 	ChunkKeep keep;
 	BuildsUnderWay building;
