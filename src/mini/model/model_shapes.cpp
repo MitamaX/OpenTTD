@@ -77,7 +77,17 @@ static void Fan(ModelMesh &mesh, std::span<const Vec3> rim, const Vec3 &facing, 
 	}
 }
 
-ModelMesh Lathe(std::span<const LatheRing> profile, int sides)
+static bool CapsBottom(Capped capped)
+{
+	return capped == Capped::Both;
+}
+
+static bool CapsTop(Capped capped)
+{
+	return capped != Capped::Neither;
+}
+
+ModelMesh Lathe(std::span<const LatheRing> profile, int sides, Capped capped)
 {
 	ModelMesh mesh;
 	std::vector<uint32_t> below = AddRing(mesh, profile.front(), sides);
@@ -87,25 +97,25 @@ ModelMesh Lathe(std::span<const LatheRing> profile, int sides)
 		below = std::move(above);
 	}
 	mesh.Smooth();
-	if (profile.front().radius > 0.0) Fan(mesh, HubbedRim(profile.front(), sides), DOWN, UP);
-	if (profile.back().radius > 0.0) Fan(mesh, HubbedRim(profile.back(), sides), UP, UP);
+	if (CapsBottom(capped) && profile.front().radius > 0.0) Fan(mesh, HubbedRim(profile.front(), sides), DOWN, UP);
+	if (CapsTop(capped) && profile.back().radius > 0.0) Fan(mesh, HubbedRim(profile.back(), sides), UP, UP);
 	return mesh;
 }
 
-ModelMesh Column(int sides, double low_radius, double high_radius, double height)
+ModelMesh Column(int sides, double low_radius, double high_radius, double height, Capped capped)
 {
 	std::array<LatheRing, 2> profile = {{{low_radius, 0.0}, {high_radius, height}}};
-	return Lathe(profile, sides);
+	return Lathe(profile, sides, capped);
 }
 
-ModelMesh Prism(int sides, double radius, double height)
+ModelMesh Prism(int sides, double radius, double height, Capped capped)
 {
-	return Column(sides, radius, radius, height);
+	return Column(sides, radius, radius, height, capped);
 }
 
-ModelMesh Cone(int sides, double radius, double height)
+ModelMesh Cone(int sides, double radius, double height, Capped capped)
 {
-	return Column(sides, radius, 0.0, height);
+	return Column(sides, radius, 0.0, height, capped);
 }
 
 /* The midpoint of an edge, made once however many faces share the edge. */
@@ -198,8 +208,8 @@ ModelMesh Extrusion(std::span<const MapVector> outline, double height, Capped ca
 		uint32_t d = mesh.Point({from.x, from.y, height}, outward);
 		mesh.Quad(a, b, c, d);
 	}
-	if (capped == Capped::Both) Fan(mesh, RimAt(outline, 0.0), DOWN, UP);
-	if (capped != Capped::Neither) Fan(mesh, RimAt(outline, height), UP, UP);
+	if (CapsBottom(capped)) Fan(mesh, RimAt(outline, 0.0), DOWN, UP);
+	if (CapsTop(capped)) Fan(mesh, RimAt(outline, height), UP, UP);
 	return mesh;
 }
 

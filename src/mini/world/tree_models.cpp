@@ -324,7 +324,7 @@ public:
 	void Trunk(int sides, SeedRange radii, double top, const Vec3 &lean = {})
 	{
 		if (lean.x == 0.0 && lean.y == 0.0) {
-			this->Wood(Column(sides, radii.low, radii.high, top - FOOT).Transform(Mat4::Translation({0.0, 0.0, FOOT})), top);
+			this->Wood(Column(sides, radii.low, radii.high, top - FOOT, Capped::Top).Transform(Mat4::Translation({0.0, 0.0, FOOT})), top);
 			return;
 		}
 		std::array<SweepPoint, TRUNK_BENDS.size()> spine;
@@ -345,7 +345,7 @@ public:
 	/* A far tree as one smooth turned solid, wood below the given height and leaves above; too small on screen to show facets. */
 	void Spindle(std::initializer_list<LatheRing> profile, int sides, double wood_top, double translucency)
 	{
-		ModelMesh spindle = Lathe(profile, sides);
+		ModelMesh spindle = Lathe(profile, sides, Capped::Top);
 		spindle.Transform(Mat4::Turn(UP, this->dice.Between(0.0, TAU)));
 		spindle.PaintBy([&](const Vec3 &at) { return at.z < wood_top ? this->tones.wood : this->tones.leaves; }).Translucent(translucency);
 		this->model.Append(spindle.Occlude([&](const Vec3 &at) { return at.z < wood_top ? SHADED_FOOT : 1.0; }));

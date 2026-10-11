@@ -34,13 +34,13 @@ struct SweepPoint {
 	double scale;
 };
 
-/* Rings from the bottom up, turned about the upright axis; an end ring of no radius closes in a point, any other end is capped flat. */
-ModelMesh Lathe(std::span<const LatheRing> profile, int sides);
-ModelMesh Column(int sides, double low_radius, double high_radius, double height);
-ModelMesh Prism(int sides, double radius, double height);
-ModelMesh Cone(int sides, double radius, double height);
-
 enum class Capped : uint8_t { Both, Top, Neither };
+
+/* Rings from the bottom up, turned about the upright axis; an end ring of no radius closes in a point, any other end is capped flat where asked. */
+ModelMesh Lathe(std::span<const LatheRing> profile, int sides, Capped capped = Capped::Both);
+ModelMesh Column(int sides, double low_radius, double high_radius, double height, Capped capped = Capped::Both);
+ModelMesh Prism(int sides, double radius, double height, Capped capped = Capped::Both);
+ModelMesh Cone(int sides, double radius, double height, Capped capped = Capped::Both);
 
 /* A sphere of unit radius, from an icosahedron whose faces are split into four this many times over. */
 ModelMesh Icosphere(int subdivisions);
