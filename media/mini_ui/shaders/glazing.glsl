@@ -11,6 +11,7 @@ const float MIRRORED_SHADOW_LIFT = 0.1;
 const float MIRRORED_GLAZED_BODY = 0.35;
 const float MIRRORED_WINDOW_SHEEN = 0.15;
 const float MIRRORED_WATER_SHEEN = 0.3;
+const float MIRRORED_GRASS_TONE = 0.5;
 
 struct Seen {
 	vec3 albedo;
@@ -88,6 +89,7 @@ vec3 CoverPaint(uint material)
 	if (material == MAT_SNOW) return Linear(SNOW);
 	if (material == MAT_DESERT) return Linear(SAND);
 	if (material == MAT_PAVED) return Linear(PAVEMENT_TONE);
+	if (material == MAT_GRASS || material == MAT_ROUGH) return Linear(mix(GRASS_DARK, GRASS_LIGHT, MIRRORED_GRASS_TONE));
 	return GROUND_ALBEDOS[Landscape()];
 }
 

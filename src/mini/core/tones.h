@@ -10,8 +10,11 @@
 #ifndef MINI_CORE_TONES_H
 #define MINI_CORE_TONES_H
 
+#include <array>
+
 #include "../../cargo_type.h"
 #include "../../gfx_type.h"
+#include "../../landscape_type.h"
 #include "../gpu/draw_list.h"
 
 constexpr uint32_t Mix(uint32_t dst, uint32_t src, uint alpha)
@@ -45,6 +48,18 @@ inline constexpr uint32_t COL_DESERT = 0xFFE0CA8CU;
 inline constexpr uint32_t COL_ROCKS = 0xFF8E979EU;
 inline constexpr uint32_t COL_FIELDS = 0xFFD4B23AU;
 inline constexpr uint32_t COL_TREE = 0xFF2F4A2AU;
+
+struct GrassTone {
+	std::array<double, 3> dark;
+	std::array<double, 3> light;
+};
+
+inline constexpr std::array<GrassTone, NUM_LANDSCAPE> GRASS_TONES = {{
+	{{0.33, 0.43, 0.21}, {0.50, 0.56, 0.30}},
+	{{0.38, 0.47, 0.34}, {0.53, 0.60, 0.44}},
+	{{0.52, 0.55, 0.28}, {0.68, 0.66, 0.36}},
+	{{0.42, 0.82, 0.60}, {0.70, 0.90, 0.42}},
+}};
 
 inline constexpr uint32_t COL_RAIL = 0xFF33383DU;
 inline constexpr uint32_t COL_ROAD = 0xFF61686EU;

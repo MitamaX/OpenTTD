@@ -634,16 +634,7 @@ vec3 GrassTone(float shade, Climate climate)
 {
 	if (Landscape() == LANDSCAPE_TOYLAND) return ToyLawn(shade);
 	float tone = smoothstep(BROAD_SPAN.x, BROAD_SPAN.y, shade);
-	vec3 dark = vec3(0.33, 0.43, 0.21);
-	vec3 light = vec3(0.50, 0.56, 0.30);
-	if (Landscape() == LANDSCAPE_ARCTIC) {
-		dark = vec3(0.38, 0.47, 0.34);
-		light = vec3(0.53, 0.60, 0.44);
-	} else if (Landscape() == LANDSCAPE_TROPIC) {
-		dark = vec3(0.52, 0.55, 0.28);
-		light = vec3(0.68, 0.66, 0.36);
-	}
-	vec3 green = mix(mix(dark, light, tone), mix(LUSH_DARK, LUSH_LIGHT, tone), climate.lush);
+	vec3 green = mix(mix(GRASS_DARK, GRASS_LIGHT, tone), mix(LUSH_DARK, LUSH_LIGHT, tone), climate.lush);
 	return mix(green, mix(PARCHED_DARK, PARCHED_LIGHT, tone), climate.parched);
 }
 
