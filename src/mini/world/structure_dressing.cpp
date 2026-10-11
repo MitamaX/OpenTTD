@@ -68,11 +68,15 @@ static constexpr double BALCONY_SLAB = 0.006;
 static constexpr double RAILING_HEIGHT = 0.022;
 static constexpr double RAILING_THICKNESS = 0.003;
 static constexpr uint32_t RAILING_TINT = 0xFFE4E6E8U;
-static constexpr double UNIT_WIDTH = 0.022;
+static constexpr double UNIT_WIDTH = 0.032;
 static constexpr double UNIT_DEPTH = 0.014;
-static constexpr double UNIT_HEIGHT = 0.016;
+static constexpr double UNIT_HEIGHT = 0.02;
 static constexpr double UNIT_SHARE = 0.14;
 static constexpr uint32_t UNIT_TINT = 0xFFC9CCCEU;
+static constexpr double UNIT_SILL_GAP = 0.003;
+static constexpr double UNIT_SIDE_SHIFT = 0.15;
+static constexpr double DRAIN_WIDTH = 0.003;
+static constexpr double DRAIN_DROP = 0.008;
 static constexpr double BOX_WIDTH_SHARE = 0.5;
 static constexpr double BOX_DEPTH = 0.01;
 static constexpr double BOX_HEIGHT = 0.008;
@@ -383,7 +387,7 @@ private:
 				} else if (wall.front) {
 					if (this->WearsWindowBoxes() && this->dice.Share() < BOX_SHARE) this->AddWindowBox(wall, centre, column_width, bottom);
 				} else if (this->dice.Share() < UNIT_SHARE && this->HangsUnits()) {
-					this->AddUnit(wall, centre, bottom);
+					this->AddUnit(wall, centre, (column % 2 == 0 ? -UNIT_SIDE_SHIFT : UNIT_SIDE_SHIFT) * column_width, bottom);
 				}
 			}
 		}
@@ -418,10 +422,16 @@ private:
 		}
 	}
 
-	void AddUnit(const FacadeWall &wall, MapVector centre, double floor)
+	void AddUnit(const FacadeWall &wall, MapVector centre, double shift, double floor)
 	{
 		Coat unit = {Material::Metal, WindowGrid::None, {}, UNIT_TINT};
-		this->AddBox(this->OffWall(wall, centre, -UNIT_WIDTH / 2.0, 0.0, floor), this->OffWall(wall, centre, UNIT_WIDTH / 2.0, UNIT_DEPTH, floor + UNIT_HEIGHT), unit);
+		Coat steel = {Material::Metal, WindowGrid::None, {}, Darken(UNIT_TINT)};
+		double half = UNIT_WIDTH / 2.0;
+		double top = floor + WINDOW_SILL - UNIT_SILL_GAP;
+		double bottom = top - UNIT_HEIGHT;
+		double drain = shift + std::copysign(half + DRAIN_WIDTH / 2.0, shift);
+		this->AddBox(this->OffWall(wall, centre, shift - half, 0.0, bottom), this->OffWall(wall, centre, shift + half, UNIT_DEPTH, top), unit);
+		this->AddBox(this->OffWall(wall, centre, drain - DRAIN_WIDTH / 2.0, 0.0, std::max<double>(floor - DRAIN_DROP, this->solid.base)), this->OffWall(wall, centre, drain + DRAIN_WIDTH / 2.0, DRAIN_WIDTH, top), steel);
 	}
 
 	void AddWindowBox(const FacadeWall &wall, MapVector centre, double column_width, double floor)
