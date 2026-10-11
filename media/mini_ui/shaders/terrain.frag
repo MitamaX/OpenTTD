@@ -90,9 +90,7 @@ const float WET_GRAVEL_SHADE = 0.8;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
 const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
-const vec3 TOY_TEAL = vec3(0.42, 0.82, 0.6);
 const vec3 TOY_MINT = vec3(0.5, 0.86, 0.48);
-const vec3 TOY_LIME = vec3(0.7, 0.9, 0.42);
 const float TOY_LAWN_CONTRAST = 0.9;
 const float TOY_LAWN_PLOT_TILES = 3.0;
 const float MOWN_STRIPES_PER_TILE = 4.0;
@@ -626,7 +624,7 @@ float Contour(float height, float levels_per_pixel)
 vec3 ToyLawn(float shade)
 {
 	float calm = mix(0.5, shade, TOY_LAWN_CONTRAST);
-	return mix(mix(TOY_TEAL, TOY_MINT, smoothstep(0.2, 0.45, calm)), TOY_LIME, smoothstep(0.55, 0.85, calm));
+	return mix(mix(GRASS_DARK, TOY_MINT, smoothstep(0.2, 0.45, calm)), GRASS_LIGHT, smoothstep(0.55, 0.85, calm));
 }
 
 /* Grass shades from a darker to a lighter green across the land, deep green where it grows lush and hay gold where it is parched. */
@@ -842,7 +840,7 @@ Patch Rough(Site site)
 	Grain grain = site.grain;
 	vec2 p = site.p;
 	vec3 green = GrassTone(grain.broad, site.climate) * 0.9;
-	vec3 dry = mix(green, Landscape() == LANDSCAPE_TOYLAND ? TOY_LIME : ROUGH_TINT, 0.5);
+	vec3 dry = mix(green, Landscape() == LANDSCAPE_TOYLAND ? GRASS_LIGHT : ROUGH_TINT, 0.5);
 	float clumps = smoothstep(0.35, 0.65, Octave(p, 2.3));
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
 	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
