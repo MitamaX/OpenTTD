@@ -31,6 +31,7 @@ static constexpr double LONGEST_BANK_RUN = 1.2;
 static constexpr double BRINK_OVERHANG = 0.25;
 static constexpr double BRINK_TOP_SLOPE = 2.0;
 static constexpr double BANK_PINNING_REACH = 0.35;
+static constexpr double BANK_INNER_ROUNDING = 0.4;
 static constexpr int BANK_GATHER_REACH = 4;
 static constexpr int QUAY_WATER_WIDTH = 1;
 static constexpr double HALF_TILE_DIAGONAL = HALF_TILE * std::numbers::sqrt2;
@@ -43,20 +44,31 @@ static double BankProfile(double share)
 	return rest * rest * rest * (1.0 + 3.0 * share);
 }
 
-double Brink::Lift(const MapVector &at, double ground) const
+BankReach Brink::Reach(const MapVector &at, double ground) const
 {
 	MapVector offset = at - this->from;
-	double out = Dot(offset, this->outward);
-	if (out < -BRINK_OVERHANG) return 0.0;
 	MapVector along = this->to - this->from;
 	double length = Length(along);
 	double share_along = ShareAlong(at, this->from, this->to);
+	double out = Dot(offset, this->outward);
 	double past_end = std::abs(Dot(offset, along) / length - share_along * length);
-	double reach = std::min(BANK_RUN + BANK_RUN_PER_LEVEL * std::lerp(this->rise[0], this->rise[1], share_along), LONGEST_BANK_RUN);
-	double share_out = std::hypot(std::max(out, 0.0), past_end) / reach;
-	if (share_out >= 1.0) return 0.0;
+	double distance = std::hypot(std::max(out, 0.0), past_end);
+	BankReach reach = {0.0, this->from + along * share_along, this->outward, distance};
+	double run = std::min(BANK_RUN + BANK_RUN_PER_LEVEL * std::lerp(this->rise[0], this->rise[1], share_along), LONGEST_BANK_RUN);
+	double share_out = distance / run;
+	if (out < -BRINK_OVERHANG || share_out >= 1.0) return reach;
 	double top = std::min({std::lerp(this->top[0], this->top[1], share_along), this->cap[0] + BRINK_TOP_SLOPE * share_along * length, this->cap[1] + BRINK_TOP_SLOPE * (1.0 - share_along) * length});
-	return std::max(top - ground, 0.0) * BankProfile(share_out);
+	reach.lift = std::max(top - ground, 0.0) * BankProfile(share_out);
+	return reach;
+}
+
+static double InnerRounding(const BankReach &first, const BankReach &second)
+{
+	double turning = 1.0 - std::max(Dot(first.outward, second.outward), 0.0);
+	double rounding = BANK_INNER_ROUNDING * turning * SmoothStep(0.0, BANK_INNER_ROUNDING, Length(first.nearest - second.nearest)) * SmoothStep(0.0, BANK_INNER_ROUNDING, std::min(first.distance, second.distance));
+	if (rounding <= 0.0) return std::max(first.lift, second.lift);
+	double overlap = std::max(rounding - std::abs(first.lift - second.lift), 0.0) / rounding;
+	return std::max(first.lift, second.lift) + overlap * overlap * rounding * 0.25;
 }
 
 BankSite::BankSite(std::vector<Brink> brinks, std::vector<Segment> pins) : brinks(std::move(brinks)), pins(std::move(pins))
@@ -66,8 +78,18 @@ BankSite::BankSite(std::vector<Brink> brinks, std::vector<Segment> pins) : brink
 double BankSite::Lift(double x, double y, double ground) const
 {
 	MapVector at = {x, y};
-	double lift = 0.0;
-	for (const Brink &brink : this->brinks) lift = std::max(lift, brink.Lift(at, ground));
+	BankReach highest = {};
+	BankReach next = {};
+	for (const Brink &brink : this->brinks) {
+		BankReach reach = brink.Reach(at, ground);
+		if (reach.lift > highest.lift) {
+			next = highest;
+			highest = reach;
+		} else if (reach.lift > next.lift) {
+			next = reach;
+		}
+	}
+	double lift = InnerRounding(highest, next);
 	if (lift <= 0.0) return 0.0;
 	double nearest_pin = std::numeric_limits<double>::infinity();
 	for (const Segment &pin : this->pins) nearest_pin = std::min(nearest_pin, pin.Distance(at));

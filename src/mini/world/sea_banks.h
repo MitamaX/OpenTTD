@@ -19,6 +19,13 @@
 
 inline constexpr int SEA_BANK_REACH = 2;
 
+struct BankReach {
+	double lift;
+	MapVector nearest;
+	MapVector outward;
+	double distance;
+};
+
 struct Brink {
 	MapVector from;
 	MapVector to;
@@ -27,7 +34,7 @@ struct Brink {
 	std::array<double, 2> rise;
 	std::array<double, 2> cap;
 
-	double Lift(const MapVector &at, double ground) const;
+	BankReach Reach(const MapVector &at, double ground) const;
 };
 
 struct Segment {
