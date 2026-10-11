@@ -794,13 +794,17 @@ Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
 	return Bare(Scree(grain, p) * gullied, rock, smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * ledges);
 }
 
+float BareShare(float steep, float altitude, float blanket)
+{
+	float baring = Landscape() == LANDSCAPE_TOYLAND ? TOY_BARING : 1.0;
+	return (steep * (STEEP_BARING + blanket * SHED_BARING) + smoothstep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING) * baring;
+}
+
 /* Ground lies bare where it stands steep, more so where snow or sand slides off it, or high in the mountains, first as loose scree and then as rock, with edges ragged at every scale. */
 Exposure ExposureAt(Relief relief, Grain grain, float blanket)
 {
-	float altitude = AltitudeShare();
 	float ragged = (grain.local - 0.5) * 0.7 + (grain.fine - 0.5) * 0.3 + (grain.micro - 0.5) * 0.15;
-	float baring = Landscape() == LANDSCAPE_TOYLAND ? TOY_BARING : 1.0;
-	float bare = (relief.steep * (STEEP_BARING + blanket * SHED_BARING) + smoothstep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING) * baring + ragged;
+	float bare = BareShare(relief.steep, AltitudeShare(), blanket) + ragged;
 	float scree = smoothstep(SCREE_EXPOSURE - EXPOSURE_BLEND, SCREE_EXPOSURE + EXPOSURE_BLEND, bare);
 	float rock = smoothstep(ROCK_EXPOSURE - EXPOSURE_BLEND, ROCK_EXPOSURE + EXPOSURE_BLEND, bare);
 	return Exposure(scree, rock);

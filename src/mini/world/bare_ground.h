@@ -15,6 +15,7 @@
 #include <numbers>
 
 #include "../core/camera.h"
+#include "../map/world_tiles.h"
 
 inline constexpr double STANDARD_SLOPE = 1.0;
 inline constexpr double STEEPEST_SLOPE = std::numbers::sqrt2;
@@ -40,6 +41,12 @@ inline constexpr uint32_t DRY_SAND_TONE = 0xFFC7B58C;
 inline constexpr uint32_t LITTER_MOSS_TONE = 0xFF4A592B;
 inline constexpr std::array<uint32_t, 4> TOY_STRATA_TONES = {0xFFF2A8C2, 0xFFC2B0ED, 0xFFFCD199, 0xFF9EDBE6};
 
+double SteepShare(double slope);
 double AltitudeShare(double level);
+double BlanketDepth(const GroundTexel &ground);
+double BareShare(double steep, double altitude, double blanket);
+double ExposedShare(double bare, double threshold);
+double StrataPerLevel();
+double BeddingOf(const MapVector &at, double level);
 
 #endif /* MINI_WORLD_BARE_GROUND_H */

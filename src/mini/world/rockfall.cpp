@@ -14,6 +14,7 @@
 #include <array>
 #include <cmath>
 #include <numbers>
+#include <span>
 
 #include "../../map_func.h"
 #include "../../settings_type.h"
@@ -33,6 +34,9 @@ static constexpr int SURVEY_MARGIN = 1;
 static constexpr int STONE_CELLS = 3;
 static constexpr double STONE_JITTER = 0.3;
 static constexpr double ROCKY_STONES = 0.75;
+static constexpr double ROUGH_STONES = 0.08;
+static constexpr double SCREE_STONES = 0.3;
+static constexpr double OUTCROP_STONES = 0.4;
 static constexpr double GATHER_FLOOR = 0.15;
 static constexpr SeedRange GATHER_EDGES = {0.3, 0.7};
 static constexpr double ROCK_GATHERS_PER_TILE = 0.6;
@@ -56,17 +60,42 @@ static constexpr std::array<RockPick, 5> ROCKY_PICKS = {{
 	{RockModel::Rubble, 0.2},
 }};
 
+static constexpr std::array<RockPick, 4> SCREE_PICKS = {{
+	{RockModel::Rubble, 0.45},
+	{RockModel::Block, 0.25},
+	{RockModel::Wedge, 0.2},
+	{RockModel::Boulder, 0.1},
+}};
+
+static constexpr std::array<RockPick, 3> OUTCROP_PICKS = {{
+	{RockModel::Block, 0.4},
+	{RockModel::Slab, 0.3},
+	{RockModel::Boulder, 0.3},
+}};
+
 struct BareTile {
 	double level;
 	MapVector climb;
 	GroundTexel ground;
 	bool holds;
+	double bare;
+};
+
+struct StoneRule {
+	double chance;
+	std::span<const RockPick> picks;
+	bool layered;
 };
 
 struct RockLook {
 	uint32_t body;
 	uint32_t cap;
 };
+
+static bool IsLevelLowland(const SurfaceTexel &surface, const GroundTexel &ground)
+{
+	return surface.Lowest() == surface.Highest() && AltitudeShare(surface.Lowest()) < ALPINE_ALTITUDE && ground.material != GroundMaterial::Rocks;
+}
 
 static bool HoldsStones(int tx, int ty, const GroundTexel &ground)
 {
@@ -94,10 +123,15 @@ private:
 	BareTile Read(int tx, int ty) const
 	{
 		if (!OnMap(tx, ty)) return {};
-		GroundTexel ground = _world_tiles.GroundAt(TileXY(tx, ty));
-		if (!HoldsStones(tx, ty, ground)) return {0.0, {}, ground, false};
+		TileIndex index = TileXY(tx, ty);
+		GroundTexel ground = _world_tiles.GroundAt(index);
+		if (!HoldsStones(tx, ty, ground)) return {0.0, {}, ground, false, 0.0};
+		SurfaceTexel surface = _world_tiles.SurfaceAt(index);
+		if (IsLevelLowland(surface, ground)) return {static_cast<double>(surface.Lowest()), {}, ground, true, 0.0};
 		MapVector middle = {tx + 0.5, ty + 0.5};
-		return {this->land.LevelAt(middle.x, middle.y), this->land.Climb(middle.x, middle.y), ground, true};
+		double level = this->land.LevelAt(middle.x, middle.y);
+		MapVector climb = this->land.Climb(middle.x, middle.y);
+		return {level, climb, ground, true, BareShare(SteepShare(Length(climb)), AltitudeShare(level), BlanketDepth(ground))};
 	}
 
 	Landform land;
@@ -109,8 +143,7 @@ static double AnyBearing(SeedDice &dice)
 	return dice.Between(0.0, 2.0 * std::numbers::pi);
 }
 
-template <size_t N>
-static RockModel Picked(const std::array<RockPick, N> &picks, double share)
+static RockModel Picked(std::span<const RockPick> picks, double share)
 {
 	for (const RockPick &pick : picks) {
 		if (share < pick.weight) return pick.model;
@@ -138,14 +171,27 @@ static RockLook LookOf(uint32_t family, const BareTile &tile, SeedDice &dice)
 	return {body, Mix(body, LITTER_MOSS_TONE, MixShare(moss))};
 }
 
-static VehicleInstance Seated(const LaidGround &ground, const BareTile &tile, const MapVector &at, double yaw, double radius, const RockFit &fit, const RockLook &look)
+static StoneRule RuleOf(const BareTile &tile)
 {
-	MapVector grade = tile.climb * LevelRise();
+	bool rocky = tile.ground.material == GroundMaterial::Rocks;
+	bool rough = tile.ground.material == GroundMaterial::Rough;
+	std::array<StoneRule, 4> rules = {{
+		{rocky ? ROCKY_STONES : 0.0, ROCKY_PICKS, false},
+		{rough ? ROUGH_STONES : 0.0, ROCKY_PICKS, false},
+		{ExposedShare(tile.bare, SCREE_EXPOSURE) * SCREE_STONES, SCREE_PICKS, true},
+		{ExposedShare(tile.bare, ROCK_EXPOSURE) * OUTCROP_STONES, OUTCROP_PICKS, true},
+	}};
+	return *std::ranges::max_element(rules, {}, &StoneRule::chance);
+}
+
+static VehicleInstance Seated(const WorldPoint &seat, const MapVector &climb, double yaw, double radius, const RockFit &fit, const RockLook &look)
+{
+	MapVector grade = climb * LevelRise();
 	MapVector heading = {std::cos(yaw), std::sin(yaw)};
 	double along = Dot(grade, heading);
 	double across = Dot(grade, {-heading.y, heading.x});
 	double sink = fit.reach * radius * Length(grade) * (1.0 - fit.follow);
-	Vec3 place = {at.x, at.y, ground.Level(at) * LevelRise() - sink};
+	Vec3 place = {seat.x, seat.y, seat.level * LevelRise() - sink};
 	return StrewnCopy(place, {yaw, std::atan(along * fit.follow), std::atan(across * fit.follow)}, radius, InstanceColour(look.body), InstanceColour(look.cap));
 }
 
@@ -154,22 +200,23 @@ static MapVector Inset(const MapVector &at, int tx, int ty, double margin)
 	return {std::clamp(at.x, tx + margin, tx + 1.0 - margin), std::clamp(at.y, ty + margin, ty + 1.0 - margin)};
 }
 
-static void StrewStones(const LaidGround &ground, const BareTile &tile, int tx, int ty, ScatterCopies &copies)
+static void StrewStones(const LaidGround &ground, const BareTile &tile, const StoneRule &rule, int tx, int ty, ScatterCopies &copies)
 {
 	uint32_t base = TileXY(tx, ty).base();
 	SeedDice dice(Hash32(ROCK_SALT ^ base));
-	RockLook look = LookOf(base, tile, dice);
 	bool hemmed = !ClearAround(tx, ty, 1);
 	for (int cell = 0; cell < STONE_CELLS * STONE_CELLS; cell++) {
 		MapVector at = {tx + (cell % STONE_CELLS + 0.5 + dice.Between(-STONE_JITTER, STONE_JITTER)) / STONE_CELLS, ty + (cell / STONE_CELLS + 0.5 + dice.Between(-STONE_JITTER, STONE_JITTER)) / STONE_CELLS};
 		double chance = dice.Share();
-		RockModel model = Picked(ROCKY_PICKS, dice.Share());
+		RockModel model = Picked(rule.picks, dice.Share());
 		RockFit fit = FitOf(model);
 		double radius = std::min(dice.Between(fit.radius), MOST_CELL_SHARE / STONE_CELLS);
 		double yaw = AnyBearing(dice);
-		if (chance >= ROCKY_STONES * Gathering(at)) continue;
+		if (chance >= rule.chance * Gathering(at)) continue;
 		if (hemmed) at = Inset(at, tx, ty, fit.reach * radius);
-		copies[RockModelIndex(model, RockFinish::Chiselled)].push_back(Seated(ground, tile, at, yaw, radius, fit, look));
+		WorldPoint seat = ground.At(at);
+		uint32_t family = rule.layered ? static_cast<uint32_t>(static_cast<int>(std::floor(BeddingOf(at, seat.level)))) : base;
+		copies[RockModelIndex(model, RockFinish::Chiselled)].push_back(Seated(seat, tile.climb, yaw, radius, fit, LookOf(family, tile, dice)));
 	}
 }
 
@@ -184,8 +231,9 @@ void Rockfall::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			BareTile tile = survey.At(tx, ty);
-			if (!tile.holds || tile.ground.material != GroundMaterial::Rocks) continue;
-			StrewStones(LaidGround(survey.Land(), tx, ty), tile, tx, ty, copies);
+			if (!tile.holds) continue;
+			StoneRule rule = RuleOf(tile);
+			if (rule.chance > 0.0) StrewStones(LaidGround(survey.Land(), tx, ty), tile, rule, tx, ty, copies);
 		}
 	}
 }

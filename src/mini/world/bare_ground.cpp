@@ -12,11 +12,50 @@
 
 #include <algorithm>
 
-#include "../map/world_tiles.h"
+#include "../../settings_type.h"
 
 #include "../../safeguards.h"
+
+static bool IsToyland()
+{
+	return _settings_game.game_creation.landscape == LandscapeType::Toyland;
+}
+
+double SteepShare(double slope)
+{
+	return SmoothStep(STANDARD_SLOPE, STEEPEST_SLOPE, slope);
+}
 
 double AltitudeShare(double level)
 {
 	return std::clamp(level / std::max(static_cast<double>(_world_tiles.Peak()), MIN_RELIEF_SPAN), 0.0, 1.0);
+}
+
+double BlanketDepth(const GroundTexel &ground)
+{
+	LandscapeType landscape = _settings_game.game_creation.landscape;
+	bool snowed = landscape == LandscapeType::Arctic && ground.material == GroundMaterial::Snow;
+	bool sanded = landscape == LandscapeType::Tropic && ground.material == GroundMaterial::Desert;
+	return snowed || sanded ? ((ground.detail & GROUND_DENSITY_MASK) + 1.0) / (GROUND_DENSITY_MASK + 1.0) : 0.0;
+}
+
+double BareShare(double steep, double altitude, double blanket)
+{
+	double baring = IsToyland() ? TOY_BARING : 1.0;
+	return (steep * (STEEP_BARING + blanket * SHED_BARING) + SmoothStep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING) * baring;
+}
+
+double ExposedShare(double bare, double threshold)
+{
+	return SmoothStep(threshold - EXPOSURE_BLEND, threshold + EXPOSURE_BLEND, bare);
+}
+
+double StrataPerLevel()
+{
+	return IsToyland() ? TOY_STRATA_PER_LEVEL : STRATA_PER_LEVEL;
+}
+
+double BeddingOf(const MapVector &at, double level)
+{
+	return level * StrataPerLevel() + (IsToyland() ? 0.0 : Dot(at, STRATA_DIP));
 }
