@@ -19,6 +19,7 @@
 inline constexpr double CLIMB_PROBE = 0.05;
 
 using CubicWeights = std::array<double, 4>;
+using CornerPatch = std::array<std::array<double, 4>, 4>;
 
 struct LatticeCell {
 	int cx;
@@ -30,17 +31,23 @@ struct LatticeCell {
 LatticeCell CellOf(double x, double y);
 CubicWeights CatmullRomWeights(double t);
 CubicWeights BsplineWeights(double t);
+CubicWeights BsplineCurvatures(double t);
+double Weighed(const CornerPatch &patch, const CubicWeights &across, const CubicWeights &down);
+
+template <class Corner>
+CornerPatch PatchAbout(const Corner &corner, const LatticeCell &cell)
+{
+	CornerPatch patch;
+	for (int j = 0; j < 4; j++) {
+		for (int i = 0; i < 4; i++) patch[j][i] = corner(cell.cx + i - 1, cell.cy + j - 1);
+	}
+	return patch;
+}
 
 template <class Corner>
 double Bicubic(const Corner &corner, const LatticeCell &cell, const CubicWeights &across, const CubicWeights &down)
 {
-	double sum = 0.0;
-	for (int j = 0; j < 4; j++) {
-		double row = 0.0;
-		for (int i = 0; i < 4; i++) row += across[i] * corner(cell.cx + i - 1, cell.cy + j - 1);
-		sum += down[j] * row;
-	}
-	return sum;
+	return Weighed(PatchAbout(corner, cell), across, down);
 }
 
 template <class Level>

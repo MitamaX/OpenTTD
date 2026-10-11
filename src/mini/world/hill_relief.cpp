@@ -15,6 +15,7 @@
 
 #include "../../map_func.h"
 #include "../../tile_map.h"
+#include "../core/lattice_noise.h"
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
 #include "block_scatter.h"
@@ -24,6 +25,9 @@
 
 static constexpr int LANDFORM_MARGIN = 4;
 static constexpr double HILL_STRAIGHTENING_REACH = 1.0;
+static constexpr double CREST_FULL_BEND = 0.5;
+static constexpr double CREST_WAVES_PER_TILE = 0.4;
+static constexpr uint32_t CREST_SALT = 0x6C2E57A1U;
 
 static bool IsMapTile(int tx, int ty)
 {
@@ -73,10 +77,19 @@ std::array<double, 4> Landform::Corners(int tx, int ty) const
 	return {this->Corner(tx, ty), this->Corner(tx + 1, ty), this->Corner(tx, ty + 1), this->Corner(tx + 1, ty + 1)};
 }
 
+static double CrestWave(double x, double y, double bend)
+{
+	return CREST_WAVE * SmoothStep(0.0, CREST_FULL_BEND, bend) * (2.0 * LatticeNoise(x, y, CREST_WAVES_PER_TILE, CREST_SALT) - 1.0);
+}
+
 double Landform::Rolled(double x, double y) const
 {
 	LatticeCell cell = CellOf(x, y);
-	return Bicubic([this](int cx, int cy) { return this->Corner(cx, cy); }, cell, BsplineWeights(cell.u), BsplineWeights(cell.v));
+	CornerPatch patch = PatchAbout([this](int cx, int cy) { return this->Corner(cx, cy); }, cell);
+	CubicWeights across = BsplineWeights(cell.u);
+	CubicWeights down = BsplineWeights(cell.v);
+	double bend = std::abs(Weighed(patch, BsplineCurvatures(cell.u), down)) + std::abs(Weighed(patch, across, BsplineCurvatures(cell.v)));
+	return Weighed(patch, across, down) + CrestWave(x, y, bend);
 }
 
 Vec3 Landform::RolledNormal(double x, double y) const

@@ -19,6 +19,7 @@
 
 inline constexpr int LANDFORM_REACH = 2;
 inline constexpr int ROLL_SPREAD = 1;
+inline constexpr double CREST_WAVE = 0.15;
 
 class Landform {
 public:

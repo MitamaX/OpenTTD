@@ -42,6 +42,22 @@ CubicWeights BsplineWeights(double t)
 	return {s * s * s / 6.0, (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0, (1.0 + 3.0 * t + 3.0 * t2 - 3.0 * t3) / 6.0, t3 / 6.0};
 }
 
+CubicWeights BsplineCurvatures(double t)
+{
+	return {1.0 - t, 3.0 * t - 2.0, 1.0 - 3.0 * t, t};
+}
+
+double Weighed(const CornerPatch &patch, const CubicWeights &across, const CubicWeights &down)
+{
+	double sum = 0.0;
+	for (int j = 0; j < 4; j++) {
+		double row = 0.0;
+		for (int i = 0; i < 4; i++) row += across[i] * patch[j][i];
+		sum += down[j] * row;
+	}
+	return sum;
+}
+
 Vec3 ClimbNormal(const MapVector &climb)
 {
 	double rise = LevelRise();
