@@ -17,9 +17,3 @@ vec3 PaneLight(Pane pane, vec3 reflection, vec3 normal, vec3 view, float roughne
 	vec3 surroundings = reflection * mirrored * occlusion;
 	return through + pane.film * (surroundings + lighting.sun * Highlight(lighting.glare, pane.reflectance));
 }
-
-vec4 PaneRadiance(Pane pane, vec3 reflection, vec3 normal, vec3 view, float roughness, float occlusion, float sunlit)
-{
-	Lighting lighting = LightingOf(normal, view, roughness, Sunlight(normal, sunlit));
-	return vec4(PaneLight(pane, reflection, normal, view, roughness, occlusion, lighting), AmbientShare(lighting.ambient, lighting.sun));
-}

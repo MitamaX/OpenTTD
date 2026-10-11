@@ -91,9 +91,9 @@ vec3 Surroundings(vec3 way)
 }
 
 /* The sky and ground a surface reflects, blurring toward the light falling on it from all around the rougher it is. */
-vec3 Sheen(vec3 normal, vec3 view, Coat coat, vec3 ambient)
+vec3 Sheen(vec3 reflection, vec3 normal, vec3 view, Coat coat, vec3 ambient)
 {
-	vec3 around = mix(Surroundings(reflect(-view, normal)), ambient, coat.roughness * coat.roughness);
+	vec3 around = mix(reflection, ambient, coat.roughness * coat.roughness);
 	return around * SurroundingReflectance(coat, max(dot(normal, view), 0.0));
 }
 
@@ -116,20 +116,21 @@ Lighting LightingOf(vec3 normal, vec3 view, float roughness, vec3 sun)
 }
 
 /* The light a surface point's coat reflects toward the eye: the sun's highlight, and the sheen of its surroundings dimmed by occlusion. */
-vec3 Reflected(vec3 normal, vec3 view, Coat coat, Lighting lighting, float occlusion)
+vec3 Reflected(vec3 reflection, vec3 normal, vec3 view, Coat coat, Lighting lighting, float occlusion)
 {
-	return lighting.sun * Highlight(lighting.glare, coat.reflectance) + Sheen(normal, view, coat, lighting.ambient) * occlusion;
+	return lighting.sun * Highlight(lighting.glare, coat.reflectance) + Sheen(reflection, normal, view, coat, lighting.ambient) * occlusion;
 }
 
-vec3 SurfaceLight(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlusion, Lighting lighting, vec3 scattered_sun)
+vec3 SurfaceLight(vec3 albedo, vec3 reflection, vec3 normal, vec3 view, Coat coat, float occlusion, Lighting lighting, vec3 scattered_sun)
 {
-	return Diffuse(albedo, scattered_sun + lighting.ambient * occlusion, coat.reflectance) + Reflected(normal, view, coat, lighting, occlusion);
+	return Diffuse(albedo, scattered_sun + lighting.ambient * occlusion, coat.reflectance) + Reflected(reflection, normal, view, coat, lighting, occlusion);
 }
 
 vec4 SurfaceRadiance(vec3 albedo, vec3 normal, vec3 view, Coat coat, float occlusion, vec3 sun, vec3 scattered_sun)
 {
 	Lighting lighting = LightingOf(normal, view, coat.roughness, sun);
-	return vec4(SurfaceLight(albedo, normal, view, coat, occlusion, lighting, scattered_sun), AmbientShare(lighting.ambient, scattered_sun));
+	vec3 light = SurfaceLight(albedo, Surroundings(reflect(-view, normal)), normal, view, coat, occlusion, lighting, scattered_sun);
+	return vec4(light, AmbientShare(lighting.ambient, scattered_sun));
 }
 
 /* The light a surface point sends toward the eye with the share of the sun that reaches it given, and how brightly crystals in it glint in the sun. */

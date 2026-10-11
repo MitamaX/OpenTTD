@@ -96,9 +96,10 @@ vec4 CladRadiance(Clad clad, vec3 normal, mat3 frame)
 	float sunlit = SunVisibility(v_position, normal) * clad.sunlit;
 	float occlusion = v_colour.a * clad.occlusion;
 	Lighting lighting = LightingOf(normal, view, roughness, Sunlight(normal, sunlit));
-	vec3 light = clad.glass < 1.0 ? SurfaceLight(albedo, normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, lighting, lighting.sun) : vec3(0.0);
+	vec3 mirror_way = reflect(-view, normal);
+	vec3 light = clad.glass < 1.0 ? SurfaceLight(albedo, Surroundings(mirror_way), normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, lighting, lighting.sun) : vec3(0.0);
 	if (clad.glass > 0.0) {
-		vec3 reflection = Mirrored(StreetBefore(v_position, frame[2], v_seed), reflect(-view, normal), roughness);
+		vec3 reflection = Mirrored(StreetBefore(v_position, frame[2], v_seed), mirror_way, roughness);
 		light = mix(light, PaneLight(PaneOf(albedo, clad), reflection, normal, view, roughness, occlusion, lighting), clad.glass);
 	}
 	return vec4(light + albedo * clad.glow, AmbientShare(lighting.ambient, lighting.sun));
