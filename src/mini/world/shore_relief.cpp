@@ -22,9 +22,8 @@
 
 static constexpr double SHORE_STRAIGHTENING_REACH = 0.5;
 static constexpr double CHANNEL_STRAIGHTENING_REACH = 0.2;
-/* A river's bed starts falling away just outside the water's outline and reaches the water's full depth this far inside it, in the water field's own measure. */
+/* A river's bed starts falling away this far outside the water's outline, in the water field's own measure. */
 static constexpr double CHANNEL_LIP = 0.03;
-static constexpr double CHANNEL_FALL = 0.15;
 static constexpr double RAPIDS_DEPTH = 0.3;
 static constexpr int BANK_PROBES_PER_SIDE = 4;
 

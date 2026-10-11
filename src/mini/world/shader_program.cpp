@@ -169,6 +169,7 @@ static std::string ShaderHeader()
 	DefineFloat(header, "FLOW_TEXEL_STILL", FLOW_TEXEL_STILL);
 	DefineFloat(header, "FLOW_TEXEL_SPAN", FLOW_TEXEL_SPAN);
 	DefineFloat(header, "WATERLINE", WATERLINE);
+	DefineFloat(header, "CHANNEL_FALL", CHANNEL_FALL);
 	DefineFloat(header, "SHORE_WARP", SHORE_WARP);
 	DefineFloat(header, "SHORE_WARP_FREQUENCY", SHORE_WARP_FREQUENCY);
 	DefineFloats(header, "SHORE_WARP_SEEDS", SHORE_WARP_SEEDS);

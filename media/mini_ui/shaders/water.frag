@@ -144,7 +144,6 @@ const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
 const float SHELF_REACH = 2.5;
 const float CHANNEL_DEPTH = 0.25;
-const float CHANNEL_FALL = 0.15;
 const float OPEN_SEA_LEVEL = 0.0;
 const float OPEN_SEA_LOD = 2.0;
 const vec4 OPEN_SEA = vec4(1.0, 1.0, 0.0, 0.0);

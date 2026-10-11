@@ -14,6 +14,8 @@
 
 /* Where the smoothed water field crosses this, the water's outline runs. */
 inline constexpr double WATERLINE = 0.58;
+/* A river's bed reaches the water's full depth this far inside the outline, in the water field's own measure. */
+inline constexpr double CHANNEL_FALL = 0.15;
 /* How far natural shores fray off their tiles, in tiles. */
 inline constexpr double SHORE_WARP = 0.22;
 inline constexpr double SHORE_WARP_FREQUENCY = 1.7;
