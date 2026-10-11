@@ -61,7 +61,6 @@ const uint SEEN_GROUND = 3u;
 const ivec2 NO_ANCHOR = ivec2(-1);
 const int MASSING_CELLS = 6;
 const float GROUND_TOUCH = 1e-3;
-const Box NO_BOX = Box(vec2(0.0), vec2(0.0), 0.0, 0.0);
 
 struct Sighting {
 	uint seen;
@@ -69,32 +68,39 @@ struct Sighting {
 	vec3 normal;
 	float run;
 	ivec2 tile;
-	Box box;
-	uvec4 texel;
 };
+
+Massing MassingAt(ivec2 tile)
+{
+	uvec4 texel = texelFetch(u_massing, tile, 0);
+	return MassingOf(BoxOf(tile, texel, LowestCorner(SurfaceOf(tile))), texel);
+}
 
 Sighting Unsighted(vec3 from, ivec2 tile)
 {
-	return Sighting(SEEN_NOTHING, from, UPWARD, 0.0, tile, NO_BOX, uvec4(0u));
+	return Sighting(SEEN_NOTHING, from, UPWARD, 0.0, tile);
 }
 
-Sighting MetBox(vec3 from, vec3 way, vec2 span, Box box, vec2 inverse, ivec2 tile, uvec4 texel)
+struct Strike {
+	uint seen;
+	float run;
+	vec2 across;
+};
+
+const Strike NO_STRIKE = Strike(SEEN_NOTHING, 0.0, vec2(0.0));
+
+Strike MetBox(vec3 from, vec3 way, vec2 span, Box box, vec2 inverse)
 {
 	vec2 toward = step(0.0, inverse);
 	vec2 entering = (mix(box.high, box.low, toward) - from.xy) * inverse;
 	vec2 leaving = (mix(box.low, box.high, toward) - from.xy) * inverse;
 	float enter = max(max(entering.x, entering.y), span.x);
 	float leave = min(min(leaving.x, leaving.y), span.y);
-	if (enter > leave) return Unsighted(from, tile);
-	vec3 point = from + way * enter;
-	if (point.z <= box.top) {
-		vec3 normal = entering.x > entering.y ? vec3(-sign(inverse.x), 0.0, 0.0) : vec3(0.0, -sign(inverse.y), 0.0);
-		return Sighting(SEEN_WALL, point, normal, enter, tile, box, texel);
-	}
-	if (way.z >= 0.0) return Unsighted(from, tile);
+	if (enter > leave) return NO_STRIKE;
+	if (from.z + way.z * enter <= box.top) return Strike(SEEN_WALL, enter, entering.x > entering.y ? vec2(-sign(inverse.x), 0.0) : vec2(0.0, -sign(inverse.y)));
+	if (way.z >= 0.0) return NO_STRIKE;
 	float onto = (box.top - from.z) / way.z;
-	if (onto > leave) return Unsighted(from, tile);
-	return Sighting(SEEN_ROOF, from + way * onto, UPWARD, onto, tile, box, texel);
+	return onto > leave ? NO_STRIKE : Strike(SEEN_ROOF, onto, vec2(0.0));
 }
 
 float MetGround(vec3 from, vec3 way, vec2 span, Corners ground, ivec2 tile)
@@ -118,6 +124,7 @@ Sighting Traced(vec3 from, vec3 way, ivec2 own)
 	vec2 next = abs(vec2(cell) + toward - from.xy) * per_cell;
 	float ceiling = Peak() * LevelRise() + TALLEST_STRUCTURE;
 	float enter = 0.0;
+	Strike struck = NO_STRIKE;
 	for (int crossed = 0; crossed < MASSING_CELLS; crossed++) {
 		if (!OnMap(cell) || from.z + way.z * enter > ceiling) break;
 		bool across_x = next.x < next.y;
@@ -128,13 +135,13 @@ Sighting Traced(vec3 from, vec3 way, ivec2 own)
 		float sunk = way.z < 0.0 ? (lowest * LevelRise() - from.z) / way.z : leave;
 		vec2 span = vec2(enter, min(leave, sunk));
 		bool standing = texel.x != 0u && AnchorOf(cell, texel.w) != own;
-		Sighting met = standing ? MetBox(from, way, span, BoxOf(cell, texel, lowest), inverse, cell, texel) : Unsighted(from, cell);
+		struck = standing ? MetBox(from, way, span, BoxOf(cell, texel, lowest), inverse) : NO_STRIKE;
 		float landed = MetGround(from, way, span, ground, cell);
-		if (landed >= 0.0 && (met.seen == SEEN_NOTHING || landed < met.run)) return Sighting(SEEN_GROUND, from + way * landed, UPWARD, landed, cell, NO_BOX, texel);
-		if (met.seen != SEEN_NOTHING || sunk < leave) return met;
+		if (landed >= 0.0 && (struck.seen == SEEN_NOTHING || landed < struck.run)) struck = Strike(SEEN_GROUND, landed, vec2(0.0));
+		if (struck.seen != SEEN_NOTHING || sunk < leave) break;
 		enter = leave;
 		cell += across_x ? ivec2(stride.x, 0) : ivec2(0, stride.y);
 		next += across_x ? vec2(per_cell.x, 0.0) : vec2(0.0, per_cell.y);
 	}
-	return Unsighted(from, cell);
+	return Sighting(struck.seen, from + way * struck.run, struck.seen == SEEN_WALL ? vec3(struck.across, 0.0) : UPWARD, struck.run, cell);
 }

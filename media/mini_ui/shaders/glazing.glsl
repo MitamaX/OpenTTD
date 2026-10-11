@@ -43,7 +43,7 @@ Sighting Landed(vec3 from, vec3 way)
 	if (way.z >= 0.0) return Unsighted(from, ivec2(floor(from.xy)));
 	float run = RunToGround(from, way);
 	vec3 point = from + way * run;
-	return Sighting(SEEN_GROUND, point, UPWARD, run, Clamped(ivec2(floor(point.xy))), NO_BOX, uvec4(0u));
+	return Sighting(SEEN_GROUND, point, UPWARD, run, Clamped(ivec2(floor(point.xy))));
 }
 
 float CanyonOpenness(float above_foot)
@@ -51,9 +51,8 @@ float CanyonOpenness(float above_foot)
 	return mix(MIRRORED_STREET_OPENNESS, 1.0, smoothstep(0.0, MIRRORED_CANYON_DEPTH, above_foot));
 }
 
-Seen WallSeen(Sighting sighting, float blur)
+Seen WallSeen(Sighting sighting, Massing massing, float blur)
 {
-	Massing massing = MassingOf(sighting.box, sighting.texel);
 	uint grid = massing.grid;
 	vec3 point = sighting.point;
 	vec3 normal = sighting.normal;
@@ -73,10 +72,10 @@ Seen WallSeen(Sighting sighting, float blur)
 	return Seen(mix(face, pane, windows * MIRRORED_WINDOW_CONTRAST), normal, CanyonOpenness(point.z - massing.box.foot), SKY_LIGHT * MIRRORED_WINDOW_SHEEN * windows, cover);
 }
 
-Seen RoofSeen(Sighting sighting)
+Seen RoofSeen(Sighting sighting, Massing massing)
 {
 	bool snowed = Landscape() == LANDSCAPE_ARCTIC && sighting.point.z / LevelRise() > SnowLine();
-	return Seen(Linear(snowed ? SNOW : Rgb565(sighting.texel.z)), UPWARD, 1.0, vec3(0.0), 1.0);
+	return Seen(Linear(snowed ? SNOW : massing.roof), UPWARD, 1.0, vec3(0.0), 1.0);
 }
 
 bool Along(uint ends, uint way, float across)
@@ -114,9 +113,9 @@ Seen GroundSeen(Sighting sighting, vec3 way)
 
 Seen SeenAt(Sighting sighting, vec3 way, float blur)
 {
-	if (sighting.seen == SEEN_WALL) return WallSeen(sighting, blur);
-	if (sighting.seen == SEEN_ROOF) return RoofSeen(sighting);
-	return GroundSeen(sighting, way);
+	if (sighting.seen == SEEN_GROUND) return GroundSeen(sighting, way);
+	Massing massing = MassingAt(sighting.tile);
+	return sighting.seen == SEEN_WALL ? WallSeen(sighting, massing, blur) : RoofSeen(sighting, massing);
 }
 
 vec3 LitAt(Seen seen, vec3 point, float clouds)
