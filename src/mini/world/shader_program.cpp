@@ -15,12 +15,10 @@
 
 #include <algorithm>
 #include <array>
-#include <iterator>
 #include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "../../3rdparty/fmt/ranges.h"
 #include "../../core/format.hpp"
