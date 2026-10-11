@@ -15,6 +15,7 @@
 #include <cmath>
 
 #include "../../map_func.h"
+#include "../core/lattice_noise.h"
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
 
@@ -35,17 +36,7 @@ static float LatticeHash(int x, int y)
 /* The shaders' value noise, in the same single precision. */
 static float Noise(float x, float y)
 {
-	float cell_x = std::floor(x);
-	float cell_y = std::floor(y);
-	float fx = x - cell_x;
-	float fy = y - cell_y;
-	float sx = fx * fx * (3.0f - 2.0f * fx);
-	float sy = fy * fy * (3.0f - 2.0f * fy);
-	int cx = static_cast<int>(cell_x);
-	int cy = static_cast<int>(cell_y);
-	float north = std::lerp(LatticeHash(cx, cy), LatticeHash(cx + 1, cy), sx);
-	float south = std::lerp(LatticeHash(cx, cy + 1), LatticeHash(cx + 1, cy + 1), sx);
-	return std::lerp(north, south, sy);
+	return LatticeBlend(x, y, LatticeHash);
 }
 
 static double ShoreWarp(double x, double y, double seed)

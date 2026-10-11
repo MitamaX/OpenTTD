@@ -16,6 +16,7 @@
 #include "../../map_func.h"
 #include "../../settings_type.h"
 #include "../core/camera.h"
+#include "../core/lattice_noise.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
@@ -67,21 +68,6 @@ static VehicleInstance TuftOn(const LaidGround &ground, double x, double y, doub
 		static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), static_cast<float>(turn), 0.0f, 0.0f,
 		static_cast<float>(scale), colour, colour, {},
 	};
-}
-
-/* Value noise over the map, smooth between the hashed points of a lattice this many to a tile. */
-static double LatticeNoise(double x, double y, double frequency, uint32_t salt)
-{
-	double u = x * frequency;
-	double v = y * frequency;
-	int cx = static_cast<int>(std::floor(u));
-	int cy = static_cast<int>(std::floor(v));
-	auto corner = [&](int dx, int dy) {
-		return SeedShare(Hash32(salt ^ Hash32(static_cast<uint32_t>(cx + dx) ^ Hash32(static_cast<uint32_t>(cy + dy)))), 0, SeedDice::SHARE_BITS);
-	};
-	double fx = SmoothStep(0.0, 1.0, u - cx);
-	double fy = SmoothStep(0.0, 1.0, v - cy);
-	return std::lerp(std::lerp(corner(0, 0), corner(1, 0), fx), std::lerp(corner(0, 1), corner(1, 1), fx), fy);
 }
 
 /* How thickly scrub gathers about a point: in clumps across the desert with open sand between, and in smaller knots within them. */

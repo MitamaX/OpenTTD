@@ -6,6 +6,7 @@ add_files(
     canvas.h
     ground_trace.cpp
     ground_trace.h
+    lattice_noise.h
     seed.h
     space.cpp
     space.h
