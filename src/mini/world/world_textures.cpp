@@ -37,21 +37,32 @@ static Rect Joined(const Rect &a, const Rect &b)
 	return TakingIn(TakingIn(a, b.left, b.top), b.right, b.bottom);
 }
 
-/* Spans lying over or close by one another are joined, so a texture is sent each area once a frame and in as few pieces as it takes. */
+/* A span to send, and how many texels the changes it took in cover. */
+struct Sent {
+	Rect area;
+	int64_t taken;
+};
+
+/* Spans lying over or close by one another are joined, so a texture is sent each area once a frame and in as few pieces as it takes;
+ * a joined span weighs only what its changes cover, so joins cannot snowball across the untouched texels between changes spread over the map. */
 static void Coalesce(std::vector<Rect> &spans)
 {
-	for (size_t kept = 0; kept < spans.size(); kept++) {
-		for (size_t other = kept + 1; other < spans.size();) {
-			Rect joined = Joined(spans[kept], spans[other]);
-			if (Area(joined) > std::max(FREELY_JOINED_TEXELS, MOST_JOINED_SPREAD * (Area(spans[kept]) + Area(spans[other])))) {
+	std::vector<Sent> sent;
+	for (const Rect &span : spans) sent.push_back({span, Area(span)});
+	for (size_t kept = 0; kept < sent.size(); kept++) {
+		for (size_t other = kept + 1; other < sent.size();) {
+			Rect joined = Joined(sent[kept].area, sent[other].area);
+			if (Area(joined) > std::max(FREELY_JOINED_TEXELS, MOST_JOINED_SPREAD * (sent[kept].taken + sent[other].taken))) {
 				other++;
 				continue;
 			}
-			spans[kept] = joined;
-			spans.erase(spans.begin() + static_cast<std::ptrdiff_t>(other));
+			sent[kept] = {joined, sent[kept].taken + sent[other].taken};
+			sent.erase(sent.begin() + static_cast<std::ptrdiff_t>(other));
 			other = kept + 1;
 		}
 	}
+	spans.clear();
+	for (const Sent &span : sent) spans.push_back(span.area);
 }
 
 WorldTextures::Source WorldTextures::SourceOf(uint unit) const
