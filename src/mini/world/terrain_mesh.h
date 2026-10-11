@@ -41,6 +41,7 @@ inline constexpr double EDGE_MARK = 0.5;
 inline constexpr double DRY_MARK = 0.0;
 /* Earth banked up under a way, which grass covers however steep it stands. */
 inline constexpr double FILL_MARK = 0.25;
+inline constexpr double ARMOUR_MARK = 0.3125;
 
 struct TerrainMesh : TriangleList<TerrainVertex> {
 	using TriangleList<TerrainVertex>::Add;

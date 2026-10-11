@@ -30,6 +30,7 @@ public:
 
 	Vec3 Normal(double x, double y, const Vec3 &faceted) const override;
 	bool Banked() const;
+	bool OnBankFace(double x, double y) const override { return this->banks.OnFace(x, y, this->Ground(x, y)); }
 
 private:
 	double Curved(double x, double y) const override;

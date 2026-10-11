@@ -50,6 +50,7 @@ const float WALL_MARK = 0.75;
 const float RETAINING_MARK = 0.9375;
 const float EDGE_MARK = 0.375;
 const float FILL_MARK = 0.25;
+const float ARMOUR_MARK = 0.3125;
 const vec2 CHANNEL_WALL_LEVELS = vec2(0.42, 0.52);
 const float SUBMERGED_MARK = 0.08;
 const float RIVERBED_DEEP_MARK = 0.2;
@@ -80,6 +81,8 @@ const float DEPTH_LOD = 3.0;
 const int DRY_LEVEL = 3;
 const int DRY_REACH = 2;
 const float SANDED_SEA = 0.26;
+const vec2 WET_SHORE_EDGES = vec2(0.03, 0.22);
+const float SPLASH_SHADE = 0.7;
 const vec2 SHORE_DAMP = vec2(0.18, 0.28);
 const vec2 BANK_DAMP = vec2(0.34, 0.14);
 const float DAMP_LEVEL = 0.5;
@@ -909,29 +912,41 @@ Patch Mixed(Patch ground, Patch over, float share)
 	return Patch(mix(ground.tone, over.tone, share), mix(ground.rugged, over.rugged, share));
 }
 
+float ShoreLift(Site site)
+{
+	Grain grain = site.grain;
+	return v_world.z + (grain.fine - 0.5) * 0.12 + (grain.micro - 0.5) * 0.05;
+}
+
+float Dried(float lift)
+{
+	return smoothstep(WET_SHORE_EDGES.x, WET_SHORE_EDGES.y, lift);
+}
+
 /* A beach is wet sand at the water's edge drying up the shore, and grass where the shore rises well clear of the sea. */
 Patch Beach(Site site)
 {
 	Grain grain = site.grain;
-	float lift = v_world.z + (grain.fine - 0.5) * 0.12 + (grain.micro - 0.5) * 0.05;
-	vec3 sand = mix(WET_SAND, DRY_SAND, smoothstep(0.03, 0.22, lift)) * Varied(grain.local, 0.12) * Varied(grain.micro, 0.12);
+	float lift = ShoreLift(site);
+	vec3 sand = mix(WET_SAND, DRY_SAND, Dried(lift)) * Varied(grain.local, 0.12) * Varied(grain.micro, 0.12);
 	float grassed = smoothstep(0.45, 0.75, lift + (grain.local - 0.5) * 0.4);
 	return Patch(mix(sand, Meadow(site), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
-vec3 Riprap(vec2 p, Bare bare)
+vec3 Riprap(Site site)
 {
+	vec2 p = site.p;
 	float lumps = smoothstep(0.3, 0.7, Octave(p, BOULDERS_PER_TILE));
-	vec3 stone = mix(bare.scree, ROCK, 0.5) * Varied(Octave(p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
-	return stone * mix(0.62, 1.12, lumps);
+	vec3 stone = mix(site.bare.scree, ROCK, 0.5) * Varied(Octave(p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
+	return stone * mix(0.62, 1.12, lumps) * mix(SPLASH_SHADE, 1.0, Dried(ShoreLift(site)));
 }
 
 /* Beside a railway or a road the shore is armoured with heaped stone. */
 Patch Shore(Site site)
 {
 	if (site.armoured <= 0.0) return Beach(site);
-	Patch stone = Patch(Riprap(site.p, site.bare), SCREE_RUGGED);
+	Patch stone = Patch(Riprap(site), SCREE_RUGGED);
 	return site.armoured < 1.0 ? Mixed(Beach(site), stone, site.armoured) : stone;
 }
 
@@ -1634,7 +1649,8 @@ Footing EdgeFooting(float levels_per_pixel)
 Footing FootingAt(vec2 p, Water water, Relief relief)
 {
 	if (Sunken(water)) return Footing(relief, 0.0, LIE_SUNKEN);
-	return Footing(relief, water.sea > 0.0 ? Armoured(p) : 0.0, water.sea > SANDED_SEA ? LIE_BEACH : LIE_DRY);
+	float armoured = water.sea > 0.0 ? max(Armoured(p), smoothstep(FILL_MARK, ARMOUR_MARK, v_mark)) : 0.0;
+	return Footing(relief, armoured, water.sea > SANDED_SEA ? LIE_BEACH : LIE_DRY);
 }
 
 /* Where the network's meshes stand opaque they hide its bands, which are then not worked out at all. */

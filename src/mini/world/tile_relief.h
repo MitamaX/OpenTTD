@@ -70,6 +70,7 @@ public:
 	double Level(double x, double y) const;
 	virtual Vec3 Normal(double x, double y, const Vec3 &faceted) const;
 	virtual bool HoldsWater() const { return true; }
+	virtual bool OnBankFace(double, double) const { return false; }
 	/* Whether the ground at a point is held to the tile's facets by a neighbour that keeps them. */
 	bool Pinned(double x, double y) const { return this->Freedom(x, y) <= 0.0 && this->Lift(x, y, this->Faceted(x, y)) <= 0.0; }
 

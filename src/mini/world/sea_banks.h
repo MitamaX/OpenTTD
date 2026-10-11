@@ -49,10 +49,13 @@ public:
 	BankSite() = default;
 	BankSite(std::vector<Brink> brinks, std::vector<Segment> pins);
 
-	double Lift(double x, double y, double ground) const;
+	double Lift(double x, double y, double ground) const { return this->Banked({x, y}, ground).lift; }
+	bool OnFace(double x, double y, double ground) const;
 	bool Empty() const { return this->brinks.empty(); }
 
 private:
+	BankReach Banked(const MapVector &at, double ground) const;
+
 	std::vector<Brink> brinks;
 	std::vector<Segment> pins;
 };

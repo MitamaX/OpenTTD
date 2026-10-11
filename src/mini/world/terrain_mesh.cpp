@@ -230,7 +230,8 @@ static std::vector<uint32_t> AddRelief(TerrainMesh &mesh, const TileRelief &reli
 	auto mark = [&](double x, double y, double level) {
 		if (!relief.HoldsWater()) return DRY_MARK;
 		double water = std::min(sheet.Level(x, y), ground.Level(x, y));
-		return SunkMark(std::max(water - level, 0.0));
+		if (level < water) return SunkMark(water - level);
+		return relief.OnBankFace(x, y) ? ARMOUR_MARK : DRY_MARK;
 	};
 	return LayTileGrid(mesh, tx, ty, divisions, [&](int i, int j, double x, double y) {
 		bool on_corner = (i % divisions == 0) && (j % divisions == 0);

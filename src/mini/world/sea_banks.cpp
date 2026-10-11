@@ -75,9 +75,14 @@ BankSite::BankSite(std::vector<Brink> brinks, std::vector<Segment> pins) : brink
 {
 }
 
-double BankSite::Lift(double x, double y, double ground) const
+bool BankSite::OnFace(double x, double y, double ground) const
 {
-	MapVector at = {x, y};
+	BankReach banked = this->Banked({x, y}, ground);
+	return banked.lift > 0.0 && banked.distance > 0.0;
+}
+
+BankReach BankSite::Banked(const MapVector &at, double ground) const
+{
 	BankReach highest = {};
 	BankReach next = {};
 	for (const Brink &brink : this->brinks) {
@@ -89,11 +94,12 @@ double BankSite::Lift(double x, double y, double ground) const
 			next = reach;
 		}
 	}
-	double lift = InnerRounding(highest, next);
-	if (lift <= 0.0) return 0.0;
+	highest.lift = InnerRounding(highest, next);
+	if (highest.lift <= 0.0) return highest;
 	double nearest_pin = std::numeric_limits<double>::infinity();
 	for (const Segment &pin : this->pins) nearest_pin = std::min(nearest_pin, pin.Distance(at));
-	return lift * SmoothStep(0.0, BANK_PINNING_REACH, nearest_pin);
+	highest.lift *= SmoothStep(0.0, BANK_PINNING_REACH, nearest_pin);
+	return highest;
 }
 
 static bool SamePlace(const MapVector &a, const MapVector &b)
