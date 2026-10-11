@@ -246,10 +246,18 @@ static void AddDistinct(std::vector<WorldPoint> &ring, const WorldPoint &point)
 	if (ring.empty() || !SamePoint(ring.back(), point)) ring.push_back(point);
 }
 
+static TileSpan WalkedTiles(int tx, int ty, TileIndexDiffC walk, int tiles)
+{
+	int last_x = tx + walk.x * (tiles - 1);
+	int last_y = ty + walk.y * (tiles - 1);
+	return {std::min(tx, last_x), std::min(ty, last_y), std::max(tx, last_x), std::max(ty, last_y)};
+}
+
 /* Walking a side left to right as seen from outside, each tile adds its own two corners on that side, and the points between them where its ground curves. */
-static void AddSideCorners(std::vector<WorldPoint> &ring, const DrawnGround &ground, int tx, int ty, DiagDirection side, int tiles)
+static void AddSideCorners(std::vector<WorldPoint> &ring, int tx, int ty, DiagDirection side, int tiles)
 {
 	TileIndexDiffC walk = TileIndexDiffCByDiagDir(ChangeDiagDir(side, DIAGDIRDIFF_90LEFT));
+	DrawnGround ground(WalkedTiles(tx, ty, walk, tiles));
 	auto [first, last] = SIDE_CORNERS[side];
 	for (int i = 0; i < tiles; i++) {
 		int x = tx + walk.x * i;
@@ -268,12 +276,11 @@ void FrameArea(int tx0, int ty0, int tx1, int ty1, int width, uint32_t c, uint a
 {
 	int tiles_x = tx1 + 1 - tx0;
 	int tiles_y = ty1 + 1 - ty0;
-	DrawnGround ground({tx0, ty0, tx1, ty1});
 	std::vector<WorldPoint> ring;
-	AddSideCorners(ring, ground, tx0, ty0, DIAGDIR_NW, tiles_x);
-	AddSideCorners(ring, ground, tx1, ty0, DIAGDIR_SW, tiles_y);
-	AddSideCorners(ring, ground, tx1, ty1, DIAGDIR_SE, tiles_x);
-	AddSideCorners(ring, ground, tx0, ty1, DIAGDIR_NE, tiles_y);
+	AddSideCorners(ring, tx0, ty0, DIAGDIR_NW, tiles_x);
+	AddSideCorners(ring, tx1, ty0, DIAGDIR_SW, tiles_y);
+	AddSideCorners(ring, tx1, ty1, DIAGDIR_SE, tiles_x);
+	AddSideCorners(ring, tx0, ty1, DIAGDIR_NE, tiles_y);
 	if (SamePoint(ring.front(), ring.back())) ring.pop_back();
 	_canvas.FrameWorldRing(ring, width, c, alpha);
 }
