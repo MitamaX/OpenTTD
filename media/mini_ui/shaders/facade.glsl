@@ -127,7 +127,7 @@ Clad ToyDressed(Clad pane, Bay bay, Elevation elevation)
 Clad Bulged(Clad pane, Opening opening, vec2 at)
 {
 	vec3 edge = NearestEdge(opening, at);
-	float radius = ToyCornerRadius(vec2(opening.width, opening.height) * 0.5, opening.arch);
+	float radius = ToyCornerRadius(ToyHalfSize(opening), opening.rounded);
 	pane.facing = vec3(edge.xy * TOY_BULGE * smoothstep(-radius, 0.0, edge.z), 1.0);
 	return pane;
 }

@@ -4,6 +4,7 @@ const vec2 TOY_WIDTHS = vec2(0.7, 1.0);
 const vec2 TOY_HEIGHTS = vec2(0.75, 1.15);
 const float TOY_ROUND_SHARE = 0.25;
 const float TOY_FRAME_ROOM = 1.0;
+const vec2 TOY_STRETCH = vec2(1.0, FORM_HEIGHT_SCALE);
 
 const ivec2 WINDOW_SALT = ivec2(7, 13);
 const int ROLL_STRIDE = 7919;
@@ -72,9 +73,10 @@ Opening ToyShaped(Opening opening, ivec2 window, uint seed, float pitch, float b
 	float middle = opening.sill + opening.height * 0.5;
 	float width = min(opening.width * mix(TOY_WIDTHS.x, TOY_WIDTHS.y, Roll(ivec2(window.x, STOREY_COLUMN), seed, ROLL_TOY_SHAPE)), pitch - TOY_FRAME_ROOM);
 	float height = min(opening.height * mix(TOY_HEIGHTS.x, TOY_HEIGHTS.y, Roll(ivec2(STOREY_COLUMN, window.y), seed, ROLL_TOY_SHAPE)), 2.0 * min(middle, band - middle) - TOY_FRAME_ROOM);
-	opening.arch = Roll(window, seed, ROLL_TOY_SHAPE) < TOY_ROUND_SHARE;
-	opening.width = opening.arch ? min(width, height) : width;
-	opening.height = opening.arch ? opening.width : height;
+	float diameter = min(width, height * FORM_HEIGHT_SCALE);
+	opening.rounded = Roll(window, seed, ROLL_TOY_SHAPE) < TOY_ROUND_SHARE;
+	opening.width = opening.rounded ? diameter : width;
+	opening.height = opening.rounded ? diameter / FORM_HEIGHT_SCALE : height;
 	opening.sill = middle - opening.height * 0.5;
 	return opening;
 }
@@ -132,6 +134,11 @@ vec2 ReachIn(vec2 from, vec2 heading, vec2 low, vec2 high)
 	return ReachOut(from, heading, high, low);
 }
 
+vec2 ToyHalfSize(Opening opening)
+{
+	return vec2(opening.width, opening.height * FORM_HEIGHT_SCALE) * 0.5;
+}
+
 float ToyCornerRadius(vec2 half_size, bool full)
 {
 	return min(half_size.x, half_size.y) * (full ? 1.0 : TOY_ROUNDING);
@@ -152,7 +159,7 @@ vec3 RoundedEdge(vec2 half_size, vec2 from_centre, bool full)
 vec3 NearestEdge(Opening opening, vec2 at)
 {
 	float half_width = opening.width * 0.5;
-	if (Landscape() == LANDSCAPE_TOYLAND) return RoundedEdge(vec2(half_width, opening.height * 0.5), at - vec2(0.0, opening.height * 0.5), opening.arch);
+	if (Landscape() == LANDSCAPE_TOYLAND) return RoundedEdge(ToyHalfSize(opening), (at - vec2(0.0, opening.height * 0.5)) * TOY_STRETCH, opening.rounded);
 	float spring = opening.height - half_width;
 	if (opening.arch && at.y > spring) {
 		vec2 from_centre = vec2(at.x, at.y - spring);
