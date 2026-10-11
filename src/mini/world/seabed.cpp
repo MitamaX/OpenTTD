@@ -182,7 +182,6 @@ bool IsRiverside(int tx, int ty)
 	return IsChannel(tx, ty) || IsRapids(tx, ty) || IsRiverMouth(tx, ty) || IsRiverBank(tx, ty);
 }
 
-
 double BedLevel(int tx, int ty, double x, double y)
 {
 	double level = TileGround(tx, ty).Level(x, y);

@@ -583,7 +583,6 @@ vec3 DrySand()
 	return ToyOr(TOY_DRY_SAND, DRY_SAND);
 }
 
-
 /* Below the sea the waves scatter the sunlight, so the shadows falling on the bed lighten with the depth of the water over it. */
 vec4 Lit(Shade shade)
 {
