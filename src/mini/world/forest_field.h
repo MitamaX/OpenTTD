@@ -59,6 +59,9 @@ public:
 	void Release();
 
 private:
+	struct DetailSpan;
+	class DetailReach;
+
 	/* A shape's trees within a block, lying together. */
 	struct Run {
 		size_t shape;
@@ -77,16 +80,16 @@ private:
 		uint64_t drawn = 0;
 	};
 
-	/* A stale block near enough for the camera to show its trees, whether it lies out of sight, and the tile pixels where it comes nearest the eye. */
+	/* A stale block near enough for the camera to show its trees, whether it lies out of sight, and how near it comes to the eye, squared. */
 	struct Due {
 		bool unseen;
-		double pixels;
+		double squared_distance;
 		size_t index;
 	};
 
 	std::pair<Vec3, Vec3> Bounds(const Cell &cell, size_t index) const;
 	void Plant(Cell &cell, const TileSpan &tiles) const;
-	void GatherCell(const Cell &cell, const Sight &sight, bool whole, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const;
+	void GatherCell(const Cell &cell, const Sight &sight, const DetailReach &details, bool whole, const DetailSpan &near, const DetailSpan &far, TreeBatch &batch) const;
 	void Evict();
 
 	ChunkGrid grid{CELL_TILES};

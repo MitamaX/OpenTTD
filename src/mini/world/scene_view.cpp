@@ -105,11 +105,16 @@ double SceneView::TilePixelsAt(double distance) const
 	return this->focal / std::max(distance, this->near);
 }
 
+/* Where a box comes nearest the eye. */
+Vec3 SceneView::NearestPoint(const Vec3 &low, const Vec3 &high) const
+{
+	return {std::clamp(this->eye.x, low.x, high.x), std::clamp(this->eye.y, low.y, high.y), std::clamp(this->eye.z, low.z, high.z)};
+}
+
 /* Tile pixels where a box comes nearest the eye. */
 double SceneView::NearestTilePixels(const Vec3 &low, const Vec3 &high) const
 {
-	Vec3 nearest = {std::clamp(this->eye.x, low.x, high.x), std::clamp(this->eye.y, low.y, high.y), std::clamp(this->eye.z, low.z, high.z)};
-	return this->TilePixelsAt(Length(this->eye - nearest));
+	return this->TilePixelsAt(Length(this->eye - this->NearestPoint(low, high)));
 }
 
 double SceneView::Reach() const

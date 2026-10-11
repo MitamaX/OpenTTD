@@ -47,6 +47,7 @@ struct SceneView {
 	SceneView Jittered(double x_pixels, double y_pixels, uint phase) const;
 	bool Sees(const Vec3 &low, const Vec3 &high) const;
 	double TilePixelsAt(double distance) const;
+	Vec3 NearestPoint(const Vec3 &low, const Vec3 &high) const;
 	double NearestTilePixels(const Vec3 &low, const Vec3 &high) const;
 	/* How far from the eye the corners of the far plane lie, beyond which nothing shows. */
 	double Reach() const;

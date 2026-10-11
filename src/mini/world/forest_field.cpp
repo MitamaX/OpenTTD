@@ -92,29 +92,72 @@ static std::pair<Vec3, Vec3> TreeBounds(const TreeInstance &tree, double rise)
 	};
 }
 
-/* The finest and the coarsest detail a tree this many tile pixels across shows in, counting the bands where details crossfade, down to the coarsest asked for; none when first passes last. */
-struct DetailSpan {
+/* The finest and the coarsest detail a tree shows in, counting the bands where details crossfade, down to the coarsest asked for; none when first passes last. */
+struct ForestField::DetailSpan {
 	size_t first;
 	size_t last;
 
 	bool Shows() const { return this->first <= this->last && this->first < TREE_DETAILS; }
 };
 
-static DetailSpan DetailsAt(double tile_pixels, TreeDetail coarsest)
+static double FloorPixels(size_t detail, double octaves)
 {
-	double octave = std::log2(std::max(tile_pixels, 1e-6));
-	auto floor = [](size_t detail) { return std::log2(TREE_DETAIL_FLOORS[detail]); };
-	size_t first = 0;
-	while (first < TREE_DETAILS && octave < floor(first) - TREE_CROSSFADE_OCTAVES) first++;
-	size_t last = 0;
-	while (last < static_cast<size_t>(coarsest) && octave < floor(last) + TREE_CROSSFADE_OCTAVES) last++;
-	return {first, last};
+	return TREE_DETAIL_FLOORS[detail] * std::exp2(octaves);
 }
 
 /* The fewest pixels a tile spans where a tree still shows in the coarsest detail asked for. */
 static double FewestPixels(TreeDetail coarsest)
 {
-	return TREE_DETAIL_FLOORS[static_cast<size_t>(coarsest)] * std::exp2(-TREE_CROSSFADE_OCTAVES);
+	return FloorPixels(static_cast<size_t>(coarsest), -TREE_CROSSFADE_OCTAVES);
+}
+
+static double SquaredDistance(const Vec3 &from, const Vec3 &to)
+{
+	Vec3 apart = to - from;
+	return Dot(apart, apart);
+}
+
+static double NearestSquaredDistance(const SceneView &camera, const Vec3 &low, const Vec3 &high)
+{
+	return SquaredDistance(camera.eye, camera.NearestPoint(low, high));
+}
+
+static double FarthestSquaredDistance(const SceneView &camera, const Vec3 &low, const Vec3 &high)
+{
+	auto reach = [](double from, double a, double b) { return std::max(std::abs(from - a), std::abs(from - b)); };
+	Vec3 farthest = {reach(camera.eye.x, low.x, high.x), reach(camera.eye.y, low.y, high.y), reach(camera.eye.z, low.z, high.z)};
+	return Dot(farthest, farthest);
+}
+
+class ForestField::DetailReach {
+public:
+	DetailReach(const SceneView &camera, TreeDetail coarsest);
+	DetailSpan At(double squared_distance) const;
+
+private:
+	std::array<double, TREE_DETAILS> gone;
+	std::array<double, TREE_DETAILS> joined;
+	size_t coarsest;
+	double nearest;
+};
+
+ForestField::DetailReach::DetailReach(const SceneView &camera, TreeDetail coarsest) : coarsest(static_cast<size_t>(coarsest)), nearest(camera.near * camera.near)
+{
+	auto squared_reach = [&](double tile_pixels) { return camera.focal * camera.focal / (tile_pixels * tile_pixels); };
+	for (size_t detail = 0; detail < TREE_DETAILS; detail++) {
+		this->gone[detail] = squared_reach(FloorPixels(detail, -TREE_CROSSFADE_OCTAVES));
+		this->joined[detail] = squared_reach(FloorPixels(detail, TREE_CROSSFADE_OCTAVES));
+	}
+}
+
+ForestField::DetailSpan ForestField::DetailReach::At(double squared_distance) const
+{
+	double reach = std::max(squared_distance, this->nearest);
+	size_t first = 0;
+	while (first < TREE_DETAILS && reach > this->gone[first]) first++;
+	size_t last = 0;
+	while (last < this->coarsest && reach > this->joined[last]) last++;
+	return {first, last};
 }
 
 static uint8_t ShareByte(double share)
@@ -332,17 +375,9 @@ void ForestField::Sync(const WorldChanges &changes)
 	this->grid.ForEachTouched(changes, ChangeKind::Relief, SHELF_TILES, unplant);
 }
 
-static double FarthestDistance(const Vec3 &eye, const Vec3 &low, const Vec3 &high)
-{
-	auto reach = [](double from, double a, double b) { return std::max(std::abs(from - a), std::abs(from - b)); };
-	return Length({reach(eye.x, low.x, high.x), reach(eye.y, low.y, high.y), reach(eye.z, low.z, high.z)});
-}
-
 /* A block lying wholly in sight and within one detail hands over its runs whole; one across the edge of sight or a crossfade sorts its trees one by one. */
-void ForestField::GatherCell(const Cell &cell, const Sight &sight, bool whole, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const
+void ForestField::GatherCell(const Cell &cell, const Sight &sight, const DetailReach &details, bool whole, const DetailSpan &near, const DetailSpan &far, TreeBatch &batch) const
 {
-	DetailSpan near = DetailsAt(near_pixels, coarsest);
-	DetailSpan far = DetailsAt(far_pixels, coarsest);
 	bool one_detail = near.first == far.last;
 	if (one_detail && whole) {
 		TreeDetail detail = static_cast<TreeDetail>(near.first);
@@ -358,7 +393,7 @@ void ForestField::GatherCell(const Cell &cell, const Sight &sight, bool whole, d
 				auto [low, high] = TreeBounds(tree, rise);
 				if (!sight.Sees(low, high)) continue;
 			}
-			DetailSpan span = one_detail ? near : DetailsAt(sight.camera.TilePixelsAt(Length(sight.camera.eye - Vec3{tree.x, tree.y, tree.level * rise})), coarsest);
+			DetailSpan span = one_detail ? near : details.At(SquaredDistance(sight.camera.eye, {tree.x, tree.y, tree.level * rise}));
 			if (!span.Shows()) continue;
 			for (size_t detail = span.first; detail <= span.last; detail++) batch.Add(TreeMeshIndex(run.shape, static_cast<TreeDetail>(detail)), tree);
 		}
@@ -385,18 +420,20 @@ void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, Tr
 {
 	this->due.clear();
 	Frustum shadowed = Grown(camera.frustum, cast_reach);
+	DetailReach shown(camera, coarsest_shown);
+	DetailReach cast(camera, coarsest_cast);
 	this->grid.ForEachWithin(camera, FewestPixels(coarsest_shown), Crowns().margin, [&](size_t index) {
 		Cell &cell = this->cells[index];
 		auto [low, high] = this->Bounds(cell, index);
-		double pixels = camera.NearestTilePixels(low, high);
+		double distance = NearestSquaredDistance(camera, low, high);
 		bool unseen = !BoxMeets(camera.frustum, low, high);
-		if (!DetailsAt(pixels, unseen ? coarsest_cast : coarsest_shown).Shows()) return true;
+		if (!(unseen ? cast : shown).At(distance).Shows()) return true;
 		if (unseen && !ShadowMeets(shadowed, camera.sun, low, high)) return true;
 		cell.drawn = this->frame;
-		if (cell.stale) this->due.push_back({unseen, pixels, index});
+		if (cell.stale) this->due.push_back({unseen, distance, index});
 		return true;
 	});
-	std::ranges::sort(this->due, {}, [](const Due &entry) { return std::make_pair(entry.unseen, -entry.pixels); });
+	std::ranges::sort(this->due, {}, [](const Due &entry) { return std::make_pair(entry.unseen, entry.squared_distance); });
 
 	BuildSlice slice;
 	for (const Due &entry : this->due) {
@@ -410,16 +447,17 @@ void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, Tr
 void ForestField::Gather(const Sight &sight, TreeDetail coarsest, TreeBatch &batch)
 {
 	const SceneView &camera = sight.camera;
+	DetailReach details(camera, coarsest);
 	this->grid.ForEachWithin(camera, FewestPixels(coarsest), Crowns().margin, [&](size_t index) {
 		Cell &cell = this->cells[index];
 		if (!cell.planted) return true;
 		auto [low, high] = this->Bounds(cell, index);
 		if (!sight.Sees(low, high)) return true;
 
-		double near_pixels = camera.NearestTilePixels(low, high);
-		if (!DetailsAt(near_pixels, coarsest).Shows()) return true;
+		DetailSpan near = details.At(NearestSquaredDistance(camera, low, high));
+		if (!near.Shows()) return true;
 		cell.drawn = this->frame;
-		if (!cell.trees.empty()) this->GatherCell(cell, sight, sight.SeesWhole(low, high), near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
+		if (!cell.trees.empty()) this->GatherCell(cell, sight, details, sight.SeesWhole(low, high), near, details.At(FarthestSquaredDistance(camera, low, high)), batch);
 		return true;
 	});
 }
