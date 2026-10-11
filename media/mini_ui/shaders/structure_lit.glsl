@@ -39,6 +39,7 @@ const float SNOW_RIPPLES_PER_TILE = 7.0;
 const float SNOW_RIPPLE_TILT = 0.3;
 const float SNOW_RIPPLE_SEED = 3.1;
 const float SNOW_ROUGHNESS = 0.8;
+const float ROOF_OVER_BOARD_RUN = 1.0;
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
 const float SHELTERED_GRIME = 0.55;
@@ -113,6 +114,11 @@ float SnowDepth(vec2 drift, float lying, float thawing)
 	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Layered(drift, SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
 	float ragged = (Octave(drift, SNOW_RAGS_PER_TILE) - 0.5) * SNOW_RAGGEDNESS;
 	return lying + patchy + ragged - swept - thawing * THAW_DEPTH - SNOW_SETTLES;
+}
+
+vec3 RoofOverBoard(vec3 board)
+{
+	return normalize(vec3(board.xy, ROOF_OVER_BOARD_RUN));
 }
 
 Clad Snowed(Clad clad, vec3 normal, float from_crest)
