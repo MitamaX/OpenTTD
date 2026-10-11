@@ -100,7 +100,7 @@ void VehiclePass::Prepare(const SceneView &view)
 void VehiclePass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready() || !view.Resolves(VEHICLE_CASTER_WIDTH)) return;
-	this->Gather(view.camera, view.frustum, CAST_PIXELS, VehicleDetail::Shadow);
+	this->Gather(Sight(view), CAST_PIXELS, VehicleDetail::Shadow);
 	this->caster.Use();
 	this->DrawBatch(this->caster, view.camera);
 }
@@ -108,7 +108,7 @@ void VehiclePass::Cast(const ShadowView &view)
 void VehiclePass::Draw(const SceneView &view)
 {
 	if (!this->program.Ready()) return;
-	this->Gather(view, view.frustum, 0.0, VehicleDetail::Full);
+	this->Gather(Sight(view), 0.0, VehicleDetail::Full);
 	this->program.Use();
 	UploadOverlay(this->program);
 	this->DrawBatch(this->program, view);
@@ -124,15 +124,15 @@ void VehiclePass::Warm()
 	if (this->program.Ready()) this->DrawBlank(this->program);
 }
 
-void VehiclePass::Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels, VehicleDetail near)
+void VehiclePass::Gather(const Sight &sight, double fewest_pixels, VehicleDetail near)
 {
 	this->batch.Clear(VEHICLE_MODELS);
 	for (const PlacedUnit &unit : this->fleet.Units()) {
 		Growth growth = MostGrowthOf(unit.look);
 		double radius = unit.radius * std::max(growth.along, growth.across);
 		Vec3 reach = {radius, radius, radius};
-		if (!BoxMeets(frustum, unit.centre - reach, unit.centre + reach)) continue;
-		double pixels = camera.TilePixelsAt(Length(camera.eye - unit.centre));
+		if (!sight.Sees(unit.centre - reach, unit.centre + reach)) continue;
+		double pixels = sight.camera.TilePixelsAt(Length(sight.camera.eye - unit.centre));
 		if (pixels < fewest_pixels) continue;
 		VehicleDetail detail = pixels >= FULL_DETAIL_PIXELS ? near : VehicleDetail::Simple;
 		this->batch.Add(VehicleModelIndex(unit.look, detail), unit.instance);

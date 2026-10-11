@@ -66,9 +66,9 @@ public:
 
 	/* Every block's content the view sees where a tile spans at least the fewest pixels, the blocks grown by a margin of tiles; the visit says whether to go on. */
 	template <class Visit>
-	void ForEachSeen(const SceneView &view, const Sight &sight, double fewest_pixels, int margin, Visit visit)
+	void ForEachSeen(const Sight &sight, double fewest_pixels, int margin, Visit visit)
 	{
-		this->grid.ForEachSeen(view, sight, fewest_pixels, margin, Top(), [&](size_t index) { return visit(this->blocks[index].content); });
+		this->grid.ForEachSeen(sight, fewest_pixels, margin, Top(), [&](size_t index) { return visit(this->blocks[index].content); });
 	}
 
 	void Release()

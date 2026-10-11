@@ -157,11 +157,11 @@ void StreetWalkers::Build(const TileSpan &tiles, Pavement &pavement)
 }
 
 /* Only blocks within the distance at which a tile still spans the fewest pixels are visited, so the work stays near the eye however big the map. */
-void StreetWalkers::Gather(const SceneView &view, const Sight &sight, double fewest_pixels, VehicleBatch &batch)
+void StreetWalkers::Gather(const Sight &sight, double fewest_pixels, VehicleBatch &batch)
 {
 	size_t gathered = 0;
-	this->blocks.ForEachSeen(view, sight, fewest_pixels, RUN_REACH, [&](Pavement &pavement) {
-		if (pavement.moved != this->frame) this->Move(view, pavement);
+	this->blocks.ForEachSeen(sight, fewest_pixels, RUN_REACH, [&](Pavement &pavement) {
+		if (pavement.moved != this->frame) this->Move(sight.camera, pavement);
 		for (const Stroll &stroll : pavement.strolls) {
 			if (stroll.tile_pixels < fewest_pixels) continue;
 			batch.Add(FigureModel(stroll.build, stroll.pose), stroll.instance);

@@ -85,7 +85,7 @@ void NetworkPass::Sync(const WorldChanges &changes)
 void NetworkPass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready() || !this->signal_caster.Ready() || !view.Resolves(WAY_CASTER_WIDTH)) return;
-	this->field.Gather(view.camera, view, this->shown);
+	this->field.Gather(Sight(view), this->shown);
 	this->caster.Use();
 	this->DrawLayers(this->caster, &NetworkChunk::layers);
 	this->DrawLayers(this->caster, &NetworkChunk::spans);
@@ -97,7 +97,7 @@ void NetworkPass::Cast(const ShadowView &view)
 void NetworkPass::Draw(const SceneView &view)
 {
 	if (!this->program.Ready() || !this->span_program.Ready() || !this->signal_program.Ready()) return;
-	this->field.Gather(view, view, this->shown);
+	this->field.Gather(Sight(view), this->shown);
 	this->textures.Bind();
 	for (const ShaderProgram *solid : {&this->program, &this->span_program, &this->signal_program}) {
 		WorldTextures::BindSamplers(*solid);

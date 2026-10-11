@@ -63,7 +63,7 @@ public:
 
 	void Sync(const WorldChanges &changes);
 	void Prepare(const SceneView &camera, std::vector<const NetworkChunk *> &seen);
-	void Gather(const SceneView &camera, const Sight &sight, std::vector<const NetworkChunk *> &shown);
+	void Gather(const Sight &sight, std::vector<const NetworkChunk *> &shown);
 	void Release();
 
 private:

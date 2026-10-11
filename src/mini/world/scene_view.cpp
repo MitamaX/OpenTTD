@@ -97,7 +97,7 @@ SceneView SceneView::Jittered(double x_pixels, double y_pixels, uint phase) cons
 
 bool SceneView::Sees(const Vec3 &low, const Vec3 &high) const
 {
-	return BoxMeets(this->frustum, low, high);
+	return Sight(*this).Sees(low, high);
 }
 
 double SceneView::TilePixelsAt(double distance) const
@@ -172,7 +172,7 @@ bool ShadowMeets(const Frustum &frustum, const Vec3 &sun, const Vec3 &low, const
 
 bool Sight::Sees(const Vec3 &low, const Vec3 &high) const
 {
-	return BoxMeets(this->frustum, low, high) && (this->decided == nullptr || ShadowMeets(*this->decided, this->sun, low, high));
+	return BoxMeets(this->frustum, low, high) && (this->decided == nullptr || ShadowMeets(*this->decided, this->camera.sun, low, high));
 }
 
 bool Sight::SeesWhole(const Vec3 &low, const Vec3 &high) const

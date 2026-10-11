@@ -31,7 +31,7 @@ public:
 
 	void Sync(const WorldChanges &changes) final;
 	void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) final;
-	void Gather(const SceneView &view, const Sight &sight, double fewest_pixels, VehicleBatch &batch) final;
+	void Gather(const Sight &sight, double fewest_pixels, VehicleBatch &batch) final;
 	void Release() final;
 
 protected:

@@ -81,11 +81,11 @@ public:
 	/* Every block within reach of the eye whose box, grown by a margin of tiles and standing up to the top, is in sight and in which a tile still spans the fewest pixels;
 	 * the visit says whether to go on. */
 	template <class Visit>
-	void ForEachSeen(const SceneView &view, const Sight &sight, double fewest_pixels, int margin, double top, Visit visit) const
+	void ForEachSeen(const Sight &sight, double fewest_pixels, int margin, double top, Visit visit) const
 	{
-		this->ForEachWithin(view, fewest_pixels, margin, [&](size_t index) {
+		this->ForEachWithin(sight.camera, fewest_pixels, margin, [&](size_t index) {
 			auto [low, high] = this->BoxOf(index, margin, top);
-			if (!sight.Sees(low, high) || view.NearestTilePixels(low, high) < fewest_pixels) return true;
+			if (!sight.Sees(low, high) || sight.camera.NearestTilePixels(low, high) < fewest_pixels) return true;
 			return visit(index);
 		});
 	}

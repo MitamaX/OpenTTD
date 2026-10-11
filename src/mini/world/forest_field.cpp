@@ -339,7 +339,7 @@ static double FarthestDistance(const Vec3 &eye, const Vec3 &low, const Vec3 &hig
 }
 
 /* A block lying wholly in sight and within one detail hands over its runs whole; one across the edge of sight or a crossfade sorts its trees one by one. */
-void ForestField::GatherCell(const Cell &cell, const SceneView &camera, const Sight &sight, bool whole, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const
+void ForestField::GatherCell(const Cell &cell, const Sight &sight, bool whole, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const
 {
 	DetailSpan near = DetailsAt(near_pixels, coarsest);
 	DetailSpan far = DetailsAt(far_pixels, coarsest);
@@ -358,7 +358,7 @@ void ForestField::GatherCell(const Cell &cell, const SceneView &camera, const Si
 				auto [low, high] = TreeBounds(tree, rise);
 				if (!sight.Sees(low, high)) continue;
 			}
-			DetailSpan span = one_detail ? near : DetailsAt(camera.TilePixelsAt(Length(camera.eye - Vec3{tree.x, tree.y, tree.level * rise})), coarsest);
+			DetailSpan span = one_detail ? near : DetailsAt(sight.camera.TilePixelsAt(Length(sight.camera.eye - Vec3{tree.x, tree.y, tree.level * rise})), coarsest);
 			if (!span.Shows()) continue;
 			for (size_t detail = span.first; detail <= span.last; detail++) batch.Add(TreeMeshIndex(run.shape, static_cast<TreeDetail>(detail)), tree);
 		}
@@ -404,8 +404,9 @@ void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, Tr
 }
 
 /* Only the blocks near enough for a tile to span the coarsest detail's fewest pixels are looked at. */
-void ForestField::Gather(const SceneView &camera, const Sight &sight, TreeDetail coarsest, TreeBatch &batch)
+void ForestField::Gather(const Sight &sight, TreeDetail coarsest, TreeBatch &batch)
 {
+	const SceneView &camera = sight.camera;
 	this->grid.ForEachWithin(camera, FewestPixels(coarsest), Crowns().margin, [&](size_t index) {
 		Cell &cell = this->cells[index];
 		if (!cell.planted) return true;
@@ -415,7 +416,7 @@ void ForestField::Gather(const SceneView &camera, const Sight &sight, TreeDetail
 		double near_pixels = camera.NearestTilePixels(low, high);
 		if (!DetailsAt(near_pixels, coarsest).Shows()) return true;
 		cell.drawn = this->frame;
-		if (!cell.trees.empty()) this->GatherCell(cell, camera, sight, sight.SeesWhole(low, high), near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
+		if (!cell.trees.empty()) this->GatherCell(cell, sight, sight.SeesWhole(low, high), near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
 		return true;
 	});
 }

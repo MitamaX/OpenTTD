@@ -72,16 +72,17 @@ struct ShadowView {
 
 class Sight {
 public:
-	Sight(const SceneView &view) : frustum(view.frustum) {}
-	Sight(const ShadowView &view) : frustum(view.frustum), decided(&view.decided), sun(view.camera.sun) {}
+	explicit Sight(const SceneView &view) : camera(view), frustum(view.frustum) {}
+	explicit Sight(const ShadowView &view) : camera(view.camera), frustum(view.frustum), decided(&view.decided) {}
 
 	bool Sees(const Vec3 &low, const Vec3 &high) const;
 	bool SeesWhole(const Vec3 &low, const Vec3 &high) const;
 
+	const SceneView &camera;
+
 private:
 	const Frustum &frustum;
 	const Frustum *decided = nullptr;
-	Vec3 sun{};
 };
 
 class SceneUniforms {

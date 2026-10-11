@@ -23,7 +23,7 @@ public:
 	 * as far as the world changed there. */
 	virtual void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) = 0;
 	/* Adds the copies the view sees where a tile spans at least the fewest pixels, each in the bucket of the model it is drawn with. */
-	virtual void Gather(const SceneView &view, const Sight &sight, double fewest_pixels, VehicleBatch &batch) = 0;
+	virtual void Gather(const Sight &sight, double fewest_pixels, VehicleBatch &batch) = 0;
 	virtual void Release() = 0;
 };
 

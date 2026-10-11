@@ -46,7 +46,7 @@ public:
 
 private:
 	void BuildModels();
-	void Gather(const SceneView &camera, const Frustum &frustum, double fewest_pixels, VehicleDetail near);
+	void Gather(const Sight &sight, double fewest_pixels, VehicleDetail near);
 	void DrawBatch(const ShaderProgram &program, const SceneView &camera);
 	void DrawBlank(const ShaderProgram &program);
 
