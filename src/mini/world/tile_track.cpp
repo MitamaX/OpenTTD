@@ -221,7 +221,7 @@ bool TileTrack::Shared() const
 	return TracksOverlap(this->site.bits);
 }
 
-/* The same piece on the tiles either side stands a hair apart so their faces never fight, and pieces crossing on one tile lie level as one bed; eased pieces never overlap. */
+/* How far a piece is lifted so overlapping faces do not fight. */
 double TileTrack::Lift(const TrackPiece &piece) const
 {
 	if (piece.Eased()) return 0.0;

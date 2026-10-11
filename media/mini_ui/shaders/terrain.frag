@@ -1290,7 +1290,7 @@ vec3 CanopyTone(vec2 p)
 	return TREE_CANOPY[kind] * Varied(Octave(p, 1.1), CANOPY_VARIETY);
 }
 
-/* The ground under a forest: kept from the sky by the crowns, darkened between them by their shade as distance shrinks the trees, and painted their colour where it has thinned the trees themselves away. */
+/* The ground under a forest, shaded by its crowns. */
 Canopy Forest(vec2 p)
 {
 	float density = FloorAround(p).cover;

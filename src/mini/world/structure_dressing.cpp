@@ -153,7 +153,7 @@ static ModelMesh Patinated(ModelMesh figure, uint32_t patina)
 	return figure;
 }
 
-/* A part finished as vehicles are is clad in glass where it is glazed, in metal where it is glossier than trim and plainly elsewhere, each corner in its own paint. */
+/* The coat a corner of a vehicle-finished part takes from its gloss and paint. */
 static Coat FinishedCoat(const ModelVertex &corner)
 {
 	double gloss = corner.Trait();

@@ -40,8 +40,7 @@ struct Stroll {
 	double tile_pixels;
 };
 
-/* Walkers stand on the pavements of town streets that run straight on through a tile, more of them where houses crowd close, and wait about on the open platforms of rail stations.
- * A block is laid out again once the roads or houses about it change, and its walkers are moved once a frame however many views gather them. */
+/* Walkers on town pavements and rail station platforms. */
 class StreetWalkers final : public Scatter {
 public:
 	StreetWalkers();

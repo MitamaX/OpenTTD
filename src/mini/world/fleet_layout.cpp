@@ -44,8 +44,7 @@ static constexpr double TRAIL_TILES_PER_SECOND = 1.6;
 static constexpr double PLUME_SECONDS = 11.0;
 /* A unit stands up to a glide of two tiles from where the game last put it, raised onto its ride and settled nose to tail along its path. */
 static constexpr double PLACING_SLACK_TILES = 3.0;
-/* Couplings turn at most this far toward the next unit, short of a unit's end leaning back past where its lean starts on the inside of the curve. */
-static constexpr double MOST_COUPLING_BEND = 0.4;
+static constexpr double COUPLING_LEAN_LIMIT = 0.4;
 /* The game keeps a stopped rotor's animation state at zero. */
 static constexpr uint8_t ROTOR_STOPPED = 0;
 
@@ -189,12 +188,12 @@ void FleetLayout::LayConsist(const Vehicle *head)
 	}
 }
 
-/* How far one laid unit's end leans to turn half the way to another's heading, so the two meet square; not at all unless they are coupled to each other. */
+/* How far one laid unit's end leans toward the unit coupled to it. */
 double FleetLayout::LeanToward(size_t from, size_t to) const
 {
 	if (to >= this->links.size() || this->links[std::min(from, to)].unit->Next() != this->links[std::max(from, to)].unit) return 0.0;
 	double turn = std::remainder(this->links[to].heading - this->links[from].heading, 2.0 * std::numbers::pi);
-	return std::tan(std::clamp(turn * 0.5, -MOST_COUPLING_BEND, MOST_COUPLING_BEND));
+	return std::tan(std::clamp(turn * 0.5, -COUPLING_LEAN_LIMIT, COUPLING_LEAN_LIMIT));
 }
 
 /* The path runs on to a point as a unit there runs, a train along its track through the middles of the tile sides between. */

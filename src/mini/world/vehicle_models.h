@@ -119,8 +119,7 @@ constexpr uint32_t PaintworkTone(Paintwork paintwork, double shade)
 	}
 }
 
-/* A full length unit of a ground vehicle in tiles, how far its body reaches either way of its middle, how far its couplers reach to meet the next unit's,
- * and how far out its body starts to turn toward the unit coupled to it. */
+/* The lengths of a ground vehicle's unit, in tiles. */
 inline constexpr double UNIT_TILES = 0.5;
 inline constexpr double UNIT_REACH = 0.228;
 inline constexpr double COUPLING_REACH = UNIT_TILES * 0.5;
@@ -152,8 +151,7 @@ inline constexpr std::array<VertexAttribute, 6> VEHICLE_INSTANCE_LAYOUT = {{
 
 using VehicleBatch = InstanceBatch<VehicleInstance>;
 
-/* A vehicle's unit, and how far its back and front ends lean toward the units coupled behind and before it, along it for each unit across;
- * whatever else the vehicle programs draw leans not at all. */
+/* A vehicle's unit and how far its ends lean toward the units coupled to it. */
 struct CoupledInstance {
 	VehicleInstance unit;
 	float back_lean;

@@ -221,8 +221,7 @@ void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &foo
 	}
 }
 
-/* Where along a run a piece's wires hang, and how far apart its masts stand: a piece on an eased run reckons from the run's first end,
- * so masts stand evenly all along the run; any other reckons from its own start, one span to the piece. */
+/* Where along a run a piece's wires hang, and how far apart its masts stand. */
 struct WireRun {
 	double from;
 	double to;
@@ -318,7 +317,7 @@ static std::optional<double> MastSide(const WayLine &line, double share, bool cl
 	return std::nullopt;
 }
 
-/* Masts stand evenly along an eased run; on any other tile one stands at the start of its main line, on the ground on the first side clear of every track's ballast. */
+/* Lays the masts and wires of a tile's track. */
 void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned)
 {
 	const TrackSite &site = track.Site();

@@ -126,7 +126,7 @@ void StreetWalkers::Refresh(const SceneView &camera, double shown_pixels, double
 	this->blocks.Refresh(camera, shown_pixels, cast_pixels, RUN_REACH, &StreetWalkers::Build);
 }
 
-/* Each pavement beside a house gets its walkers, pacing the stretch of street that runs straight on through their tile, or standing about on it; each open platform its few waiting. */
+/* Lays a block's walkers on its pavements and platforms. */
 void StreetWalkers::Build(const TileSpan &tiles, Pavement &pavement)
 {
 	std::vector<Walker> &walkers = pavement.walkers;

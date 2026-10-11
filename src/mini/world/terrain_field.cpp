@@ -149,11 +149,7 @@ double TerrainField::Distance(size_t index, const Vec3 &eye) const
 	return Length(middle - eye);
 }
 
-/* The blocks in the camera's view, and those within the shadows' reach whose shadows may fall in it, are brought to the step the view of their nearest point asks for,
- * and those the world changed under are built afresh. A view with nothing yet to show has every block in it built whole at once; otherwise a block first coming into view
- * is laid at once, the nearest no finer than a draft where that would cost much and those past the slice of the frame at the coarsest step, and the rest are refined
- * within what is left of the slice, which hurries while any in view wait, each keeping its old meshes until its new ones are done. */
-void TerrainField::Refresh(const SceneView &camera)
+void TerrainField::GatherNearby(const SceneView &camera)
 {
 	this->moving = Length(camera.eye - this->last_eye) > RESTING_EYE_STEP;
 	this->last_eye = camera.eye;
@@ -164,7 +160,10 @@ void TerrainField::Refresh(const SceneView &camera)
 		return true;
 	});
 	std::ranges::sort(this->nearby, {}, &Nearby::distance);
+}
 
+bool TerrainField::QueueDue(const SceneView &camera)
+{
 	double casting_pixels = camera.TilePixelsAt(camera.shadow_reach);
 	this->due.clear();
 	bool blank = true;
@@ -183,6 +182,14 @@ void TerrainField::Refresh(const SceneView &camera)
 			chunk.due_since = 0;
 		}
 	}
+	return blank;
+}
+
+/* Brings the blocks the views show, and those casting shadows into them, to the step they are due. */
+void TerrainField::Refresh(const SceneView &camera)
+{
+	this->GatherNearby(camera);
+	bool blank = this->QueueDue(camera);
 
 	BuildSlice slice(std::ranges::any_of(this->due, &Due::in_sight));
 	for (const Due &entry : this->due) {
@@ -208,8 +215,7 @@ void TerrainField::Build(size_t index, GroundGrain grain)
 	this->Finish(index);
 }
 
-/* The blocks in view go first, then those that have waited longest and the nearest of them, so neither the blocks casting shadows into the view
- * nor a block the world keeps changing under can hold up the rest; a build cut short by the end of the slice goes on from where it stopped. */
+/* Builds the due blocks in order of need within what is left of the slice. */
 void TerrainField::Refine(const BuildSlice &slice)
 {
 	for (const Due &entry : this->due) {

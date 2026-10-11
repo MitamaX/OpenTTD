@@ -46,8 +46,7 @@ private:
 	static constexpr int DRAFT_STEP = 2;
 	static constexpr GroundGrain DRAFT_GRAIN = {DRAFT_STEP, {}};
 
-	/* A block of tiles: the meshes it shows and the spray off its falls, the grain its ground was built at and whether the world changed under them since, the build that will replace them,
-	 * the frame since which they have waited for it, and the height range its ground spans. */
+	/* A block of tiles with the meshes it shows and the build that will replace them. */
 	struct Chunk {
 		MeshBuffer ground;
 		MeshBuffer water;
@@ -91,6 +90,8 @@ private:
 	double KeptPixels() const;
 	BlockTiles FineTiles(const Nearby &near, const SceneView &camera, double nearest_pixels) const;
 	double Distance(size_t index, const Vec3 &eye) const;
+	void GatherNearby(const SceneView &camera);
+	bool QueueDue(const SceneView &camera);
 	void Build(size_t index, GroundGrain grain);
 	void Refine(const BuildSlice &slice);
 	void Finish(size_t index);

@@ -744,7 +744,7 @@ vec2 Refracted(vec2 uv, vec3 ripples, Body body, vec2 straight, float surface, o
 	return uv;
 }
 
-/* How far light runs through the water to what shows through it: as far as that lies behind, and never less than a sea shelf deepens, a river's channel falls inside its outline or a drop churns. */
+/* How far light runs through the water to what shows through it, never less than the least depth. */
 float PathThrough(Water water, vec3 sight, float behind, float least_depth)
 {
 	return max(behind, max(least_depth / max(-sight.z, GRAZING_SIGHT), RAPIDS_PATH * water.drop.steep));

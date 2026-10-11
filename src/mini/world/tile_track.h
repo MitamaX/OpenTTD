@@ -28,8 +28,7 @@ inline constexpr double SLEEPER_FOOT = 0.026;
 inline constexpr double SLEEPER_TOP = 0.047;
 inline constexpr size_t MAIN_LINE = 0;
 
-/* A tile's track and how it is laid. Track on the ground meets its neighbours' pieces in mitres and ends in a sloped face where none carries on;
- * track on a bridge just runs from edge to edge. */
+/* A tile's track and how it is laid. */
 struct TrackSite {
 	int tx;
 	int ty;
@@ -40,8 +39,7 @@ struct TrackSite {
 	WayDetail detail;
 };
 
-/* A piece on the ground is laid along the line it is drawn on, at its course's level where it eases, meeting the pieces either side without a seam;
- * on a bridge it runs plainly from edge to edge. */
+/* A piece of track laid along the line it is drawn on. */
 class TrackPiece {
 public:
 	TrackPiece(int tx, int ty, Track track, bool grounded);

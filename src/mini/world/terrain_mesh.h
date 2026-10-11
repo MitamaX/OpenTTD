@@ -91,9 +91,7 @@ struct ShoreCut {
 	bool nests;
 };
 
-/* A block's ground, built a row of tiles at a time so the work may be spread over frames. At step one every tile keeps its own facets and walls, and rolling land curves over its tiles cut so many times each way;
- * a longer step lays a lattice over every step-th corner in one go, skirted down so nothing shows through beside a finer neighbour.
- * Under water the ground sinks toward the seabed; along the map's edge it is cut down in a face of earth over the shelf of seabed falling away beyond. */
+/* A block's ground, built a row of tiles at a time so the work may be spread over frames. */
 class TerrainBuild {
 public:
 	TerrainBuild(const TileSpan &tiles, GroundGrain grain);

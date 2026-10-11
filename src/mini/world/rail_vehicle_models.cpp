@@ -181,7 +181,7 @@ static ModelMesh Splasher(double x)
 	return Upright(outline, DRIVER_WIDTH + SPLASHER_CLEARANCE).Move({0.0, STEAM_HALF_TRACK, 0.0}).Paint(PRIMARY).Gloss(PAINT_GLOSS);
 }
 
-/* A boiler banded in brass between a smokebox and a cab under an arched roof, coupled driving wheels under splashers behind cylinders over a leading pair. */
+/* A steam locomotive. */
 static ModelMesh SteamEngine(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -405,7 +405,7 @@ static ModelMesh ArmouredVan(VehicleDetail detail)
 	return kit.Done();
 }
 
-/* A tank domed at its ends on cradles over the bogies, banded in the owner's colour, with a dome on top and a walkway and handrail along either side. */
+/* A tank wagon. */
 static ModelMesh TankWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -441,7 +441,7 @@ static ModelMesh Heap(double half_length, double half_width, double base, double
 	return Lathe(mound, 8).Transform(Mat4::Translation({0.0, 0.0, base}) * Mat4::Scaling({half_length, half_width, rise})).Displace(HEAP_SPREAD, HEAP_SEED).Facet().Paint(CARGO);
 }
 
-/* Walls round an open floor, capped by a rim and stiffened outside by stanchions either side of a door, the load heaped inside. */
+/* An open wagon. */
 static ModelMesh OpenWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -457,7 +457,7 @@ static ModelMesh OpenWagon(VehicleDetail detail)
 	return kit.Done();
 }
 
-/* A body rounded over its roof and sloping down at its foot into a chute between each bogie and the middle, ribbed along its sides, with a walkway along its roof. */
+/* A covered hopper wagon. */
 static ModelMesh CoveredHopper(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
