@@ -38,6 +38,7 @@ const float SNOW_RIPPLE_SEED = 3.1;
 const float SNOW_ROUGHNESS = 0.8;
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
+const float SHELTERED_GRIME = 0.55;
 
 bool Has(uint flag)
 {
@@ -74,6 +75,7 @@ vec3 Facing(Clad clad, mat3 frame)
 Clad Worn(Clad clad, mat3 frame)
 {
 	clad.albedo = Walled(v_surface.x, v_pattern, clad.albedo, 1.0 - abs(frame[2].z));
+	if (Ponds(v_surface.x)) clad.albedo *= mix(SHELTERED_GRIME, 1.0, v_colour.a);
 	return clad;
 }
 

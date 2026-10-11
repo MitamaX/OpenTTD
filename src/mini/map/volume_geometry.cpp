@@ -21,6 +21,8 @@
 
 static constexpr double PARAPET_INSET = 0.04;
 static constexpr double PARAPET_INNER_SHADE = 0.9;
+static constexpr double PARAPET_FOOT_SHADE = 0.6;
+static constexpr double PARAPET_FOOT_REACH = 0.06;
 static constexpr double FASCIA_DEPTH = 0.012;
 static constexpr double HIP_SQUARE_EPS = 0.02;
 static constexpr double SAWTOOTH_PITCH = 0.33;
@@ -398,14 +400,34 @@ private:
 			return;
 		}
 
-		std::array<PlanPoint, RECT_CORNERS> outside = CornersOf(this->top_plan);
+		this->BuildRing(this->top_plan, inner, rim, Cladding::Coping);
 		std::array<PlanPoint, RECT_CORNERS> inside = CornersOf(inner);
 		for (size_t side = 0; side < RECT_CORNERS; side++) {
 			size_t next = (side + 1) % RECT_CORNERS;
-			this->Emit({this->At(outside[side], rim), this->At(outside[next], rim), this->At(inside[next], rim), this->At(inside[side], rim)}, {Cladding::Coping, UvMapping::Plan});
-			this->Emit({this->At(inside[next], this->Eave(), PARAPET_INNER_SHADE), this->At(inside[side], this->Eave(), PARAPET_INNER_SHADE), this->At(inside[side], rim), this->At(inside[next], rim)}, {Cladding::Wall, UvMapping::Wall});
+			this->Emit({this->At(inside[next], this->Eave(), PARAPET_FOOT_SHADE), this->At(inside[side], this->Eave(), PARAPET_FOOT_SHADE), this->At(inside[side], rim), this->At(inside[next], rim)}, {Cladding::Wall, UvMapping::Wall});
 		}
-		this->BuildLid(inner, this->Eave(), Cladding::Roof, PARAPET_INNER_SHADE);
+		this->BuildSunkRoof(inner);
+	}
+
+	void BuildSunkRoof(const PlanRect &inner)
+	{
+		PlanRect open = Grown(inner, -PARAPET_FOOT_REACH, -PARAPET_FOOT_REACH);
+		if (!HasArea(open)) {
+			this->BuildLid(inner, this->Eave(), Cladding::Roof, PARAPET_FOOT_SHADE);
+			return;
+		}
+		this->BuildRing(inner, open, this->Eave(), Cladding::Roof, PARAPET_FOOT_SHADE, PARAPET_INNER_SHADE);
+		this->BuildLid(open, this->Eave(), Cladding::Roof, PARAPET_INNER_SHADE);
+	}
+
+	void BuildRing(const PlanRect &outer, const PlanRect &inner, double height, Cladding cladding, double outer_shade = 1.0, double inner_shade = 1.0)
+	{
+		std::array<PlanPoint, RECT_CORNERS> outside = CornersOf(outer);
+		std::array<PlanPoint, RECT_CORNERS> inside = CornersOf(inner);
+		for (size_t side = 0; side < RECT_CORNERS; side++) {
+			size_t next = (side + 1) % RECT_CORNERS;
+			this->Emit({this->At(outside[side], height, outer_shade), this->At(outside[next], height, outer_shade), this->At(inside[next], height, inner_shade), this->At(inside[side], height, inner_shade)}, {cladding, UvMapping::Plan});
+		}
 	}
 
 	/* Every slope runs on past the walls by the overhang, so its eaves drop below the wall tops. */
