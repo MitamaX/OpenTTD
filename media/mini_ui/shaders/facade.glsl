@@ -290,11 +290,10 @@ Clad Fascia(Elevation elevation, vec2 texel)
 	return Matte(mix(FASCIA_PAINTS[seed % uint(FASCIA_PAINTS.length())], LETTERING, letters), PAINT_ROUGHNESS);
 }
 
-Clad Windowed(Clad wall, Elevation elevation, vec2 texel)
+Clad Windowed(Clad wall, Elevation elevation, vec2 texel, Bay bay)
 {
 	uint grid = elevation.grid;
 	float pixel = elevation.pixel;
-	Bay bay = BayAt(elevation, texel);
 	Opening opening = bay.opening;
 	Clad clad = wall;
 	clad.albedo *= Drips(bay, texel, grid);
@@ -332,10 +331,9 @@ Clad FillingFromAfar(Bay bay, Elevation elevation)
 	return Landscape() == LANDSCAPE_TOYLAND ? ToyPaneOf(bay, elevation.seed) : RoomFromAfar(bay, elevation);
 }
 
-Clad Banded(Clad wall, Elevation elevation, vec2 texel, vec2 pixel)
+Clad Banded(Clad wall, Elevation elevation, Bay bay, vec2 pixel)
 {
 	uint grid = elevation.grid;
-	Bay bay = BayAt(elevation, texel);
 	Opening opening = bay.opening;
 	if (opening.kind == OPEN_NONE) return wall;
 	float pitch = FACADE_PITCH[grid];
@@ -355,13 +353,14 @@ Clad Facade(Clad wall, uint grid, vec2 pattern, bool front, uint seed, Outlook o
 	float widest = max(pixel.x, pixel.y);
 	float columns = 1.0 - smoothstep(COLUMNS_FADE.x, COLUMNS_FADE.y, widest);
 	Elevation elevation = Elevation(grid, seed, front, outlook, widest);
-	Clad near = columns > 0.0 ? Windowed(wall, elevation, texel) : wall;
+	Bay bay = BayAt(elevation, texel);
+	Clad near = columns > 0.0 ? Windowed(wall, elevation, texel, bay) : wall;
 	if (columns >= 1.0) return near;
 	float storeys = 1.0 - smoothstep(STOREYS_FADE.x, STOREYS_FADE.y, pixel.y);
 	Opening upper = UPPER_OPENINGS[grid];
 	Clad far = Mixed(wall, MeanGlazing(), upper.width * upper.height / (FACADE_PITCH[grid] * FACADE_STOREY[grid]) * GLAZED_SHARE);
 	if (storeys <= 0.0) return far;
-	Clad banded = Mixed(far, Banded(wall, elevation, texel, pixel), storeys);
+	Clad banded = Mixed(far, Banded(wall, elevation, bay, pixel), storeys);
 	if (columns <= 0.0) return banded;
 	return Mixed(banded, near, columns);
 }

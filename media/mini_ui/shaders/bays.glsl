@@ -89,19 +89,16 @@ Bay BayAt(Elevation elevation, vec2 texel)
 	float pitch = FACADE_PITCH[grid];
 	float column = floor(texel.x / pitch);
 	float across = texel.x - (column + 0.5) * pitch;
-	if (texel.y >= ground) {
-		float level = floor((texel.y - ground) / storey);
-		ivec2 window = ivec2(column, level + 1.0);
-		Opening upper = ToyShaped(UPPER_OPENINGS[grid], window, elevation.seed, pitch, storey);
-		return Bay(upper, vec2(across, texel.y - ground - level * storey - upper.sill), window);
-	}
-
+	bool upper = texel.y >= ground;
 	Opening entrance = ENTRANCES[grid];
 	float from_entrance = mod(texel.x, TEXELS) - FACADE_BAY[grid] * 0.5;
-	if (elevation.front && entrance.kind != OPEN_NONE && abs(from_entrance) < entrance.width * 0.5 + 1.0) return Bay(entrance, vec2(from_entrance, texel.y), ivec2(-1, 0));
-	ivec2 window = ivec2(column, 0);
-	Opening opening = ToyShaped(GROUND_OPENINGS[grid], window, elevation.seed, pitch, ground);
-	return Bay(opening, vec2(across, texel.y - opening.sill), window);
+	if (!upper && elevation.front && entrance.kind != OPEN_NONE && abs(from_entrance) < entrance.width * 0.5 + 1.0) return Bay(entrance, vec2(from_entrance, texel.y), ivec2(-1, 0));
+
+	float level = upper ? floor((texel.y - ground) / storey) : -1.0;
+	float foot = upper ? ground + level * storey : 0.0;
+	ivec2 window = ivec2(column, level + 1.0);
+	Opening opening = ToyShaped(upper ? UPPER_OPENINGS[grid] : GROUND_OPENINGS[grid], window, elevation.seed, pitch, upper ? storey : ground);
+	return Bay(opening, vec2(across, texel.y - foot - opening.sill), window);
 }
 
 vec3 InTexels(vec3 way, float stretch)
