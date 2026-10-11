@@ -56,7 +56,7 @@ private:
 	FleetLayout fleet{bounds};
 	SceneView seen{};
 	InstancedMeshes models;
-	VehicleBatch batch;
+	CoupledBatch batch;
 	ShaderProgram program;
 	ShaderProgram caster;
 };

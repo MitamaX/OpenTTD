@@ -33,15 +33,15 @@ struct Attitude {
 	Mat4 Turn() const;
 };
 
-/* How far a unit's back and front couplings turn toward the units coupled behind and before it, in radians. */
-struct CouplingBends {
+/* How far a unit's back and front ends lean across their width toward the units coupled behind and before it, along it for each unit across. */
+struct CouplingLeans {
 	double back;
 	double front;
 };
 
 /* A unit as drawn this frame: its copy and model, the box it fills in render space and the vehicle a click on it opens. */
 struct PlacedUnit {
-	VehicleInstance instance;
+	CoupledInstance instance;
 	VehicleLook look;
 	Vec3 centre;
 	Mat4 turn;
@@ -91,11 +91,11 @@ private:
 
 	bool MayShow(const SceneView &view, const Vehicle *head, double reach) const;
 	void LayConsist(const Vehicle *head);
-	double BendToward(size_t from, size_t to) const;
+	double LeanToward(size_t from, size_t to) const;
 	void ExtendPath(const Vehicle *unit, const WorldPoint &to, const TrackTaken &taken);
 	void LayShip(const Vehicle *ship);
 	void LayAircraft(const Vehicle *aircraft);
-	void Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length, const CouplingBends &bends = {});
+	void Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length, const CouplingLeans &leans = {});
 	void AddFunnel(const Vehicle *engine, double heading);
 
 	std::span<const VehicleBounds, VEHICLE_LOOKS> bounds;

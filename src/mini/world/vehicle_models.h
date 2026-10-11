@@ -126,7 +126,7 @@ inline constexpr double COUPLING_REACH = UNIT_TILES * 0.5;
 inline constexpr double FLEX_REACH = 0.17;
 
 /* Where a unit stands in render space, its yaw, pitch and roll, its length as a share of a full unit,
- * the paintwork colours, in the cargo colour's last byte how full it is, and how far its back and front couplings turn toward the units behind and before it. */
+ * the paintwork colours, and in the cargo colour's last byte how full it is. */
 struct VehicleInstance {
 	float x;
 	float y;
@@ -138,21 +138,40 @@ struct VehicleInstance {
 	std::array<uint8_t, 4> primary;
 	std::array<uint8_t, 4> secondary;
 	std::array<uint8_t, 4> cargo;
-	float back_bend;
-	float front_bend;
 };
 
-inline constexpr std::array<VertexAttribute, 7> VEHICLE_INSTANCE_LAYOUT = {{
+inline constexpr std::array<VertexAttribute, 6> VEHICLE_INSTANCE_LAYOUT = {{
 	{3, 3, AttributeType::Float, offsetof(VehicleInstance, x)},
 	{4, 3, AttributeType::Float, offsetof(VehicleInstance, yaw)},
 	{5, 1, AttributeType::Float, offsetof(VehicleInstance, length)},
 	{6, 4, AttributeType::NormalisedUnsignedByte, offsetof(VehicleInstance, primary)},
 	{7, 4, AttributeType::NormalisedUnsignedByte, offsetof(VehicleInstance, secondary)},
 	{8, 4, AttributeType::NormalisedUnsignedByte, offsetof(VehicleInstance, cargo)},
-	{9, 2, AttributeType::Float, offsetof(VehicleInstance, back_bend)},
 }};
 
 using VehicleBatch = InstanceBatch<VehicleInstance>;
+
+/* A vehicle's unit, and how far its back and front ends lean toward the units coupled behind and before it, along it for each unit across;
+ * whatever else the vehicle programs draw leans not at all. */
+struct CoupledInstance {
+	VehicleInstance unit;
+	float back_lean;
+	float front_lean;
+};
+
+static_assert(offsetof(CoupledInstance, unit) == 0);
+
+constexpr std::array<VertexAttribute, VEHICLE_INSTANCE_LAYOUT.size() + 1> CoupledInstanceLayout()
+{
+	std::array<VertexAttribute, VEHICLE_INSTANCE_LAYOUT.size() + 1> layout{};
+	std::ranges::copy(VEHICLE_INSTANCE_LAYOUT, layout.begin());
+	layout.back() = {9, 2, AttributeType::Float, offsetof(CoupledInstance, back_lean)};
+	return layout;
+}
+
+inline constexpr auto COUPLED_INSTANCE_LAYOUT = CoupledInstanceLayout();
+
+using CoupledBatch = InstanceBatch<CoupledInstance>;
 
 /* A colour as an instance carries it, with its last byte for how full a load is or how opaque. */
 std::array<uint8_t, 4> InstanceColour(uint32_t rgb, double alpha = 1.0);

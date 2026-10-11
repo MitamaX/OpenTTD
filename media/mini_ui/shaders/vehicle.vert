@@ -7,7 +7,7 @@ layout(location = 5) in float i_length;
 layout(location = 6) in vec4 i_primary;
 layout(location = 7) in vec4 i_secondary;
 layout(location = 8) in vec4 i_cargo;
-layout(location = 9) in vec2 i_bends;
+layout(location = 9) in vec2 i_leans;
 
 uniform vec2 u_most_growth;
 uniform float u_readable_pixels;
@@ -75,7 +75,7 @@ vec3 Growth()
 float Lean(float x)
 {
 	float share = clamp((abs(x) - FLEX_REACH) / (UNIT_REACH - FLEX_REACH), 0.0, 1.0);
-	return tan(x > 0.0 ? i_bends.y : i_bends.x) * share;
+	return (x > 0.0 ? i_leans.y : i_leans.x) * share;
 }
 
 /* Cargo shows only while the unit carries some; empty, it folds away to nothing. */

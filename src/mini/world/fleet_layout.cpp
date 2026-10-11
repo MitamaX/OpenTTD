@@ -182,20 +182,20 @@ void FleetLayout::LayConsist(const Vehicle *head)
 		double run = Length(Flat(link.front) - Flat(link.back));
 		double yaw = link.heading + (reversed ? std::numbers::pi : 0.0);
 		double pitch = std::atan2((link.front.level - link.back.level) * LevelRise(), std::max(run, 1e-6)) * (reversed ? -1.0 : 1.0);
-		CouplingBends bends = {this->BendToward(at, at + 1), at > 0 ? this->BendToward(at, at - 1) : 0.0};
-		if (reversed) std::swap(bends.back, bends.front);
+		CouplingLeans leans = {this->LeanToward(at, at + 1), at > 0 ? this->LeanToward(at, at - 1) : 0.0};
+		if (reversed) std::swap(leans.back, leans.front);
 		VehicleLook look = LookOf(link.unit);
-		this->Add(link.unit, look, Between(link.back, link.front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH), bends);
+		this->Add(link.unit, look, Between(link.back, link.front, 0.5), {yaw, pitch, 0.0}, link.unit->GetGroundVehicleCache()->cached_veh_length / static_cast<double>(VEHICLE_LENGTH), leans);
 		if (look == VehicleLook::SteamEngine && !link.unit->vehstatus.Test(VehState::Hidden)) this->AddFunnel(link.unit, link.heading);
 	}
 }
 
-/* Half the turn from one laid unit's heading to another's, so the two meet square; nothing unless they are coupled to each other. */
-double FleetLayout::BendToward(size_t from, size_t to) const
+/* How far one laid unit's end leans to turn half the way to another's heading, so the two meet square; not at all unless they are coupled to each other. */
+double FleetLayout::LeanToward(size_t from, size_t to) const
 {
 	if (to >= this->links.size() || this->links[std::min(from, to)].unit->Next() != this->links[std::max(from, to)].unit) return 0.0;
 	double turn = std::remainder(this->links[to].heading - this->links[from].heading, 2.0 * std::numbers::pi);
-	return std::clamp(turn * 0.5, -MOST_COUPLING_BEND, MOST_COUPLING_BEND);
+	return std::tan(std::clamp(turn * 0.5, -MOST_COUPLING_BEND, MOST_COUPLING_BEND));
 }
 
 /* The path runs on to a point as a unit there runs, a train along its track through the middles of the tile sides between. */
@@ -228,7 +228,7 @@ void FleetLayout::LayShip(const Vehicle *ship)
 void FleetLayout::AddFunnel(const Vehicle *engine, double heading)
 {
 	const PlacedUnit &placed = this->units.back();
-	const VehicleInstance &instance = placed.instance;
+	const VehicleInstance &instance = placed.instance.unit;
 	Vec3 mouth = {STEAM_CHIMNEY_FOOT.x * instance.length, STEAM_CHIMNEY_FOOT.y, STEAM_CHIMNEY_FOOT.z + STEAM_CHIMNEY_HEIGHT};
 	Vec3 at = Vec3{instance.x, instance.y, instance.z} + Transformed(placed.turn, mouth);
 	Vec3 motion = Vec3{std::cos(heading), std::sin(heading), 0.0} * (PaceOf(engine->First()) * TRAIL_TILES_PER_SECOND);
@@ -253,7 +253,7 @@ void FleetLayout::LayAircraft(const Vehicle *aircraft)
 	this->Add(aircraft, VehicleLook::Rotor, at, {spin, 0.0, 0.0}, 1.0);
 }
 
-void FleetLayout::Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length, const CouplingBends &bends)
+void FleetLayout::Add(const Vehicle *unit, VehicleLook look, const WorldPoint &ground, const Attitude &attitude, double length, const CouplingLeans &leans)
 {
 	const VehicleBounds &box = this->bounds[to_underlying(look)];
 	Vec3 middle = {(box.low.x + box.high.x) * 0.5 * length, (box.low.y + box.high.y) * 0.5, (box.low.z + box.high.z) * 0.5};
@@ -261,11 +261,13 @@ void FleetLayout::Add(const Vehicle *unit, VehicleLook look, const WorldPoint &g
 	Vec3 place = RenderPoint(ground) + Vec3{0.0, 0.0, RideHeightOf(unit)};
 	Mat4 turn = attitude.Turn();
 	VehiclePaint paint = PaintOf(unit);
-	VehicleInstance instance = {
-		static_cast<float>(place.x), static_cast<float>(place.y), static_cast<float>(place.z),
-		static_cast<float>(attitude.yaw), static_cast<float>(attitude.pitch), static_cast<float>(attitude.roll), static_cast<float>(length),
-		InstanceColour(paint.primary), InstanceColour(paint.secondary), InstanceColour(paint.cargo, paint.load),
-		static_cast<float>(bends.back), static_cast<float>(bends.front),
+	CoupledInstance instance = {
+		{
+			static_cast<float>(place.x), static_cast<float>(place.y), static_cast<float>(place.z),
+			static_cast<float>(attitude.yaw), static_cast<float>(attitude.pitch), static_cast<float>(attitude.roll), static_cast<float>(length),
+			InstanceColour(paint.primary), InstanceColour(paint.secondary), InstanceColour(paint.cargo, paint.load),
+		},
+		static_cast<float>(leans.back), static_cast<float>(leans.front),
 	};
 	this->units.push_back({instance, look, place + Transformed(turn, middle), turn, half, Length(half), unit->First()->index});
 }

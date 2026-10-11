@@ -87,7 +87,7 @@ void VehiclePass::BuildModels()
 void VehiclePass::Load()
 {
 	this->BuildModels();
-	if (!this->models.Ready()) this->models.Upload<ModelMesh>(this->meshes, MODEL_LAYOUT, VEHICLE_INSTANCE_LAYOUT, sizeof(VehicleInstance));
+	if (!this->models.Ready()) this->models.Upload<ModelMesh>(this->meshes, MODEL_LAYOUT, COUPLED_INSTANCE_LAYOUT, sizeof(CoupledInstance));
 }
 
 void VehiclePass::Prepare(const SceneView &view)
@@ -158,7 +158,7 @@ void VehiclePass::DrawBatch(const ShaderProgram &program, const SceneView &camer
 void VehiclePass::DrawBlank(const ShaderProgram &program)
 {
 	this->batch.Clear(VEHICLE_MODELS);
-	this->batch.Add(0, VehicleInstance{});
+	this->batch.Add(0, CoupledInstance{});
 	program.Use();
 	this->DrawBatch(program, this->seen);
 }
