@@ -166,16 +166,16 @@ private:
 	double SpotReach(bool pair) const { return this->LongerHalf() / (pair ? 2.0 : 1.0); }
 	Coat MetalShade(double shade) const { return {Material::Metal, WindowGrid::None, {}, ScaledRgb(this->solid.wall_tint, shade)}; }
 
+	/* A part's faces each keep their own normal. */
 	void Add(ModelMesh part, const Coat &coat)
 	{
-		this->Clad(std::move(part), [&coat](const ModelVertex &) { return coat; });
+		this->Clad(std::move(part.Facet()), [&coat](const ModelVertex &) { return coat; });
 	}
 
-	/* A part's faces each keep their own normal; its pattern runs across upright faces and over the plan on the others. */
+	/* A part's pattern runs across upright faces and over the plan on the others. */
 	template <class CoatOf>
-	void Clad(ModelMesh part, CoatOf coat_of)
+	void Clad(const ModelMesh &part, CoatOf coat_of)
 	{
-		part.Facet();
 		uint32_t first = static_cast<uint32_t>(this->mesh.vertices.size());
 		for (const ModelVertex &corner : part.vertices) {
 			Vec3 at = corner.Position();

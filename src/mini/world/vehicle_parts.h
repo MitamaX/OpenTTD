@@ -170,10 +170,6 @@ private:
 	std::vector<LoftRing> rings;
 };
 
-void HeadLamps(VehicleKit &kit, const BodyRun &nose, double z);
-void TailLamps(VehicleKit &kit, double x, double half_width, double z);
-void BodyLamps(VehicleKit &kit, const BodyRun &body, double z);
-
 ModelMesh Hull(const HullProfile &profile, double back, double front);
 /* A band along both sides of a body, standing a little proud of it. */
 ModelMesh SideBand(double back, double front, double half_width, double low, double high, uint32_t tone);

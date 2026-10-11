@@ -79,8 +79,6 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Translucent(double share) { return this->Trait(share); }
 	ModelMesh &Gloss(double share) { return this->Trait(share); }
 	ModelMesh &Glow(double share) { return this->Trait(-share); }
-	/* Whatever glows goes dark, as lamps do when switched off. */
-	ModelMesh &Unlit();
 	ModelMesh &Coded(uint8_t code);
 
 	template <class Tone>

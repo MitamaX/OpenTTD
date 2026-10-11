@@ -30,8 +30,12 @@ static constexpr double CAB_BACK = 0.11;
 static constexpr double LOAD_FRONT = 0.1;
 static constexpr double LOAD_CLEARANCE = 0.006;
 static constexpr double LOAD_FLOOR = WHEEL_RADIUS * 2.0 + LOAD_CLEARANCE;
+static constexpr double LAMP_HALF = 0.007;
 static constexpr double LAMP_HEIGHT = 0.05;
 static constexpr double TRAM_LAMP_HEIGHT = 0.06;
+static constexpr double TAIL_LAMP_RISE = 0.01;
+static constexpr double HEADLAMP_INSET = 0.016;
+static constexpr double TAIL_LAMP_INSET = 0.012;
 static constexpr double HUB_SHARE = 0.55;
 static constexpr double HUB_DEPTH = 0.003;
 static constexpr double ARCH_RADIUS = WHEEL_RADIUS * 1.3;
@@ -89,6 +93,22 @@ static constexpr Band TRAM_GLASS = {0.105, 0.16};
 static constexpr Band TRAM_BAND = {CHASSIS_LOW + 0.01, 0.085};
 static constexpr Band TRAM_MIRROR = {0.11, 0.132};
 static constexpr WindowSpan TRAM_WINDOWS = {-0.18, 0.18, 5};
+
+static void HeadLamps(VehicleKit &kit, const BodyRun &nose, double z)
+{
+	kit.Fine(LampPair(nose.Front(), nose.HalfWidthAt(nose.Front()) - HEADLAMP_INSET, z, LAMP_HALF, HEADLAMP));
+}
+
+static void TailLamps(VehicleKit &kit, double x, double half_width, double z)
+{
+	kit.Fine(LampPair(x, half_width - TAIL_LAMP_INSET, z, LAMP_HALF, TAIL_LAMP));
+}
+
+static void BodyLamps(VehicleKit &kit, const BodyRun &body, double z)
+{
+	HeadLamps(kit, body, z);
+	TailLamps(kit, body.Back(), body.HalfWidthAt(body.Back()), z + TAIL_LAMP_RISE);
+}
 
 static double BumperWrap(const BodyEnd &end)
 {

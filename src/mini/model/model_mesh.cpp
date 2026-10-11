@@ -220,12 +220,6 @@ ModelMesh &ModelMesh::Trait(double share)
 	return *this;
 }
 
-ModelMesh &ModelMesh::Unlit()
-{
-	for (ModelVertex &vertex : this->vertices) vertex.Trait(std::max(vertex.Trait(), 0.0));
-	return *this;
-}
-
 ModelMesh &ModelMesh::Coded(uint8_t code)
 {
 	for (ModelVertex &vertex : this->vertices) vertex.Code(code);
