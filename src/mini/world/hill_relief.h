@@ -25,8 +25,10 @@ inline constexpr double CREST_WAVE = 0.15;
 inline constexpr int FINE_RELIEF_DIVISIONS = 2;
 inline constexpr double RELIEF_CELL_PIXELS = 32.0;
 inline constexpr double FINE_RELIEF_PIXELS = RELIEF_CELL_PIXELS * FINE_RELIEF_DIVISIONS;
-inline constexpr double FINE_RELIEF_LEAD = 1.25;
-inline constexpr double FINE_RELIEF_KEPT_PIXELS = FINE_RELIEF_PIXELS / (FINE_RELIEF_LEAD * FINE_RELIEF_LEAD);
+inline constexpr double FINE_RELIEF_LEAD = 1.4;
+inline constexpr double FINE_RELIEF_LAG = 2.0;
+inline constexpr double FINE_RELIEF_CHOSEN_PIXELS = FINE_RELIEF_PIXELS / FINE_RELIEF_LEAD;
+inline constexpr double FINE_RELIEF_KEPT_PIXELS = FINE_RELIEF_CHOSEN_PIXELS / FINE_RELIEF_LAG;
 
 class Landform {
 public:

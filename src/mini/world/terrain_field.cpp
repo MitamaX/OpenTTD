@@ -105,11 +105,16 @@ GroundGrain TerrainField::GrainOf(const Nearby &near, const SceneView &camera, d
 {
 	int step = StepFor(nearest_pixels);
 	if (step > 1 || nearest_pixels < FINE_RELIEF_KEPT_PIXELS) return {step, {}};
-	return {step, this->FineTiles(near, camera)};
+	return {step, this->FineTiles(near, camera, nearest_pixels)};
 }
 
-BlockTiles TerrainField::FineTiles(const Nearby &near, const SceneView &camera) const
+BlockTiles TerrainField::FineTiles(const Nearby &near, const SceneView &camera, double nearest_pixels) const
 {
+	if (camera.FarthestTilePixels(near.low, near.high) >= FINE_RELIEF_PIXELS) return BlockTiles().set();
+	GroundGrain laid = this->chunks[near.index].LatestGrain();
+	bool none_chosen = nearest_pixels < FINE_RELIEF_CHOSEN_PIXELS;
+	if (none_chosen && laid.fine.none()) return {};
+
 	TileSpan tiles = this->grid.TilesOf(near.index);
 	BlockTiles needed;
 	BlockTiles chosen;
@@ -119,11 +124,10 @@ BlockTiles TerrainField::FineTiles(const Nearby &near, const SceneView &camera) 
 			double pixels = camera.NearestTilePixels({static_cast<double>(tx), static_cast<double>(ty), near.low.z}, {tx + 1.0, ty + 1.0, near.high.z});
 			size_t bit = BlockBit(tiles, tx, ty);
 			needed[bit] = pixels >= FINE_RELIEF_PIXELS;
-			chosen[bit] = pixels >= FINE_RELIEF_PIXELS / FINE_RELIEF_LEAD;
+			chosen[bit] = pixels >= FINE_RELIEF_CHOSEN_PIXELS;
 			kept[bit] = pixels >= FINE_RELIEF_KEPT_PIXELS;
 		}
 	}
-	GroundGrain laid = this->chunks[near.index].LatestGrain();
 	bool serves = laid.step == 1 && (needed & ~laid.fine).none() && (laid.fine & ~kept).none();
 	return serves ? laid.fine : chosen;
 }

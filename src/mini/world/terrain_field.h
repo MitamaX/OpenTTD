@@ -88,7 +88,7 @@ private:
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
 	std::pair<Vec3, Vec3> Bounds(size_t index);
 	GroundGrain GrainOf(const Nearby &near, const SceneView &camera, double nearest_pixels) const;
-	BlockTiles FineTiles(const Nearby &near, const SceneView &camera) const;
+	BlockTiles FineTiles(const Nearby &near, const SceneView &camera, double nearest_pixels) const;
 	double Distance(size_t index, const Vec3 &eye) const;
 	void Build(size_t index, GroundGrain grain);
 	void Refine(const BuildSlice &slice);

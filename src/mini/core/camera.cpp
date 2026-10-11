@@ -115,6 +115,17 @@ double Lens::NearestTilePixels(const Vec3 &low, const Vec3 &high) const
 	return this->TilePixelsAt(Length(this->eye - this->NearestPoint(low, high)));
 }
 
+Vec3 Lens::FarthestPoint(const Vec3 &low, const Vec3 &high) const
+{
+	auto farther = [](double from, double a, double b) { return std::abs(from - a) > std::abs(from - b) ? a : b; };
+	return {farther(this->eye.x, low.x, high.x), farther(this->eye.y, low.y, high.y), farther(this->eye.z, low.z, high.z)};
+}
+
+double Lens::FarthestTilePixels(const Vec3 &low, const Vec3 &high) const
+{
+	return this->TilePixelsAt(Length(this->eye - this->FarthestPoint(low, high)));
+}
+
 Camera::Camera()
 {
 	this->FaceNorth();

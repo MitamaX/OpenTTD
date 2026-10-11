@@ -124,9 +124,7 @@ static double NearestSquaredDistance(const SceneView &camera, const Vec3 &low, c
 
 static double FarthestSquaredDistance(const SceneView &camera, const Vec3 &low, const Vec3 &high)
 {
-	auto reach = [](double from, double a, double b) { return std::max(std::abs(from - a), std::abs(from - b)); };
-	Vec3 farthest = {reach(camera.eye.x, low.x, high.x), reach(camera.eye.y, low.y, high.y), reach(camera.eye.z, low.z, high.z)};
-	return Dot(farthest, farthest);
+	return SquaredDistance(camera.eye, camera.FarthestPoint(low, high));
 }
 
 class ForestField::DetailReach {
