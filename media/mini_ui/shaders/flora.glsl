@@ -1,4 +1,5 @@
 const float LEAST_TILE_PIXELS = 1e-6;
+const int MASSED_DETAIL = 1;
 
 int TreeCount(uvec4 codes)
 {
@@ -44,6 +45,6 @@ float ForestTint(float tile_pixels)
 float TreesShrinking(float tile_pixels)
 {
 	float finest = log2(TREE_DETAIL_FLOORS[0]);
-	float coarsest = log2(TREE_DETAIL_FLOORS[TREE_DETAILS - 1]);
-	return clamp((finest - PixelOctave(tile_pixels)) / (finest - coarsest), 0.0, 1.0);
+	float massed = log2(TREE_DETAIL_FLOORS[MASSED_DETAIL]);
+	return clamp((finest - PixelOctave(tile_pixels)) / (finest - massed), 0.0, 1.0);
 }

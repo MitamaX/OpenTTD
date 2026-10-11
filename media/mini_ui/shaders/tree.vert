@@ -28,6 +28,7 @@ const float GUST_RATE = 1.3;
 const float FLUTTER_RATE = 2.9;
 const float FLUTTER_SHARE = 0.3;
 const float CROWDED_SHADE = 0.6;
+const float MASSED_CROWN_SHADE = 0.7;
 const vec4 HIDDEN = vec4(2.0, 2.0, 2.0, 1.0);
 const float SEATS_PER_TILE = 64.0;
 const ivec2 GROWTH_SALT = ivec2(7919, 104729);
@@ -111,7 +112,8 @@ void ReadGround()
 void main()
 {
 	vec3 base = RenderPoint(i_place);
-	v_window = DetailWindow(TilePixelsAt(base), u_detail);
+	float pixels = TilePixelsAt(base);
+	v_window = DetailWindow(pixels, u_detail);
 	if (v_window.x >= v_window.y) {
 		gl_Position = HIDDEN;
 		return;
@@ -125,7 +127,7 @@ void main()
 	local.xy += Sway(a_position.z, growth.scale, dice * TAU);
 	v_position = base + local;
 	v_normal = GrownNormal(growth, a_normal.xyz);
-	v_colour = a_colour.rgb;
+	v_colour = a_colour.rgb * mix(1.0, MASSED_CROWN_SHADE, TreesShrinking(pixels));
 	v_reach = a_colour.a;
 	v_translucency = a_normal.w;
 	v_tint = i_look.z;
