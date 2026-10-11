@@ -1,5 +1,4 @@
 const float TAU = 6.2831853;
-const float TEXELS = float(TEXELS_PER_TILE);
 const float PLINTH_HEIGHT = 0.016;
 const float UPRIGHT_WALL = 0.7;
 const float COURSE_TILT = 0.2;
@@ -56,7 +55,6 @@ const vec2 POND_STAIN_EDGES = vec2(0.55, 0.68);
 const float POND_STAIN_MEAN = 0.2;
 const float POND_STAIN_SEED = 7.9;
 const vec3 POND_STAIN = vec3(0.72, 0.7, 0.66);
-const vec3 DIM_ROOM = vec3(0.3, 0.29, 0.27);
 const vec3 CANVAS_STRIPE = vec3(0.92, 0.9, 0.84);
 const float CANVAS_STRIPES = 40.0;
 const float CANVAS_ROUGHNESS = 0.9;

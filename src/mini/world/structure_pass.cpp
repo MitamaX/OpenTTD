@@ -23,6 +23,7 @@ static constexpr std::array<const char *, 2> VERTEX_SOURCES = {
 	"mini_ui/shaders/structure.vert",
 };
 static constexpr auto CLAD_SOURCES = Joined(LIT_SOURCES, std::array{
+	"mini_ui/shaders/openings.glsl",
 	"mini_ui/shaders/clouds.glsl",
 	"mini_ui/shaders/overlay.glsl",
 	"mini_ui/shaders/cover.glsl",

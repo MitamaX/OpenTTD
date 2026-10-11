@@ -4,11 +4,6 @@ const vec2 LATTICE_BAYS = vec2(5.0, 7.0);
 const float LATTICE_MEMBER = 0.1;
 const float LATTICE_BRACE = 0.07;
 
-float SharpnessAt(float pixel)
-{
-	return 1.0 - smoothstep(0.2, 0.45, pixel);
-}
-
 /* How sharply a pattern repeating once a unit of x still shows: whole while a repeat spans a few pixels, gone once it blurs. */
 float Sharpness(float x)
 {
@@ -20,31 +15,15 @@ float Sharpness(vec2 q)
 	return min(Sharpness(q.x), Sharpness(q.y));
 }
 
-float LineCover(float x, float width, float pixel)
-{
-	float gap = abs(fract(x + 0.5) - 0.5);
-	return 1.0 - smoothstep(width * 0.5 - pixel * 0.5, width * 0.5 + pixel * 0.5, gap);
-}
-
 /* How much of a pixel lines of this width, one a unit, cover; lines too fine to show blend into the share they cover. */
 float Lines(float x, float width, float sharpness)
 {
 	return mix(width, LineCover(x, width, fwidth(x)), sharpness);
 }
 
-float LinesAt(float x, float width, float pixel)
-{
-	return mix(width, LineCover(x, width, pixel), SharpnessAt(pixel));
-}
-
 float Lines(float x, float width)
 {
 	return Lines(x, width, Sharpness(x));
-}
-
-float Band(float x, float low, float high, float pixel)
-{
-	return smoothstep(low - pixel, low + pixel, x) - smoothstep(high - pixel, high + pixel, x);
 }
 
 float Band(float x, float low, float high)
