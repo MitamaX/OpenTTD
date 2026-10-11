@@ -126,19 +126,9 @@ static constexpr float CORNICE_SIDE = 0.32f;
 static constexpr float CORNICE_HEIGHT = 0.02f;
 static constexpr uint CORNICE_TRIM_SHARE = 51;
 static constexpr float FIGURE_RADIUS = 0.04f;
-static constexpr float FIGURE_HEIGHT = 0.16f;
+static constexpr float FIGURE_HEIGHT = 0.17f;
 static constexpr float FIGURE_TAPER = 0.12f;
-static constexpr float NECK_RADIUS = 0.012f;
-static constexpr float NECK_HEIGHT = 0.012f;
-static constexpr float HEAD_RADIUS = 0.024f;
-static constexpr float HEAD_HEIGHT = 0.006f;
-static constexpr float HEAD_RISE = 0.024f;
-static constexpr float ARM_SIDE = 0.016f;
-static constexpr float ARM_OFFSET = 0.041f;
-static constexpr float RAISED_ARM_FOOT = 0.12f;
-static constexpr float RAISED_ARM_HEIGHT = 0.1f;
-static constexpr float HANGING_ARM_FOOT = 0.06f;
-static constexpr float HANGING_ARM_HEIGHT = 0.08f;
+static constexpr float HEAD_RISE = 0.03f;
 static constexpr uint32_t BRONZE_TINT = 0xFF5E8A6EU;
 
 static constexpr Grid PILE_GRID = {3, 2, 0.25f, 0.35f};
@@ -737,17 +727,10 @@ void AddStatue(BuildingForm &form, uint32_t stone, uint32_t trim)
 	Part step = Part::Square(LOT_CENTRE, LOT_CENTRE, STATUE_STEP_SIDE).Height(STATUE_STEP_HEIGHT).Clad(Material::Stone, stone);
 	Part pedestal = Part::Square(LOT_CENTRE, LOT_CENTRE, PEDESTAL_SIDE).On(LevelAbove(step)).Height(PEDESTAL_HEIGHT).Clad(Material::Stone, stone);
 	Part cornice = Part::Square(LOT_CENTRE, LOT_CENTRE, CORNICE_SIDE).On(LevelAbove(pedestal)).Height(CORNICE_HEIGHT).Clad(Material::Stone, Mix(stone, trim, CORNICE_TRIM_SHARE));
-	float stand = LevelAbove(cornice);
-	Part body = Part::Disc(LOT_CENTRE, LOT_CENTRE, FIGURE_RADIUS).On(stand).Height(FIGURE_HEIGHT).Taper(FIGURE_TAPER).Clad(Material::Plain, BRONZE_TINT);
-	Part neck = Part::Disc(LOT_CENTRE, LOT_CENTRE, NECK_RADIUS).On(LevelAbove(body)).Height(NECK_HEIGHT).Clad(Material::Plain, BRONZE_TINT);
 	form.Add(step);
 	form.Add(pedestal);
 	form.Add(cornice);
-	form.Add(body);
-	form.Add(neck);
-	form.Add(Part::Disc(LOT_CENTRE, LOT_CENTRE, HEAD_RADIUS).On(LevelAbove(neck)).Height(HEAD_HEIGHT).Roof(RoofShape::Dome, HEAD_RISE).Clad(Material::Plain, BRONZE_TINT));
-	form.Add(Part::Square(LOT_CENTRE + ARM_OFFSET, LOT_CENTRE, ARM_SIDE).Detailed().On(stand + RAISED_ARM_FOOT).Height(RAISED_ARM_HEIGHT).Clad(Material::Plain, BRONZE_TINT));
-	form.Add(Part::Square(LOT_CENTRE - ARM_OFFSET, LOT_CENTRE, ARM_SIDE).Detailed().On(stand + HANGING_ARM_FOOT).Height(HANGING_ARM_HEIGHT).Clad(Material::Plain, BRONZE_TINT));
+	form.Add(Part::Disc(LOT_CENTRE, LOT_CENTRE, FIGURE_RADIUS).On(LevelAbove(cornice)).Dressed(Fixture::Statue).Height(FIGURE_HEIGHT).Taper(FIGURE_TAPER).Roof(RoofShape::Dome, HEAD_RISE).Clad(Material::Plain, BRONZE_TINT));
 }
 
 FloraPatch GroveFlora(const SiteLook &look)

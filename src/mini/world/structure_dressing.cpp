@@ -94,13 +94,69 @@ static constexpr double RIM_HEIGHT = 0.01;
 static constexpr double LADDER_WIDTH = 0.012;
 static constexpr double LADDER_DEPTH = 0.005;
 
+static constexpr Vec3 FORWARD = {1.0, 0.0, 0.0};
+static constexpr Vec3 SIDEWAYS = {0.0, 1.0, 0.0};
+static constexpr double QUARTER_TURN = HALF_TURN * 0.5;
+static constexpr uint32_t QUARTER_TURNS = 4;
+static constexpr int FIGURE_SIDES = 12;
+static constexpr int LIMB_SIDES = 6;
+static constexpr double STATUE_FOOT_RADIUS = 0.16;
+static constexpr double STATUE_FOOT_HEIGHT = 0.03;
+static constexpr double SHOULDERS_BREADTH = 1.6;
+static constexpr std::array<LatheRing, 3> COAT_SKIRT = {{{0.105, 0.2}, {0.085, 0.38}, {0.072, 0.47}}};
+static constexpr std::array<LatheRing, 5> TORSO = {{{0.072, 0.46}, {0.084, 0.64}, {0.088, 0.74}, {0.042, 0.8}, {0.032, 0.84}}};
+static constexpr std::array<LatheRing, 5> HEAD = {{{0.03, 0.83}, {0.05, 0.87}, {0.052, 0.915}, {0.036, 0.955}, {0.0, 0.975}}};
+static constexpr double HIP_HEIGHT = 0.47;
+static constexpr double HIP_SPREAD = 0.045;
+static constexpr double HIP_RADIUS = 0.05;
+static constexpr double ANKLE_RADIUS = 0.038;
+static constexpr double SHOULDER_HEIGHT = 0.74;
+static constexpr double SHOULDER_SPREAD = 0.115;
+static constexpr double SHOULDER_RADIUS = 0.046;
+static constexpr double WRIST_RADIUS = 0.034;
+static constexpr double ARM_LENGTH = 0.36;
+static constexpr double RAISED_ARM_SWING = -2.3;
+static constexpr double HANGING_ARM_SWING = 0.12;
+static constexpr double ARM_SPLAY = 0.15;
+static constexpr uint32_t WEATHERED_BRONZE = 0x4A3B2C;
+static constexpr double PATINA_ON_UPRIGHT = 0.45;
+static constexpr double PATINA_PER_RISE = 0.8;
+
 static constexpr double METALLIC_GLOSS = (TRIM_GLOSS + PAINT_GLOSS) * 0.5;
 
 static constexpr std::array<DiagDirection, DIAGDIR_END> WALL_SIDES = {DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_NW};
 
 bool ReplacesSolid(const Solid &solid)
 {
-	return solid.fixture == Fixture::WaterTank || solid.fixture == Fixture::Car;
+	return solid.fixture == Fixture::WaterTank || solid.fixture == Fixture::Car || solid.fixture == Fixture::Statue;
+}
+
+static ModelMesh BronzeLimb(double joint_radius, double end_radius, double length, const Vec3 &joint, double swing, double splay)
+{
+	ModelMesh limb = Column(LIMB_SIDES, end_radius, joint_radius, length).Move({0.0, 0.0, -length});
+	return limb.Transform(Mat4::Translation(joint) * Mat4::Turn(SIDEWAYS, swing) * Mat4::Turn(FORWARD, splay));
+}
+
+static ModelMesh StatueFigure()
+{
+	Mat4 shouldered = Mat4::Scaling({1.0, SHOULDERS_BREADTH, 1.0});
+	ModelMesh figure = Prism(FIGURE_SIDES, STATUE_FOOT_RADIUS, STATUE_FOOT_HEIGHT);
+	figure.Append(Lathe(COAT_SKIRT, FIGURE_SIDES).Transform(shouldered));
+	figure.Append(Lathe(TORSO, FIGURE_SIDES).Transform(shouldered));
+	figure.Append(Lathe(HEAD, FIGURE_SIDES));
+	for (double side : {-1.0, 1.0}) figure.Append(BronzeLimb(HIP_RADIUS, ANKLE_RADIUS, HIP_HEIGHT - STATUE_FOOT_HEIGHT, {0.0, side * HIP_SPREAD, HIP_HEIGHT}, 0.0, 0.0));
+	figure.Append(BronzeLimb(SHOULDER_RADIUS, WRIST_RADIUS, ARM_LENGTH, {0.0, -SHOULDER_SPREAD, SHOULDER_HEIGHT}, RAISED_ARM_SWING, -ARM_SPLAY));
+	figure.Append(BronzeLimb(SHOULDER_RADIUS, WRIST_RADIUS, ARM_LENGTH, {0.0, SHOULDER_SPREAD, SHOULDER_HEIGHT}, HANGING_ARM_SWING, ARM_SPLAY));
+	return figure;
+}
+
+static ModelMesh Patinated(ModelMesh figure, uint32_t patina)
+{
+	for (ModelVertex &corner : figure.vertices) {
+		double exposed = std::clamp(PATINA_ON_UPRIGHT + PATINA_PER_RISE * corner.Normal().z, 0.0, 1.0);
+		corner.Paint(Mix(WEATHERED_BRONZE, patina, static_cast<uint>(std::lround(exposed * CHANNEL_MAX))));
+	}
+	return figure;
 }
 
 /* A part finished as vehicles are is clad in glass where it is glazed, in metal where it is glossier than trim and plainly elsewhere, each corner in its own paint. */
@@ -152,6 +208,7 @@ public:
 			case Fixture::WaterTank: this->DressWaterTank(); break;
 			case Fixture::Car: this->DressCar(); break;
 			case Fixture::Basin: this->DressBasin(); break;
+			case Fixture::Statue: this->DressStatue(); break;
 			default: break;
 		}
 		if (this->solid.role != SolidRole::Body) return;
@@ -274,6 +331,15 @@ private:
 			{POOL_RADIUS + CURB_BEVEL, CURB_RISE}, {POOL_RADIUS, CURB_RISE - CURB_BEVEL}, {POOL_RADIUS, 0.0},
 		}};
 		this->AddUpright(Lathe(curb, CURB_SIDES, Capped::Neither), this->CentreX(), this->CentreY(), this->Eave(), {Material::Stone, WindowGrid::None, {}, this->solid.wall_tint});
+	}
+
+	void DressStatue()
+	{
+		static const ModelMesh FIGURE = StatueFigure();
+		double height = this->solid.Top() - this->solid.base;
+		double heading = QUARTER_TURN * this->dice.Below(QUARTER_TURNS);
+		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UPRIGHT, heading) * Mat4::Scaling({height * FORM_HEIGHT_SCALE, height * FORM_HEIGHT_SCALE, height});
+		this->Clad(Patinated(FIGURE, this->solid.wall_tint).Transform(placed), FinishedCoat);
 	}
 
 	/* Gable and hip roofs wear a cap along their ridge, which a gable carries on over its overhang. */
