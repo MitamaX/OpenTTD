@@ -23,6 +23,8 @@
 static constexpr double SHALLOWEST_SINK = 0.3;
 static constexpr double SHORE_GRADIENT = 1.2;
 static constexpr int CORNER_MARGIN = 1;
+static constexpr int SHALLOW_MARGIN = 5;
+static constexpr int SHALLOWS_REACH = 2;
 
 static bool IsFlat(const SurfaceTexel &surface)
 {
@@ -192,8 +194,27 @@ double BedLevel(int tx, int ty, double x, double y)
 	return level - std::lerp(north, south, fy);
 }
 
+static bool NearLand(int tx, int ty)
+{
+	for (int dy = -SHALLOWS_REACH; dy <= SHALLOWS_REACH; dy++) {
+		for (int dx = -SHALLOWS_REACH; dx <= SHALLOWS_REACH; dx++) {
+			if (WaterFormOf(tx + dx, ty + dy) != WaterForm::Open) return true;
+		}
+	}
+	return false;
+}
+
+static bool IsShallowSea(int tx, int ty)
+{
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Open || IsRiverMouth(tx, ty)) return false;
+	TileIndex tile = TileXY(tx, ty);
+	if (_world_tiles.WaterAt(tile).sea == 0 || (_world_tiles.NetworkAt(tile).style & NETWORK_BRIDGE_BIT) != 0) return false;
+	return NearLand(tx, ty);
+}
+
 Seabed::Seabed(const TileSpan &tiles) :
-	levels(2 * (tiles.tx0 - CORNER_MARGIN), 2 * (tiles.ty0 - CORNER_MARGIN), 2 * (tiles.tx1 - tiles.tx0 + 1 + 2 * CORNER_MARGIN) + 1, 2 * (tiles.ty1 - tiles.ty0 + 1 + 2 * CORNER_MARGIN) + 1)
+	levels(2 * (tiles.tx0 - CORNER_MARGIN), 2 * (tiles.ty0 - CORNER_MARGIN), 2 * (tiles.tx1 - tiles.tx0 + 1 + 2 * CORNER_MARGIN) + 1, 2 * (tiles.ty1 - tiles.ty0 + 1 + 2 * CORNER_MARGIN) + 1),
+	shallow(tiles.tx0 - SHALLOW_MARGIN, tiles.ty0 - SHALLOW_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * SHALLOW_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * SHALLOW_MARGIN)
 {
 }
 
@@ -215,6 +236,11 @@ Vec3 Seabed::Normal(int hx, int hy, int reach) const
 	double slope_x = (this->Level(hx + reach, hy) - this->Level(hx - reach, hy)) * rise / span;
 	double slope_y = (this->Level(hx, hy + reach) - this->Level(hx, hy - reach)) * rise / span;
 	return Normalised({-slope_x, -slope_y, 1.0});
+}
+
+bool Seabed::Shallow(int tx, int ty) const
+{
+	return this->shallow.At(tx, ty, IsShallowSea);
 }
 
 std::array<double, 4> Seabed::SettledCorners(int tx, int ty) const

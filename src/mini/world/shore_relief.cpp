@@ -37,15 +37,26 @@ bool IsBareCoast(int tx, int ty)
 	return ground.material == GroundMaterial::Shore && ground.flora == 0 && network.track == 0 && network.road == 0 && network.tram == 0 && !spanned;
 }
 
+bool LiesAlongShore(const Seabed &bed, int tx, int ty)
+{
+	return IsBareCoast(tx, ty) || bed.Shallow(tx, ty);
+}
+
 ShoreRelief::ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners) : TileRelief(tx, ty, corners, SHORE_STRAIGHTENING_REACH), bed(bed)
 {
+}
+
+Vec3 ShoreRelief::Normal(double x, double y, const Vec3 &faceted) const
+{
+	Vec3 curved = ClimbNormal(ClimbOf([this](double px, double py) { return this->Level(px, py); }, x, y, SLOPE_PROBE));
+	return Normalised(Lerp(TileRelief::Normal(x, y, faceted), curved, this->Freedom(x, y)));
 }
 
 /* The spline runs through every corner of the bed, so it agrees with the tile's own corners wherever it is free to show. */
 double ShoreRelief::Curved(double x, double y) const
 {
-	LatticeCell cell = CellOf(x, y);
-	return Bicubic([this](int cx, int cy) { return this->bed.Level(2 * cx, 2 * cy); }, cell, CatmullRomWeights(cell.u), CatmullRomWeights(cell.v));
+	LatticeCell cell = CellOf(2.0 * x, 2.0 * y);
+	return Bicubic([this](int hx, int hy) { return this->bed.Level(hx, hy); }, cell, CatmullRomWeights(cell.u), CatmullRomWeights(cell.v));
 }
 
 ChannelRelief::ChannelRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners) :

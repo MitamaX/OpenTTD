@@ -16,7 +16,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr double SLOPE_PROBE = 0.1;
 static constexpr double LEAST_UPRIGHT = 0.05;
 static constexpr int SPLINE_REACH = 1;
 

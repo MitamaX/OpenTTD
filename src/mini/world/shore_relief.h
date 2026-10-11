@@ -19,15 +19,18 @@
 
 /* A coast tile with nothing standing on it or spanning it, whose ground may curve without lifting anything off it. */
 bool IsBareCoast(int tx, int ty);
+bool LiesAlongShore(const Seabed &bed, int tx, int ty);
 
 /* A bare coast's ground: a spline through the bed's corners. */
 class ShoreRelief : public TileRelief {
 public:
 	ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners);
 
+	Vec3 Normal(double x, double y, const Vec3 &faceted) const override;
+
 private:
 	double Curved(double x, double y) const override;
-	bool Curves(int nx, int ny) const override { return IsBareCoast(nx, ny); }
+	bool Curves(int nx, int ny) const override { return LiesAlongShore(this->bed, nx, ny); }
 	double Held(double, double, double corner) const override { return corner; }
 
 	const Seabed &bed;

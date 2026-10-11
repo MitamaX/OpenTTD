@@ -17,6 +17,7 @@
 #include "../core/camera.h"
 
 inline constexpr double CLIMB_PROBE = 0.05;
+inline constexpr double SLOPE_PROBE = 0.1;
 
 using CubicWeights = std::array<double, 4>;
 using CornerPatch = std::array<std::array<double, 4>, 4>;

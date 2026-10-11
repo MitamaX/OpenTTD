@@ -59,7 +59,7 @@ static constexpr double COPING_DEPTH = WING_THICKNESS + COPING_OVERHANG;
 static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
-static constexpr int COAST_DIVISIONS = 4;
+static constexpr int LEAST_SHORE_DIVISIONS = 2;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -194,7 +194,9 @@ static void AddBasin(TerrainMesh &mesh, const Seabed &bed, const std::array<uint
 		int half_x = 2 * tx + side.half_x;
 		int half_y = 2 * ty + side.half_y;
 		double ends = (mesh.vertices[corners[side.from]].level + mesh.vertices[corners[side.to]].level) * 0.5;
-		bool sunk = SharesBasin(tx, ty, tx + side.across_x, ty + side.across_y) && !IsRiverside(tx + side.across_x, ty + side.across_y);
+		int nx = tx + side.across_x;
+		int ny = ty + side.across_y;
+		bool sunk = SharesBasin(tx, ty, nx, ny) && !IsRiverside(nx, ny) && !LiesAlongShore(bed, nx, ny);
 		double level = sunk ? bed.Level(half_x, half_y) : ends;
 		uint32_t middle = at(half_x, half_y, level);
 		mesh.Triangle(corners[side.from], middle, centre);
@@ -288,6 +290,11 @@ static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, si
 	}
 }
 
+static int ReliefDivisionsOf(const LaidGround &laid, int grained)
+{
+	return laid.Rolls() ? grained : std::max(grained, LEAST_SHORE_DIVISIONS);
+}
+
 void TerrainBuild::AddTile(int tx, int ty)
 {
 	TerrainMesh &mesh = this->mesh;
@@ -309,12 +316,10 @@ void TerrainBuild::AddTile(int tx, int ty)
 	}
 	LaidGround laid(this->land, tx, ty);
 	if (const TileRelief *relief = laid.Relief(); relief != nullptr) {
-		int divisions = laid.Rolls() ? this->DivisionsOf(tx, ty) : COAST_DIVISIONS;
+		int divisions = ReliefDivisionsOf(laid, this->DivisionsOf(tx, ty));
 		std::vector<uint32_t> grid = AddRelief(mesh, *relief, corners, tx, ty, divisions);
-		if (laid.Rolls()) {
-			OpenSides open = ReliefSidesOf(this->tiles, tx, ty, [&](int nx, int ny) { return this->CutApart(tx, ty, nx, ny); });
-			SkirtOpenSides(mesh, grid, divisions + 1, open, RELIEF_SKIRT_LEVELS);
-		}
+		OpenSides open = laid.Rolls() ? ReliefSidesOf(this->tiles, tx, ty, [&](int nx, int ny) { return this->CutApart(tx, ty, nx, ny); }) : OpenSidesOf(this->tiles, {tx, ty, tx, ty});
+		SkirtOpenSides(mesh, grid, divisions + 1, open, RELIEF_SKIRT_LEVELS);
 		return;
 	}
 	if (WaterFormOf(tx, ty) == WaterForm::Open) {

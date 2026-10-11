@@ -60,6 +60,7 @@ public:
 	double Sink(int cx, int cy) const;
 	Vec3 Normal(int hx, int hy, int reach) const;
 	std::array<double, 4> SettledCorners(int tx, int ty) const;
+	bool Shallow(int tx, int ty) const;
 
 private:
 	double LevelAt(int hx, int hy) const;
@@ -67,6 +68,7 @@ private:
 	double CornerMean(int tx, int ty) const;
 
 	LazyLattice<double> levels;
+	LazyLattice<bool> shallow;
 };
 
 #endif /* MINI_WORLD_SEABED_H */

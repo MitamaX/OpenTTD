@@ -131,7 +131,7 @@ Vec3 HillRelief::Normal(double x, double y, const Vec3 &faceted) const
 
 LaidGround::LaidGround(const Landform &land, int tx, int ty) : tx(tx), ty(ty)
 {
-	if (IsBareCoast(tx, ty)) {
+	if (LiesAlongShore(land.Bed(), tx, ty)) {
 		this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty));
 	} else if (land.Bends(tx, ty)) {
 		this->relief.emplace<HillRelief>(land, tx, ty);
