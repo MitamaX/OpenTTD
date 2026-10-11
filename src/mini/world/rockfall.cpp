@@ -15,6 +15,7 @@
 #include <cmath>
 #include <numbers>
 #include <span>
+#include <vector>
 
 #include "../../map_func.h"
 #include "../../settings_type.h"
@@ -43,6 +44,16 @@ static constexpr double ROCK_GATHERS_PER_TILE = 0.6;
 static constexpr double MOST_CELL_SHARE = 0.45;
 static constexpr SeedRange ROCK_WARMTH = {0.0, 0.6};
 static constexpr SeedRange MOSS_SHARE = {0.35, 0.7};
+static constexpr SeedRange CRAG_SLOPES = {0.6, 1.2};
+static constexpr double CRAG_LEAST_SHARE = 0.15;
+static constexpr int CRAG_BED_STRIDE = 3;
+static constexpr double CRAG_INSET = 0.12;
+static constexpr double CRAG_RUNS_PER_TILE = 0.7;
+static constexpr double CRAG_RUN_SHARE = 0.7;
+static constexpr double BUTTRESS_SHARE = 0.35;
+static constexpr SeedRange CRAG_GROWTH = {0.8, 1.2};
+static constexpr double CRAG_YAW_JITTER = 0.25;
+static constexpr uint32_t CRAG_SALT = 0x4F1BD2E9U;
 static constexpr uint32_t ROCK_SALT = 0x2C9E51A7U;
 static constexpr uint32_t GATHER_SALT = 0x6A1D0F3BU;
 static constexpr uint32_t FAMILY_SALT = 0x0B5E77C1U;
@@ -85,6 +96,14 @@ struct StoneRule {
 	double chance;
 	std::span<const RockPick> picks;
 	bool layered;
+};
+
+struct Crag {
+	MapVector at;
+	double yaw;
+	double radius;
+	RockModel model;
+	int bed;
 };
 
 struct RockLook {
@@ -197,7 +216,7 @@ static VehicleInstance Seated(const WorldPoint &seat, const MapVector &climb, do
 	MapVector heading = {std::cos(yaw), std::sin(yaw)};
 	double along = Dot(grade, heading);
 	double across = Dot(grade, {-heading.y, heading.x});
-	double sink = fit.reach * radius * Length(grade) * (1.0 - fit.follow);
+	double sink = radius * Length(MapVector{along * fit.reach.x, across * fit.reach.y}) * (1.0 - fit.follow);
 	Vec3 place = {seat.x, seat.y, seat.level * LevelRise() - sink};
 	return StrewnCopy(place, {yaw, std::atan(along * fit.follow), std::atan(across * fit.follow)}, radius, InstanceColour(look.body), InstanceColour(look.cap));
 }
@@ -207,11 +226,63 @@ static MapVector Inset(const MapVector &at, int tx, int ty, double margin)
 	return {std::clamp(at.x, tx + margin, tx + 1.0 - margin), std::clamp(at.y, ty + margin, ty + 1.0 - margin)};
 }
 
-static void StrewStones(const LaidGround &ground, const BareTile &tile, const StoneRule &rule, int tx, int ty, ScatterCopies &copies)
+static bool InsideTile(const MapVector &at, int tx, int ty, double margin)
+{
+	return at.x >= tx + margin && at.x <= tx + 1.0 - margin && at.y >= ty + margin && at.y <= ty + 1.0 - margin;
+}
+
+static int FirstBedFrom(double bedding)
+{
+	return static_cast<int>(std::ceil(bedding / CRAG_BED_STRIDE)) * CRAG_BED_STRIDE;
+}
+
+static double CragShare(const BareTile &tile)
+{
+	double share = ExposedShare(tile.bare, ROCK_EXPOSURE) * SmoothStep(CRAG_SLOPES.low, CRAG_SLOPES.high, Length(tile.climb));
+	return share < CRAG_LEAST_SHARE ? 0.0 : share;
+}
+
+static std::vector<Crag> CragsOf(const BareTile &tile, double share, int tx, int ty, bool hemmed)
+{
+	std::vector<Crag> crags;
+	if (share <= 0.0) return crags;
+	double slope = Length(tile.climb);
+	MapVector rise = tile.climb * StrataPerLevel() + STRATA_DIP;
+	MapVector middle = {tx + 0.5, ty + 0.5};
+	double bedding = BeddingOf(middle, tile.level);
+	double spread = (std::abs(rise.x) + std::abs(rise.y)) / 2.0;
+	SeedDice dice(Hash32(CRAG_SALT ^ TileXY(tx, ty).base()));
+	for (int bed = FirstBedFrom(bedding - spread); bed <= bedding + spread; bed += CRAG_BED_STRIDE) {
+		MapVector at = middle + rise * ((bed - bedding) / Dot(rise, rise));
+		RockModel model = dice.Share() < BUTTRESS_SHARE * SteepShare(slope) ? RockModel::Buttress : RockModel::Ledge;
+		RockFit fit = FitOf(model);
+		double radius = dice.Between(fit.radius) * std::lerp(CRAG_GROWTH.low, CRAG_GROWTH.high, share);
+		double yaw = std::atan2(rise.x, -rise.y) + dice.Between(-CRAG_YAW_JITTER, CRAG_YAW_JITTER);
+		if (!InsideTile(at, tx, ty, hemmed ? fit.Farthest() * radius : CRAG_INSET)) continue;
+		if (LatticeNoise(at.x, at.y, CRAG_RUNS_PER_TILE, SubSeed(CRAG_SALT, static_cast<uint32_t>(bed))) >= share * CRAG_RUN_SHARE) continue;
+		crags.push_back({at, yaw, radius, model, bed});
+	}
+	return crags;
+}
+
+static bool UnderCrag(const MapVector &at, std::span<const Crag> crags)
+{
+	return std::ranges::any_of(crags, [&](const Crag &crag) { return Length(at - crag.at) < FitOf(crag.model).Farthest() * crag.radius; });
+}
+
+static void RaiseCrags(const LaidGround &ground, const BareTile &tile, std::span<const Crag> crags, ScatterCopies &copies)
+{
+	for (const Crag &crag : crags) {
+		SeedDice dice(Hash32(CRAG_SALT ^ static_cast<uint32_t>(crag.bed)));
+		RockLook look = LookOf(static_cast<uint32_t>(crag.bed), tile, dice);
+		copies[RockModelIndex(crag.model, RockFinish::Chiselled)].push_back(Seated(ground.At(crag.at), tile.climb, crag.yaw, crag.radius, FitOf(crag.model), look));
+	}
+}
+
+static void StrewStones(const LaidGround &ground, const BareTile &tile, const StoneRule &rule, std::span<const Crag> crags, int tx, int ty, bool hemmed, ScatterCopies &copies)
 {
 	uint32_t base = TileXY(tx, ty).base();
 	SeedDice dice(Hash32(ROCK_SALT ^ base));
-	bool hemmed = !ClearAround(tx, ty, 1);
 	for (int cell = 0; cell < STONE_CELLS * STONE_CELLS; cell++) {
 		MapVector at = {tx + (cell % STONE_CELLS + 0.5 + dice.Between(-STONE_JITTER, STONE_JITTER)) / STONE_CELLS, ty + (cell / STONE_CELLS + 0.5 + dice.Between(-STONE_JITTER, STONE_JITTER)) / STONE_CELLS};
 		double chance = dice.Share();
@@ -219,8 +290,8 @@ static void StrewStones(const LaidGround &ground, const BareTile &tile, const St
 		RockFit fit = FitOf(model);
 		double radius = std::min(dice.Between(fit.radius), MOST_CELL_SHARE / STONE_CELLS);
 		double yaw = AnyBearing(dice);
-		if (chance >= rule.chance * Gathering(at)) continue;
-		if (hemmed) at = Inset(at, tx, ty, fit.reach * radius);
+		if (chance >= rule.chance * Gathering(at) || UnderCrag(at, crags)) continue;
+		if (hemmed) at = Inset(at, tx, ty, fit.Farthest() * radius);
 		WorldPoint seat = ground.At(at);
 		uint32_t family = rule.layered ? static_cast<uint32_t>(static_cast<int>(std::floor(BeddingOf(at, seat.level)))) : base;
 		copies[RockModelIndex(model, RockFinish::Chiselled)].push_back(Seated(seat, tile.climb, yaw, radius, fit, LookOf(family, tile, dice)));
@@ -240,7 +311,13 @@ void Rockfall::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 			BareTile tile = survey.At(tx, ty);
 			if (!tile.holds) continue;
 			StoneRule rule = RuleOf(tile);
-			if (rule.chance > 0.0) StrewStones(LaidGround(survey.Land(), tx, ty), tile, rule, tx, ty, copies);
+			double crag_share = CragShare(tile);
+			if (rule.chance <= 0.0 && crag_share <= 0.0) continue;
+			bool hemmed = !ClearAround(tx, ty, 1);
+			std::vector<Crag> crags = CragsOf(tile, crag_share, tx, ty, hemmed);
+			LaidGround ground(survey.Land(), tx, ty);
+			RaiseCrags(ground, tile, crags, copies);
+			StrewStones(ground, tile, rule, crags, tx, ty, hemmed, copies);
 		}
 	}
 }

@@ -10,10 +10,12 @@
 #ifndef MINI_WORLD_ROCK_MODELS_H
 #define MINI_WORLD_ROCK_MODELS_H
 
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 
 #include "../../core/enum_type.hpp"
+#include "../core/camera.h"
 #include "../core/seed.h"
 #include "../model/model_mesh.h"
 
@@ -24,6 +26,8 @@ enum class RockModel : uint8_t {
 	Wedge,
 	Split,
 	Rubble,
+	Ledge,
+	Buttress,
 	End,
 };
 
@@ -41,9 +45,11 @@ constexpr size_t RockModelIndex(RockModel model, RockFinish finish)
 }
 
 struct RockFit {
-	double reach;
+	MapVector reach;
 	double follow;
 	SeedRange radius;
+
+	double Farthest() const { return std::max(this->reach.x, this->reach.y); }
 };
 
 RockFit FitOf(RockModel model);
