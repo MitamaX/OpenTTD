@@ -143,6 +143,16 @@ Corners SurfaceOf(ivec2 tile)
 	return Corners(levels.r, levels.g, levels.b, levels.a);
 }
 
+float LowestCorner(Corners ground)
+{
+	return min(min(ground.north, ground.west), min(ground.east, ground.south));
+}
+
+float HighestCorner(Corners ground)
+{
+	return max(max(ground.north, ground.west), max(ground.east, ground.south));
+}
+
 /* The game folds a tile along the diagonal whose corners stand level, and along the lower pair when both do. */
 bool FoldsWestToEast(Corners c)
 {

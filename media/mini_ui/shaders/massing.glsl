@@ -41,16 +41,6 @@ float FormRise(uint texels)
 	return float(texels) / TEXELS * FORM_HEIGHT_SCALE;
 }
 
-float LowestCorner(Corners ground)
-{
-	return min(min(ground.north, ground.west), min(ground.east, ground.south));
-}
-
-float HighestCorner(Corners ground)
-{
-	return max(max(ground.north, ground.west), max(ground.east, ground.south));
-}
-
 Box BoxOf(ivec2 tile, uvec4 texel, float lowest)
 {
 	vec4 insets = vec4((uvec4(texel.w) >> MASSING_INSET_SHIFTS) & MASSING_INSET_MOST) / MASSING_INSET_STEPS;

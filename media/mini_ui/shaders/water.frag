@@ -322,8 +322,8 @@ vec4 SheetWater(ivec2 tile, float level, out float pooled, out float brim)
 {
 	vec4 water = TileWater(tile);
 	Corners c = SurfaceOf(tile);
-	float low = min(min(c.north, c.west), min(c.east, c.south));
-	float top = max(max(c.north, c.west), max(c.east, c.south));
+	float low = LowestCorner(c);
+	float top = HighestCorner(c);
 	float high = water.r >= 1.0 ? top : low;
 	float apart = max(max(low - level, level - high), 0.0);
 	vec4 joined = water * (1.0 - smoothstep(SHEET_HOLD, SHEET_REACH, apart));
@@ -561,7 +561,7 @@ float WaterLevelOn(ivec2 tile, vec2 f)
 	Corners c = SurfaceOf(tile);
 	vec4 water = TileWater(tile);
 	bool inclined = (water.a > HALF_TILE || water.r <= 0.0) && c.north != c.south;
-	if (!inclined) return min(min(c.north, c.west), min(c.east, c.south));
+	if (!inclined) return LowestCorner(c);
 	return mix(mix(c.north, c.west, f.x), mix(c.east, c.south, f.x), f.y);
 }
 
