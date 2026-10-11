@@ -82,11 +82,12 @@ class LaidGround {
 public:
 	LaidGround(const Landform &land, int tx, int ty);
 
+	static bool RollsAt(const Landform &land, int tx, int ty);
+
 	double Level(double x, double y) const;
 	double Level(const MapVector &at) const { return this->Level(at.x, at.y); }
 	WorldPoint At(const MapVector &at) const { return {at.x, at.y, this->Level(at)}; }
 	const TileRelief *Relief() const;
-	bool Rolls() const { return std::holds_alternative<HillRelief>(this->relief); }
 	bool Banked() const;
 
 private:

@@ -130,12 +130,34 @@ Vec3 HillRelief::Normal(double x, double y, const Vec3 &faceted) const
 	return Normalised(Lerp(faceted, this->land.RolledNormal(x, y), this->Freedom(x, y)));
 }
 
+enum class GroundKind : uint8_t {
+	Flat,
+	Shore,
+	Hill,
+};
+
+static GroundKind GroundKindAt(const Landform &land, int tx, int ty)
+{
+	if (LiesAlongShore(land.Bed(), tx, ty)) return GroundKind::Shore;
+	return land.Bends(tx, ty) ? GroundKind::Hill : GroundKind::Flat;
+}
+
+bool LaidGround::RollsAt(const Landform &land, int tx, int ty)
+{
+	return GroundKindAt(land, tx, ty) == GroundKind::Hill;
+}
+
 LaidGround::LaidGround(const Landform &land, int tx, int ty) : tx(tx), ty(ty)
 {
-	if (LiesAlongShore(land.Bed(), tx, ty)) {
-		this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty), land.BanksAround(tx, ty));
-	} else if (land.Bends(tx, ty)) {
-		this->relief.emplace<HillRelief>(land, tx, ty);
+	switch (GroundKindAt(land, tx, ty)) {
+		case GroundKind::Shore:
+			this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty), land.BanksAround(tx, ty));
+			break;
+		case GroundKind::Hill:
+			this->relief.emplace<HillRelief>(land, tx, ty);
+			break;
+		case GroundKind::Flat:
+			break;
 	}
 }
 

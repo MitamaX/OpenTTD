@@ -298,8 +298,8 @@ static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, si
 static ShoreCut ShoreCutOf(const Landform &land, int grained, int tx, int ty)
 {
 	if (!OnMap(tx, ty) || IsRiverside(tx, ty)) return NO_SHORE_CUT;
+	if (LaidGround::RollsAt(land, tx, ty)) return {grained, false};
 	LaidGround laid(land, tx, ty);
-	if (laid.Rolls()) return {grained, false};
 	if (laid.Relief() == nullptr) return WaterFormOf(tx, ty) == WaterForm::Open ? ShoreCut{BASIN_SIDE_CUTS, false} : NO_SHORE_CUT;
 	return {std::max(grained * (laid.Banked() ? BANK_DIVISIONS_FACTOR : 1), LEAST_SHORE_DIVISIONS), true};
 }
