@@ -12,7 +12,9 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cstddef>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -62,6 +64,9 @@ private:
 	struct DetailSpan;
 	class DetailReach;
 
+	using TileNumber = uint8_t;
+	static_assert(CELL_TILES * CELL_TILES - 1 <= std::numeric_limits<TileNumber>::max());
+
 	/* A shape's trees within a block, lying together. */
 	struct Run {
 		size_t shape;
@@ -72,12 +77,23 @@ private:
 	/* A block's trees, sorted by shape, the height levels its ground spans under them, and whether the flora or the ground changed under them since they were planted. */
 	struct Cell {
 		std::vector<TreeInstance> trees;
+		std::vector<TileNumber> tiles;
 		std::vector<Run> runs;
+		std::bitset<CELL_TILES * CELL_TILES> stale_tiles;
 		double low = 0.0;
 		double high = 0.0;
 		bool planted = false;
-		bool stale = true;
 		uint64_t drawn = 0;
+
+		Cell() { this->stale_tiles.set(); }
+
+		bool Outdated() const { return this->stale_tiles.any(); }
+	};
+
+	struct StandingTree {
+		size_t shape;
+		TileNumber tile;
+		TreeInstance tree;
 	};
 
 	/* A stale block near enough for the camera to show its trees, whether it lies out of sight, and how near it comes to the eye, squared. */
@@ -88,6 +104,8 @@ private:
 	};
 
 	std::pair<Vec3, Vec3> Bounds(const Cell &cell, size_t index) const;
+	void MarkStale(size_t index, const Rect &area);
+	static std::vector<StandingTree> Kept(const Cell &cell);
 	void Plant(Cell &cell, const TileSpan &tiles) const;
 	void GatherCell(const Cell &cell, const Sight &sight, const DetailReach &details, bool whole, const DetailSpan &near, const DetailSpan &far, TreeBatch &batch) const;
 	void Evict();

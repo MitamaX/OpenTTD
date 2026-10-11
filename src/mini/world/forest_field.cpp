@@ -328,33 +328,58 @@ ShapedTree Grove::Grown(const TilePoint &spot, double fringe, bool spare)
 	return {shape.Index(), {static_cast<float>(x), static_cast<float>(y), static_cast<float>(this->ground.Level(x, y)), look}};
 }
 
+static size_t TileWithin(const TileSpan &tiles, int tx, int ty)
+{
+	return static_cast<size_t>(ty - tiles.ty0) * (tiles.tx1 - tiles.tx0 + 1) + (tx - tiles.tx0);
+}
+
+std::vector<ForestField::StandingTree> ForestField::Kept(const Cell &cell)
+{
+	std::vector<StandingTree> kept;
+	for (const Run &run : cell.runs) {
+		for (size_t index = run.first; index < run.first + run.count; index++) {
+			if (!cell.stale_tiles[cell.tiles[index]]) kept.push_back({run.shape, cell.tiles[index], cell.trees[index]});
+		}
+	}
+	return kept;
+}
+
+/* Only the stale tiles grow their trees again and the rest keep theirs, which lays out the same trees as planting the whole block afresh. */
 void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 {
 	_frame_profile.Count("forest_plants");
 	ProfileScope profile("build", "forest", ProfileClock::Cpu);
-	std::vector<ShapedTree> planted;
+	std::vector<StandingTree> standing = Kept(cell);
+	std::vector<ShapedTree> sprouts;
 	Landform land(tiles);
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
+			size_t tile = TileWithin(tiles, tx, ty);
+			if (!cell.stale_tiles[tile]) continue;
 			uint8_t flora = _world_tiles.GroundAt(TileXY(tx, ty)).flora;
-			if (TreeCount(flora) != 0) Grove(tx, ty, flora, LaidGround(land, tx, ty)).Plant(planted);
+			if (TreeCount(flora) == 0) continue;
+			sprouts.clear();
+			Grove(tx, ty, flora, LaidGround(land, tx, ty)).Plant(sprouts);
+			for (const auto &[shape, tree] : sprouts) standing.push_back({shape, static_cast<TileNumber>(tile), tree});
 		}
 	}
-	std::ranges::stable_sort(planted, {}, [](const auto &entry) { return entry.first; });
+	std::ranges::stable_sort(standing, {}, [](const StandingTree &entry) { return std::make_pair(entry.shape, entry.tile); });
 
 	cell.trees.clear();
+	cell.tiles.clear();
 	cell.runs.clear();
 	cell.low = 0.0;
 	cell.high = 0.0;
-	for (const auto &[shape, tree] : planted) {
+	for (const auto &[shape, tile, tree] : standing) {
 		if (cell.runs.empty() || cell.runs.back().shape != shape) cell.runs.push_back({shape, cell.trees.size(), 0});
 		cell.runs.back().count++;
 		cell.low = cell.trees.empty() ? tree.level : std::min<double>(cell.low, tree.level);
 		cell.high = cell.trees.empty() ? tree.level : std::max<double>(cell.high, tree.level);
 		cell.trees.push_back(tree);
+		cell.tiles.push_back(tile);
 	}
+	cell.stale_tiles.reset();
 	cell.planted = true;
-	cell.stale = false;
 }
 
 /* A block's trees grow from the flora of its own tiles, on a bed laid by the shape and the water of the tiles out to the shelf's edge. */
@@ -370,9 +395,19 @@ void ForestField::Sync(const WorldChanges &changes)
 		this->keep.Clear();
 		return;
 	}
-	auto unplant = [&](size_t index) { this->cells[index].stale = true; };
-	this->grid.ForEachTouched(changes, ChangeKind::Flora, FRINGE_MARGIN, unplant);
-	this->grid.ForEachTouched(changes, ChangeKind::Relief, SHELF_TILES, unplant);
+	for (const Rect &area : changes.Of(ChangeKind::Flora)) {
+		Rect fringed = TilesNear(area, FRINGE_MARGIN);
+		this->grid.ForEachTouched(std::span(&fringed, 1), 0, [&](size_t index) { this->MarkStale(index, fringed); });
+	}
+	this->grid.ForEachTouched(changes, ChangeKind::Relief, SHELF_TILES, [&](size_t index) { this->cells[index].stale_tiles.set(); });
+}
+
+void ForestField::MarkStale(size_t index, const Rect &area)
+{
+	TileSpan tiles = this->grid.TilesOf(index);
+	for (int ty = std::max(area.top, tiles.ty0); ty <= std::min(area.bottom, tiles.ty1); ty++) {
+		for (int tx = std::max(area.left, tiles.tx0); tx <= std::min(area.right, tiles.tx1); tx++) this->cells[index].stale_tiles.set(TileWithin(tiles, tx, ty));
+	}
 }
 
 /* A block lying wholly in sight and within one detail hands over its runs whole; one across the edge of sight or a crossfade sorts its trees one by one. */
@@ -430,7 +465,7 @@ void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, Tr
 		if (!(unseen ? cast : shown).At(distance).Shows()) return true;
 		if (unseen && !ShadowMeets(shadowed, camera.sun, low, high)) return true;
 		cell.drawn = this->frame;
-		if (cell.stale) this->due.push_back({unseen, distance, index});
+		if (cell.Outdated()) this->due.push_back({unseen, distance, index});
 		return true;
 	});
 	std::ranges::sort(this->due, {}, [](const Due &entry) { return std::make_pair(entry.unseen, entry.squared_distance); });
@@ -465,7 +500,7 @@ void ForestField::Gather(const Sight &sight, TreeDetail coarsest, TreeBatch &bat
 /* Past what the field may keep, the blocks longest out of every view let their trees go, so a big map only holds the forests about the view. */
 void ForestField::Evict()
 {
-	auto bytes = [](const Cell &cell) { return cell.trees.size() * sizeof(TreeInstance) + cell.runs.size() * sizeof(Run); };
+	auto bytes = [](const Cell &cell) { return cell.trees.size() * sizeof(TreeInstance) + cell.tiles.size() * sizeof(TileNumber) + cell.runs.size() * sizeof(Run); };
 	this->keep.Trim(this->cells, this->frame, bytes, &Cell::drawn, [](Cell &cell) { cell = Cell{}; });
 }
 
