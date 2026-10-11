@@ -92,9 +92,18 @@ struct RockLook {
 	uint32_t cap;
 };
 
-static bool IsLevelLowland(const SurfaceTexel &surface, const GroundTexel &ground)
+static double MiddleLevel(const SurfaceTexel &surface)
 {
-	return surface.Lowest() == surface.Highest() && AltitudeShare(surface.Lowest()) < ALPINE_ALTITUDE && ground.material != GroundMaterial::Rocks;
+	return (surface.CornerAt(0, 0) + surface.CornerAt(1, 0) + surface.CornerAt(0, 1) + surface.CornerAt(1, 1)) / 4.0;
+}
+
+static MapVector CornerClimb(const SurfaceTexel &surface)
+{
+	double far_x = surface.CornerAt(1, 0) + surface.CornerAt(1, 1);
+	double far_y = surface.CornerAt(0, 1) + surface.CornerAt(1, 1);
+	double near_x = surface.CornerAt(0, 0) + surface.CornerAt(0, 1);
+	double near_y = surface.CornerAt(0, 0) + surface.CornerAt(1, 0);
+	return {(far_x - near_x) / 2.0, (far_y - near_y) / 2.0};
 }
 
 static bool HoldsStones(int tx, int ty, const GroundTexel &ground)
@@ -127,10 +136,8 @@ private:
 		GroundTexel ground = _world_tiles.GroundAt(index);
 		if (!HoldsStones(tx, ty, ground)) return {0.0, {}, ground, false, 0.0};
 		SurfaceTexel surface = _world_tiles.SurfaceAt(index);
-		if (IsLevelLowland(surface, ground)) return {static_cast<double>(surface.Lowest()), {}, ground, true, 0.0};
-		MapVector middle = {tx + 0.5, ty + 0.5};
-		double level = this->land.LevelAt(middle.x, middle.y);
-		MapVector climb = this->land.Climb(middle.x, middle.y);
+		double level = MiddleLevel(surface);
+		MapVector climb = CornerClimb(surface);
 		return {level, climb, ground, true, BareShare(SteepShare(Length(climb)), AltitudeShare(level), BlanketDepth(ground))};
 	}
 
