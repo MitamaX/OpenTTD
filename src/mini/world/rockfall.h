@@ -12,9 +12,9 @@
 
 #include "block_scatter.h"
 
-inline constexpr double ROCK_SHOWN_PIXELS = 22.0;
-inline constexpr double ROCK_SOLID_PIXELS = 32.0;
-inline constexpr double ROCK_CAST_PIXELS = 32.0;
+inline constexpr double ROCK_SHOWN_PIXELS = 28.0;
+inline constexpr double ROCK_SOLID_PIXELS = 38.0;
+inline constexpr double ROCK_CAST_PIXELS = 40.0;
 inline constexpr double ROCK_CASTER_WIDTH = 0.08;
 inline constexpr int ROCK_BLOCK_MARGIN = 1;
 
