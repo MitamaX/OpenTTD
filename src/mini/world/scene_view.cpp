@@ -140,12 +140,12 @@ std::array<Vec3, 8> SceneView::SliceCorners(double near, double far) const
 	Vec3 up = {this->view.At(1, 0), this->view.At(1, 1), this->view.At(1, 2)};
 	ViewSpread spread = this->SpreadPerDepth();
 	Vec3 across = right * spread.across;
-	Vec3 down = up * spread.up;
+	Vec3 upward = up * spread.up;
 	std::array<Vec3, 8> corners;
 	auto corner = corners.begin();
 	for (double depth : {near, far}) {
 		for (const Vec3 &side : {across, across * -1.0}) {
-			for (const Vec3 &edge : {down, down * -1.0}) *corner++ = this->eye + (side + edge - this->Back()) * depth;
+			for (const Vec3 &edge : {upward, upward * -1.0}) *corner++ = this->eye + (side + edge - this->Back()) * depth;
 		}
 	}
 	return corners;
