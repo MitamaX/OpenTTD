@@ -208,3 +208,8 @@ bool HoldsHomes(uint grid)
 {
 	return grid == WINDOWS_COTTAGE || grid == WINDOWS_TERRACE || grid == WINDOWS_APARTMENT;
 }
+
+bool HoldsHalls(uint grid)
+{
+	return grid == WINDOWS_ARCHED || grid == WINDOWS_INDUSTRIAL || grid == WINDOWS_DOORS;
+}

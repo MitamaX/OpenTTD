@@ -73,7 +73,8 @@ const uint ROOM_BEDROOM = 1u;
 const uint ROOM_OFFICE = 2u;
 const uint ROOM_MEETING = 3u;
 const uint ROOM_SHOP = 4u;
-const int ROOM_KINDS = 5;
+const uint ROOM_HALL = 5u;
+const int ROOM_KINDS = 6;
 const float BEDROOM_SHARE = 0.4;
 const float MEETING_ROOM_SHARE = 0.25;
 
@@ -102,6 +103,7 @@ const Piece COUNTER = Piece(vec3(6.0, 2.0, 1.4), vec2(0.1, 0.5), PALE_WOOD, fals
 const Piece DISPLAY = Piece(vec3(3.0, 1.4, 2.0), vec2(0.1, 0.4), PALE_WOOD, false);
 const Piece RACK = Piece(vec3(2.4, 3.0, 2.0), vec2(0.4, 0.9), vec3(0.0), true);
 const Piece MANNEQUIN = Piece(vec3(1.0, 4.2, 1.0), vec2(0.0, 0.3), vec3(0.0), true);
+const Piece NO_PIECE = Piece(vec3(0.0), vec2(0.0), vec3(0.0), false);
 const int PIECES_PER_ROOM = 2;
 const int PIECE_CHOICES = 2;
 const Piece PIECES[ROOM_KINDS * PIECES_PER_ROOM * PIECE_CHOICES] = Piece[ROOM_KINDS * PIECES_PER_ROOM * PIECE_CHOICES](
@@ -109,7 +111,8 @@ const Piece PIECES[ROOM_KINDS * PIECES_PER_ROOM * PIECE_CHOICES] = Piece[ROOM_KI
 	BED, SINGLE_BED, WARDROBE, DRESSER,
 	DESKS, DESK_ROW, CABINETS, PLANTER,
 	TABLE, LONG_TABLE, PLANTER, CABINETS,
-	COUNTER, DISPLAY, RACK, MANNEQUIN);
+	COUNTER, DISPLAY, RACK, MANNEQUIN,
+	NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE);
 
 struct Fitting {
 	vec2 size;
@@ -124,7 +127,7 @@ const Fitting SHELVES = Fitting(vec2(4.0, 3.4), 1.2, vec3(0.42, 0.32, 0.22));
 const Fitting WHITEBOARD = Fitting(vec2(4.4, 2.4), 2.2, vec3(0.86, 0.86, 0.84));
 const Fitting BARE_WALL = Fitting(vec2(0.0), 0.0, vec3(0.0));
 const int FITTING_CHOICES = 2;
-const Fitting BACK_FITTINGS[ROOM_KINDS * FITTING_CHOICES] = Fitting[ROOM_KINDS * FITTING_CHOICES](PICTURE, SHELVES, DOORWAY, PICTURE, DOORWAY, WHITEBOARD, SCREEN, WHITEBOARD, BARE_WALL, BARE_WALL);
+const Fitting BACK_FITTINGS[ROOM_KINDS * FITTING_CHOICES] = Fitting[ROOM_KINDS * FITTING_CHOICES](PICTURE, SHELVES, DOORWAY, PICTURE, DOORWAY, WHITEBOARD, SCREEN, WHITEBOARD, BARE_WALL, BARE_WALL, BARE_WALL, BARE_WALL);
 
 struct Room {
 	ivec2 window;
@@ -148,9 +151,10 @@ vec3 LampPaint(ivec2 window, uint seed, bool offices)
 	return offices ? OFFICE_LAMPS[Pick(roll, OFFICE_LAMPS.length())] : HOME_LAMPS[Pick(roll, HOME_LAMPS.length())];
 }
 
-uint RoomKind(Bay bay, uint seed, bool offices)
+uint RoomKind(Bay bay, uint grid, uint seed, bool offices)
 {
 	if (bay.opening.kind == OPEN_SHOP) return ROOM_SHOP;
+	if (HoldsHalls(grid)) return ROOM_HALL;
 	float roll = Roll(bay.window, seed, ROLL_KIND);
 	if (offices) return roll < MEETING_ROOM_SHARE ? ROOM_MEETING : ROOM_OFFICE;
 	return roll < BEDROOM_SHARE ? ROOM_BEDROOM : ROOM_LIVING;
@@ -168,7 +172,7 @@ Room RoomBehind(Bay bay, Elevation elevation)
 	room.window = bay.window;
 	room.seed = seed;
 	room.offices = offices;
-	room.kind = RoomKind(bay, seed, offices);
+	room.kind = RoomKind(bay, elevation.grid, seed, offices);
 	room.tone = mix(ROOM_TONES.x, ROOM_TONES.y, Roll(bay.window, seed, ROLL_TONE)) * (Landscape() == LANDSCAPE_TROPIC ? TROPIC_ROOM_SHADE : 1.0);
 	room.lamp = Roll(bay.window, seed, ROLL_LAMP) < lit ? LampPaint(bay.window, seed, offices) * LAMP_LIGHT : vec3(0.0);
 	room.drop = Chosen(Roll(bay.window, seed, ROLL_BLIND), blinded_storey ? BLINDED_IN_STOREY : BLINDED_ROOM_SHARE, BLIND_DROPS);
@@ -311,6 +315,7 @@ Sight PieceSeen(Sight sight, Room room, Shell shell, Sightline line, int slot)
 	ivec2 plan = PlanOf(room);
 	uint choice = Picked(plan, room.seed, ROLL_PIECE_CHOICE + slot, PIECE_CHOICES);
 	Piece piece = PIECES[(int(room.kind) * PIECES_PER_ROOM + slot) * PIECE_CHOICES + int(choice)];
+	if (piece.size.x <= 0.0) return sight;
 	vec2 rolls = Hash2(Die(plan, room.seed, ROLL_PIECE + slot));
 	float across = fract(rolls.x + float(room.window.x - plan.x) * PLAN_STRIDE);
 	float front = max(shell.depth - piece.size.z, 0.0) * mix(piece.set_back.x, piece.set_back.y, rolls.y);
