@@ -83,11 +83,6 @@ static std::string Vector(double x, double y, double z)
 	return fmt::format("vec3({:.4f}, {:.4f}, {:.4f})", x, y, z);
 }
 
-static std::string Vector(const std::array<double, 3> &rgb)
-{
-	return Vector(rgb[0], rgb[1], rgb[2]);
-}
-
 static std::string Tone(uint32_t argb)
 {
 	return Vector(ChannelShare(Red(argb)), ChannelShare(Green(argb)), ChannelShare(Blue(argb)));
@@ -194,9 +189,9 @@ static std::string ShaderHeader()
 	DefineFloats(header, "TREE_LITTER_COVERS", TREE_LITTER_COVERS);
 	DefineTones(header, "FRAME_TONES", SwatchTints(Swatch::Frame));
 	DefineTones(header, "MULLION_TONES", SwatchTints(Swatch::Mullion));
-	const GrassTone &grass = GRASS_TONES[to_underlying(_settings_game.game_creation.landscape)];
-	DefineVector(header, "GRASS_DARK", Vector(grass.dark));
-	DefineVector(header, "GRASS_LIGHT", Vector(grass.light));
+	const auto landscape = to_underlying(_settings_game.game_creation.landscape);
+	DefineTone(header, "GRASS_DARK", GRASS_DARK_TONES[landscape]);
+	DefineTone(header, "GRASS_LIGHT", GRASS_LIGHT_TONES[landscape]);
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
 	DefineTone(header, "DISTANT_BALLAST", COL_DISTANT_BALLAST);
@@ -210,7 +205,7 @@ static std::string ShaderHeader()
 	DefineInt(header, "LANDSCAPE_ARCTIC", to_underlying(LandscapeType::Arctic));
 	DefineInt(header, "LANDSCAPE_TROPIC", to_underlying(LandscapeType::Tropic));
 	DefineInt(header, "LANDSCAPE_TOYLAND", to_underlying(LandscapeType::Toyland));
-	DefineInt(header, "LANDSCAPE", to_underlying(_settings_game.game_creation.landscape));
+	DefineInt(header, "LANDSCAPE", landscape);
 	DefineInt(header, "LAYER_NONE", to_underlying(MiniLayer::None));
 	DefineInt(header, "LAYER_RAIL", to_underlying(MiniLayer::Rail));
 	DefineInt(header, "LAYER_ROAD", to_underlying(MiniLayer::Road));
