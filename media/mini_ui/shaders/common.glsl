@@ -188,7 +188,7 @@ vec2 ShoreWarp(vec2 p)
 }
 
 /* Canals keep the straight lines of their walls. */
-vec4 Walled(vec4 field, vec2 p)
+vec4 CanalWalled(vec4 field, vec2 p)
 {
 	vec4 here = WaterTexels(p);
 	return mix(field, here, clamp(here.b * 2.0, 0.0, 1.0));
@@ -197,7 +197,7 @@ vec4 Walled(vec4 field, vec2 p)
 /* The water about a point as level and sea, canal and river shares. */
 vec4 WaterField(vec2 p)
 {
-	return Walled(SplineWater(p + ShoreWarp(p)), p);
+	return CanalWalled(SplineWater(p + ShoreWarp(p)), p);
 }
 
 uvec4 CodesAt(ivec2 tile)

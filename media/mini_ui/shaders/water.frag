@@ -371,7 +371,7 @@ vec4 SheetField(vec2 p, vec2 warped, float level)
 		}
 	}
 	field.r -= BRIM_PULL * brim * pooled / max(dot(field.gba, vec3(1.0)), LEAST_DIVISOR);
-	return Walled(field, p);
+	return CanalWalled(field, p);
 }
 
 float DistancePastEdge(vec2 p)
