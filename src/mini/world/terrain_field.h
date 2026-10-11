@@ -30,7 +30,7 @@ public:
 
 	void Sync(const WorldChanges &changes);
 	void Refresh(const SceneView &camera);
-	void DrawGround(const Frustum &frustum);
+	void DrawGround(const Sight &sight);
 	void DrawWater(const SceneView &camera);
 	void Release();
 

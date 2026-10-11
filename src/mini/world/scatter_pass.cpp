@@ -49,7 +49,7 @@ void ScatterPass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready()) return;
 	this->batch.Clear(this->look.models);
-	this->scatter->Gather(view.camera, view.frustum, this->look.cast_pixels, this->batch);
+	this->scatter->Gather(view.camera, view, this->look.cast_pixels, this->batch);
 	this->caster.Use();
 	this->DrawBatch(this->caster);
 }
@@ -58,7 +58,7 @@ void ScatterPass::Draw(const SceneView &view)
 {
 	if (!this->program.Ready()) return;
 	this->batch.Clear(this->look.models);
-	this->scatter->Gather(view, view.frustum, this->look.shown_pixels, this->batch);
+	this->scatter->Gather(view, view, this->look.shown_pixels, this->batch);
 	this->program.Use();
 	UploadOverlay(this->program);
 	glUniform2f(this->program.Uniform("u_fade"), static_cast<float>(this->look.shown_pixels), static_cast<float>(this->look.solid_pixels));

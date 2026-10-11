@@ -83,7 +83,7 @@ public:
 
 	void Sync(const WorldChanges &changes);
 	void Prepare(const SceneView &camera);
-	void Gather(const SceneView &camera, const Frustum &frustum, std::vector<const StructureChunk *> &shown);
+	void Gather(const SceneView &camera, const Sight &sight, std::vector<const StructureChunk *> &shown);
 	std::optional<StructureHit> Pick(const Vec3 &origin, const Vec3 &direction) const;
 	void Release();
 

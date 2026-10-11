@@ -36,6 +36,10 @@ static constexpr double CASTER_HEADROOM_LEVELS = 24.0;
 static constexpr double DEPTH_MARGIN = 1.0;
 static constexpr double TURN_MARGIN = 0.05;
 static constexpr int TURNS = ShadowMap::CASCADES - ShadowMap::FRESH_CASCADES;
+/* How many texels from the point it shades a lookup may read: a filter's box to either side of the texel it lands in, pushed off the surface by up to twice its offset. */
+static constexpr double LOOKUP_REACH_TEXELS = ShadowMap::FILTER_SPAN + 2.0 * ShadowMap::NORMAL_OFFSET_TEXELS;
+/* How far off the surface a pixel shows a shader may look its shadow up, from a tree's crown top over its foot to a puff of smoke's middle. */
+static constexpr double OFF_SURFACE_REACH = 4.0;
 static constexpr float SLOPE_OFFSET = 2.0f;
 static constexpr float CONSTANT_OFFSET = 2.0f;
 static constexpr Vec3 SKY = {0.0, 0.0, 1.0};
@@ -67,24 +71,6 @@ ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::sp
 ShaderProgram DepthProgram(std::span<const char *const> vertex_sources)
 {
 	return ShaderProgram(vertex_sources, CASTER_FRAGMENT_SOURCES);
-}
-
-/* How far across the map a shadow lands from beneath what casts it, for each unit of height the caster stands above where it lands. */
-static MapVector ShadowFall(const Vec3 &sun)
-{
-	double rise = SunRise(sun);
-	return {-sun.x / rise, -sun.y / rise};
-}
-
-std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high)
-{
-	double floor = -DEEPEST_SINK * LevelRise();
-	MapVector fall = ShadowFall(sun);
-	double drop = high.z - floor;
-	return {
-		{low.x + std::min(fall.x * drop, 0.0), low.y + std::min(fall.y * drop, 0.0), std::min(low.z, floor)},
-		{high.x + std::max(fall.x * drop, 0.0), high.y + std::max(fall.y * drop, 0.0), high.z},
-	};
 }
 
 static double Sunward(double height, const Vec3 &sun)
@@ -181,12 +167,30 @@ ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, const Mat4 &sun_
 	return {Mat4::Orthographic(low, high) * sun_view, far, texel, low, high, middle, radius};
 }
 
-/* Whatever stands between a slice's sphere and the sun is pressed onto the box's near side, so only its far side must reach past the sphere. */
+/* A cascade given room to spare decides a little more than its slice of the view, by the same share of the sphere about it. */
+void ShadowMap::Cascade::Decide(const SceneView &camera, double from, double margin)
+{
+	this->decided = Grown(camera.Slice(from, this->far), this->radius * margin);
+	this->decided_corners = camera.SliceCorners(from, this->far);
+}
+
+/* Whatever stands between a slice's sphere and the sun is pressed onto the box's near side, so only its far side must reach past the sphere;
+ * what the slice decides must lie within what the cascade was drawn to decide. */
 bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 {
 	return slice.middle.x - slice.radius >= this->low.x && slice.middle.x + slice.radius <= this->high.x &&
 		slice.middle.y - slice.radius >= this->low.y && slice.middle.y + slice.radius <= this->high.y &&
-		slice.middle.z - slice.radius >= this->low.z;
+		slice.middle.z - slice.radius >= this->low.z &&
+		std::ranges::all_of(slice.decided_corners, [&](const Vec3 &corner) { return PointWithin(this->decided, corner); });
+}
+
+/* Where a cascade starts deciding shadows: where the cascade before starts handing over to it, the first of them from the eye's near plane;
+ * the band before the second starts from the eye, as the shaders count it. */
+static double DecidedFrom(const SceneView &camera, double reach, int index)
+{
+	if (index == 0) return camera.near;
+	double before = index > 1 ? SplitDistance(camera.near, reach, index - 1) : 0.0;
+	return std::lerp(before, SplitDistance(camera.near, reach, index), 1.0 - ShadowMap::CASCADE_BLEND);
 }
 
 /* Cascades drawn in turn are given room to spare, so the camera may move a little before they no longer hold their slices. */
@@ -198,6 +202,7 @@ std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneVi
 	for (int index = 0; index < CASCADES; index++) {
 		double margin = index < FRESH_CASCADES ? 0.0 : TURN_MARGIN;
 		cascades[index] = this->FitSlice(camera, sun_view, SplitDistance(camera.near, reach, index), SplitDistance(camera.near, reach, index + 1), margin);
+		cascades[index].Decide(camera, DecidedFrom(camera, reach, index), margin);
 	}
 	return cascades;
 }
@@ -281,7 +286,7 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, this->texture, 0, index);
 		glClear(GL_DEPTH_BUFFER_BIT);
 		this->Aim(index);
-		ShadowView view = {cascade.view_projection, FrustumOf(cascade.view_projection), camera, cascade.texel};
+		ShadowView view = {cascade.view_projection, FrustumOf(cascade.view_projection), Grown(cascade.decided, cascade.texel * LOOKUP_REACH_TEXELS + OFF_SURFACE_REACH), camera, cascade.texel};
 		for (const auto &pass : passes) {
 			ProfileScope pass_profile("cast", pass->Name());
 			pass->Cast(view);

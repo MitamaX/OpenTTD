@@ -22,6 +22,7 @@
 #include "../gpu/frame_capture.h"
 #include "../gpu/gl_api.h"
 #include "../map/world_tiles.h"
+#include "seabed.h"
 
 #include "../../safeguards.h"
 
@@ -113,6 +114,59 @@ double SceneView::NearestTilePixels(const Vec3 &low, const Vec3 &high) const
 double SceneView::Reach() const
 {
 	return this->far * std::hypot(1.0, this->viewport.width * 0.5 / this->focal, this->viewport.height * 0.5 / this->focal);
+}
+
+Frustum SceneView::Slice(double near, double far) const
+{
+	return FrustumOf(Mat4::Perspective(2.0 * this->focal / this->viewport.width, 2.0 * this->focal / this->viewport.height, near, far) * this->view);
+}
+
+std::array<Vec3, 8> SceneView::SliceCorners(double near, double far) const
+{
+	Vec3 right = {this->view.At(0, 0), this->view.At(0, 1), this->view.At(0, 2)};
+	Vec3 up = {this->view.At(1, 0), this->view.At(1, 1), this->view.At(1, 2)};
+	Vec3 across = right * (this->viewport.width * 0.5 / this->focal);
+	Vec3 down = up * (this->viewport.height * 0.5 / this->focal);
+	std::array<Vec3, 8> corners;
+	auto corner = corners.begin();
+	for (double depth : {near, far}) {
+		for (const Vec3 &side : {across, across * -1.0}) {
+			for (const Vec3 &edge : {down, down * -1.0}) *corner++ = this->eye + (side + edge - this->Back()) * depth;
+		}
+	}
+	return corners;
+}
+
+/* How far across the map a shadow lands from beneath what casts it, for each unit of height the caster stands above where it lands. */
+static MapVector ShadowFall(const Vec3 &sun)
+{
+	double rise = SunRise(sun);
+	return {-sun.x / rise, -sun.y / rise};
+}
+
+std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high)
+{
+	double floor = -DEEPEST_SINK * LevelRise();
+	MapVector fall = ShadowFall(sun);
+	double drop = high.z - floor;
+	return {
+		{low.x + std::min(fall.x * drop, 0.0), low.y + std::min(fall.y * drop, 0.0), std::min(low.z, floor)},
+		{high.x + std::max(fall.x * drop, 0.0), high.y + std::max(fall.y * drop, 0.0), high.z},
+	};
+}
+
+bool Sight::Sees(const Vec3 &low, const Vec3 &high) const
+{
+	if (!BoxMeets(this->frustum, low, high)) return false;
+	if (this->decided == nullptr) return true;
+	auto [shadow_low, shadow_high] = SunSwept(this->sun, low, high);
+	return BoxMeets(*this->decided, shadow_low, shadow_high);
+}
+
+/* A box lying wholly in what a cascade decides casts its shadow from inside it. */
+bool Sight::SeesWhole(const Vec3 &low, const Vec3 &high) const
+{
+	return BoxWithin(this->frustum, low, high) && (this->decided == nullptr || BoxWithin(*this->decided, low, high));
 }
 
 void SceneUniforms::Upload(const SceneView &view)

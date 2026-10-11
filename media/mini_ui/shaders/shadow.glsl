@@ -1,7 +1,5 @@
 uniform sampler2DArrayShadow u_shadow_map;
 
-const float NORMAL_OFFSET_TEXELS = 1.2;
-const float CASCADE_BLEND = 0.12;
 const int FILTER_LOOKUPS = int(SHADOW_FILTER_SPAN) - 1;
 const ivec4 LANES = ivec4(0, 1, 2, 3);
 
@@ -47,7 +45,7 @@ float FadedOut(float light, float depth)
 float CascadeLight(int cascade, vec3 position, vec3 normal)
 {
 	float grazing = 1.0 - max(dot(normal, SunDirection()), 0.0);
-	vec3 lifted = position + normal * OfCascade(u_cascade_texel, cascade) * NORMAL_OFFSET_TEXELS * (0.5 + grazing);
+	vec3 lifted = position + normal * OfCascade(u_cascade_texel, cascade) * SHADOW_NORMAL_OFFSET_TEXELS * (0.5 + grazing);
 	vec3 at = InCascade(cascade, lifted);
 	if (at.z >= 1.0) return 1.0;
 
@@ -79,7 +77,7 @@ float CascadedLight(vec3 position, vec3 normal)
 	float light = CascadeLight(cascade, position, normal);
 	if (cascade < CASCADES - 1) {
 		float end = OfCascade(u_cascade_far, cascade);
-		float start = mix(OfCascade(u_cascade_far, cascade - 1), end, 1.0 - CASCADE_BLEND);
+		float start = mix(OfCascade(u_cascade_far, cascade - 1), end, 1.0 - SHADOW_CASCADE_BLEND);
 		if (depth > start) light = mix(light, CascadeLight(cascade + 1, position, normal), smoothstep(start, end, depth));
 	}
 	return FadedOut(light, depth);

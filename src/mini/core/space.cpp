@@ -160,6 +160,13 @@ Frustum FrustumOf(const Mat4 &view_projection)
 	return frustum;
 }
 
+Frustum Grown(const Frustum &frustum, double distance)
+{
+	Frustum grown = frustum;
+	for (Plane &plane : grown) plane.offset += distance;
+	return grown;
+}
+
 static Vec3 FarthestCorner(const Vec3 &direction, const Vec3 &low, const Vec3 &high)
 {
 	return {direction.x >= 0.0 ? high.x : low.x, direction.y >= 0.0 ? high.y : low.y, direction.z >= 0.0 ? high.z : low.z};
@@ -174,6 +181,11 @@ bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high)
 bool BoxWithin(const Frustum &frustum, const Vec3 &low, const Vec3 &high)
 {
 	return std::ranges::none_of(frustum, [&](const Plane &plane) { return plane.Distance(FarthestCorner(plane.normal * -1.0, low, high)) < 0.0; });
+}
+
+bool PointWithin(const Frustum &frustum, const Vec3 &point)
+{
+	return BoxWithin(frustum, point, point);
 }
 
 /* The ray's span inside each pair of faces, narrowed axis by axis; a ray running parallel to a pair stays inside only between them. */

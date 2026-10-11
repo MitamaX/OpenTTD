@@ -237,6 +237,8 @@ static std::string ShaderHeader()
 	DefineFloat(header, "FLEX_REACH", FLEX_REACH);
 	DefineInt(header, "CASCADES", ShadowMap::CASCADES);
 	DefineFloat(header, "SHADOW_FILTER_SPAN", ShadowMap::FILTER_SPAN);
+	DefineFloat(header, "SHADOW_NORMAL_OFFSET_TEXELS", ShadowMap::NORMAL_OFFSET_TEXELS);
+	DefineFloat(header, "SHADOW_CASCADE_BLEND", ShadowMap::CASCADE_BLEND);
 	return header;
 }
 

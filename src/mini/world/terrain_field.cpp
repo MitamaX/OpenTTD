@@ -203,12 +203,12 @@ void TerrainField::Finish(size_t index)
 }
 
 /* The nearest ground is drawn first and the seabed beyond the map last, so ground hidden behind hills is rejected before it is shaded. */
-void TerrainField::DrawGround(const Frustum &frustum)
+void TerrainField::DrawGround(const Sight &sight)
 {
 	if (this->chunks.empty()) return;
 	for (const Nearby &near : this->nearby) {
 		Chunk &chunk = this->chunks[near.index];
-		if (chunk.ground.Empty() || !BoxMeets(frustum, near.low, near.high)) continue;
+		if (chunk.ground.Empty() || !sight.Sees(near.low, near.high)) continue;
 		chunk.drawn = this->frame;
 		chunk.ground.Draw();
 	}

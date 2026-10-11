@@ -81,7 +81,7 @@ void StructurePass::Sync(const WorldChanges &changes)
 void StructurePass::Cast(const ShadowView &view)
 {
 	if (!this->caster.Ready() || !this->open_caster.Ready()) return;
-	this->field.Gather(view.camera, view.frustum, this->shown);
+	this->field.Gather(view.camera, view, this->shown);
 	this->caster.Use();
 	this->DrawGroups(CladdingGroup::Facade, CladdingGroup::Solid);
 	this->open_caster.Use();
@@ -91,7 +91,7 @@ void StructurePass::Cast(const ShadowView &view)
 void StructurePass::Lay(const SceneView &view)
 {
 	if (!this->Shadeable()) return;
-	this->field.Gather(view, view.frustum, this->shown);
+	this->field.Gather(view, view, this->shown);
 	this->UseDepth();
 	this->DrawGroups(CladdingGroup::Facade, CladdingGroup::Solid);
 }

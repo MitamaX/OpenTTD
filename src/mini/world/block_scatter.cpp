@@ -45,9 +45,9 @@ void BlockScatter::Refresh(const SceneView &camera, double shown_pixels, double 
 	});
 }
 
-void BlockScatter::Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch)
+void BlockScatter::Gather(const SceneView &view, const Sight &sight, double fewest_pixels, VehicleBatch &batch)
 {
-	this->blocks.ForEachSeen(view, frustum, fewest_pixels, 0, [&](const ScatterCopies &copies) {
+	this->blocks.ForEachSeen(view, sight, fewest_pixels, 0, [&](const ScatterCopies &copies) {
 		for (size_t model = 0; model < copies.size(); model++) batch.Add(model, copies[model]);
 		return true;
 	});

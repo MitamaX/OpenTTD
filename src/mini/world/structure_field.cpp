@@ -234,7 +234,7 @@ void StructureField::Finish(size_t index)
 }
 
 /* Blocks built since the last frame are handed to the GPU before any view draws them. */
-void StructureField::Gather(const SceneView &camera, const Frustum &frustum, std::vector<const StructureChunk *> &shown)
+void StructureField::Gather(const SceneView &camera, const Sight &sight, std::vector<const StructureChunk *> &shown)
 {
 	for (size_t index : this->arrived) {
 		StructureChunk &chunk = this->chunks[index];
@@ -253,7 +253,7 @@ void StructureField::Gather(const SceneView &camera, const Frustum &frustum, std
 	shown.clear();
 	this->grid.ForEachWithin(camera, STRUCTURE_FADE_START, BOX_MARGIN, [&](size_t index) {
 		const StructureChunk &chunk = this->chunks[index];
-		if (chunk.built && !chunk.mesh.Empty() && BoxMeets(frustum, chunk.low, chunk.high) && camera.NearestTilePixels(chunk.low, chunk.high) >= STRUCTURE_FADE_START) shown.push_back(&chunk);
+		if (chunk.built && !chunk.mesh.Empty() && sight.Sees(chunk.low, chunk.high) && camera.NearestTilePixels(chunk.low, chunk.high) >= STRUCTURE_FADE_START) shown.push_back(&chunk);
 		return true;
 	});
 }

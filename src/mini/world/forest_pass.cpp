@@ -129,7 +129,7 @@ void ForestPass::Refresh(const SceneView &view)
 void ForestPass::Cast(const ShadowView &view)
 {
 	if (!this->Castable() || !view.Resolves(TREE_CASTER_WIDTH)) return;
-	this->Gather(view.camera, view.frustum, COARSEST_CAST);
+	this->Gather(view.camera, view, COARSEST_CAST);
 	this->batch.Draw(this->models, TellingDetail(this->frayed_caster, TreeCasterMesh), CastsFrayed);
 	this->batch.Redraw(this->models, TellingDetail(this->caster, TreeCasterMesh), CastsWhole);
 }
@@ -137,7 +137,7 @@ void ForestPass::Cast(const ShadowView &view)
 void ForestPass::Lay(const SceneView &view)
 {
 	if (!this->Shadeable()) return;
-	this->Gather(view, view.frustum, COARSEST_SHOWN);
+	this->Gather(view, view, COARSEST_SHOWN);
 	this->batch.Draw(this->models, TellingDetail(this->depth, DrawnMesh), LaidFirst);
 }
 
@@ -185,10 +185,10 @@ bool ForestPass::Castable()
 	return this->caster.Ready() && this->frayed_caster.Ready();
 }
 
-void ForestPass::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest)
+void ForestPass::Gather(const SceneView &camera, const Sight &sight, TreeDetail coarsest)
 {
 	this->batch.Clear(TREE_DRAWN_MESHES);
-	this->forest.Gather(camera, frustum, coarsest, this->batch);
+	this->forest.Gather(camera, sight, coarsest, this->batch);
 }
 
 template <class ChooseMesh>

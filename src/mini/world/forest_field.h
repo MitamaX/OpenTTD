@@ -55,7 +55,7 @@ public:
 
 	void Sync(const WorldChanges &changes);
 	void Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast);
-	void Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, TreeBatch &batch);
+	void Gather(const SceneView &camera, const Sight &sight, TreeDetail coarsest, TreeBatch &batch);
 	void Release();
 
 private:
@@ -86,7 +86,7 @@ private:
 
 	std::pair<Vec3, Vec3> Bounds(const Cell &cell, size_t index) const;
 	void Plant(Cell &cell, const TileSpan &tiles) const;
-	void GatherCell(const Cell &cell, const SceneView &camera, const Frustum &frustum, bool in_sight, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const;
+	void GatherCell(const Cell &cell, const SceneView &camera, const Sight &sight, bool whole, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const;
 	void Evict();
 
 	ChunkGrid grid{CELL_TILES};

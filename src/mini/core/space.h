@@ -94,8 +94,11 @@ struct Plane {
 using Frustum = std::array<Plane, 6>;
 
 Frustum FrustumOf(const Mat4 &view_projection);
+/* The frustum with each of its planes moved out by a distance. */
+Frustum Grown(const Frustum &frustum, double distance);
 bool BoxMeets(const Frustum &frustum, const Vec3 &low, const Vec3 &high);
 bool BoxWithin(const Frustum &frustum, const Vec3 &low, const Vec3 &high);
+bool PointWithin(const Frustum &frustum, const Vec3 &point);
 
 /* How far along a ray it enters a box, or nothing when it misses; a ray starting inside enters at once. */
 std::optional<double> BoxEntry(const Vec3 &origin, const Vec3 &direction, const Vec3 &low, const Vec3 &high);

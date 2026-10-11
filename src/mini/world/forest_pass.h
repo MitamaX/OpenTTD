@@ -37,7 +37,7 @@ public:
 private:
 	bool Shadeable();
 	bool Castable();
-	void Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest);
+	void Gather(const SceneView &camera, const Sight &sight, TreeDetail coarsest);
 	template <class ChooseMesh>
 	void DrawBatch(const ShaderProgram &program, ChooseMesh choose_mesh);
 

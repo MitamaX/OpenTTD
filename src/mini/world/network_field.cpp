@@ -202,7 +202,7 @@ static void Hand(MeshBuffer &buffer, const TriangleList<Vertex> &mesh, std::span
 }
 
 /* Blocks built since the last frame are handed to the GPU before any view draws them. */
-void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::vector<const NetworkChunk *> &shown)
+void NetworkField::Gather(const SceneView &camera, const Sight &sight, std::vector<const NetworkChunk *> &shown)
 {
 	for (size_t index : this->arrived) {
 		NetworkChunk &chunk = this->chunks[index];
@@ -221,7 +221,7 @@ void NetworkField::Gather(const SceneView &camera, const Frustum &frustum, std::
 		const NetworkChunk &chunk = this->chunks[index];
 		if (!chunk.built) return true;
 		auto [low, high] = this->Bounds(chunk, index);
-		if (BoxMeets(frustum, low, high) && camera.NearestTilePixels(low, high) >= NETWORK_FADE_START) shown.push_back(&chunk);
+		if (sight.Sees(low, high) && camera.NearestTilePixels(low, high) >= NETWORK_FADE_START) shown.push_back(&chunk);
 		return true;
 	});
 }

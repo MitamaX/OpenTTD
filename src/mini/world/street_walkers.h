@@ -49,7 +49,7 @@ public:
 	void Sync(const WorldChanges &changes) override;
 	void Refresh(const SceneView &camera, double shown_pixels, double cast_pixels) override;
 	/* Each walker is gathered in the bucket of its build and pose. */
-	void Gather(const SceneView &view, const Frustum &frustum, double fewest_pixels, VehicleBatch &batch) override;
+	void Gather(const SceneView &view, const Sight &sight, double fewest_pixels, VehicleBatch &batch) override;
 	void Release() override;
 
 private:

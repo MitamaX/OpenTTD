@@ -338,13 +338,13 @@ static double FarthestDistance(const Vec3 &eye, const Vec3 &low, const Vec3 &hig
 	return Length({reach(eye.x, low.x, high.x), reach(eye.y, low.y, high.y), reach(eye.z, low.z, high.z)});
 }
 
-/* A block lying wholly in sight and within one detail hands over its runs whole; one across the frustum's edge or a crossfade sorts its trees one by one. */
-void ForestField::GatherCell(const Cell &cell, const SceneView &camera, const Frustum &frustum, bool in_sight, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const
+/* A block lying wholly in sight and within one detail hands over its runs whole; one across the edge of sight or a crossfade sorts its trees one by one. */
+void ForestField::GatherCell(const Cell &cell, const SceneView &camera, const Sight &sight, bool whole, double near_pixels, double far_pixels, TreeDetail coarsest, TreeBatch &batch) const
 {
 	DetailSpan near = DetailsAt(near_pixels, coarsest);
 	DetailSpan far = DetailsAt(far_pixels, coarsest);
 	bool one_detail = near.first == far.last;
-	if (one_detail && in_sight) {
+	if (one_detail && whole) {
 		TreeDetail detail = static_cast<TreeDetail>(near.first);
 		for (const Run &run : cell.runs) batch.Add(TreeMeshIndex(run.shape, detail), std::span<const TreeInstance>(cell.trees).subspan(run.first, run.count));
 		return;
@@ -354,9 +354,9 @@ void ForestField::GatherCell(const Cell &cell, const SceneView &camera, const Fr
 	for (const Run &run : cell.runs) {
 		for (size_t index = run.first; index < run.first + run.count; index++) {
 			const TreeInstance &tree = cell.trees[index];
-			if (!in_sight) {
+			if (!whole) {
 				auto [low, high] = TreeBounds(tree, rise);
-				if (!BoxMeets(frustum, low, high)) continue;
+				if (!sight.Sees(low, high)) continue;
 			}
 			DetailSpan span = one_detail ? near : DetailsAt(camera.TilePixelsAt(Length(camera.eye - Vec3{tree.x, tree.y, tree.level * rise})), coarsest);
 			if (!span.Shows()) continue;
@@ -404,18 +404,18 @@ void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, Tr
 }
 
 /* Only the blocks near enough for a tile to span the coarsest detail's fewest pixels are looked at. */
-void ForestField::Gather(const SceneView &camera, const Frustum &frustum, TreeDetail coarsest, TreeBatch &batch)
+void ForestField::Gather(const SceneView &camera, const Sight &sight, TreeDetail coarsest, TreeBatch &batch)
 {
 	this->grid.ForEachWithin(camera, FewestPixels(coarsest), Crowns().margin, [&](size_t index) {
 		Cell &cell = this->cells[index];
 		if (!cell.planted) return true;
 		auto [low, high] = this->Bounds(cell, index);
-		if (!BoxMeets(frustum, low, high)) return true;
+		if (!sight.Sees(low, high)) return true;
 
 		double near_pixels = camera.NearestTilePixels(low, high);
 		if (!DetailsAt(near_pixels, coarsest).Shows()) return true;
 		cell.drawn = this->frame;
-		if (!cell.trees.empty()) this->GatherCell(cell, camera, frustum, BoxWithin(frustum, low, high), near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
+		if (!cell.trees.empty()) this->GatherCell(cell, camera, sight, sight.SeesWhole(low, high), near_pixels, camera.TilePixelsAt(FarthestDistance(camera.eye, low, high)), coarsest, batch);
 		return true;
 	});
 }

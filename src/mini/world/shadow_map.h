@@ -25,7 +25,6 @@ ShaderProgram CasterProgram(std::span<const char *const> vertex_sources);
 ShaderProgram CasterProgram(std::span<const char *const> vertex_sources, std::span<const char *const> fragment_sources);
 /* A depth only program for a pass's meshes as the eye sees them. */
 ShaderProgram DepthProgram(std::span<const char *const> vertex_sources);
-std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high);
 
 class ShadowMap {
 public:
@@ -34,6 +33,10 @@ public:
 	static constexpr int FRESH_CASCADES = 2;
 	static constexpr int RESOLUTION = 2048;
 	static constexpr double FILTER_SPAN = 4.0;
+	/* How many texels a point is pushed off its surface before its shadow is looked up, more where the sun grazes it. */
+	static constexpr double NORMAL_OFFSET_TEXELS = 1.2;
+	/* The share of each cascade's slice, at its far end, over which it hands over to the next. */
+	static constexpr double CASCADE_BLEND = 0.12;
 
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
 	void Warm(std::span<const std::unique_ptr<WorldPass>> passes);
@@ -42,7 +45,8 @@ public:
 	void Release();
 
 private:
-	/* The box a cascade is drawn over and the sphere about its slice of the camera's view both lie in the sun's view. */
+	/* The box a cascade is drawn over and the sphere about its slice of the camera's view both lie in the sun's view;
+	 * the part of the camera's view whose shadows it decides is kept as planes grown by the room it is given and as its own corners. */
 	struct Cascade {
 		Mat4 view_projection;
 		double far;
@@ -51,7 +55,10 @@ private:
 		Vec3 high;
 		Vec3 middle;
 		double radius;
+		Frustum decided{};
+		std::array<Vec3, 8> decided_corners{};
 
+		void Decide(const SceneView &camera, double from, double margin);
 		bool Holds(const Cascade &slice) const;
 	};
 
