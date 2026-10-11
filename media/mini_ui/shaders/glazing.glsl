@@ -10,6 +10,7 @@ const float MIRRORED_LIFT = 0.01;
 const float MIRRORED_SHADOW_LIFT = 0.1;
 const float MIRRORED_GLAZED_BODY = 0.35;
 const float MIRRORED_WINDOW_SHEEN = 0.15;
+const float MIRRORED_WATER_SHEEN = 0.3;
 
 struct Seen {
 	vec3 albedo;
@@ -66,16 +67,44 @@ Seen RoofSeen(Sighting sighting)
 	return Seen(Linear(snowed ? SNOW : Rgb565(sighting.texel.z)), UPWARD, 1.0, vec3(0.0), 1.0);
 }
 
-Seen GroundSeen(Sighting sighting)
+bool Along(uint ends, uint way, float across)
 {
-	return Seen(Linear(DISTANT_ROAD), UPWARD, MIRRORED_STREET_OPENNESS, vec3(0.0), 1.0);
+	return (ends & way) == way && abs(across) < ROAD_HALF;
 }
 
-Seen SeenAt(Sighting sighting, float blur)
+vec3 CoverPaint(uint material)
+{
+	if (material == MAT_SNOW) return Linear(SNOW);
+	if (material == MAT_DESERT) return Linear(SAND);
+	if (material == MAT_PAVED) return Linear(PAVEMENT_TONE);
+	return GROUND_ALBEDOS[Landscape()];
+}
+
+Seen GroundSeen(Sighting sighting, vec3 way)
+{
+	ivec2 tile = sighting.tile;
+	vec2 f = sighting.point.xy - vec2(tile) - TILE_CENTRE;
+	uvec4 network = texelFetch(u_network, Clamped(tile), 0);
+	vec3 albedo = CoverPaint(CodesAt(tile).x);
+	vec3 sheen = vec3(0.0);
+	if (Along(network.y, ALONG_X_ENDS, f.y) || Along(network.y, ALONG_Y_ENDS, f.x)) {
+		albedo = Linear(DISTANT_ROAD);
+	} else if ((network.w & NETWORK_KERB_BIT) != 0u) {
+		albedo = Linear(PAVEMENT_TONE);
+	} else if (network.x != 0u) {
+		albedo = Linear(DISTANT_BALLAST);
+	} else if (TileWater(tile).r > HALF_TILE) {
+		albedo = Linear(DISTANT_WATER);
+		sheen = Surroundings(reflect(way, UPWARD)) * MIRRORED_WATER_SHEEN;
+	}
+	return Seen(albedo, UPWARD, MIRRORED_STREET_OPENNESS, sheen, 1.0);
+}
+
+Seen SeenAt(Sighting sighting, vec3 way, float blur)
 {
 	if (sighting.seen == SEEN_WALL) return WallSeen(sighting, blur);
 	if (sighting.seen == SEEN_ROOF) return RoofSeen(sighting);
-	return GroundSeen(sighting);
+	return GroundSeen(sighting, way);
 }
 
 vec3 LitAt(Seen seen, vec3 point, float clouds)
@@ -94,7 +123,7 @@ vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float
 		Sighting sighting = Traced(from, way, own);
 		if (sighting.seen != SEEN_NOTHING) {
 			float blur = 1.0 / TilePixelsAt(far + sighting.run) + roughness * roughness * sighting.run;
-			Seen seen = SeenAt(sighting, blur);
+			Seen seen = SeenAt(sighting, way, blur);
 			near = vec4(Hazed(LitAt(seen, sighting.point, clouds), way, from, sighting.point), 1.0) * seen.cover * traced;
 		}
 	}

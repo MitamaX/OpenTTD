@@ -11,6 +11,8 @@ const vec2 TILE_CENTRE = vec2(HALF_TILE);
 const float MIN_SQUARED_SPAN = 1e-6;
 const float LEAST_DIVISOR = 1e-4;
 const float OCTAVE_TURN = 2.39996323;
+const uint ALONG_Y_ENDS = 5u;
+const uint ALONG_X_ENDS = 10u;
 
 const vec2 WEST_CORNER = vec2(1.0, 0.0);
 
@@ -214,6 +216,11 @@ vec4 WaterField(vec2 p)
 uvec4 CodesAt(ivec2 tile)
 {
 	return texelFetch(u_tiles, Clamped(tile), 0);
+}
+
+vec4 TileWater(ivec2 tile)
+{
+	return texelFetch(u_water, Clamped(tile), 0);
 }
 
 vec2 SegmentOffset(vec2 p, vec2 from, vec2 to)

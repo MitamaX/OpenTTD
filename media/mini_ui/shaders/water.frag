@@ -312,11 +312,6 @@ Surface Waves(vec2 p, float calm)
 	return Surface(normalize(vec3(-slope, 1.0)), normalize(vec3(-broad * steepness * 0.5, 1.0)), mix(lost / total, 1.0, ruffled * 0.4), ruffled * lost / total);
 }
 
-vec4 TileWater(ivec2 tile)
-{
-	return texelFetch(u_water, Clamped(tile), 0);
-}
-
 float BrimShare(float level, float low, float high)
 {
 	return smoothstep(0.0, BRIM_FADE, level - low) * (1.0 - smoothstep(0.0, BRIM_FADE, high - level));

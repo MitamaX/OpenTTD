@@ -196,6 +196,7 @@ static std::string ShaderHeader()
 	DefineTone(header, "DISTANT_BALLAST", COL_DISTANT_BALLAST);
 	DefineTone(header, "DISTANT_ROAD", COL_ASPHALT);
 	DefineTone(header, "PAVEMENT_TONE", COL_PAVEMENT);
+	DefineTone(header, "DISTANT_WATER", COL_WATER);
 	DefineTone(header, "RAIL_ACCENT", COL_RAIL_ACCENT);
 	DefineTone(header, "ROAD_ACCENT", COL_ROAD_ACCENT);
 	DefineVector(header, "LUMA_WEIGHTS", Vector(LumaShare(LUMA_RED), LumaShare(LUMA_GREEN), LumaShare(LUMA_BLUE)));
