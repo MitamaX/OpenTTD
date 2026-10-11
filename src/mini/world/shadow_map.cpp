@@ -36,7 +36,7 @@ static constexpr double CASTER_HEADROOM_LEVELS = 24.0;
 static constexpr double DEPTH_MARGIN = 1.0;
 static constexpr double TURN_MARGIN = 0.05;
 static constexpr int TURNS = ShadowMap::CASCADES - ShadowMap::FRESH_CASCADES;
-static constexpr double LOOKUP_REACH_TEXELS = ShadowMap::FILTER_SPAN + 2.0 * ShadowMap::NORMAL_OFFSET_TEXELS;
+static constexpr double LOOKUP_REACH_TEXELS = ShadowMap::FILTER_SPAN + ShadowMap::NORMAL_OFFSET_TEXELS * (ShadowMap::LEAST_OFFSET_SHARE + ShadowMap::GRAZING_OFFSET_SHARE);
 /* Must reach as far off a shown surface as any shader looks its shadow up. */
 static constexpr double OFF_SURFACE_REACH = 4.0;
 static constexpr float SLOPE_OFFSET = 2.0f;

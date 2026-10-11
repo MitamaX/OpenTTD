@@ -45,7 +45,7 @@ float FadedOut(float light, float depth)
 float CascadeLight(int cascade, vec3 position, vec3 normal)
 {
 	float grazing = 1.0 - max(dot(normal, SunDirection()), 0.0);
-	vec3 lifted = position + normal * OfCascade(u_cascade_texel, cascade) * SHADOW_NORMAL_OFFSET_TEXELS * (0.5 + grazing);
+	vec3 lifted = position + normal * OfCascade(u_cascade_texel, cascade) * SHADOW_NORMAL_OFFSET_TEXELS * (SHADOW_LEAST_OFFSET_SHARE + SHADOW_GRAZING_OFFSET_SHARE * grazing);
 	vec3 at = InCascade(cascade, lifted);
 	if (at.z >= 1.0) return 1.0;
 

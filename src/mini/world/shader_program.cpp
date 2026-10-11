@@ -238,6 +238,8 @@ static std::string ShaderHeader()
 	DefineInt(header, "CASCADES", ShadowMap::CASCADES);
 	DefineFloat(header, "SHADOW_FILTER_SPAN", ShadowMap::FILTER_SPAN);
 	DefineFloat(header, "SHADOW_NORMAL_OFFSET_TEXELS", ShadowMap::NORMAL_OFFSET_TEXELS);
+	DefineFloat(header, "SHADOW_LEAST_OFFSET_SHARE", ShadowMap::LEAST_OFFSET_SHARE);
+	DefineFloat(header, "SHADOW_GRAZING_OFFSET_SHARE", ShadowMap::GRAZING_OFFSET_SHARE);
 	DefineFloat(header, "SHADOW_CASCADE_BLEND", ShadowMap::CASCADE_BLEND);
 	return header;
 }

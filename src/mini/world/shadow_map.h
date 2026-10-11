@@ -34,6 +34,8 @@ public:
 	static constexpr int RESOLUTION = 2048;
 	static constexpr double FILTER_SPAN = 4.0;
 	static constexpr double NORMAL_OFFSET_TEXELS = 1.2;
+	static constexpr double LEAST_OFFSET_SHARE = 0.5;
+	static constexpr double GRAZING_OFFSET_SHARE = 1.0;
 	static constexpr double CASCADE_BLEND = 0.12;
 
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
