@@ -31,18 +31,7 @@ enum class RockModel : uint8_t {
 	End,
 };
 
-enum class RockFinish : uint8_t {
-	Chiselled,
-	End,
-};
-
-inline constexpr size_t ROCK_KINDS = to_underlying(RockModel::End);
-inline constexpr size_t ROCK_MODELS = ROCK_KINDS * to_underlying(RockFinish::End);
-
-constexpr size_t RockModelIndex(RockModel model, RockFinish finish)
-{
-	return to_underlying(finish) * ROCK_KINDS + to_underlying(model);
-}
+inline constexpr size_t ROCK_MODELS = to_underlying(RockModel::End);
 
 struct RockFit {
 	MapVector reach;

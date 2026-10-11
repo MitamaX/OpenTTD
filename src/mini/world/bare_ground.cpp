@@ -16,11 +16,6 @@
 
 #include "../../safeguards.h"
 
-static bool IsToyland()
-{
-	return _settings_game.game_creation.landscape == LandscapeType::Toyland;
-}
-
 double SteepShare(double slope)
 {
 	return SmoothStep(STANDARD_SLOPE, STEEPEST_SLOPE, slope);
@@ -41,8 +36,7 @@ double BlanketDepth(const GroundTexel &ground)
 
 double BareShare(double steep, double altitude, double blanket)
 {
-	double baring = IsToyland() ? TOY_BARING : 1.0;
-	return (steep * (STEEP_BARING + blanket * SHED_BARING) + SmoothStep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING) * baring;
+	return steep * (STEEP_BARING + blanket * SHED_BARING) + SmoothStep(ALPINE_ALTITUDE, 1.0, altitude) * ALPINE_BARING;
 }
 
 double ExposedShare(double bare, double threshold)
@@ -50,17 +44,7 @@ double ExposedShare(double bare, double threshold)
 	return SmoothStep(threshold - EXPOSURE_BLEND, threshold + EXPOSURE_BLEND, bare);
 }
 
-double StrataPerLevel()
-{
-	return IsToyland() ? TOY_STRATA_PER_LEVEL : STRATA_PER_LEVEL;
-}
-
-MapVector StrataDip()
-{
-	return IsToyland() ? MapVector{} : STRATA_DIP;
-}
-
 double BeddingOf(const MapVector &at, double level)
 {
-	return level * StrataPerLevel() + Dot(at, StrataDip());
+	return level * STRATA_PER_LEVEL + Dot(at, STRATA_DIP);
 }

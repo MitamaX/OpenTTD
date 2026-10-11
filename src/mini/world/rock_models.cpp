@@ -65,7 +65,7 @@ static constexpr StoneRecipe Recast(StoneRecipe recipe, SeedRange radius, double
 	return recipe;
 }
 
-static constexpr std::array<StoneRecipe, ROCK_KINDS> STONE_RECIPES = {{
+static constexpr std::array<StoneRecipe, ROCK_MODELS> STONE_RECIPES = {{
 	BOULDER,
 	SLAB,
 	BLOCK,
@@ -195,11 +195,10 @@ RockFit FitOf(RockModel model)
 std::vector<ModelMesh> BuildRockModels()
 {
 	std::vector<ModelMesh> models(ROCK_MODELS);
-	for (size_t kind = 0; kind < ROCK_KINDS; kind++) {
-		RockModel model = static_cast<RockModel>(kind);
+	for (size_t kind = 0; kind < ROCK_MODELS; kind++) {
 		const StoneRecipe &recipe = STONE_RECIPES[kind];
-		ModelMesh stone = Shaped(model, recipe);
-		models[RockModelIndex(model, RockFinish::Chiselled)] = std::move(Chiselled(Settled(stone, recipe.bury), recipe));
+		ModelMesh stone = Shaped(static_cast<RockModel>(kind), recipe);
+		models[kind] = std::move(Chiselled(Settled(stone, recipe.bury), recipe));
 	}
 	return models;
 }

@@ -46,8 +46,6 @@ double AltitudeShare(double level);
 double BlanketDepth(const GroundTexel &ground);
 double BareShare(double steep, double altitude, double blanket);
 double ExposedShare(double bare, double threshold);
-double StrataPerLevel();
-MapVector StrataDip();
 double BeddingOf(const MapVector &at, double level);
 
 #endif /* MINI_WORLD_BARE_GROUND_H */

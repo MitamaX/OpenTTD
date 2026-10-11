@@ -299,7 +299,7 @@ static std::vector<Crag> CragsOf(const BareTile &tile, int tx, int ty, bool hemm
 	double share = tile.crag;
 	if (share <= 0.0) return crags;
 	double slope = Length(tile.climb);
-	MapVector rise = tile.climb * StrataPerLevel() + StrataDip();
+	MapVector rise = tile.climb * STRATA_PER_LEVEL + STRATA_DIP;
 	MapVector middle = {tx + 0.5, ty + 0.5};
 	double bedding = BeddingOf(middle, tile.level);
 	double spread = (std::abs(rise.x) + std::abs(rise.y)) / 2.0;
@@ -327,7 +327,7 @@ static void RaiseCrags(const LaidGround &ground, const BareTile &tile, std::span
 	for (const Crag &crag : crags) {
 		SeedDice dice(Hash32(CRAG_SALT ^ static_cast<uint32_t>(crag.bed)));
 		RockLook look = LookOf(static_cast<uint32_t>(crag.bed), tile, dice);
-		copies[RockModelIndex(crag.model, RockFinish::Chiselled)].push_back(Seated(ground.At(crag.at), tile, crag.yaw, crag.radius, FitOf(crag.model), look));
+		copies[to_underlying(crag.model)].push_back(Seated(ground.At(crag.at), tile, crag.yaw, crag.radius, FitOf(crag.model), look));
 	}
 }
 
@@ -348,7 +348,7 @@ static void StrewStones(const LaidGround &ground, const BareTile &tile, const St
 		if (chance >= rule.chance * leaning * Gathering(at) || UnderCrag(at, crags)) continue;
 		if (hemmed) at = Inset(at, tx, ty, fit.Farthest() * radius);
 		WorldPoint seat = ground.At(at);
-		copies[RockModelIndex(model, RockFinish::Chiselled)].push_back(Seated(seat, tile, yaw, radius, fit, LookOf(seed, tile, dice)));
+		copies[to_underlying(model)].push_back(Seated(seat, tile, yaw, radius, fit, LookOf(seed, tile, dice)));
 	}
 }
 
