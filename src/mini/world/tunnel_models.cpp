@@ -221,6 +221,60 @@ MapVector TunnelMouth(TileIndex entrance)
 	return MiddleOf(entrance) + Outward(GetTunnelBridgeDirection(entrance)) * HALF_TILE;
 }
 
+static void LayFaceStrip(const PortalFrame &frame, ModelMesh &mortar, const MapVector &from, const MapVector &to, double height)
+{
+	frame.Quad(mortar, {frame.At(from.x, from.y, FACE_PROUD), frame.At(to.x, to.y, FACE_PROUD), frame.At(to.x, height, FACE_PROUD), frame.At(from.x, height, FACE_PROUD)}, frame.Out());
+}
+
+static ModelMesh MortarFace(const PortalFrame &frame, const std::vector<MapVector> &outline, double mouth, double height)
+{
+	ModelMesh mortar;
+	LayFaceStrip(frame, mortar, {-FACE_HALF, 0.0}, {-mouth, 0.0}, height);
+	LayFaceStrip(frame, mortar, {mouth, 0.0}, {FACE_HALF, 0.0}, height);
+	for (size_t point = 1; point + 2 < outline.size(); point++) LayFaceStrip(frame, mortar, outline[point], outline[point + 1], height);
+	return mortar;
+}
+
+static ModelMesh WingReturns(const PortalFrame &frame, double height)
+{
+	ModelMesh returns;
+	for (double side : {-1.0, 1.0}) {
+		double across = side * FACE_HALF;
+		frame.Quad(returns, {frame.At(across, 0.0, 0.0), frame.At(across, 0.0, FACE_PROUD), frame.At(across, height, FACE_PROUD), frame.At(across, height, 0.0)}, frame.Facing(side, 0.0));
+	}
+	return returns;
+}
+
+static ModelMesh MouthReveal(const PortalFrame &frame, const std::vector<MapVector> &outline)
+{
+	ModelMesh reveal;
+	for (size_t point = 0; point + 1 < outline.size(); point++) {
+		const MapVector &from = outline[point];
+		const MapVector &to = outline[point + 1];
+		Vec3 inside = frame.Facing(-(from.x + to.x) * 0.5, SPRING_HEIGHT - (from.y + to.y) * 0.5);
+		frame.Quad(reveal, {frame.At(from.x, from.y, FACE_PROUD), frame.At(from.x, from.y, MOUTH_PROUD), frame.At(to.x, to.y, MOUTH_PROUD), frame.At(to.x, to.y, FACE_PROUD)}, inside);
+	}
+	return reveal;
+}
+
+static ModelMesh MouthOpening(const PortalFrame &frame, const std::vector<MapVector> &outline)
+{
+	Vec3 out = frame.Out();
+	ModelMesh opening;
+	uint32_t middle = opening.Point(frame.At(0.0, SPRING_HEIGHT, MOUTH_PROUD), out);
+	auto on_mouth = [&](const MapVector &at) { return opening.Point(frame.At(at.x, at.y, MOUTH_PROUD), out); };
+	for (size_t point = 0; point < outline.size(); point++) {
+		opening.Triangle(middle, on_mouth(outline[point]), on_mouth(outline[(point + 1) % outline.size()]));
+	}
+	return opening;
+}
+
+static ModelMesh PortalCornice(const MapVector &edge, const MapVector &inward, double height)
+{
+	MapVector middle = edge - inward * (CORNICE_PROUD * 0.5);
+	return Block(middle, RightOf(inward), {-FACE_HALF - CORNICE_OVERHANG, -CORNICE_PROUD * 0.5, height}, {FACE_HALF + CORNICE_OVERHANG, CORNICE_PROUD * 0.5, height + CORNICE_HEIGHT});
+}
+
 /* The face stands proud of the cut's wall as high as the hill over it and never lower than its mouth needs, its arch's reveal darkening into the mouth. */
 void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 {
@@ -236,44 +290,15 @@ void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 	double mouth = GetTunnelBridgeTransportType(entrance) == TRANSPORT_RAIL ? RAIL_MOUTH_HALF : ROAD_MOUTH_HALF;
 	std::vector<MapVector> outline = MouthOutline(mouth);
 
-	Vec3 out = frame.Out();
-	ModelMesh mortar;
-	frame.Quad(mortar, {frame.At(-FACE_HALF, 0.0, FACE_PROUD), frame.At(-mouth, 0.0, FACE_PROUD), frame.At(-mouth, height, FACE_PROUD), frame.At(-FACE_HALF, height, FACE_PROUD)}, out);
-	frame.Quad(mortar, {frame.At(mouth, 0.0, FACE_PROUD), frame.At(FACE_HALF, 0.0, FACE_PROUD), frame.At(FACE_HALF, height, FACE_PROUD), frame.At(mouth, height, FACE_PROUD)}, out);
-	ModelMesh returns;
-	for (double side : {-1.0, 1.0}) {
-		double across = side * FACE_HALF;
-		frame.Quad(returns, {frame.At(across, 0.0, 0.0), frame.At(across, 0.0, FACE_PROUD), frame.At(across, height, FACE_PROUD), frame.At(across, height, 0.0)}, frame.Facing(side, 0.0));
-	}
-	ModelMesh reveal;
-	for (size_t point = 0; point + 1 < outline.size(); point++) {
-		const MapVector &from = outline[point];
-		const MapVector &to = outline[point + 1];
-		if (point > 0 && point + 2 < outline.size()) {
-			frame.Quad(mortar, {frame.At(from.x, from.y, FACE_PROUD), frame.At(to.x, to.y, FACE_PROUD), frame.At(to.x, height, FACE_PROUD), frame.At(from.x, height, FACE_PROUD)}, out);
-		}
-		Vec3 inside = frame.Facing(-(from.x + to.x) * 0.5, SPRING_HEIGHT - (from.y + to.y) * 0.5);
-		frame.Quad(reveal, {frame.At(from.x, from.y, FACE_PROUD), frame.At(from.x, from.y, MOUTH_PROUD), frame.At(to.x, to.y, MOUTH_PROUD), frame.At(to.x, to.y, FACE_PROUD)}, inside);
-	}
-	ModelMesh opening;
-	uint32_t middle = opening.Point(frame.At(0.0, SPRING_HEIGHT, MOUTH_PROUD), out);
-	auto on_mouth = [&](const MapVector &at) { return opening.Point(frame.At(at.x, at.y, MOUTH_PROUD), out); };
-	for (size_t point = 0; point < outline.size(); point++) {
-		opening.Triangle(middle, on_mouth(outline[point]), on_mouth(outline[(point + 1) % outline.size()]));
-	}
-
-	MapVector cornice_middle = edge - inward * (CORNICE_PROUD * 0.5);
-	ModelMesh cornice = Block(cornice_middle, RightOf(inward), {-FACE_HALF - CORNICE_OVERHANG, -CORNICE_PROUD * 0.5, height}, {FACE_HALF + CORNICE_OVERHANG, CORNICE_PROUD * 0.5, height + CORNICE_HEIGHT});
-
 	PortalMasonry masonry(frame, mouth, SubSeed(entrance.base(), MASONRY_SALT));
 	masonry.LayCourses(height);
 	masonry.LayRing();
 
-	ModelMesh portal = mortar.Paint(MORTAR);
-	portal.Append(returns.Paint(PORTAL_STONE));
+	ModelMesh portal = MortarFace(frame, outline, mouth, height).Paint(MORTAR);
+	portal.Append(WingReturns(frame, height).Paint(PORTAL_STONE));
 	portal.Append(masonry.Stones());
-	portal.Append(reveal.Paint(REVEAL_STONE).Occlude([&](const Vec3 &at) { return frame.Proud(at) / FACE_PROUD; }));
-	portal.Append(opening.Paint(MOUTH).Occlude([](const Vec3 &) { return 0.0; }));
-	portal.Append(cornice.Paint(CORNICE_STONE));
+	portal.Append(MouthReveal(frame, outline).Paint(REVEAL_STONE).Occlude([&](const Vec3 &at) { return frame.Proud(at) / FACE_PROUD; }));
+	portal.Append(MouthOpening(frame, outline).Paint(MOUTH).Occlude([](const Vec3 &) { return 0.0; }));
+	portal.Append(PortalCornice(edge, inward, height).Paint(CORNICE_STONE));
 	mesh.Append(Drape(portal, LevelFooting(floor)));
 }
