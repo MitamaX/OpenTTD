@@ -19,6 +19,7 @@
 #include "../../settings_type.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
+#include "../map/site_shapes.h"
 #include "../map/tile_shapes.h"
 #include "../model/model_shapes.h"
 #include "car_model.h"
@@ -52,6 +53,10 @@ static constexpr double TANK_BODY_SHARE = 0.65;
 static constexpr double TANK_LEG_SIDE = 0.008;
 static constexpr double TANK_ROOF_RISE = 0.03;
 static constexpr uint32_t TANK_WOOD = 0xFF7E6146U;
+
+static constexpr int CURB_SIDES = DRUM_SIDES * 2;
+static constexpr double CURB_RISE = 0.025;
+static constexpr double CURB_BEVEL = 0.008;
 
 static constexpr double RIDGE_MIN_RISE = 0.04;
 static constexpr double RIDGE_HALF_WIDTH = 0.011;
@@ -146,6 +151,7 @@ public:
 			case Fixture::RooftopUnit: this->DressRooftopUnit(); break;
 			case Fixture::WaterTank: this->DressWaterTank(); break;
 			case Fixture::Car: this->DressCar(); break;
+			case Fixture::Basin: this->DressBasin(); break;
 			default: break;
 		}
 		if (this->solid.role != SolidRole::Body) return;
@@ -258,6 +264,16 @@ private:
 		double heading = (this->HalfX() >= this->HalfY() ? 0.0 : HALF_TURN * 0.5) + (this->dice.Share() < 0.5 ? 0.0 : HALF_TURN);
 		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UPRIGHT, heading) * Mat4::Scaling({1.0, 1.0, 1.0 / FORM_HEIGHT_SCALE});
 		this->Clad(CarModel(this->solid.wall_tint).Transform(placed), FinishedCoat);
+	}
+
+	void DressBasin()
+	{
+		double outer = this->ShorterHalf();
+		std::array<LatheRing, 6> curb = {{
+			{outer, 0.0}, {outer, CURB_RISE - CURB_BEVEL}, {outer - CURB_BEVEL, CURB_RISE},
+			{POOL_RADIUS + CURB_BEVEL, CURB_RISE}, {POOL_RADIUS, CURB_RISE - CURB_BEVEL}, {POOL_RADIUS, 0.0},
+		}};
+		this->AddUpright(Lathe(curb, CURB_SIDES, Capped::Neither), this->CentreX(), this->CentreY(), this->Eave(), {Material::Stone, WindowGrid::None, {}, this->solid.wall_tint});
 	}
 
 	/* Gable and hip roofs wear a cap along their ridge, which a gable carries on over its overhang. */

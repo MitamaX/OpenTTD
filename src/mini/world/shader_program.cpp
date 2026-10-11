@@ -35,6 +35,7 @@
 #include "../map/map_overlay.h"
 #include "../map/material_palette.h"
 #include "../map/network_style.h"
+#include "../map/site_shapes.h"
 #include "../map/way_bends.h"
 #include "../map/world_tiles.h"
 #include "../map/zoom_detail.h"
@@ -232,6 +233,7 @@ static std::string ShaderHeader()
 	DefineInt(header, "MOST_WAKES", MOST_WAKES);
 	DefineFloat(header, "PANE_GLOSS", PANE_GLOSS);
 	DefineFloat(header, "UNIT_REACH", UNIT_REACH);
+	DefineFloat(header, "POOL_RADIUS", POOL_RADIUS);
 	DefineFloat(header, "FLEX_REACH", FLEX_REACH);
 	DefineInt(header, "CASCADES", ShadowMap::CASCADES);
 	DefineFloat(header, "SHADOW_FILTER_SPAN", ShadowMap::FILTER_SPAN);

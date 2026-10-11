@@ -23,6 +23,7 @@ inline constexpr float INDUSTRIAL_PITCH = 0.30f;
 inline constexpr float DWELLING_PITCH = 0.60f;
 inline constexpr float STRUCTURE_INSET = 0.08f;
 inline constexpr float LOT_CENTRE = 0.5f;
+inline constexpr float POOL_RADIUS = 0.30f;
 inline constexpr uint32_t FRONT_SALT = 7;
 inline constexpr float SAWTOOTH_RISE = 0.12f;
 inline constexpr float ROOFTOP_MARGIN = 0.06f;
@@ -171,6 +172,7 @@ public:
 
 	Part On(float base) const;
 	Part Detailed() const;
+	Part Dressed(Fixture fixture) const;
 	Part Fixed(Fixture fixture) const;
 	Part Smoking() const;
 	Part Height(float wall) const;

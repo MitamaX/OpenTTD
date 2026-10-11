@@ -44,9 +44,18 @@ bool Has(uint flag)
 	return (v_surface.z & flag) != 0u;
 }
 
+float PaneReflectance(uint material)
+{
+	switch (material) {
+		case CLAD_GLASS: return GLASS_REFLECTANCE;
+		case CLAD_WATER: return DIELECTRIC_REFLECTANCE;
+		default: return PANE_REFLECTANCE;
+	}
+}
+
 Pane PaneOf(vec3 room, Clad clad)
 {
-	return Pane(room * v_transmission, v_film, v_surface.x == CLAD_GLASS ? GLASS_REFLECTANCE : PANE_REFLECTANCE, clad.daylight, clad.sunbeam, clad.lamp);
+	return Pane(room * v_transmission, v_film, PaneReflectance(v_surface.x), clad.daylight, clad.sunbeam, clad.lamp);
 }
 
 /* A face's axes: across it, to the right as seen from outside, up it, and out of it. */

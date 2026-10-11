@@ -106,9 +106,9 @@ static constexpr std::array<uint32_t, 2> MAST_TINTS = {COL_STOP, COL_PAPER};
 
 static constexpr float BASIN_RADIUS = 0.35f;
 static constexpr float BASIN_HEIGHT = 0.03f;
-static constexpr float POOL_RADIUS = 0.30f;
 static constexpr float POOL_DEPTH = 0.001f;
-static constexpr uint32_t POOL_TINT = 0xFF3E6F78U;
+static constexpr uint32_t POOL_TINT = 0xFF3E5C56U;
+static constexpr uint32_t CLEAR_GLAZE = 0xFFFFFFFFU;
 static constexpr float JET_RADIUS = 0.018f;
 static constexpr float JET_HEIGHT = 0.22f;
 static constexpr float JET_TAPER = 0.35f;
@@ -365,17 +365,19 @@ Part Part::Detailed() const
 	return this->With([](Solid &solid) { solid.role = SolidRole::Detail; });
 }
 
+Part Part::Dressed(Fixture fixture) const
+{
+	return this->With([fixture](Solid &solid) { solid.fixture = fixture; });
+}
+
 Part Part::Fixed(Fixture fixture) const
 {
-	return this->With([fixture](Solid &solid) {
-		solid.role = SolidRole::Detail;
-		solid.fixture = fixture;
-	});
+	return this->Detailed().Dressed(fixture);
 }
 
 Part Part::Smoking() const
 {
-	return this->With([](Solid &solid) { solid.fixture = Fixture::Smokestack; });
+	return this->Dressed(Fixture::Smokestack);
 }
 
 Part Part::Height(float wall) const
@@ -721,8 +723,8 @@ void AddLatticeMast(BuildingForm &form, const Part &foot, float height)
 
 void AddFountain(BuildingForm &form, uint32_t basin_tint)
 {
-	Part basin = Part::Disc(LOT_CENTRE, LOT_CENTRE, BASIN_RADIUS).Height(BASIN_HEIGHT).Clad(Material::Stone, basin_tint);
-	Part pool = Part::Disc(LOT_CENTRE, LOT_CENTRE, POOL_RADIUS).On(LevelAbove(basin)).Height(POOL_DEPTH).Clad(Material::Water, POOL_TINT);
+	Part basin = Part::Disc(LOT_CENTRE, LOT_CENTRE, BASIN_RADIUS).Dressed(Fixture::Basin).Height(BASIN_HEIGHT).Clad(Material::Stone, basin_tint);
+	Part pool = Part::Disc(LOT_CENTRE, LOT_CENTRE, POOL_RADIUS).On(LevelAbove(basin)).Height(POOL_DEPTH).Clad(Material::Water, POOL_TINT).Glazed(CLEAR_GLAZE);
 	Part jet = Part::Disc(LOT_CENTRE, LOT_CENTRE, JET_RADIUS).On(LevelAbove(pool)).Height(JET_HEIGHT).Taper(JET_TAPER).Clad(Material::Plain, JET_TINT);
 	form.Add(basin);
 	form.Add(pool);

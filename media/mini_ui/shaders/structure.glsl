@@ -76,7 +76,9 @@ const float RIPPLE_TILT = 0.2;
 const vec2 RIPPLE_SEED = vec2(4.7, 9.3);
 const float RING_WAVES = 24.0;
 const float RING_TILT = 0.35;
-const float RING_REACH = 0.3;
+const float SHALLOWS_REACH = 0.06;
+const float SHALLOWS_LIFT = 1.8;
+const float POOL_FLOOR_SUNLIT = 0.5;
 const float WATER_ROUGHNESS = 0.06;
 const float GRAVEL_GRAIN = 110.0;
 const float GRAVEL_VARIETY = 0.22;
@@ -367,11 +369,13 @@ Clad Rippled(vec2 p, vec3 tint)
 	float phase = reach * RING_WAVES;
 	float rings = Sharpness(phase);
 	float ripples = Sharpness(q);
-	float swell = RING_TILT * cos(TAU * phase) * (1.0 - smoothstep(0.0, RING_REACH, reach));
+	float swell = RING_TILT * cos(TAU * phase) * (1.0 - smoothstep(0.0, POOL_RADIUS, reach));
 	vec2 tilt = from_jet / max(reach, LEAST_DIVISOR) * swell * rings + (vec2(Noise(q), Noise(q + RIPPLE_SEED)) - 0.5) * RIPPLE_TILT * ripples;
-	Clad clad = Matte(tint, Roughened(WATER_ROUGHNESS, WaveSpread(RING_TILT) * (1.0 - rings) + RampSpread(RIPPLE_TILT) * (1.0 - ripples)));
+	float shallows = smoothstep(POOL_RADIUS - SHALLOWS_REACH, POOL_RADIUS, reach);
+	Clad clad = Matte(tint * mix(1.0, SHALLOWS_LIFT, shallows), Roughened(WATER_ROUGHNESS, WaveSpread(RING_TILT) * (1.0 - rings) + RampSpread(RIPPLE_TILT) * (1.0 - ripples)));
 	clad.facing = vec3(tilt, 1.0);
 	clad.glass = 1.0;
+	clad.sunbeam = POOL_FLOOR_SUNLIT;
 	return clad;
 }
 
