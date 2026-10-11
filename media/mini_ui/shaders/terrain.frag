@@ -958,7 +958,7 @@ vec3 Riprap(Site site)
 Patch Shore(Site site)
 {
 	if (site.armoured <= 0.0) return Beach(site);
-	Patch stone = Patch(Riprap(site), SCREE_RUGGED);
+	Patch stone = Patch(Riprap(site), StoneRugged(SCREE_RUGGED));
 	return site.armoured < 1.0 ? Mixed(Beach(site), stone, site.armoured) : stone;
 }
 
