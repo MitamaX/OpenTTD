@@ -25,6 +25,8 @@ static constexpr double SHORE_GRADIENT = 1.2;
 static constexpr int CORNER_MARGIN = 1;
 static constexpr int SHALLOW_MARGIN = 5;
 static constexpr int SHALLOWS_REACH = 2;
+static constexpr double SHORE_BLEND_SHARPNESS = 4.0;
+static constexpr double SHORE_BLEND_REACH = 1.0;
 
 static bool IsFlat(const SurfaceTexel &surface)
 {
@@ -46,24 +48,29 @@ double SurfaceLevelOf(int tx, int ty)
 	return OnMap(tx, ty) ? _world_tiles.SurfaceAt(TileXY(tx, ty)).Lowest() : 0.0;
 }
 
-/* How far a point lies from the nearest tile that is not open water, searched out to the edge of the shelf; tiles are weighed by their squared distance, so only the nearest is measured. */
+/* How far a point lies from the tiles that are not open water, searched out to the edge of the shelf: the nearest one's distance, drawn in by each other tile close behind it, so it runs smooth where two tiles are as near. */
 static double ShoreDistance(double x, double y)
 {
 	int cx = static_cast<int>(std::floor(x));
 	int cy = static_cast<int>(std::floor(y));
-	double nearest_squared = SHELF_TILES * SHELF_TILES;
-	std::optional<MapVector> nearest;
-	for (int ty = cy - SHELF_TILES; ty <= cy + SHELF_TILES; ty++) {
-		for (int tx = cx - SHELF_TILES; tx <= cx + SHELF_TILES; tx++) {
-			double dx = std::max({tx - x, 0.0, x - (tx + 1)});
-			double dy = std::max({ty - y, 0.0, y - (ty + 1)});
-			double squared = dx * dx + dy * dy;
-			if (squared >= nearest_squared || WaterFormOf(tx, ty) == WaterForm::Open) continue;
-			nearest_squared = squared;
-			nearest = MapVector{dx, dy};
+	double reach = SHELF_TILES;
+	double weight = 0.0;
+	auto weigh = [&](int tx, int ty) {
+		double dx = std::max({tx - x, 0.0, x - (tx + 1)});
+		double dy = std::max({ty - y, 0.0, y - (ty + 1)});
+		double squared = dx * dx + dy * dy;
+		if (squared >= reach * reach || WaterFormOf(tx, ty) == WaterForm::Open) return;
+		double distance = std::sqrt(squared);
+		weight += std::exp(-SHORE_BLEND_SHARPNESS * distance);
+		reach = std::min(reach, distance + SHORE_BLEND_REACH);
+	};
+	for (int ring = 0; ring <= SHELF_TILES && ring - 1 < reach; ring++) {
+		for (int ty = cy - ring; ty <= cy + ring; ty++) {
+			int step = ty == cy - ring || ty == cy + ring ? 1 : 2 * ring;
+			for (int tx = cx - ring; tx <= cx + ring; tx += step) weigh(tx, ty);
 		}
 	}
-	return nearest.has_value() ? Length(*nearest) : SHELF_TILES;
+	return weight > 0.0 ? std::max(-std::log(weight) / SHORE_BLEND_SHARPNESS, 0.0) : SHELF_TILES;
 }
 
 /* The ground slopes gently away from the shore and levels out toward the shelf's edge. */
