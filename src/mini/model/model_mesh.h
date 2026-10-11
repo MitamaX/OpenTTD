@@ -59,7 +59,7 @@ struct UpwardOpenness {
  * Facet then gives every triangle corners of its own with the triangle's normal, after which each triangle can be shaded apart.
  * Weld merges corners at one spot whatever their shading, leaving the fewest corners to draw the shape depth only. */
 struct ModelMesh : TriangleList<ModelVertex> {
-	uint32_t Point(const Vec3 &position, const Vec3 &normal = {0.0, 0.0, 1.0});
+	uint32_t Point(const Vec3 &position, const Vec3 &normal = UP);
 
 	ModelMesh &Append(const ModelMesh &part);
 	ModelMesh &Transform(const Mat4 &transform);

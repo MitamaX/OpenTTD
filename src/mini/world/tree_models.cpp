@@ -24,7 +24,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 static constexpr double TAU = 2.0 * std::numbers::pi;
 static constexpr double FOOT = -0.06;
 
@@ -331,7 +330,7 @@ public:
 			double share = TRUNK_BENDS[bend].z;
 			spine[bend] = {lean * share * share + Vec3{0.0, 0.0, FOOT + (top - FOOT) * share}, TRUNK_BENDS[bend].radius};
 		}
-		this->Wood(Sweep(Circle(radii.low, sides), true, spine, {1.0, 0.0, 0.0}), top);
+		this->Wood(Sweep(Circle(radii.low, sides), true, spine, X_AXIS), top);
 	}
 
 	void Limb(const Vec3 &from, const Vec3 &to, const Crown &crown)
@@ -482,7 +481,7 @@ static void Palm(TreeBuilder &tree, TreeDetail detail)
 		double share = static_cast<double>(ring) / (rings - 1);
 		spine.push_back({{lean * share * share, 0.0, FOOT + (height - FOOT) * share}, 1.0 - PALM_TRUNK_TAPER * share});
 	}
-	tree.Wood(Sweep(Circle(PALM_TRUNK, TRUNK_SIDES.At(detail)), true, spine, {0.0, 1.0, 0.0}), height);
+	tree.Wood(Sweep(Circle(PALM_TRUNK, TRUNK_SIDES.At(detail)), true, spine, Y_AXIS), height);
 
 	int fronds = full ? PALM_FRONDS_FEWEST + static_cast<int>(dice.Below(PALM_EXTRA_FRONDS + 1)) : PALM_SIMPLE_FRONDS;
 	double turn = dice.Between(0.0, TAU);
@@ -503,7 +502,7 @@ static ModelMesh CactusArm(double angle, double from, int sides, bool full)
 		const SweepPoint &at = CACTUS_ARM_BENDS[bend];
 		path.push_back({at.at + Vec3{0.0, 0.0, from}, at.scale});
 	}
-	return Sweep(Circle(CACTUS_ARM_RADIUS, sides), true, path, {0.0, 1.0, 0.0}).Transform(Mat4::Turn(UP, angle));
+	return Sweep(Circle(CACTUS_ARM_RADIUS, sides), true, path, Y_AXIS).Transform(Mat4::Turn(UP, angle));
 }
 
 static void Cactus(TreeBuilder &tree, TreeDetail detail)

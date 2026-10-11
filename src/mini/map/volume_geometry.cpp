@@ -30,12 +30,10 @@ static constexpr double SAWTOOTH_GLASS_SHARE = 0.15;
 static constexpr int DOME_RINGS = 2;
 static constexpr double WALL_FOOT_SHADE = 0.82;
 static constexpr double FULL_TURN = 2.0 * std::numbers::pi;
-static constexpr double HALF_TURN = std::numbers::pi;
-static constexpr double QUARTER_TURN = std::numbers::pi / 2.0;
 static constexpr double MIDWAY = 0.5;
 static constexpr Vec3 NO_NORMAL = {0.0, 0.0, 0.0};
 static constexpr Vec3 DOWN = {0.0, 0.0, -1.0};
-static constexpr UvMap PLAN_UV = {{0.0, 1.0, 0.0}, 0.0, {1.0, 0.0, 0.0}, 0.0};
+static constexpr UvMap PLAN_UV = {Y_AXIS, 0.0, X_AXIS, 0.0};
 
 DiagDirection FacingSide(const Vec3 &normal)
 {

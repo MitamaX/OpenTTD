@@ -29,9 +29,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
-static constexpr Vec3 Y_AXIS = {0.0, 1.0, 0.0};
-static constexpr Vec3 Z_AXIS = {0.0, 0.0, 1.0};
 static constexpr double SWELL_LEVELS = 0.012;
 static constexpr double SWELL_PITCH = 0.025;
 static constexpr double SWELL_ROLL = 0.04;
@@ -50,7 +47,7 @@ static constexpr uint8_t ROTOR_STOPPED = 0;
 
 Mat4 Attitude::Turn() const
 {
-	return Mat4::Turn(Z_AXIS, this->yaw) * Mat4::Turn(Y_AXIS, -this->pitch) * Mat4::Turn(X_AXIS, this->roll);
+	return Mat4::Turn(UP, this->yaw) * Mat4::Turn(Y_AXIS, -this->pitch) * Mat4::Turn(X_AXIS, this->roll);
 }
 
 /* A direction into the frame a turn puts things in, by the turn's transpose. */

@@ -23,7 +23,7 @@ static constexpr int LARGE_CIRCLE_SIDES = 20;
 static constexpr int DIAMOND_SIDES = 4;
 static constexpr int CORNER_SEGMENTS = 6;
 static constexpr float FULL_TURN = 360.0f;
-static constexpr float QUARTER_TURN = 90.0f;
+static constexpr float QUARTER_TURN_DEGREES = 90.0f;
 static constexpr float RIGHTWARD = 0.0f;
 static constexpr float DOWNWARD = 90.0f;
 static constexpr float LEFTWARD = 180.0f;
@@ -84,10 +84,10 @@ void DrawList::FillRoundRect(int x0, int y0, int x1, int y1, int radius, uint32_
 	this->Box(left + r, top, right - r, bottom, colour);
 	this->Box(left, top + r, left + r, bottom - r, colour);
 	this->Box(right - r, top + r, right, bottom - r, colour);
-	this->Wedge(left + r, top + r, r, LEFTWARD, QUARTER_TURN, CORNER_SEGMENTS, colour);
-	this->Wedge(right - r, top + r, r, UPWARD, QUARTER_TURN, CORNER_SEGMENTS, colour);
-	this->Wedge(right - r, bottom - r, r, RIGHTWARD, QUARTER_TURN, CORNER_SEGMENTS, colour);
-	this->Wedge(left + r, bottom - r, r, DOWNWARD, QUARTER_TURN, CORNER_SEGMENTS, colour);
+	this->Wedge(left + r, top + r, r, LEFTWARD, QUARTER_TURN_DEGREES, CORNER_SEGMENTS, colour);
+	this->Wedge(right - r, top + r, r, UPWARD, QUARTER_TURN_DEGREES, CORNER_SEGMENTS, colour);
+	this->Wedge(right - r, bottom - r, r, RIGHTWARD, QUARTER_TURN_DEGREES, CORNER_SEGMENTS, colour);
+	this->Wedge(left + r, bottom - r, r, DOWNWARD, QUARTER_TURN_DEGREES, CORNER_SEGMENTS, colour);
 }
 
 void DrawList::FillGradient(int x0, int y0, int x1, int y1, uint32_t top_left, uint32_t top_right, uint32_t bottom_left, uint32_t bottom_right)

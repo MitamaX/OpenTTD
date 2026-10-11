@@ -47,7 +47,6 @@ static constexpr double YARD_REACH = 0.32;
 static constexpr double YARD_PIECE_REACH = 0.1;
 static constexpr double BALE_ROW_GAP = 0.12;
 static constexpr double SILO_SHARE = 0.5;
-static constexpr double QUARTER_TURN = M_PI / 2.0;
 static constexpr uint32_t FARMSTEAD_SALT = 0x46A3D1E5U;
 static constexpr uint32_t BALE_SALT = 0x2BA1E5C7U;
 static constexpr uint32_t BOUNDARY_SALT = 0x3D7A11F9U;

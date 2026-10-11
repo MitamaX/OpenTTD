@@ -21,7 +21,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 
 static Vec3 Flat(const MapVector &v, double z = 0.0)
 {
@@ -151,7 +150,7 @@ ModelMesh Block(const MapVector &at, const MapVector &facing, const Vec3 &low, c
 ModelMesh Strut(const Vec3 &from, const Vec3 &to, double half)
 {
 	Vec3 axis = Normalised(to - from);
-	Vec3 side = Normalised(Cross(std::abs(axis.z) < 0.9 ? UP : Vec3{1.0, 0.0, 0.0}, axis));
+	Vec3 side = Normalised(Cross(std::abs(axis.z) < 0.9 ? UP : X_AXIS, axis));
 	Vec3 lift = Cross(axis, side);
 	Mat4 frame = Mat4::Identity();
 	auto column = [&frame](int index, const Vec3 &v) {

@@ -66,7 +66,6 @@ static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
 static constexpr int FORMATION_TOE_STEPS = 8;
 static constexpr int FORMATION_TOE_REFINES = 4;
-static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
 static constexpr double SEA_FLOOR = -DEEPEST_SINK;
 
 /** A tile's corners as the surface texel names them. */
@@ -152,7 +151,7 @@ static Vec3 SmoothNormal(int cx, int cy, uint8_t level)
 		TileSurface neighbour(tx, ty);
 		if (neighbour.Level(corner) == level) sum = sum + neighbour.NormalAt(corner);
 	}
-	return Length(sum) > 0.0 ? Normalised(sum) : UPRIGHT;
+	return Length(sum) > 0.0 ? Normalised(sum) : UP;
 }
 
 CornerNormals::CornerNormals(const TileSpan &tiles) : tiles(tiles), columns(tiles.tx1 - tiles.tx0 + 2)
@@ -249,7 +248,7 @@ static void AddSkirt(TerrainMesh &mesh, uint32_t from, uint32_t to, double drop)
 {
 	auto lowered = [&](uint32_t index) {
 		const TerrainVertex &top = mesh.vertices[index];
-		return mesh.Add({top.x, top.y, top.level - drop}, UPRIGHT, DRY_MARK);
+		return mesh.Add({top.x, top.y, top.level - drop}, UP, DRY_MARK);
 	};
 	mesh.Quad(from, to, lowered(to), lowered(from));
 }
@@ -730,7 +729,7 @@ static void AddFormation(TerrainMesh &mesh, const Landform &land, const WayCours
 			MapVector out = line.At(share, Unfolded(line, share, outer.lateral));
 			MapVector side = Unit(out - at);
 			bool flat = inner.drop == outer.drop;
-			Vec3 normal = flat ? UPRIGHT : Normalised(Vec3{side.x, side.y, FORMATION_RUN});
+			Vec3 normal = flat ? UP : Normalised(Vec3{side.x, side.y, FORMATION_RUN});
 			WorldPoint crest = {at.x, at.y, top - inner.drop};
 			WorldPoint foot = {out.x, out.y, top - outer.drop};
 			std::optional<WorldPoint> toe = flat ? std::nullopt : Swallowed(land, crest, foot);
@@ -833,7 +832,7 @@ static void AddEdgeFace(TerrainMesh &mesh, const MapEdge &edge)
 
 static uint32_t AddSeaFloor(TerrainMesh &mesh, double x, double y)
 {
-	return mesh.Add({x, y, SEA_FLOOR}, UPRIGHT, SunkMark(-SEA_FLOOR));
+	return mesh.Add({x, y, SEA_FLOOR}, UP, SunkMark(-SEA_FLOOR));
 }
 
 /* A corner of the map's edge, sunk as the bed at the border; along the edge it leans as the bed inside does, so the two are lit alike where they meet. */
@@ -842,7 +841,7 @@ static uint32_t AddRim(TerrainMesh &mesh, const Seabed &bed, const WorldPoint &a
 	int cx = static_cast<int>(at.x);
 	int cy = static_cast<int>(at.y);
 	double sink = CornerSink(cx, cy);
-	return mesh.Add({at.x, at.y, -sink}, sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : UPRIGHT, SunkMark(sink));
+	return mesh.Add({at.x, at.y, -sink}, sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : UP, SunkMark(sink));
 }
 
 /* Beside a block on the map's edge the seabed falls to the open sea's floor over a shelf, which also fills the nook outside a corner of the map. */

@@ -17,8 +17,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
-static constexpr Vec3 Z_AXIS = {0.0, 0.0, 1.0};
 static constexpr int FUSELAGE_SIDES = 10;
 static constexpr int NACELLE_SIDES = 8;
 static constexpr int ROTOR_BLADES = 4;
@@ -168,7 +166,7 @@ static ModelMesh Helicopter(VehicleDetail detail)
 	kit.Body(Fin(fin, 0.006, SECONDARY));
 	std::array<MapVector, 4> tailplane = {{{-0.225, 0.0}, {-0.2, 0.0}, {-0.205, 0.035}, {-0.222, 0.035}}};
 	kit.Fine(Planform(tailplane, 0.088, 0.004, 0.0, SECONDARY));
-	kit.Fine(Propeller(2, TAIL_ROTOR_REACH).Transform(Mat4::Translation(TAIL_ROTOR) * Mat4::Turn(Z_AXIS, std::numbers::pi * 0.5)));
+	kit.Fine(Propeller(2, TAIL_ROTOR_REACH).Transform(Mat4::Translation(TAIL_ROTOR) * Mat4::Turn(UP, QUARTER_TURN)));
 	for (double y : {-0.045, 0.045}) {
 		kit.Fine(Plank({-0.07, y - 0.004, 0.0}, {0.1, y + 0.004, 0.008}, RUNNING_GEAR));
 		for (double x : {-0.03, 0.06}) kit.Fine(Plank({x - 0.003, y - 0.003, 0.008}, {x + 0.003, y + 0.003, 0.04}, RUNNING_GEAR));
@@ -184,7 +182,7 @@ static ModelMesh Rotor(VehicleDetail detail)
 	VehicleKit kit(detail);
 	ModelMesh blades;
 	for (int blade = 0; blade < ROTOR_BLADES; blade++) {
-		blades.Append(Plank({0.0, -0.007, ROTOR_HUB}, {ROTOR_REACH, 0.007, ROTOR_HUB + 0.003}, TRIM).Transform(Mat4::Turn(Z_AXIS, 2.0 * std::numbers::pi * blade / ROTOR_BLADES)));
+		blades.Append(Plank({0.0, -0.007, ROTOR_HUB}, {ROTOR_REACH, 0.007, ROTOR_HUB + 0.003}, TRIM).Transform(Mat4::Turn(UP, 2.0 * std::numbers::pi * blade / ROTOR_BLADES)));
 	}
 	kit.Body(blades);
 	kit.Fine(Prism(6, 0.014, 0.012).Transform(Mat4::Translation({0.0, 0.0, ROTOR_HUB - 0.004})).Paint(RUNNING_GEAR));

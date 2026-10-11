@@ -21,7 +21,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 
 static constexpr double POLE_RADIUS = 0.007;
 static constexpr double POLE_HEIGHT = 0.26;

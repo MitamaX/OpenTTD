@@ -111,7 +111,7 @@ static ModelMesh RoundBale()
 	constexpr double RADIUS = 0.028;
 	constexpr double WIDTH = 0.038;
 	ModelMesh bale = Column(ROUND_SIDES, RADIUS, RADIUS, WIDTH).Transform(Mat4::Translation({0.0, 0.0, -WIDTH / 2.0}));
-	return bale.Transform(Mat4::Translation({0.0, 0.0, RADIUS}) * Mat4::Turn({1.0, 0.0, 0.0}, M_PI / 2.0)).Paint(WALLS);
+	return bale.Transform(Mat4::Translation({0.0, 0.0, RADIUS}) * Mat4::Turn(X_AXIS, QUARTER_TURN)).Paint(WALLS);
 }
 
 /* Square bales stacked two high, the top course turned across the bottom one. */

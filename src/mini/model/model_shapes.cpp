@@ -21,10 +21,8 @@
 #include "../../safeguards.h"
 
 static constexpr Vec3 DOWN = {0.0, 0.0, -1.0};
-static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 static constexpr Vec3 BACK = {-1.0, 0.0, 0.0};
 static constexpr Vec3 FORE = {1.0, 0.0, 0.0};
-static constexpr Vec3 SIDEWAYS = {0.0, 1.0, 0.0};
 static constexpr double TORSO_BREADTH = 1.6;
 
 static Vec3 RingPoint(double radius, double z, int side, int sides)
@@ -122,7 +120,7 @@ ModelMesh Cone(int sides, double radius, double height, Capped capped)
 ModelMesh Limb(int sides, double joint_radius, double end_radius, double length, const Vec3 &joint, double swing, double splay)
 {
 	ModelMesh limb = Column(sides, end_radius, joint_radius, length).Move({0.0, 0.0, -length});
-	return limb.Transform(Mat4::Translation(joint) * Mat4::Turn(SIDEWAYS, swing) * Mat4::Turn(FORE, splay));
+	return limb.Transform(Mat4::Translation(joint) * Mat4::Turn(Y_AXIS, swing) * Mat4::Turn(FORE, splay));
 }
 
 ModelMesh Torso(std::span<const LatheRing> profile, int sides, Capped capped)

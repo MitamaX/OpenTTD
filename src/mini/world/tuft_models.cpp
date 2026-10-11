@@ -20,7 +20,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 static constexpr double GOLDEN_TURN = 2.39996323;
 static constexpr uint32_t BLADE_FOOT = PaintworkTone(Paintwork::Primary, 0.7);
 static constexpr uint32_t BLADE_TIP = PaintworkTone(Paintwork::Primary, 1.35);

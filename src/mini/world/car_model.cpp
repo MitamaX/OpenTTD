@@ -19,7 +19,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
 static constexpr double HALF_LENGTH = CAR_LENGTH * 0.5;
 static constexpr double HALF_WIDTH = CAR_WIDTH * 0.5;
 static constexpr double BODY_TOP = CAR_CLEARANCE + CAR_BODY_HEIGHT;

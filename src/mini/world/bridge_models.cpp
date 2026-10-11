@@ -113,7 +113,6 @@ static constexpr double WATER_GLOSS = 0.9;
 static constexpr double STEEL_GLOSS = 0.45;
 static constexpr int EMBANKMENT_ROWS = 4;
 static constexpr uint32_t EMBANKMENT_CROWN = 0x7D7466;
-static constexpr Vec3 UPWARD = {0.0, 0.0, 1.0};
 
 BridgeSite BridgeSite::OfHead(TileIndex head)
 {
@@ -448,7 +447,7 @@ static ModelMesh EmbankmentCrown(const BridgeSite &bridge, TileIndex head)
 	std::array<uint32_t, 2> previous{};
 	for (int row = 0; row <= EMBANKMENT_ROWS; row++) {
 		double share = static_cast<double>(row) / EMBANKMENT_ROWS;
-		std::array<uint32_t, 2> edge = {crown.Point(top(share, -1.0), UPWARD), crown.Point(top(share, 1.0), UPWARD)};
+		std::array<uint32_t, 2> edge = {crown.Point(top(share, -1.0), UP), crown.Point(top(share, 1.0), UP)};
 		if (row > 0) crown.Quad(previous[0], previous[1], edge[1], edge[0]);
 		previous = edge;
 	}

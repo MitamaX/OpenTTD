@@ -20,10 +20,7 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
-static constexpr Vec3 Y_AXIS = {0.0, 1.0, 0.0};
 static constexpr int NOSE_RINGS = 4;
-static constexpr double QUARTER_TURN = std::numbers::pi * 0.5;
 static constexpr int WHEEL_SIDES = 8;
 static constexpr double PANE_DEPTH = 0.004;
 static constexpr double WINDOW_SHARE = 0.72;
@@ -195,7 +192,7 @@ ModelMesh SideBand(double back, double front, double half_width, double low, dou
 ModelMesh Turned(std::span<const LatheRing> profile, int sides, double axis_z)
 {
 	std::vector<LatheRing> upright(profile.begin(), profile.end());
-	return Lathe(upright, sides).Transform(Mat4::Translation({0.0, 0.0, axis_z}) * Mat4::Turn(Y_AXIS, std::numbers::pi / 2.0));
+	return Lathe(upright, sides).Transform(Mat4::Translation({0.0, 0.0, axis_z}) * Mat4::Turn(Y_AXIS, QUARTER_TURN));
 }
 
 ModelMesh Barrel(double back, double front, double radius, double axis_z, int sides)
@@ -211,12 +208,12 @@ ModelMesh Plank(const Vec3 &low, const Vec3 &high, uint32_t tone)
 
 ModelMesh Upright(std::span<const MapVector> outline, double thickness)
 {
-	return Extrusion(outline, thickness).Transform(Mat4::Translation({0.0, thickness * 0.5, 0.0}) * Mat4::Turn(X_AXIS, std::numbers::pi / 2.0));
+	return Extrusion(outline, thickness).Transform(Mat4::Translation({0.0, thickness * 0.5, 0.0}) * Mat4::Turn(X_AXIS, QUARTER_TURN));
 }
 
 static ModelMesh Disc(double x, double y, double axle, double radius, double width)
 {
-	return Prism(WHEEL_SIDES, radius, width).Transform(Mat4::Translation({x, y + width * 0.5, axle}) * Mat4::Turn(X_AXIS, std::numbers::pi / 2.0));
+	return Prism(WHEEL_SIDES, radius, width).Transform(Mat4::Translation({x, y + width * 0.5, axle}) * Mat4::Turn(X_AXIS, QUARTER_TURN));
 }
 
 ModelMesh Wheel(double x, double y, double radius, double width)

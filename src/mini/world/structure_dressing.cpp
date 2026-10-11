@@ -27,8 +27,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 UPRIGHT = {0.0, 0.0, 1.0};
-static constexpr double HALF_TURN = std::numbers::pi;
 static constexpr int PROP_SIDES = 8;
 static constexpr int DRUM_SIDES = 16;
 
@@ -98,7 +96,6 @@ static constexpr double RIM_HEIGHT = 0.01;
 static constexpr double LADDER_WIDTH = 0.012;
 static constexpr double LADDER_DEPTH = 0.005;
 
-static constexpr double QUARTER_TURN = HALF_TURN * 0.5;
 static constexpr uint32_t QUARTER_TURNS = 4;
 static constexpr int FIGURE_SIDES = 12;
 static constexpr int LIMB_SIDES = 6;
@@ -313,7 +310,7 @@ private:
 	void DressCar()
 	{
 		double heading = (this->HalfX() >= this->HalfY() ? 0.0 : QUARTER_TURN) + (this->dice.Share() < 0.5 ? 0.0 : HALF_TURN);
-		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UPRIGHT, heading) * Mat4::Scaling({1.0, 1.0, 1.0 / FORM_HEIGHT_SCALE});
+		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UP, heading) * Mat4::Scaling({1.0, 1.0, 1.0 / FORM_HEIGHT_SCALE});
 		this->Clad(CarModel(this->solid.wall_tint).Transform(placed), FinishedCoat);
 	}
 
@@ -332,7 +329,7 @@ private:
 		static const ModelMesh FIGURE = StatueFigure();
 		double height = this->solid.Top() - this->solid.base;
 		double heading = QUARTER_TURN * this->dice.Below(QUARTER_TURNS);
-		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UPRIGHT, heading) * Mat4::Scaling({height * FORM_HEIGHT_SCALE, height * FORM_HEIGHT_SCALE, height});
+		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UP, heading) * Mat4::Scaling({height * FORM_HEIGHT_SCALE, height * FORM_HEIGHT_SCALE, height});
 		this->Clad(Patinated(FIGURE, this->solid.wall_tint).Transform(placed), FinishedCoat);
 	}
 

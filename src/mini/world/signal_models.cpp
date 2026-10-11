@@ -16,7 +16,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 ACROSS = {1.0, 0.0, 0.0};
 static constexpr double SIGNAL_SCALE = 1.35;
 static constexpr double LAMP_GLOW = 1.0;
 static constexpr double PAINT_GLOSS = 0.35;
@@ -81,7 +80,7 @@ static ModelMesh SemaphoreArm(SignalState state)
 	ModelMesh arm = Box({0.0, -ARM_LENGTH, -ARM_HALF_WIDTH}, {ARM_THICKNESS, 0.0, ARM_HALF_WIDTH}).Paint(ARM_RED).Gloss(PAINT_GLOSS);
 	arm.Append(Box({ARM_THICKNESS, -STRIPE_END, -ARM_HALF_WIDTH}, {ARM_THICKNESS + 0.001, -STRIPE_START, ARM_HALF_WIDTH}).Paint(ARM_STRIPE));
 	double raised = state == SIGNAL_STATE_GREEN ? CLEAR_ANGLE : 0.0;
-	return arm.Transform(Mat4::Translation({MAST_RADIUS, 0.0, PIVOT_Z}) * Mat4::Turn(ACROSS, -raised));
+	return arm.Transform(Mat4::Translation({MAST_RADIUS, 0.0, PIVOT_Z}) * Mat4::Turn(X_AXIS, -raised));
 }
 
 static ModelMesh Semaphore(SignalState state)

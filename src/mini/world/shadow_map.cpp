@@ -41,7 +41,6 @@ static constexpr double LOOKUP_REACH_TEXELS = ShadowMap::FILTER_SPAN + ShadowMap
 static constexpr double OFF_SURFACE_REACH = 4.0;
 static constexpr float SLOPE_OFFSET = 2.0f;
 static constexpr float CONSTANT_OFFSET = 2.0f;
-static constexpr Vec3 SKY = {0.0, 0.0, 1.0};
 
 /* The layout of the Shadows block in scene.glsl, std140, holding a value of each cascade in one vector. */
 static constexpr int VECTOR_LANES = 4;
@@ -85,7 +84,7 @@ static double LandRelief()
 /* The sun looks down its own rays, with the map's up kept upward on its picture. */
 static Mat4 SunView(const Vec3 &back)
 {
-	Vec3 right = Normalised(Cross(SKY, back));
+	Vec3 right = Normalised(Cross(UP, back));
 	return Mat4::View({0.0, 0.0, 0.0}, right, Cross(back, right), back);
 }
 

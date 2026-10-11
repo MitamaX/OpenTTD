@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <optional>
 
 struct Vec3 {
@@ -19,6 +20,12 @@ struct Vec3 {
 	double y;
 	double z;
 };
+
+inline constexpr Vec3 UP = {0.0, 0.0, 1.0};
+inline constexpr Vec3 X_AXIS = {1.0, 0.0, 0.0};
+inline constexpr Vec3 Y_AXIS = {0.0, 1.0, 0.0};
+inline constexpr double HALF_TURN = std::numbers::pi;
+inline constexpr double QUARTER_TURN = HALF_TURN * 0.5;
 
 constexpr Vec3 operator+(const Vec3 &a, const Vec3 &b)
 {
