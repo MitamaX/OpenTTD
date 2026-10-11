@@ -55,7 +55,12 @@ double StrataPerLevel()
 	return IsToyland() ? TOY_STRATA_PER_LEVEL : STRATA_PER_LEVEL;
 }
 
+MapVector StrataDip()
+{
+	return IsToyland() ? MapVector{} : STRATA_DIP;
+}
+
 double BeddingOf(const MapVector &at, double level)
 {
-	return level * StrataPerLevel() + (IsToyland() ? 0.0 : Dot(at, STRATA_DIP));
+	return level * StrataPerLevel() + Dot(at, StrataDip());
 }
