@@ -58,6 +58,7 @@ static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr int LEAST_SHORE_DIVISIONS = 2;
 static constexpr int BANK_EXTRA_DIVISIONS = 1;
 static constexpr int NO_SHORE_CUTS = 0;
+static constexpr int SHORE_CUTS_MARGIN = 1;
 static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
@@ -819,7 +820,7 @@ static void AddShelves(TerrainMesh &mesh, const Seabed &bed, std::span<const Map
 }
 
 TerrainBuild::TerrainBuild(const TileSpan &tiles, GroundGrain grain) :
-	tiles(tiles), grain(grain), next_row(tiles.ty0), land(tiles), normals(tiles), shore_cuts(tiles.tx0 - 1, tiles.ty0 - 1, tiles.tx1 - tiles.tx0 + 3, tiles.ty1 - tiles.ty0 + 3)
+	tiles(tiles), grain(grain), next_row(tiles.ty0), land(tiles), normals(tiles), shore_cuts(tiles.tx0 - SHORE_CUTS_MARGIN, tiles.ty0 - SHORE_CUTS_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * SHORE_CUTS_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * SHORE_CUTS_MARGIN)
 {
 }
 
