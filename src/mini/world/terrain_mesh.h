@@ -86,6 +86,11 @@ struct GroundGrain {
 	bool operator==(const GroundGrain &) const = default;
 };
 
+struct ShoreCut {
+	int cuts;
+	bool nests;
+};
+
 /* A block's ground, built a row of tiles at a time so the work may be spread over frames. At step one every tile keeps its own facets and walls, and rolling land curves over its tiles cut so many times each way;
  * a longer step lays a lattice over every step-th corner in one go, skirted down so nothing shows through beside a finer neighbour.
  * Under water the ground sinks toward the seabed; along the map's edge it is cut down in a face of earth over the shelf of seabed falling away beyond. */
@@ -101,15 +106,14 @@ public:
 private:
 	void AddTile(int tx, int ty);
 	int DivisionsOf(int tx, int ty) const;
-	bool RollingApart(int tx, int ty, int nx, int ny) const;
-	int ShoreCuts(int tx, int ty) const;
+	ShoreCut ShoreCutAt(int tx, int ty) const;
 
 	TileSpan tiles;
 	GroundGrain grain;
 	int next_row;
 	Landform land;
 	CornerNormals normals;
-	LazyLattice<int> shore_cuts;
+	LazyLattice<ShoreCut> shore_cuts;
 	TerrainMesh mesh;
 };
 
