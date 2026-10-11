@@ -111,7 +111,7 @@ float MetGround(vec3 from, vec3 way, vec2 span, Corners ground, ivec2 tile)
 {
 	vec3 first = from + way * span.x;
 	vec3 last = from + way * span.y;
-	if (min(first.z, last.z) >= HighestCorner(ground) * LevelRise()) return -1.0;
+	if (min(first.z, last.z) >= HighestCorner(ground) * LevelRise() + GROUND_TOUCH) return -1.0;
 	float above = first.z - FacetLevel(ground, clamp(first.xy - vec2(tile), 0.0, 1.0)) * LevelRise();
 	float below = last.z - FacetLevel(ground, clamp(last.xy - vec2(tile), 0.0, 1.0)) * LevelRise();
 	if (above < 0.0 || below >= GROUND_TOUCH) return -1.0;
