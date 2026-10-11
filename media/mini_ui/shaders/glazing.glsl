@@ -23,8 +23,7 @@ struct Seen {
 
 float GroundBelow(vec2 at)
 {
-	ivec2 tile = Clamped(ivec2(floor(at)));
-	return FacetLevel(SurfaceOf(tile), clamp(at - vec2(tile), 0.0, 1.0)) * LevelRise();
+	return LowestCorner(SurfaceOf(ivec2(floor(at)))) * LevelRise();
 }
 
 float RunToGround(vec3 from, vec3 way)
