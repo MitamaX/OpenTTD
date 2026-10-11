@@ -317,7 +317,6 @@ static std::optional<double> MastSide(const WayLine &line, double share, bool cl
 	return std::nullopt;
 }
 
-/* Lays the masts and wires of a tile's track. */
 void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned)
 {
 	const TrackSite &site = track.Site();

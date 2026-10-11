@@ -197,7 +197,6 @@ static ModelMesh Splasher(double x)
 	return Upright(outline, DRIVER_WIDTH + SPLASHER_CLEARANCE).Move({0.0, STEAM_HALF_TRACK, 0.0}).Paint(PRIMARY).Gloss(PAINT_GLOSS);
 }
 
-/* A steam locomotive. */
 static ModelMesh SteamEngine(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -421,7 +420,6 @@ static ModelMesh ArmouredVan(VehicleDetail detail)
 	return kit.Done();
 }
 
-/* A tank wagon. */
 static ModelMesh TankWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -457,7 +455,6 @@ static ModelMesh Heap(double half_length, double half_width, double base, double
 	return Lathe(mound, 8).Transform(Mat4::Translation({0.0, 0.0, base}) * Mat4::Scaling({half_length, half_width, rise})).Displace(HEAP_SPREAD, HEAP_SEED).Facet().Paint(CARGO);
 }
 
-/* An open wagon. */
 static ModelMesh OpenWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -473,7 +470,6 @@ static ModelMesh OpenWagon(VehicleDetail detail)
 	return kit.Done();
 }
 
-/* A covered hopper wagon. */
 static ModelMesh CoveredHopper(VehicleDetail detail)
 {
 	VehicleKit kit(detail);
@@ -487,7 +483,6 @@ static ModelMesh CoveredHopper(VehicleDetail detail)
 	return kit.Done();
 }
 
-/* A timber deck on sills bellied deep between the bogies, logs lashed to it between stakes. */
 static ModelMesh FlatWagon(VehicleDetail detail)
 {
 	VehicleKit kit(detail);

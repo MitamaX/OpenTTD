@@ -103,9 +103,7 @@ void NetworkField::Build(size_t index, WayDetail detail)
 	this->Finish(index);
 }
 
-/* The blocks in sight go first, then those still showing none of their ways, then those that have waited longest and the nearest of them,
- * so a block the world keeps changing under cannot hold up the rest; a build cut short by the end of the slice goes on from where it stopped.
- * While blocks in sight wait, the slice hurries. */
+/* Builds the due blocks in order of need within what is left of the slice. */
 void NetworkField::Refine()
 {
 	std::ranges::sort(this->due, {}, [&](const Due &entry) {
