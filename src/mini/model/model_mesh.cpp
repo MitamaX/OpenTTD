@@ -131,9 +131,16 @@ ModelMesh &ModelMesh::Displace(double reach, uint32_t seed)
 	return this->Reshape([&](const Vec3 &at) { return at + Wobble(at, reach, seed); });
 }
 
-static Vec3 TriangleNormal(const ModelVertex &a, const ModelVertex &b, const ModelVertex &c)
+Vec3 ModelMesh::FacetNormal(size_t first) const
 {
-	return Cross(b.Position() - a.Position(), c.Position() - a.Position());
+	Vec3 a = this->vertices[this->indices[first]].Position();
+	return Cross(this->vertices[this->indices[first + 1]].Position() - a, this->vertices[this->indices[first + 2]].Position() - a);
+}
+
+Vec3 ModelMesh::FacetCentre(size_t first) const
+{
+	Vec3 sum = this->vertices[this->indices[first]].Position() + this->vertices[this->indices[first + 1]].Position() + this->vertices[this->indices[first + 2]].Position();
+	return sum * (1.0 / 3.0);
 }
 
 ModelMesh &ModelMesh::Facet()
@@ -142,7 +149,7 @@ ModelMesh &ModelMesh::Facet()
 	corners.reserve(this->indices.size());
 	for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
 		std::array<ModelVertex, 3> triangle = {this->vertices[this->indices[first]], this->vertices[this->indices[first + 1]], this->vertices[this->indices[first + 2]]};
-		Vec3 normal = TriangleNormal(triangle[0], triangle[1], triangle[2]);
+		Vec3 normal = this->FacetNormal(first);
 		for (ModelVertex &corner : triangle) {
 			corner.Face(normal);
 			corners.push_back(corner);
@@ -158,7 +165,7 @@ ModelMesh &ModelMesh::Smooth()
 {
 	std::vector<Vec3> sums(this->vertices.size(), Vec3{0.0, 0.0, 0.0});
 	for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
-		Vec3 normal = TriangleNormal(this->vertices[this->indices[first]], this->vertices[this->indices[first + 1]], this->vertices[this->indices[first + 2]]);
+		Vec3 normal = this->FacetNormal(first);
 		for (size_t corner = 0; corner < 3; corner++) sums[this->indices[first + corner]] = sums[this->indices[first + corner]] + normal;
 	}
 	for (size_t index = 0; index < this->vertices.size(); index++) this->vertices[index].Face(sums[index]);

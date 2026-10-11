@@ -1,5 +1,6 @@
 add_files(
     aircraft_models.cpp
+    bare_ground.cpp
     bare_ground.h
     block_scatter.cpp
     block_scatter.h
@@ -54,6 +55,10 @@ add_files(
     road_models.cpp
     road_models.h
     road_vehicle_models.cpp
+    rock_models.cpp
+    rock_models.h
+    rockfall.cpp
+    rockfall.h
     scatter.h
     scatter_pass.cpp
     scatter_pass.h

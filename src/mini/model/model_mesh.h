@@ -74,6 +74,9 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Vary(double spread, uint32_t seed);
 	ModelMesh &Weld();
 
+	Vec3 FacetNormal(size_t first) const;
+	Vec3 FacetCentre(size_t first) const;
+
 	/* The trait is how much light foliage lets through, how glossy a solid is, or how brightly a lamp glows, which reads as a negative share;
 	 * a matte solid may hold a small whole code in its place instead. */
 	ModelMesh &Translucent(double share) { return this->Trait(share); }
@@ -85,6 +88,16 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &PaintBy(Tone tone)
 	{
 		for (ModelVertex &vertex : this->vertices) vertex.Paint(tone(vertex.Position()));
+		return *this;
+	}
+
+	template <class Tone>
+	ModelMesh &PaintFacetsBy(Tone tone)
+	{
+		for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
+			uint32_t rgb = tone(this->FacetCentre(first), Normalised(this->FacetNormal(first)), first);
+			for (size_t corner = 0; corner < 3; corner++) this->vertices[this->indices[first + corner]].Paint(rgb);
+		}
 		return *this;
 	}
 

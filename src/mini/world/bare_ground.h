@@ -40,4 +40,6 @@ inline constexpr uint32_t DRY_SAND_TONE = 0xFFC7B58C;
 inline constexpr uint32_t LITTER_MOSS_TONE = 0xFF4A592B;
 inline constexpr std::array<uint32_t, 4> TOY_STRATA_TONES = {0xFFF2A8C2, 0xFFC2B0ED, 0xFFFCD199, 0xFF9EDBE6};
 
+double AltitudeShare(double level);
+
 #endif /* MINI_WORLD_BARE_GROUND_H */

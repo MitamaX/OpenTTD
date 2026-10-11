@@ -29,6 +29,8 @@
 #include "forest_pass.h"
 #include "ground_cover.h"
 #include "network_pass.h"
+#include "rock_models.h"
+#include "rockfall.h"
 #include "scatter_pass.h"
 #include "smoke_pass.h"
 #include "street_walkers.h"
@@ -50,6 +52,7 @@ static constexpr ScatterLook WALKER_LOOK = {"walkers", BuildFigureModels, FIGURE
 static constexpr ScatterLook TUFT_LOOK = {"tufts", BuildTuftModels, TUFT_SHAPES, 40.0, 56.0, std::numeric_limits<double>::infinity()};
 static constexpr ScatterLook FARM_LOOK = {"farms", BuildFarmModels, FARM_PIECES, 10.0, 16.0, 22.0};
 static constexpr ScatterLook BOUNDARY_LOOK = {"boundaries", BuildBoundaryModels, BOUNDARY_PIECES, 28.0, 40.0, std::numeric_limits<double>::infinity()};
+static constexpr ScatterLook ROCK_LOOK = {"rocks", BuildRockModels, ROCK_MODELS, ROCK_SHOWN_PIXELS, ROCK_SOLID_PIXELS, ROCK_CAST_PIXELS, CopyScale::Whole, ROCK_CASTER_WIDTH};
 
 WorldPainter _world_painter;
 
@@ -77,6 +80,7 @@ WorldPainter::WorldPainter()
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<GroundCover>(), TUFT_LOOK));
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<Farmsteads>(), FARM_LOOK));
 	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<FieldBoundaries>(), BOUNDARY_LOOK));
+	this->passes.push_back(std::make_unique<ScatterPass>(std::make_unique<Rockfall>(), ROCK_LOOK));
 	this->passes.push_back(std::make_unique<ForestPass>(this->textures));
 	this->passes.push_back(std::make_unique<TerrainPass>(this->textures, this->field));
 	this->passes.push_back(std::make_unique<WaterPass>(this->textures, this->field, *this->vehicles));

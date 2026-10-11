@@ -34,6 +34,8 @@ inline constexpr double FINE_RELIEF_CHOSEN_PIXELS = FINE_RELIEF_PIXELS / FINE_RE
 inline constexpr double FINE_RELIEF_KEPT_PIXELS = FINE_RELIEF_CHOSEN_PIXELS / FINE_RELIEF_LAG;
 inline constexpr double FINE_RELIEF_MOVING_KEPT_PIXELS = FINE_RELIEF_CHOSEN_PIXELS / FINE_RELIEF_MOVING_LAG;
 
+bool IsRollingLand(int tx, int ty);
+
 class Landform {
 public:
 	explicit Landform(const TileSpan &tiles);

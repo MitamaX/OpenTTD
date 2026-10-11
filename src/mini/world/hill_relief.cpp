@@ -28,7 +28,7 @@ static constexpr double CREST_FULL_BEND = 0.5;
 static constexpr double CREST_WAVES_PER_TILE = 0.4;
 static constexpr uint32_t CREST_SALT = 0x6C2E57A1U;
 
-static bool IsRollingLand(int tx, int ty)
+bool IsRollingLand(int tx, int ty)
 {
 	return IsMapTile(tx, ty) && IsOpenLand(tx, ty) && (_world_tiles.NetworkAt(TileXY(tx, ty)).style & NETWORK_BRIDGE_BIT) == 0 && !IsRiverBank(tx, ty);
 }
