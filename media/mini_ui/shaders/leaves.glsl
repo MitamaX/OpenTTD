@@ -14,7 +14,7 @@ const Fraying LEAF_FRAYING = Fraying(24.0, 0.55, 0.45);
 
 float LeafResolved(float per_tile)
 {
-	return ResolvedAt(per_tile, TilePixelsAt(distance(Eye(), v_position)));
+	return ResolvedAt(per_tile, TilePixelsAt(v_position));
 }
 
 float LeafShare()

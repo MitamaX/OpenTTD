@@ -265,7 +265,7 @@ float Receded()
  * A trait is how glossy a surface is, how brightly it glows below zero, or the code of the bed a way is laid with. */
 void main()
 {
-	tile_pixels = TilePixelsAt(distance(Eye(), v_position));
+	tile_pixels = TilePixelsAt(v_position);
 	float receded = Receded();
 	if (smoothstep(u_fade.x, u_fade.y, tile_pixels) * (1.0 - receded) <= ScreenNoise(gl_FragCoord.xy)) discard;
 	uint bed = BedOf(v_trait);

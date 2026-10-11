@@ -124,6 +124,11 @@ float TilePixelsAt(float distance)
 	return u_projection[1][1] * u_screen.y * 0.5 / max(distance, u_lens.x);
 }
 
+float TilePixelsAt(vec3 point)
+{
+	return TilePixelsAt(distance(Eye(), point));
+}
+
 /* A value in [0, 1) per pixel that neighbouring pixels spread evenly over, moving on each frame the picture is jittered so frames blend its steps away. */
 float ScreenNoise(vec2 fragment)
 {

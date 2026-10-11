@@ -66,7 +66,7 @@ vec3 Painted(vec3 tone)
  * a closer view lets the distance shrink it as it would anything else, so nothing far off looms over the scene. */
 vec3 Growth()
 {
-	float pixels = max(TilePixelsAt(distance(Eye(), i_place)), u_view_pixels);
+	float pixels = max(TilePixelsAt(i_place), u_view_pixels);
 	float growth = max(u_readable_pixels / pixels, 1.0);
 	return vec3(min(growth, u_most_growth.x), vec2(min(growth, u_most_growth.y)));
 }

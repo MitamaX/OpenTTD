@@ -111,7 +111,7 @@ void ReadGround()
 void main()
 {
 	vec3 base = RenderPoint(i_place);
-	v_window = DetailWindow(TilePixelsAt(length(Eye() - base)), u_detail);
+	v_window = DetailWindow(TilePixelsAt(base), u_detail);
 	if (v_window.x >= v_window.y) {
 		gl_Position = HIDDEN;
 		return;

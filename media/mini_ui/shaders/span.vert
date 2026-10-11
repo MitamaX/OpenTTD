@@ -13,7 +13,7 @@ const float LEAST_HALF_PIXELS = 0.25;
 /* A member thinner than half a pixel is drawn half a pixel wide, enough for every frame to light pixels along it, so the jittered frames blend it into a faint unbroken line rather than specks. */
 void main()
 {
-	float least_half = LEAST_HALF_PIXELS / TilePixelsAt(distance(Eye(), a_position));
+	float least_half = LEAST_HALF_PIXELS / TilePixelsAt(a_position);
 	v_position = a_position + a_girth.xyz * max(least_half - a_girth.w, 0.0);
 	v_normal = a_normal.xyz;
 	v_colour = a_colour;

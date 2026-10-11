@@ -1277,7 +1277,7 @@ Canopy Forest(vec2 p)
 	float density = FloorAround(p).cover;
 	if (density <= 0.0) return Canopy(vec4(0.0), 0.0, 1.0);
 
-	float pixels = TilePixelsAt(distance(Eye(), RenderPoint(v_world)));
+	float pixels = TilePixelsAt(RenderPoint(v_world));
 	float tint = ForestTint(pixels);
 	return Canopy(vec4(CanopyTone(p), 1.0) * density * FOREST_COVER * tint, density, 1.0 - density * CROWN_SHADE * TreesShrinking(pixels));
 }

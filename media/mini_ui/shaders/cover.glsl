@@ -79,7 +79,7 @@ float Cover(uint material, vec2 p)
 
 void DropUnseen(vec3 position, uint material, vec2 pattern)
 {
-	tile_pixels = TilePixelsAt(distance(Eye(), position));
+	tile_pixels = TilePixelsAt(position);
 	float noise = ScreenNoise(gl_FragCoord.xy);
 	bool gap = Cover(material, pattern) < noise;
 	bool faded = smoothstep(u_fade.x, u_fade.y, tile_pixels) <= noise;
