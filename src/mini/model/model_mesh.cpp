@@ -23,11 +23,6 @@
 static constexpr double WELD_GRID = 1.0e4;
 static constexpr std::array<uint32_t, 3> AXIS_SALTS = {0x9E3779B9U, 0x85EBCA6BU, 0xC2B2AE35U};
 
-static uint8_t UnsignedByte(double share)
-{
-	return static_cast<uint8_t>(RoundedAway(std::clamp(share, 0.0, 1.0) * CHANNEL_MAX));
-}
-
 Vec3 ModelVertex::Normal() const
 {
 	return NormalOfBytes(this->normal);

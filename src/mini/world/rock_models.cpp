@@ -99,15 +99,10 @@ static Vec3 Heading(double bearing, double rise)
 	return {std::cos(bearing) * std::cos(rise), std::sin(bearing) * std::cos(rise), std::sin(rise)};
 }
 
-static double AnyBearing(SeedDice &dice)
-{
-	return dice.Between(0.0, 2.0 * std::numbers::pi);
-}
-
 static void Cleave(ModelMesh &stone, const Vec3 &span, const SeedRange &reach, int cuts, SeedDice &dice)
 {
 	for (int cut = 0; cut < cuts; cut++) {
-		Vec3 normal = Heading(AnyBearing(dice), dice.Between(CUT_RISE));
+		Vec3 normal = Heading(dice.Bearing(), dice.Between(CUT_RISE));
 		Cut(stone, normal, dice.Between(reach) * ReachAlong(span, normal));
 	}
 }
@@ -124,7 +119,7 @@ static ModelMesh Hewn(const StoneRecipe &recipe, SeedDice &dice)
 {
 	ModelMesh stone = Lump(STONE_SUBDIVISIONS, recipe.span, recipe, recipe.cuts, dice);
 	if (recipe.top < 1.0) {
-		Vec3 up = Heading(AnyBearing(dice), std::numbers::pi / 2.0 - recipe.tilt);
+		Vec3 up = Heading(dice.Bearing(), std::numbers::pi / 2.0 - recipe.tilt);
 		Cut(stone, up, recipe.top * ReachAlong(recipe.span, up));
 	}
 	return stone;
@@ -133,7 +128,7 @@ static ModelMesh Hewn(const StoneRecipe &recipe, SeedDice &dice)
 static ModelMesh Split(const StoneRecipe &recipe, SeedDice &dice)
 {
 	ModelMesh whole = Hewn(recipe, dice);
-	Vec3 across = Heading(AnyBearing(dice), 0.0);
+	Vec3 across = Heading(dice.Bearing(), 0.0);
 	ModelMesh halves;
 	for (double side : {-1.0, 1.0}) {
 		ModelMesh half = whole;
@@ -148,7 +143,7 @@ static ModelMesh Rubble(const StoneRecipe &recipe, SeedDice &dice)
 	ModelMesh heap;
 	for (int lump = 0; lump < RUBBLE_LUMPS; lump++) {
 		double radius = dice.Between(RUBBLE_LUMP_RADIUS);
-		Vec3 out = Heading(AnyBearing(dice), 0.0) * dice.Between(0.0, 1.0 - radius);
+		Vec3 out = Heading(dice.Bearing(), 0.0) * dice.Between(0.0, 1.0 - radius);
 		Vec3 span = Stretched({radius, radius, radius}, {1.0, 1.0, recipe.span.z});
 		heap.Append(Lump(LUMP_SUBDIVISIONS, span, recipe, RUBBLE_LUMP_CUTS, dice).Move(out));
 	}

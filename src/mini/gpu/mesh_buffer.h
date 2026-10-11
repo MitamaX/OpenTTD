@@ -26,6 +26,7 @@ enum class AttributeType : uint8_t {
 };
 
 inline constexpr double NORMALISED_BYTE_MAX = 127.0;
+inline constexpr double NORMALISED_UNSIGNED_BYTE_MAX = 255.0;
 
 /* Halves round away from zero, as std::lround rounds them. */
 inline int RoundedAway(double value)
@@ -36,6 +37,11 @@ inline int RoundedAway(double value)
 inline int8_t SignedByte(double share)
 {
 	return static_cast<int8_t>(RoundedAway(std::clamp(share, -1.0, 1.0) * NORMALISED_BYTE_MAX));
+}
+
+inline uint8_t UnsignedByte(double share)
+{
+	return static_cast<uint8_t>(RoundedAway(std::clamp(share, 0.0, 1.0) * NORMALISED_UNSIGNED_BYTE_MAX));
 }
 
 inline double ShareOfByte(int8_t byte)

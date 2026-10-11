@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstdint>
+#include <numbers>
 
 constexpr uint32_t Hash32(uint32_t v)
 {
@@ -60,6 +61,7 @@ public:
 	constexpr double Share() { return SeedShare(this->Next(), 0, SHARE_BITS); }
 	constexpr double Between(double low, double high) { return low + (high - low) * this->Share(); }
 	constexpr double Between(SeedRange range) { return this->Between(range.low, range.high); }
+	constexpr double Bearing() { return this->Between(0.0, 2.0 * std::numbers::pi); }
 	constexpr uint32_t Below(uint32_t count) { return this->Next() % count; }
 
 private:

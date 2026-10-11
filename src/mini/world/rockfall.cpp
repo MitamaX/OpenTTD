@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <numbers>
 #include <span>
 #include <vector>
 
@@ -26,8 +25,8 @@
 #include "../map/tile_shapes.h"
 #include "bare_ground.h"
 #include "hill_relief.h"
-#include "scene_view.h"
 #include "rock_models.h"
+#include "scene_view.h"
 #include "vehicle_models.h"
 
 #include "../../safeguards.h"
@@ -208,11 +207,6 @@ private:
 	LazyLattice<BareTile> tiles;
 };
 
-static double AnyBearing(SeedDice &dice)
-{
-	return dice.Between(0.0, 2.0 * std::numbers::pi);
-}
-
 static RockModel Picked(std::span<const RockPick> picks, double share)
 {
 	for (const RockPick &pick : picks) {
@@ -227,11 +221,6 @@ static double Gathering(const MapVector &at)
 	return std::lerp(GATHER_FLOOR, 1.0, SmoothStep(GATHER_EDGES.low, GATHER_EDGES.high, LatticeNoise(at.x, at.y, ROCK_GATHERS_PER_TILE, GATHER_SALT)));
 }
 
-static uint MixShare(double share)
-{
-	return static_cast<uint>(std::lround(std::clamp(share, 0.0, 1.0) * CHANNEL_MAX));
-}
-
 static double SnowShare(const BareTile &tile)
 {
 	if (_settings_game.game_creation.landscape != LandscapeType::Arctic) return 0.0;
@@ -242,10 +231,10 @@ static RockLook LookOf(uint32_t family, const BareTile &tile, SeedDice &dice)
 {
 	const RockClimate &climate = CLIMATE_ROCKS[to_underlying(_settings_game.game_creation.landscape) % CLIMATE_ROCKS.size()];
 	SeedDice kin(Hash32(FAMILY_SALT ^ family));
-	uint32_t rock = Mix(ROCK_TONE, ROCK_WARM_TONE, MixShare(kin.Between(climate.warmth)));
+	uint32_t rock = Mix(ROCK_TONE, ROCK_WARM_TONE, UnsignedByte(kin.Between(climate.warmth)));
 	uint32_t body = ScaledRgb(rock, 1.0 + LAYER_VARIETY * (kin.Share() - 0.5));
-	uint32_t cap = Mix(body, climate.cap, MixShare(dice.Between(climate.cap_share) * (1.0 - AltitudeShare(tile.level))));
-	return {body, Mix(cap, CAP_SNOW_TONE, MixShare(SnowShare(tile)))};
+	uint32_t cap = Mix(body, climate.cap, UnsignedByte(dice.Between(climate.cap_share) * (1.0 - AltitudeShare(tile.level))));
+	return {body, Mix(cap, CAP_SNOW_TONE, UnsignedByte(SnowShare(tile)))};
 }
 
 static Talus TalusOf(const RockSurvey &survey, const BareTile &home, int tx, int ty)
@@ -354,7 +343,7 @@ static void StrewStones(const LaidGround &ground, const BareTile &tile, const St
 		RockModel model = Picked(rule.picks, dice.Share());
 		RockFit fit = FitOf(model);
 		double radius = std::min(dice.Between(fit.radius), MOST_CELL_SHARE / STONE_CELLS) * rule.growth;
-		double yaw = AnyBearing(dice);
+		double yaw = dice.Bearing();
 		double leaning = 1.0 + Dot(at - middle, rule.lean);
 		if (chance >= rule.chance * leaning * Gathering(at) || UnderCrag(at, crags)) continue;
 		if (hemmed) at = Inset(at, tx, ty, fit.Farthest() * radius);

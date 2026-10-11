@@ -158,11 +158,6 @@ ForestField::DetailSpan ForestField::DetailReach::At(double squared_distance) co
 	return {first, last};
 }
 
-static uint8_t ShareByte(double share)
-{
-	return static_cast<uint8_t>(std::lround(std::clamp(share, 0.0, 1.0) * CHANNEL_MAX));
-}
-
 static bool Treeless(int tx, int ty)
 {
 	return !OnMap(tx, ty) || TreeCount(_world_tiles.GroundAt(TileXY(tx, ty)).flora) == 0;
@@ -322,7 +317,7 @@ ShapedTree Grove::Grown(const TilePoint &spot, double fringe, bool spare)
 	double y = this->ty + std::lerp(spot.second, this->huddle.y, this->huddling);
 	double scale = this->Scale(rolls.spread, fringe, spare);
 	TreeShape shape = {this->kind, rolls.shape};
-	std::array<uint8_t, 4> look = {ShareByte(rolls.turn), ShareByte(scale / TREE_LARGEST_SCALE), ShareByte(rolls.tint), ShareByte(rolls.wither)};
+	std::array<uint8_t, 4> look = {UnsignedByte(rolls.turn), UnsignedByte(scale / TREE_LARGEST_SCALE), UnsignedByte(rolls.tint), UnsignedByte(rolls.wither)};
 	return {shape.Index(), {static_cast<float>(x), static_cast<float>(y), static_cast<float>(this->ground.Level(x, y)), look}};
 }
 
