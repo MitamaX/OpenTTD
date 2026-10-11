@@ -5,6 +5,6 @@ void main()
 	DropUnseen(tile_pixels, v_surface.x, v_pattern);
 	mat3 frame = FaceFrame();
 	Clad clad = Worn(CladOf(v_surface.x, v_pattern, v_colour.rgb), frame);
-	if (Has(SURFACE_ROOF)) clad.albedo = Snowed(clad.albedo, frame[2]);
+	if (Has(SURFACE_ROOF | SURFACE_EAVE)) clad = Snowed(clad, Has(SURFACE_EAVE) ? UPWARD : frame[2]);
 	frag_colour = CladRadiance(clad, Facing(clad, frame), frame);
 }

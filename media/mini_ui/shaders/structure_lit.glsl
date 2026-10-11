@@ -24,6 +24,18 @@ const vec2 SWEPT_EDGES = vec2(0.6, 0.85);
 const float SWEPT_THINNING = 0.4;
 const float SNOW_RELIEF = 0.6;
 const vec2 RELIEF_SPAN = vec2(0.6, 1.1);
+const float SNOW_BURIES = 0.25;
+const vec2 SUNNY_PITCH_EDGES = vec2(0.1, 0.45);
+const float SUNNY_THINNING = 0.3;
+const float THAWS_PER_TILE = 8.0;
+const vec2 THAW_EDGES = vec2(0.62, 0.8);
+const float THAW_DEPTH = 0.6;
+const float MELT_REACH = 0.06;
+const float MELTWATER_SHADE = 0.75;
+const float SNOW_RIPPLES_PER_TILE = 7.0;
+const float SNOW_RIPPLE_TILT = 0.3;
+const float SNOW_RIPPLE_SEED = 3.1;
+const float SNOW_ROUGHNESS = 0.8;
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
 
@@ -65,27 +77,39 @@ vec2 DriftPoint(vec3 normal)
 	return vec2(dot(v_position.xy, vec2(-fall.y, fall.x)), dot(v_position.xy, fall) * SNOW_STREAK_STRETCH);
 }
 
-float RoofSnow(vec3 normal)
+float SunnyPitch(vec3 normal)
 {
-	if (Landscape() != LANDSCAPE_ARCTIC) return 0.0;
-	float upward = smoothstep(SNOW_FACING_EDGES.x, SNOW_FACING_EDGES.y, normal.z);
-	if (upward <= 0.0) return 0.0;
-	float lying = clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * SNOW_LINE_PER_TILE) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
-	if (lying <= 0.0) return 0.0;
-	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying) * lying;
-	vec2 drift = DriftPoint(normal);
-	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Layered(drift, SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
-	float ragged = (Octave(drift, SNOW_RAGS_PER_TILE) - 0.5) * SNOW_RAGGEDNESS;
-	float soft = max(SNOW_EDGE_SOFTNESS, SNOW_PATCHES_PER_TILE / tile_pixels);
-	return smoothstep(SNOW_SETTLES - soft, SNOW_SETTLES + soft, lying + patchy + ragged) * (1.0 - swept) * upward;
+	return smoothstep(SUNNY_PITCH_EDGES.x, SUNNY_PITCH_EDGES.y, dot(normal.xy, normalize(SunDirection().xy)));
 }
 
-vec3 Snowed(vec3 cladding, vec3 normal)
+float SnowDepth(vec2 drift, float sunny)
 {
-	float snow = RoofSnow(normal);
-	if (snow <= 0.0) return cladding;
-	float relief = Ponds(v_surface.x) ? 1.0 : clamp(Luminance(cladding) / max(Luminance(v_colour.rgb), LEAST_DIVISOR), RELIEF_SPAN.x, RELIEF_SPAN.y);
-	return mix(cladding, SNOW * mix(1.0, relief, SNOW_RELIEF), snow);
+	float lying = clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * SNOW_LINE_PER_TILE) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
+	if (lying <= 0.0) return lying - SNOW_SETTLES;
+	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying) * lying;
+	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, Layered(drift, SNOW_DRIFTS_PER_TILE)) * SWEPT_THINNING;
+	float thawed = smoothstep(THAW_EDGES.x, THAW_EDGES.y, Layered(drift, THAWS_PER_TILE)) * THAW_DEPTH * sunny;
+	float ragged = (Octave(drift, SNOW_RAGS_PER_TILE) - 0.5) * SNOW_RAGGEDNESS;
+	return lying + patchy + ragged - swept - thawed - SNOW_SETTLES;
+}
+
+Clad Snowed(Clad clad, vec3 normal)
+{
+	float upward = smoothstep(SNOW_FACING_EDGES.x, SNOW_FACING_EDGES.y, normal.z);
+	if (Landscape() != LANDSCAPE_ARCTIC || upward <= 0.0) return clad;
+	vec2 drift = DriftPoint(normal);
+	float sunny = SunnyPitch(normal);
+	float depth = SnowDepth(drift, sunny);
+	float soft = max(SNOW_EDGE_SOFTNESS, SNOW_PATCHES_PER_TILE / tile_pixels);
+	float cover = smoothstep(-soft, soft, depth) * upward;
+	float buried = smoothstep(0.0, SNOW_BURIES, depth - SUNNY_THINNING * sunny);
+	float relief = Ponds(v_surface.x) ? 1.0 : clamp(Luminance(clad.albedo) / max(Luminance(v_colour.rgb), LEAST_DIVISOR), RELIEF_SPAN.x, RELIEF_SPAN.y);
+	vec2 ripples = (vec2(Octave(drift, SNOW_RIPPLES_PER_TILE), Octave(drift + SNOW_RIPPLE_SEED, SNOW_RIPPLES_PER_TILE)) - 0.5) * SNOW_RIPPLE_TILT;
+	vec3 wet = clad.albedo * mix(1.0, MELTWATER_SHADE, smoothstep(-MELT_REACH, 0.0, depth) * upward);
+	clad.albedo = mix(wet, SNOW * mix(1.0, relief, SNOW_RELIEF * (1.0 - buried)), cover);
+	clad.facing = mix(clad.facing, vec3(ripples, 1.0), buried * cover);
+	clad.roughness = mix(clad.roughness, SNOW_ROUGHNESS, cover);
+	return clad;
 }
 
 vec4 CladRadiance(Clad clad, vec3 normal, mat3 frame)

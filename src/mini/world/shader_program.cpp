@@ -228,6 +228,7 @@ static std::string ShaderHeader()
 	DefineSurfaceFlag(header, "SURFACE_FRONT", SurfaceFlag::Front);
 	DefineSurfaceFlag(header, "SURFACE_ROOF", SurfaceFlag::Roof);
 	DefineSurfaceFlag(header, "SURFACE_DECAL", SurfaceFlag::Decal);
+	DefineSurfaceFlag(header, "SURFACE_EAVE", SurfaceFlag::Eave);
 	DefineInt(header, "MOST_WAKES", MOST_WAKES);
 	DefineFloat(header, "PANE_GLOSS", PANE_GLOSS);
 	DefineFloat(header, "UNIT_REACH", UNIT_REACH);
