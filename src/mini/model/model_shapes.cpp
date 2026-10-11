@@ -40,7 +40,6 @@ static std::vector<uint32_t> AddRing(ModelMesh &mesh, const LatheRing &ring, int
 	return corners;
 }
 
-/* A ring's middle and then its corners round to the first again, so a fan from the middle covers the rim however it is reshaped. */
 static std::vector<Vec3> HubbedRim(const LatheRing &ring, int sides)
 {
 	std::vector<Vec3> rim = {{0.0, 0.0, ring.z}};

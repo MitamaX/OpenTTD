@@ -42,13 +42,11 @@ inline constexpr double TREE_MODEL_REACH = 0.35;
 inline constexpr double TREE_SWAY_HEIGHT = 0.5;
 inline constexpr double TREE_SWAY_REACH = 0.014;
 
-/* How far light passes through each part of a tree but its wood, which lets none through. */
 inline constexpr double CANDY_TRANSLUCENCY = 0.05;
 inline constexpr double FLESH_TRANSLUCENCY = 0.12;
 inline constexpr double LEAF_TRANSLUCENCY = 0.45;
 inline constexpr double FROND_TRANSLUCENCY = 0.55;
 
-/* The translucency the tree shader tells wood from every other part by, and the span over which it tells flesh and sweets from leaves and fronds. */
 inline constexpr double WOOD_TRANSLUCENCY_BOUND = 0.01;
 inline constexpr double FOLIAGE_TRANSLUCENCY_FROM = 0.2;
 inline constexpr double FOLIAGE_TRANSLUCENCY_FULL = 0.4;

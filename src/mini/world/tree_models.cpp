@@ -28,7 +28,6 @@ static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 static constexpr double TAU = 2.0 * std::numbers::pi;
 static constexpr double FOOT = -0.06;
 
-/* How many sides, rings or points a part is built with up close and further off. */
 struct DetailCount {
 	int full;
 	int simple;
