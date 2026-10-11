@@ -75,6 +75,7 @@ inline constexpr uint8_t GROUND_DENSITY_MASK = 0x03;
 inline constexpr uint8_t GROUND_LUSH_BIT = 0x04;
 inline constexpr uint8_t GROUND_BUILT_BIT = 0x08;
 inline constexpr uint8_t GROUND_GARDEN_BIT = 0x10;
+inline constexpr uint8_t GROUND_ROCKY_BIT = 0x20;
 inline constexpr uint8_t FLORA_COUNT_MASK = 0x07;
 inline constexpr uint8_t FLORA_MOST_TREES = 4;
 inline constexpr uint8_t FLORA_AGE_SHIFT = 3;

@@ -99,6 +99,7 @@ struct Cover {
 	GroundMaterial material;
 	uint density = GROUND_DENSITY_MASK;
 	uint variant = 0;
+	bool rocky = false;
 };
 
 static LandscapeType Landscape()
@@ -117,7 +118,7 @@ static GroundMaterial SnowOrDesert()
 
 static Cover ClearCover(TileIndex tile)
 {
-	if (IsSnowTile(tile)) return {GroundMaterial::Snow, GetClearDensity(tile)};
+	if (IsSnowTile(tile)) return {GroundMaterial::Snow, GetClearDensity(tile), 0, GetClearGround(tile) == CLEAR_ROCKS};
 	switch (GetClearGround(tile)) {
 		case CLEAR_ROUGH: return {GroundMaterial::Rough};
 		case CLEAR_ROCKS: return {GroundMaterial::Rocks};
@@ -286,7 +287,7 @@ static GroundTexel PackGround(TileIndex tile)
 	if (IsTileType(tile, MP_VOID)) return BorderGround(tile);
 	std::optional<FloraPatch> flora = FloraOf(tile);
 	Cover cover = CoverOf(tile, flora.has_value());
-	uint8_t detail = static_cast<uint8_t>((cover.density & GROUND_DENSITY_MASK) | (IsLush(tile) ? GROUND_LUSH_BIT : 0) | (IsBuiltOn(tile) ? GROUND_BUILT_BIT : 0) | (IsTileType(tile, MP_HOUSE) ? GROUND_GARDEN_BIT : 0));
+	uint8_t detail = static_cast<uint8_t>((cover.density & GROUND_DENSITY_MASK) | (IsLush(tile) ? GROUND_LUSH_BIT : 0) | (IsBuiltOn(tile) ? GROUND_BUILT_BIT : 0) | (IsTileType(tile, MP_HOUSE) ? GROUND_GARDEN_BIT : 0) | (cover.rocky ? GROUND_ROCKY_BIT : 0));
 	return {cover.material, detail, PackFlora(flora), static_cast<uint8_t>(cover.variant)};
 }
 

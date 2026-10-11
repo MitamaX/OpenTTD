@@ -58,7 +58,7 @@ static double Clock()
 	return std::fmod(_frame_capture.SceneSeconds().value_or(SecondsSinceFirstFrame()), CLOCK_PERIOD_SECONDS);
 }
 
-static double SnowLine()
+double SnowLineLevel()
 {
 	return _settings_game.game_creation.landscape == LandscapeType::Arctic ? GetSnowLine() : NO_SNOW_LINE;
 }
@@ -179,7 +179,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		floats(view.near_plane, view.far, view.fog_start, view.focus),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
 		floats(view.viewport.width, view.viewport.height, view.clock, view.phase),
-		floats(SnowLine(), 0.0, 0.0, 0.0),
+		floats(SnowLineLevel(), 0.0, 0.0, 0.0),
 	};
 
 	if (this->buffer == 0) glGenBuffers(1, &this->buffer);

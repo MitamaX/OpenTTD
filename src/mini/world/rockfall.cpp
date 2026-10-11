@@ -26,6 +26,7 @@
 #include "../map/tile_shapes.h"
 #include "bare_ground.h"
 #include "hill_relief.h"
+#include "scene_view.h"
 #include "rock_models.h"
 #include "vehicle_models.h"
 
@@ -43,8 +44,9 @@ static constexpr double GATHER_FLOOR = 0.15;
 static constexpr SeedRange GATHER_EDGES = {0.3, 0.7};
 static constexpr double ROCK_GATHERS_PER_TILE = 0.6;
 static constexpr double MOST_CELL_SHARE = 0.45;
-static constexpr SeedRange ROCK_WARMTH = {0.0, 0.6};
-static constexpr SeedRange MOSS_SHARE = {0.35, 0.7};
+static constexpr double SNOWLINE_CAP = 0.8;
+static constexpr double SNOW_LINE_REACH = 1.0;
+static constexpr double BLANKET_BURY = 0.35;
 static constexpr SeedRange CRAG_SLOPES = {0.6, 1.2};
 static constexpr double CRAG_LEAST_SHARE = 0.15;
 static constexpr int CRAG_BED_STRIDE = 3;
@@ -103,7 +105,23 @@ struct BareTile {
 	bool holds;
 	double bare;
 	double crag;
+
+	bool Rocky() const { return this->ground.material == GroundMaterial::Rocks || (this->ground.detail & GROUND_ROCKY_BIT) != 0; }
 };
+
+struct RockClimate {
+	SeedRange warmth;
+	uint32_t cap;
+	SeedRange cap_share;
+};
+
+static constexpr RockClimate TEMPERATE_ROCKS = {{0.0, 0.6}, LITTER_MOSS_TONE, {0.35, 0.7}};
+static constexpr std::array<RockClimate, 4> CLIMATE_ROCKS = {{
+	TEMPERATE_ROCKS,
+	{{0.0, 0.4}, LITTER_MOSS_TONE, {0.2, 0.4}},
+	{{0.6, 1.0}, DRY_SAND_TONE, {0.3, 0.6}},
+	TEMPERATE_ROCKS,
+}};
 
 struct Talus {
 	double share;
@@ -214,13 +232,20 @@ static uint MixShare(double share)
 	return static_cast<uint>(std::lround(std::clamp(share, 0.0, 1.0) * CHANNEL_MAX));
 }
 
+static double SnowShare(const BareTile &tile)
+{
+	if (_settings_game.game_creation.landscape != LandscapeType::Arctic) return 0.0;
+	return std::max(BlanketDepth(tile.ground), SNOWLINE_CAP * SmoothStep(0.0, SNOW_LINE_REACH, tile.level - SnowLineLevel()));
+}
+
 static RockLook LookOf(uint32_t family, const BareTile &tile, SeedDice &dice)
 {
+	const RockClimate &climate = CLIMATE_ROCKS[to_underlying(_settings_game.game_creation.landscape) % CLIMATE_ROCKS.size()];
 	SeedDice kin(Hash32(FAMILY_SALT ^ family));
-	uint32_t rock = Mix(ROCK_TONE, ROCK_WARM_TONE, MixShare(kin.Between(ROCK_WARMTH)));
+	uint32_t rock = Mix(ROCK_TONE, ROCK_WARM_TONE, MixShare(kin.Between(climate.warmth)));
 	uint32_t body = ScaledRgb(rock, 1.0 + LAYER_VARIETY * (kin.Share() - 0.5));
-	double moss = dice.Between(MOSS_SHARE) * (1.0 - AltitudeShare(tile.level));
-	return {body, Mix(body, LITTER_MOSS_TONE, MixShare(moss))};
+	uint32_t cap = Mix(body, climate.cap, MixShare(dice.Between(climate.cap_share) * (1.0 - AltitudeShare(tile.level))));
+	return {body, Mix(cap, CAP_SNOW_TONE, MixShare(SnowShare(tile)))};
 }
 
 static Talus TalusOf(const RockSurvey &survey, const BareTile &home, int tx, int ty)
@@ -242,7 +267,7 @@ static Talus TalusOf(const RockSurvey &survey, const BareTile &home, int tx, int
 
 static StoneRule RuleOf(const BareTile &tile, const Talus &talus)
 {
-	bool rocky = tile.ground.material == GroundMaterial::Rocks;
+	bool rocky = tile.Rocky();
 	bool rough = tile.ground.material == GroundMaterial::Rough;
 	std::array<StoneRule, 5> rules = {{
 		{rocky ? ROCKY_STONES : 0.0, ROCKY_PICKS, false, {}, 1.0},
@@ -254,13 +279,13 @@ static StoneRule RuleOf(const BareTile &tile, const Talus &talus)
 	return *std::ranges::max_element(rules, {}, &StoneRule::chance);
 }
 
-static VehicleInstance Seated(const WorldPoint &seat, const MapVector &climb, double yaw, double radius, const RockFit &fit, const RockLook &look)
+static VehicleInstance Seated(const WorldPoint &seat, const BareTile &tile, double yaw, double radius, const RockFit &fit, const RockLook &look)
 {
-	MapVector grade = climb * LevelRise();
+	MapVector grade = tile.climb * LevelRise();
 	MapVector heading = {std::cos(yaw), std::sin(yaw)};
 	double along = Dot(grade, heading);
 	double across = Dot(grade, {-heading.y, heading.x});
-	double sink = radius * Length(MapVector{along * fit.reach.x, across * fit.reach.y}) * (1.0 - fit.follow);
+	double sink = radius * (Length(MapVector{along * fit.reach.x, across * fit.reach.y}) * (1.0 - fit.follow) + BLANKET_BURY * BlanketDepth(tile.ground));
 	Vec3 place = {seat.x, seat.y, seat.level * LevelRise() - sink};
 	return StrewnCopy(place, {yaw, std::atan(along * fit.follow), std::atan(across * fit.follow)}, radius, InstanceColour(look.body), InstanceColour(look.cap));
 }
@@ -314,7 +339,7 @@ static void RaiseCrags(const LaidGround &ground, const BareTile &tile, std::span
 	for (const Crag &crag : crags) {
 		SeedDice dice(Hash32(CRAG_SALT ^ static_cast<uint32_t>(crag.bed)));
 		RockLook look = LookOf(static_cast<uint32_t>(crag.bed), tile, dice);
-		copies[RockModelIndex(crag.model, RockFinish::Chiselled)].push_back(Seated(ground.At(crag.at), tile.climb, crag.yaw, crag.radius, FitOf(crag.model), look));
+		copies[RockModelIndex(crag.model, RockFinish::Chiselled)].push_back(Seated(ground.At(crag.at), tile, crag.yaw, crag.radius, FitOf(crag.model), look));
 	}
 }
 
@@ -335,7 +360,7 @@ static void StrewStones(const LaidGround &ground, const BareTile &tile, const St
 		if (hemmed) at = Inset(at, tx, ty, fit.Farthest() * radius);
 		WorldPoint seat = ground.At(at);
 		uint32_t family = rule.layered ? static_cast<uint32_t>(static_cast<int>(std::floor(BeddingOf(at, seat.level)))) : base;
-		copies[RockModelIndex(model, RockFinish::Chiselled)].push_back(Seated(seat, tile.climb, yaw, radius, fit, LookOf(family, tile, dice)));
+		copies[RockModelIndex(model, RockFinish::Chiselled)].push_back(Seated(seat, tile, yaw, radius, fit, LookOf(family, tile, dice)));
 	}
 }
 

@@ -80,6 +80,8 @@ private:
 	const Frustum *decided = nullptr;
 };
 
+double SnowLineLevel();
+
 class SceneUniforms {
 public:
 	void Upload(const SceneView &view);
