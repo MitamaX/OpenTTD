@@ -24,6 +24,6 @@ void main()
 	Clad wall = Worn(v_surface.x == CLAD_GLASS ? Spandrel(v_colour.rgb) : WallCladOf(v_surface.x, v_pattern, v_colour.rgb), frame);
 	Clad clad = Facade(wall, v_surface.y, v_pattern, Has(SURFACE_FRONT), v_seed, OutlookOf(frame));
 	vec3 normal = Facing(clad, frame);
-	clad.albedo = Snowed(clad, normal, PAST_EVERY_THAW).albedo;
+	clad.albedo = Snowed(clad, normal).albedo;
 	frag_colour = CladRadiance(clad, normal, frame);
 }

@@ -28,12 +28,6 @@ const vec2 RELIEF_SPAN = vec2(0.6, 1.1);
 const float SNOW_BURIES = 0.25;
 const vec2 SUNNY_PITCH_EDGES = vec2(0.1, 0.45);
 const float SUNNY_THINNING = 0.3;
-const float THAWS_PER_TILE = 8.0;
-const float THAW_REACH = 0.15;
-const float THAW_RAGGED = 0.1;
-const float PAST_EVERY_THAW = THAW_REACH + THAW_RAGGED;
-const float THAW_DEPTH = 0.6;
-const float THAW_SLUSH = 0.1;
 const float MELT_REACH = 0.06;
 const float MELTWATER_SHADE = 0.75;
 const float SNOW_RIPPLES_PER_TILE = 7.0;
@@ -105,18 +99,12 @@ float SnowLying()
 	return clamp(v_position.z / LevelRise() - SnowLine() + 0.5 + (Noise(v_position.xy * SNOW_LINE_PER_TILE) - 0.5) * SNOW_LINE_RAGGED, 0.0, 1.0);
 }
 
-float Thawing(vec2 drift, float from_crest, float sunny)
-{
-	float thaw_line = from_crest + (Octave(drift, THAWS_PER_TILE) - 0.5) * THAW_RAGGED;
-	return (1.0 - smoothstep(0.0, THAW_REACH, thaw_line)) * sunny;
-}
-
-float SnowDepth(vec2 drift, float lying, float drifted, float thawing)
+float SnowDepth(vec2 drift, float lying, float drifted)
 {
 	float patchy = (Noise(v_position.xy * SNOW_PATCHES_PER_TILE) - 0.5) * (1.0 - lying) * lying;
 	float swept = smoothstep(SWEPT_EDGES.x, SWEPT_EDGES.y, drifted) * SWEPT_THINNING;
 	float ragged = (Octave(drift, SNOW_RAGS_PER_TILE) - 0.5) * SNOW_RAGGEDNESS;
-	return lying + patchy + ragged - swept - thawing * THAW_DEPTH - SNOW_SETTLES;
+	return lying + patchy + ragged - swept - SNOW_SETTLES;
 }
 
 vec3 RoofOverBoard(vec3 board)
@@ -124,7 +112,7 @@ vec3 RoofOverBoard(vec3 board)
 	return normalize(vec3(board.xy, ROOF_OVER_BOARD_RUN));
 }
 
-Clad Snowed(Clad clad, vec3 normal, float from_crest)
+Clad Snowed(Clad clad, vec3 normal)
 {
 	float upward = smoothstep(SNOW_FACING_EDGES.x, SNOW_FACING_EDGES.y, normal.z);
 	if (Landscape() != LANDSCAPE_ARCTIC || upward <= 0.0) return clad;
@@ -133,15 +121,14 @@ Clad Snowed(Clad clad, vec3 normal, float from_crest)
 	vec2 drift = DriftPoint(normal);
 	float sunny = SunnyPitch(normal);
 	float drifted = Layered(drift, SNOW_DRIFTS_PER_TILE);
-	float thawing = Thawing(drift, from_crest, sunny);
-	float depth = SnowDepth(drift, lying, drifted, thawing);
-	float soft = max(SNOW_EDGE_SOFTNESS + THAW_SLUSH * thawing, SNOW_PATCHES_PER_TILE / tile_pixels);
+	float depth = SnowDepth(drift, lying, drifted);
+	float soft = max(SNOW_EDGE_SOFTNESS, SNOW_PATCHES_PER_TILE / tile_pixels);
 	float cover = smoothstep(-soft, soft, depth) * upward;
 	float buried = smoothstep(0.0, SNOW_BURIES, depth - SUNNY_THINNING * sunny);
 	float relief = Ponds(v_surface.x) ? 1.0 : clamp(Luminance(clad.albedo) / max(Luminance(v_colour.rgb), LEAST_DIVISOR), RELIEF_SPAN.x, RELIEF_SPAN.y);
 	vec2 ripples = (vec2(Octave(drift, SNOW_RIPPLES_PER_TILE), Octave(drift + SNOW_RIPPLE_SEED, SNOW_RIPPLES_PER_TILE)) - 0.5) * SNOW_RIPPLE_TILT;
 	float drifting = 1.0 + (0.5 - drifted) * SNOW_DRIFT_SHADING + ripples.x * SNOW_RIPPLE_SHADING;
-	float wetness = max(smoothstep(-MELT_REACH, 0.0, depth), thawing) * upward;
+	float wetness = smoothstep(-MELT_REACH, 0.0, depth) * upward;
 	vec3 wet = clad.albedo * mix(1.0, MELTWATER_SHADE, wetness);
 	clad.albedo = mix(wet, SNOW * mix(drifting, relief, SNOW_RELIEF * mix(1.0, BURIED_RELIEF, buried)), cover);
 	clad.facing = mix(clad.facing, vec3(ripples, 1.0), buried * cover);
