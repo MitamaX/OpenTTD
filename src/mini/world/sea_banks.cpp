@@ -32,6 +32,7 @@ static constexpr double BRINK_OVERHANG = 0.25;
 static constexpr double BRINK_TOP_SLOPE = 2.0;
 static constexpr double BANK_PINNING_REACH = 0.35;
 static constexpr double BANK_INNER_ROUNDING = 0.4;
+static constexpr double SMOOTH_MAXIMUM_SWELL = 0.25;
 static constexpr int BANK_GATHER_REACH = 4;
 static constexpr int QUAY_WATER_WIDTH = 1;
 static constexpr double HALF_TILE_DIAGONAL = HALF_TILE * std::numbers::sqrt2;
@@ -68,7 +69,7 @@ static double InnerRounding(const BankReach &first, const BankReach &second)
 	double rounding = BANK_INNER_ROUNDING * turning * SmoothStep(0.0, BANK_INNER_ROUNDING, Length(first.nearest - second.nearest)) * SmoothStep(0.0, BANK_INNER_ROUNDING, std::min(first.distance, second.distance));
 	if (rounding <= 0.0) return std::max(first.lift, second.lift);
 	double overlap = std::max(rounding - std::abs(first.lift - second.lift), 0.0) / rounding;
-	return std::max(first.lift, second.lift) + overlap * overlap * rounding * 0.25;
+	return std::max(first.lift, second.lift) + overlap * overlap * rounding * SMOOTH_MAXIMUM_SWELL;
 }
 
 BankSite::BankSite(std::vector<Brink> brinks, std::vector<Segment> pins) : brinks(std::move(brinks)), pins(std::move(pins))
@@ -134,7 +135,7 @@ static void AddBrinks(std::vector<Brink> &brinks, const Seabed &bed, int tx, int
 		const std::array<WorldPoint, 4> &ring = step->ring;
 		if (SamePlace(Flat(ring[0]), Flat(ring[3]))) continue;
 		std::array<double, 2> top = {ring[0].level, ring[3].level};
-		brinks.push_back({Flat(ring[0]), Flat(ring[3]), step->outward, top, {ring[0].level - ring[1].level, ring[3].level - ring[2].level}, top});
+		brinks.push_back({.from = Flat(ring[0]), .to = Flat(ring[3]), .outward = step->outward, .top = top, .rise = {ring[0].level - ring[1].level, ring[3].level - ring[2].level}, .cap = top});
 	}
 }
 
