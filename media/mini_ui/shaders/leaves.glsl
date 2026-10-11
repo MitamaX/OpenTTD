@@ -4,8 +4,6 @@ in vec3 v_grown;
 in float v_translucency;
 flat in vec2 v_window;
 
-const vec2 LEAF_TRANSLUCENCY = vec2(0.2, 0.4);
-
 struct Fraying {
 	float clumps_per_tile;
 	float edge;
@@ -21,7 +19,7 @@ float LeafResolved(float per_tile)
 
 float LeafShare()
 {
-	return smoothstep(LEAF_TRANSLUCENCY.x, LEAF_TRANSLUCENCY.y, v_translucency);
+	return smoothstep(FOLIAGE_TRANSLUCENCY_FROM, FOLIAGE_TRANSLUCENCY_FULL, v_translucency);
 }
 
 /* How far a surface is foliage, clumped into sprays of leaves, rather than flesh, sweets or wood, and how far its clumps are still big enough to show. */

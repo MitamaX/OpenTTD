@@ -28,10 +28,6 @@ static constexpr Vec3 UP = {0.0, 0.0, 1.0};
 static constexpr double TAU = 2.0 * std::numbers::pi;
 static constexpr double FOOT = -0.06;
 
-static constexpr double LEAF_TRANSLUCENCY = 0.45;
-static constexpr double FROND_TRANSLUCENCY = 0.55;
-static constexpr double FLESH_TRANSLUCENCY = 0.12;
-static constexpr double CANDY_TRANSLUCENCY = 0.05;
 static constexpr double FACET_SPREAD = 0.07;
 static constexpr double CANOPY_ROUNDING = 0.45;
 static constexpr double SOFT_CANOPY_ROUNDING = 0.6;

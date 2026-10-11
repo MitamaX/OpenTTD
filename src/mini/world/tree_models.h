@@ -42,6 +42,19 @@ inline constexpr double TREE_MODEL_REACH = 0.35;
 inline constexpr double TREE_SWAY_HEIGHT = 0.5;
 inline constexpr double TREE_SWAY_REACH = 0.014;
 
+/* How far light passes through each part of a tree but its wood, which lets none through. */
+inline constexpr double CANDY_TRANSLUCENCY = 0.05;
+inline constexpr double FLESH_TRANSLUCENCY = 0.12;
+inline constexpr double LEAF_TRANSLUCENCY = 0.45;
+inline constexpr double FROND_TRANSLUCENCY = 0.55;
+
+/* The translucency the tree shader tells wood from every other part by, and the span over which it tells flesh and sweets from leaves and fronds. */
+inline constexpr double WOOD_TRANSLUCENCY_BOUND = 0.01;
+inline constexpr double FOLIAGE_TRANSLUCENCY_FROM = 0.2;
+inline constexpr double FOLIAGE_TRANSLUCENCY_FULL = 0.4;
+static_assert(WOOD_TRANSLUCENCY_BOUND < CANDY_TRANSLUCENCY && CANDY_TRANSLUCENCY < FLESH_TRANSLUCENCY);
+static_assert(FLESH_TRANSLUCENCY < FOLIAGE_TRANSLUCENCY_FROM && FOLIAGE_TRANSLUCENCY_FULL < LEAF_TRANSLUCENCY && LEAF_TRANSLUCENCY < FROND_TRANSLUCENCY);
+
 /* The colour a canopy of each kind shows from afar, as the ground's forest tint paints it. */
 inline constexpr std::array<uint32_t, TREE_KINDS> TREE_CANOPY_TONES = {
 	0x5A8139, 0x3D6B3B, 0x3A752E, 0x5E923C, 0x5E8A4A, 0xE07EA8,

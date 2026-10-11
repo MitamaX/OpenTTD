@@ -21,7 +21,6 @@ const float TURN_OUTER_LEAD = 0.3;
 const float SNOW_SETTLES = 0.2;
 const float SNOW_COVERS = 0.6;
 const float SNOW_CLUMPING = 0.5;
-const float LEAFY = 0.01;
 const float LEAF_SPRAYS_PER_TILE = 7.0;
 const vec3 SPRAY_VARIETY = vec3(0.32, 0.24, 0.08);
 const vec2 SPRAY_EDGES = vec2(0.25, 0.75);
@@ -35,9 +34,9 @@ const float BARK_ROUGHNESS = 0.9;
 const float INSIDE_OPENNESS = 0.7;
 const float INSIDE_SCREEN_OCCLUSION = 0.0;
 
-float Leafy()
+float Unwooded()
 {
-	return step(LEAFY, v_translucency);
+	return step(WOOD_TRANSLUCENCY_BOUND, v_translucency);
 }
 
 float SprayShown()
@@ -68,13 +67,13 @@ float Turning()
 
 vec3 Albedo(float upward)
 {
-	float leafy = Leafy();
-	vec3 albedo = v_colour * Varied(v_tint, TINT_VARIETY * leafy) * Varied(v_hue, HUE_VARIETY * leafy) * Sprays();
-	albedo *= mix(vec3(1.0), FRESH_TIPS, smoothstep(TIP_REACH.x, TIP_REACH.y, v_reach) * leafy);
-	float turned = Turning() * leafy;
+	float unwooded = Unwooded();
+	vec3 albedo = v_colour * Varied(v_tint, TINT_VARIETY * unwooded) * Varied(v_hue, HUE_VARIETY * unwooded) * Sprays();
+	albedo *= mix(vec3(1.0), FRESH_TIPS, smoothstep(TIP_REACH.x, TIP_REACH.y, v_reach) * unwooded);
+	float turned = Turning() * unwooded;
 	vec3 autumn = mix(AUTUMN_GOLD, AUTUMN_RUST, v_hue * turned) * dot(albedo, LUMA_WEIGHTS) * AUTUMN_GAIN;
 	albedo = mix(albedo, autumn, turned);
-	return mix(albedo, SNOW, v_snow * leafy * smoothstep(SNOW_SETTLES, SNOW_COVERS, upward));
+	return mix(albedo, SNOW, v_snow * unwooded * smoothstep(SNOW_SETTLES, SNOW_COVERS, upward));
 }
 
 float LeafDome(float clumps)
@@ -120,7 +119,7 @@ void main()
 	float openness = gl_FrontFacing ? v_openness : v_openness * INSIDE_OPENNESS;
 	float upward = FacetNormal(across, down, normal).z + (clumps - 0.5) * SNOW_CLUMPING * foliage;
 	vec3 albedo = Albedo(upward) * mix(1.0, mix(1.0 - LEAF_POCKETS, 1.0, dome), foliage);
-	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Leafy()), DIELECTRIC_REFLECTANCE);
+	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Unwooded()), DIELECTRIC_REFLECTANCE);
 	vec4 radiance = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, openness, sunlit, v_crown_sunlit * clouds);
 	frag_colour = vec4(radiance.rgb, radiance.a * (gl_FrontFacing ? 1.0 : INSIDE_SCREEN_OCCLUSION));
 }

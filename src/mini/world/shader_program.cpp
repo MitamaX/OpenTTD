@@ -189,6 +189,9 @@ static std::string ShaderHeader()
 	DefineFloats(header, "TREE_STRETCHES", TREE_STRETCHES);
 	DefineFloat(header, "TREE_LEAN", TREE_LEAN);
 	DefineFloat(header, "TREE_MODEL_TALLEST", TREE_MODEL_TALLEST);
+	DefineFloat(header, "WOOD_TRANSLUCENCY_BOUND", WOOD_TRANSLUCENCY_BOUND);
+	DefineFloat(header, "FOLIAGE_TRANSLUCENCY_FROM", FOLIAGE_TRANSLUCENCY_FROM);
+	DefineFloat(header, "FOLIAGE_TRANSLUCENCY_FULL", FOLIAGE_TRANSLUCENCY_FULL);
 	DefineTones(header, "TREE_CANOPY", TREE_CANOPY_TONES);
 	DefineTones(header, "TREE_LITTER", TREE_LITTER_TONES);
 	DefineFloats(header, "TREE_LITTER_COVERS", TREE_LITTER_COVERS);
