@@ -7,16 +7,6 @@ in float v_mark;
 
 out vec4 frag_colour;
 
-const float STANDARD_SLOPE = 1.0;
-const float STEEPEST_SLOPE = sqrt(2.0);
-const float ALPINE_ALTITUDE = 0.55;
-const float STEEP_BARING = 1.1;
-const float SHED_BARING = 0.9;
-const float ALPINE_BARING = 0.9;
-const float SCREE_EXPOSURE = 0.5;
-const float TOY_BARING = 0.55;
-const float ROCK_EXPOSURE = 0.8;
-const float EXPOSURE_BLEND = 0.14;
 const float BLANKET_SLIP_SLOPE = 1.1;
 const float SNOW_EDGE = 0.12;
 const float SAND_EDGE = 0.2;
@@ -26,7 +16,6 @@ const float BLANKET_MEANDER = 0.6;
 const float CLINGING = 0.75;
 const float SNOW_LINE_RAGGED = 2.5;
 const float CAP_COVER = 0.85;
-const vec3 CAP_SNOW = vec3(0.86, 0.89, 0.94);
 const float BROAD_FREQUENCY = 0.035;
 const vec3 PACKED_SNOW_TINT = vec3(0.8, 0.86, 0.95);
 const vec3 BAKED_SAND_TINT = vec3(0.9, 0.85, 0.78);
@@ -38,7 +27,6 @@ const float INDEX_CONTOUR_EVERY = 5.0;
 const float INDEX_CONTOUR_WEIGHT = 1.6;
 const float CROWDED_CONTOUR_PIXELS = 3.0;
 const float SPACED_CONTOUR_PIXELS = 9.0;
-const float MIN_RELIEF_SPAN = 6.0;
 const vec3 UPRIGHT = vec3(0.0, 0.0, 1.0);
 const vec3 LOWLAND = vec3(0.90, 0.95, 0.86);
 const vec3 HIGHLAND = vec3(1.06, 1.04, 0.98);
@@ -147,14 +135,10 @@ const SpeckLattice FLOWER_LATTICE = SpeckLattice(ivec2(6007, 2333), 0.15, 0.5, 0
 const vec3 DAISY = vec3(0.94, 0.93, 0.88);
 const vec3 BUTTERCUP = vec3(0.96, 0.85, 0.22);
 const vec3 KNAPWEED = vec3(0.7, 0.44, 0.76);
-const vec3 ROCK = vec3(0.50, 0.49, 0.47);
-const vec3 ROCK_WARM = vec3(0.58, 0.52, 0.44);
-const vec3 SCREE = vec3(0.55, 0.52, 0.47);
 const vec3 SCOURED_SNOW = vec3(0.76, 0.82, 0.9);
 const vec3 RED_SAND = vec3(0.85, 0.64, 0.43);
 const vec3 GRAVEL = vec3(0.74, 0.62, 0.48);
 const vec3 PACKED_EARTH = vec3(0.72, 0.57, 0.43);
-const vec3 DRY_SAND = vec3(0.78, 0.71, 0.55);
 const vec3 PAVING = vec3(0.57, 0.55, 0.51);
 const vec3 SANDSTONE_PAVING = vec3(0.7, 0.62, 0.5);
 const vec3 YARD = vec3(0.49, 0.41, 0.32);
@@ -168,18 +152,14 @@ const vec2 PEBBLE_EDGES = vec2(0.55, 0.8);
 const vec3 CANAL_FLOOR = vec3(0.45, 0.45, 0.42);
 const vec3 HEDGE = vec3(0.24, 0.33, 0.16);
 
-const float STRATA_PER_LEVEL = 2.5;
-const float TOY_STRATA_PER_LEVEL = 1.0;
 const float STRATA_WARP = 1.8;
 const float STRATA_WARP_PER_TILE = 0.3;
-const vec2 STRATA_DIP = vec2(0.09, -0.06);
 const float STRATA_BOW = 0.35;
 const float STRATA_BOWS_PER_TILE = 1.1;
 const float STRATA_BOW_SEED = 5.3;
 const float BED_THICKNESS_PER_LEVEL = 0.7;
 const float BED_THICKNESS_SEED = 3.1;
 const vec2 SHELF_EDGES = vec2(0.7, 0.95);
-const float LAYER_VARIETY = 0.3;
 const float LEDGE_SHADE = 0.8;
 const float LEDGE_LIT = 1.08;
 const float LEDGE_RISE = 0.2;
@@ -285,13 +265,7 @@ const float TOY_PEBBLE_DRIFTS_PER_TILE = 2.4;
 const vec2 TOY_PEBBLE_SEED = vec2(8.3, 4.1);
 const vec2 TOY_PEBBLE_BLEND = vec2(0.2, 0.8);
 
-const int TOY_STRATA_COUNT = 4;
-const vec3 TOY_STRATA[TOY_STRATA_COUNT] = vec3[TOY_STRATA_COUNT](
-	vec3(0.95, 0.66, 0.76),
-	vec3(0.76, 0.69, 0.93),
-	vec3(0.99, 0.82, 0.6),
-	vec3(0.62, 0.86, 0.9)
-);
+const vec3 TOY_STRATA[TOY_STRATA_COUNT] = TOY_STRATA_TONES;
 
 const int CROP_COUNT = 6;
 const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
@@ -332,7 +306,6 @@ const vec2 LITTER_DENSITY = vec2(0.3, 0.8);
 const vec2 LITTER_PATCH_EDGES = vec2(0.3, 0.7);
 const float LITTER_PATCHINESS = 0.45;
 const float LITTER_VARIETY = 0.2;
-const vec3 LITTER_MOSS = vec3(0.29, 0.35, 0.17);
 const float MOSS_PATCHES_PER_TILE = 1.6;
 const vec2 MOSS_EDGES = vec2(0.55, 0.8);
 const float MOSS_SEED = 4.3;

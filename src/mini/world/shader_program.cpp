@@ -37,6 +37,7 @@
 #include "../map/way_bends.h"
 #include "../map/world_tiles.h"
 #include "../map/zoom_detail.h"
+#include "bare_ground.h"
 #include "flow_field.h"
 #include "forest_field.h"
 #include "frame_units.h"
@@ -76,6 +77,11 @@ static void DefineInt(std::string &header, std::string_view name, int value)
 static void DefineFloat(std::string &header, std::string_view name, double value)
 {
 	header += fmt::format("#define {} {:.6f}\n", name, value);
+}
+
+static std::string Pair(double x, double y)
+{
+	return fmt::format("vec2({:.4f}, {:.4f})", x, y);
 }
 
 static std::string Vector(double x, double y, double z)
@@ -245,6 +251,29 @@ static std::string ShaderHeader()
 	DefineFloat(header, "SHADOW_LEAST_OFFSET_SHARE", ShadowMap::LEAST_OFFSET_SHARE);
 	DefineFloat(header, "SHADOW_GRAZING_OFFSET_SHARE", ShadowMap::GRAZING_OFFSET_SHARE);
 	DefineFloat(header, "SHADOW_CASCADE_BLEND", ShadowMap::CASCADE_BLEND);
+	DefineFloat(header, "STANDARD_SLOPE", STANDARD_SLOPE);
+	DefineFloat(header, "STEEPEST_SLOPE", STEEPEST_SLOPE);
+	DefineFloat(header, "ALPINE_ALTITUDE", ALPINE_ALTITUDE);
+	DefineFloat(header, "STEEP_BARING", STEEP_BARING);
+	DefineFloat(header, "SHED_BARING", SHED_BARING);
+	DefineFloat(header, "ALPINE_BARING", ALPINE_BARING);
+	DefineFloat(header, "SCREE_EXPOSURE", SCREE_EXPOSURE);
+	DefineFloat(header, "TOY_BARING", TOY_BARING);
+	DefineFloat(header, "ROCK_EXPOSURE", ROCK_EXPOSURE);
+	DefineFloat(header, "EXPOSURE_BLEND", EXPOSURE_BLEND);
+	DefineFloat(header, "MIN_RELIEF_SPAN", MIN_RELIEF_SPAN);
+	DefineFloat(header, "STRATA_PER_LEVEL", STRATA_PER_LEVEL);
+	DefineFloat(header, "TOY_STRATA_PER_LEVEL", TOY_STRATA_PER_LEVEL);
+	DefineFloat(header, "LAYER_VARIETY", LAYER_VARIETY);
+	DefineVector(header, "STRATA_DIP", Pair(STRATA_DIP.x, STRATA_DIP.y));
+	DefineTone(header, "ROCK", ROCK_TONE);
+	DefineTone(header, "ROCK_WARM", ROCK_WARM_TONE);
+	DefineTone(header, "SCREE", SCREE_TONE);
+	DefineTone(header, "CAP_SNOW", CAP_SNOW_TONE);
+	DefineTone(header, "DRY_SAND", DRY_SAND_TONE);
+	DefineTone(header, "LITTER_MOSS", LITTER_MOSS_TONE);
+	DefineTones(header, "TOY_STRATA_TONES", TOY_STRATA_TONES);
+	DefineInt(header, "TOY_STRATA_COUNT", static_cast<int>(TOY_STRATA_TONES.size()));
 	return header;
 }
 

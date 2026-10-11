@@ -1,5 +1,6 @@
 add_files(
     aircraft_models.cpp
+    bare_ground.h
     block_scatter.cpp
     block_scatter.h
     bridge_models.cpp
