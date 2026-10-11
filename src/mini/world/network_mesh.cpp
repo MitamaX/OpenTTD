@@ -53,6 +53,12 @@ static double SignalSide()
 	}
 }
 
+static bool HasRoadArm(TileIndex tile, DiagDirection side)
+{
+	if (IsBridgeTile(tile)) return GetTunnelBridgeTransportType(tile) == TRANSPORT_ROAD && HasTileRoadType(tile, RTT_ROAD) && side == ReverseDiagDir(GetTunnelBridgeDirection(tile));
+	return (static_cast<RoadBits>(_world_tiles.NetworkAt(tile).road) & DiagDirToRoadBits(side)) != ROAD_NONE;
+}
+
 static RoadBits StrayArms(int tx, int ty, RoadBits road)
 {
 	RoadBits stray = ROAD_NONE;
@@ -62,7 +68,7 @@ static RoadBits StrayArms(int tx, int ty, RoadBits road)
 		MapVector out = Outward(side);
 		int nx = tx + static_cast<int>(out.x);
 		int ny = ty + static_cast<int>(out.y);
-		bool met = OnMap(nx, ny) && (static_cast<RoadBits>(_world_tiles.NetworkAt(TileXY(nx, ny)).road) & DiagDirToRoadBits(ReverseDiagDir(side))) != ROAD_NONE;
+		bool met = OnMap(nx, ny) && HasRoadArm(TileXY(nx, ny), ReverseDiagDir(side));
 		if (!met) stray |= arm;
 	}
 	return stray;
