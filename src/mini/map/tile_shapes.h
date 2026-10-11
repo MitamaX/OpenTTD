@@ -36,6 +36,7 @@ public:
 
 	double Level(double x, double y) const override;
 	bool Curves() const override { return false; }
+	int Divisions(double) const override { return 1; }
 	double Lowest() const;
 	WorldPoint At(double x, double y) const { return {x, y, this->Level(x, y)}; }
 	WorldPoint At(TilePoint at) const { return this->At(at.first, at.second); }
@@ -71,6 +72,26 @@ public:
 private:
 	TileSpan tiles;
 	std::unique_ptr<GroundSpan> span;
+};
+
+/* The tiles of an area that can show, with the ground they share. */
+class ShownTiles {
+public:
+	static std::optional<ShownTiles> Of(const TileSpan &area);
+
+	template <typename Visit>
+	void ForEach(Visit visit) const
+	{
+		this->tiles.ForEach(visit);
+	}
+
+	void Fill(int tx, int ty, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA) const;
+
+private:
+	explicit ShownTiles(const TileSpan &tiles) : tiles(tiles), ground(tiles) {}
+
+	TileSpan tiles;
+	DrawnGround ground;
 };
 
 /* The upright face where a tile's own edge stands above its neighbour's, its corners going round counterclockwise as seen from outside. */

@@ -24,7 +24,6 @@
 
 static constexpr double HALF_PIXEL = 0.5;
 static constexpr double GROUND_PATH_STEP = 0.5;
-static constexpr int CURVED_SHAPE_DIVISIONS = 4;
 static constexpr int GROUND_PATH_REACH = 8;
 
 /* A stroke's half width once it keeps a pixel across, and the alpha it fades to for the width it lacks. */
@@ -86,7 +85,11 @@ DrawnTile::DrawnTile(std::unique_ptr<DrawnSurface> surface, int tx, int ty) : su
 
 int DrawnTile::Divisions() const
 {
-	return this->surface->Curves() ? CURVED_SHAPE_DIVISIONS : 1;
+	SurfaceTexel ground = _world_tiles.SurfaceAt(TileXY(this->tx, this->ty));
+	double rise = LevelRise();
+	Vec3 low = {static_cast<double>(this->tx), static_cast<double>(this->ty), ground.Lowest() * rise};
+	Vec3 high = {this->tx + 1.0, this->ty + 1.0, ground.Highest() * rise};
+	return this->surface->Divisions(_camera.EyeLens().NearestTilePixels(low, high));
 }
 
 DrawnGround::DrawnGround(const TileSpan &tiles) : tiles(tiles), span(GroundOver(tiles))
@@ -212,11 +215,15 @@ static VisibleStroke Widened(MapVector along, double half_width, uint alpha)
 static void FillOn(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha)
 {
 	int divisions = tile.Divisions();
+	int row = divisions + 1;
+	std::vector<WorldPoint> lattice;
+	lattice.reserve(static_cast<size_t>(row) * row);
+	for (int down = 0; down <= divisions; down++) {
+		for (int across = 0; across <= divisions; across++) lattice.push_back(tile.At(tx + static_cast<double>(across) / divisions, ty + static_cast<double>(down) / divisions));
+	}
+	auto at = [&](int across, int down) { return lattice[static_cast<size_t>(down) * row + across]; };
 	for (int j = 0; j < divisions; j++) {
-		for (int i = 0; i < divisions; i++) {
-			auto at = [&](int across, int down) { return tile.At(tx + static_cast<double>(i + across) / divisions, ty + static_cast<double>(j + down) / divisions); };
-			_canvas.FillWorldQuad({at(0, 0), at(1, 0), at(1, 1), at(0, 1)}, c, alpha);
-		}
+		for (int i = 0; i < divisions; i++) _canvas.FillWorldQuad({at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)}, c, alpha);
 	}
 }
 
@@ -225,15 +232,23 @@ void FillTile(int tx, int ty, uint32_t c, uint alpha)
 	FillOn(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), tx, ty, c, alpha);
 }
 
-void FillArea(int tx0, int ty0, int tx1, int ty1, uint32_t c, uint alpha)
+std::optional<ShownTiles> ShownTiles::Of(const TileSpan &area)
 {
 	TileSpan seen = _camera.VisibleTiles();
-	TileSpan shown = {std::max(tx0, seen.tx0), std::max(ty0, seen.ty0), std::min(tx1, seen.tx1), std::min(ty1, seen.ty1)};
-	if (shown.tx0 > shown.tx1 || shown.ty0 > shown.ty1) return;
-	DrawnGround ground(shown);
-	for (int tx = shown.tx0; tx <= shown.tx1; tx++) {
-		for (int ty = shown.ty0; ty <= shown.ty1; ty++) FillOn(ground.Tile(tx, ty), tx, ty, c, alpha);
-	}
+	TileSpan shown = {std::max(area.tx0, seen.tx0), std::max(area.ty0, seen.ty0), std::min(area.tx1, seen.tx1), std::min(area.ty1, seen.ty1)};
+	if (shown.tx0 > shown.tx1 || shown.ty0 > shown.ty1) return std::nullopt;
+	return ShownTiles(shown);
+}
+
+void ShownTiles::Fill(int tx, int ty, uint32_t c, uint alpha) const
+{
+	FillOn(this->ground.Tile(tx, ty), tx, ty, c, alpha);
+}
+
+void FillArea(int tx0, int ty0, int tx1, int ty1, uint32_t c, uint alpha)
+{
+	std::optional<ShownTiles> shown = ShownTiles::Of({tx0, ty0, tx1, ty1});
+	if (shown.has_value()) shown->ForEach([&](int tx, int ty) { shown->Fill(tx, ty, c, alpha); });
 }
 
 static bool SamePoint(const WorldPoint &a, const WorldPoint &b)
@@ -297,6 +312,7 @@ std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to)
 	std::vector<WorldPoint> path;
 	path.reserve(steps + 1);
 	std::optional<DrawnGround> ground;
+	std::optional<DrawnTile> tile;
 	for (int step = 0; step <= steps; step++) {
 		double share = static_cast<double>(step) / steps;
 		double x = from.first + (to.first - from.first) * share;
@@ -304,7 +320,8 @@ std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to)
 		int tx = ClampedTile(x, Map::MaxX());
 		int ty = ClampedTile(y, Map::MaxY());
 		if (!ground.has_value() || !ground->Holds(tx, ty)) ground.emplace(TileSpan{tx - GROUND_PATH_REACH, ty - GROUND_PATH_REACH, tx + GROUND_PATH_REACH, ty + GROUND_PATH_REACH});
-		path.push_back(ground->Tile(tx, ty).At(x, y));
+		if (!tile.has_value() || !tile->Is(tx, ty)) tile.emplace(ground->Tile(tx, ty));
+		path.push_back(tile->At(x, y));
 	}
 	return path;
 }
@@ -325,7 +342,15 @@ void FillGroundStroke(const DrawnTile &tile, TilePoint from, TilePoint to, doubl
 		double share = static_cast<double>(step) / divisions;
 		return tile.At(std::lerp(from_x, to_x, share) + side_x * side, std::lerp(from_y, to_y, share) + side_y * side);
 	};
-	for (int step = 0; step < divisions; step++) _canvas.FillWorldQuad({at(step, -1.0), at(step, 1.0), at(step + 1, 1.0), at(step + 1, -1.0)}, c, stroke.alpha);
+	WorldPoint left = at(0, -1.0);
+	WorldPoint right = at(0, 1.0);
+	for (int step = 1; step <= divisions; step++) {
+		WorldPoint next_left = at(step, -1.0);
+		WorldPoint next_right = at(step, 1.0);
+		_canvas.FillWorldQuad({left, right, next_right, next_left}, c, stroke.alpha);
+		left = next_left;
+		right = next_right;
+	}
 }
 
 void DrawTrackPiece(Track track, int tx, int ty, double half_width, uint32_t c, uint alpha)

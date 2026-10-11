@@ -22,6 +22,11 @@
 inline constexpr int LANDFORM_REACH = 2;
 inline constexpr int ROLL_SPREAD = 1;
 inline constexpr double CREST_WAVE = 0.15;
+inline constexpr int FINE_RELIEF_DIVISIONS = 2;
+inline constexpr double RELIEF_CELL_PIXELS = 32.0;
+inline constexpr double FINE_RELIEF_PIXELS = RELIEF_CELL_PIXELS * FINE_RELIEF_DIVISIONS;
+inline constexpr double FINE_RELIEF_LEAD = 1.25;
+inline constexpr double FINE_RELIEF_KEPT_PIXELS = FINE_RELIEF_PIXELS / (FINE_RELIEF_LEAD * FINE_RELIEF_LEAD);
 
 class Landform {
 public:
@@ -83,6 +88,7 @@ public:
 
 	double Level(double x, double y) const override { return this->relief.Level(x, y); }
 	bool Curves() const override { return true; }
+	int Divisions(double tile_pixels) const override { return tile_pixels >= FINE_RELIEF_KEPT_PIXELS ? FINE_RELIEF_DIVISIONS : 1; }
 
 private:
 	std::shared_ptr<const Landform> land;

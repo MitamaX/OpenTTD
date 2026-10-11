@@ -70,11 +70,9 @@ SceneView SceneView::Of(const Camera &camera)
 	view.projection = camera.ProjectionMatrix();
 	view.view_projection = view.projection * view.view;
 	view.frustum = FrustumOf(view.view_projection);
-	view.eye = camera.Eye();
+	static_cast<Lens &>(view) = camera.EyeLens();
 	view.sun = Sun();
-	view.focal = camera.Focal();
 	view.focus_pixels = camera.Ppt();
-	view.near = camera.Near();
 	view.far = camera.Far();
 	view.focus = camera.FocusDistance();
 	view.fog_start = std::min(view.focus * FOG_START_SHARE, view.far);
@@ -98,23 +96,6 @@ SceneView SceneView::Jittered(double x_pixels, double y_pixels, uint phase) cons
 bool SceneView::Sees(const Vec3 &low, const Vec3 &high) const
 {
 	return Sight(*this).Sees(low, high);
-}
-
-double SceneView::TilePixelsAt(double distance) const
-{
-	return this->focal / std::max(distance, this->near);
-}
-
-/* Where a box comes nearest the eye. */
-Vec3 SceneView::NearestPoint(const Vec3 &low, const Vec3 &high) const
-{
-	return {std::clamp(this->eye.x, low.x, high.x), std::clamp(this->eye.y, low.y, high.y), std::clamp(this->eye.z, low.z, high.z)};
-}
-
-/* Tile pixels where a box comes nearest the eye. */
-double SceneView::NearestTilePixels(const Vec3 &low, const Vec3 &high) const
-{
-	return this->TilePixelsAt(Length(this->eye - this->NearestPoint(low, high)));
 }
 
 double SceneView::Reach() const
@@ -195,7 +176,7 @@ void SceneUniforms::Upload(const SceneView &view)
 		view.view_projection.Floats(),
 		floats(view.eye.x, view.eye.y, view.eye.z, 1.0),
 		floats(view.sun.x, view.sun.y, view.sun.z, 1.0 / SunRise(view.sun)),
-		floats(view.near, view.far, view.fog_start, view.focus),
+		floats(view.near_plane, view.far, view.fog_start, view.focus),
 		floats(map.width, map.height, _world_tiles.Peak(), LevelRise()),
 		floats(view.viewport.width, view.viewport.height, view.clock, view.phase),
 		floats(SnowLine(), 0.0, 0.0, 0.0),

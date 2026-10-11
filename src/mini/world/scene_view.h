@@ -24,16 +24,13 @@ struct ViewSpread {
 };
 
 /* Render space runs along map X and Y in tiles, with heights raised by the level rise. */
-struct SceneView {
+struct SceneView : Lens {
 	Mat4 view;
 	Mat4 projection;
 	Mat4 view_projection;
 	Frustum frustum;
-	Vec3 eye;
 	Vec3 sun;
-	double focal;
 	double focus_pixels;
-	double near;
 	double far;
 	double focus;
 	double fog_start;
@@ -46,9 +43,6 @@ struct SceneView {
 
 	SceneView Jittered(double x_pixels, double y_pixels, uint phase) const;
 	bool Sees(const Vec3 &low, const Vec3 &high) const;
-	double TilePixelsAt(double distance) const;
-	Vec3 NearestPoint(const Vec3 &low, const Vec3 &high) const;
-	double NearestTilePixels(const Vec3 &low, const Vec3 &high) const;
 	/* How far from the eye the corners of the far plane lie, beyond which nothing shows. */
 	double Reach() const;
 	Vec3 Back() const { return {this->view.At(2, 0), this->view.At(2, 1), this->view.At(2, 2)}; }

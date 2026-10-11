@@ -29,10 +29,6 @@ static constexpr double OUTER_SEA_REACH = 8192.0;
 static constexpr double FINEST_CELL_PIXELS = NETWORK_FADE_START;
 static constexpr int COARSEST_STEP = 8;
 static constexpr GroundGrain COARSEST_GRAIN = {COARSEST_STEP, {}};
-static constexpr double RELIEF_CELL_PIXELS = 32.0;
-static constexpr double FINE_RELIEF_PIXELS = RELIEF_CELL_PIXELS * FINE_RELIEF_DIVISIONS;
-static constexpr double FINE_RELIEF_LEAD = 1.25;
-static constexpr double FINE_RELIEF_KEPT_PIXELS = FINE_RELIEF_PIXELS / (FINE_RELIEF_LEAD * FINE_RELIEF_LEAD);
 
 /* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles. */
 static int StepFor(double tile_pixels)

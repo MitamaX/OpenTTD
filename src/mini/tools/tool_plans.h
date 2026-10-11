@@ -79,13 +79,12 @@ struct AreaPlan {
 	size_t Index(int tx, int ty) const;
 	void Span(TileIndex anchor, TileIndex cursor, int limit);
 	void Clear() { this->valid = false; }
+	TileSpan Region() const { return {this->x0, this->y0, this->x1, this->y1}; }
 
 	template <typename Visit>
 	void ForEach(Visit visit) const
 	{
-		for (int tx = this->x0; tx <= this->x1; tx++) {
-			for (int ty = this->y0; ty <= this->y1; ty++) visit(tx, ty);
-		}
+		this->Region().ForEach(visit);
 	}
 };
 

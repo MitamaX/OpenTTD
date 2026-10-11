@@ -105,9 +105,24 @@ double SmoothStep(double edge0, double edge1, double x)
 	return t * t * (3.0 - 2.0 * t);
 }
 
+Vec3 Lens::NearestPoint(const Vec3 &low, const Vec3 &high) const
+{
+	return {std::clamp(this->eye.x, low.x, high.x), std::clamp(this->eye.y, low.y, high.y), std::clamp(this->eye.z, low.z, high.z)};
+}
+
+double Lens::NearestTilePixels(const Vec3 &low, const Vec3 &high) const
+{
+	return this->TilePixelsAt(Length(this->eye - this->NearestPoint(low, high)));
+}
+
 Camera::Camera()
 {
 	this->FaceNorth();
+}
+
+Lens Camera::EyeLens() const
+{
+	return {this->eye, this->Focal(), this->near_plane};
 }
 
 int Camera::TilePixels() const

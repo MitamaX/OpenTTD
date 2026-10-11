@@ -10,6 +10,7 @@
 #ifndef MINI_CORE_CAMERA_H
 #define MINI_CORE_CAMERA_H
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <optional>
@@ -102,6 +103,27 @@ struct TileSpan {
 	int ty1;
 
 	bool Holds(int tx, int ty) const { return tx >= this->tx0 && ty >= this->ty0 && tx <= this->tx1 && ty <= this->ty1; }
+
+	template <typename Visit>
+	void ForEach(Visit visit) const
+	{
+		for (int tx = this->tx0; tx <= this->tx1; tx++) {
+			for (int ty = this->ty0; ty <= this->ty1; ty++) visit(tx, ty);
+		}
+	}
+};
+
+/* The eye and the lens it looks through, which size a tile by how far off it stands. */
+struct Lens {
+	Vec3 eye;
+	double focal;
+	double near_plane;
+
+	double TilePixelsAt(double distance) const { return this->focal / std::max(distance, this->near_plane); }
+	/* Where a box comes nearest the eye. */
+	Vec3 NearestPoint(const Vec3 &low, const Vec3 &high) const;
+	/* Tile pixels where a box comes nearest the eye. */
+	double NearestTilePixels(const Vec3 &low, const Vec3 &high) const;
 };
 
 double GroundLevel(double tx, double ty);
@@ -124,6 +146,7 @@ public:
 	void SetPeak(uint level) { this->peak = level; }
 
 	const Vec3 &Eye() const { return this->eye; }
+	Lens EyeLens() const;
 	double Focal() const;
 	double FocusDistance() const;
 	double Near() const { return this->near_plane; }

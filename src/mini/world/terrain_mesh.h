@@ -69,7 +69,6 @@ private:
 };
 
 inline constexpr int GROUND_BLOCK_TILES = 32;
-inline constexpr int FINE_RELIEF_DIVISIONS = 2;
 
 using BlockTiles = std::bitset<GROUND_BLOCK_TILES * GROUND_BLOCK_TILES>;
 

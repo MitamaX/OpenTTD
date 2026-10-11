@@ -183,9 +183,9 @@ bool ShadowMap::Cascade::Holds(const Cascade &slice) const
 /* Must match where the shaders start handing over to a cascade, which count the first cascade's slice from the eye. */
 static double DecidedFrom(const SceneView &camera, double reach, int index)
 {
-	if (index == 0) return camera.near;
-	double before = index > 1 ? SplitDistance(camera.near, reach, index - 1) : 0.0;
-	return std::lerp(before, SplitDistance(camera.near, reach, index), 1.0 - ShadowMap::CASCADE_BLEND);
+	if (index == 0) return camera.near_plane;
+	double before = index > 1 ? SplitDistance(camera.near_plane, reach, index - 1) : 0.0;
+	return std::lerp(before, SplitDistance(camera.near_plane, reach, index), 1.0 - ShadowMap::CASCADE_BLEND);
 }
 
 double ShadowMap::LookupReach(double texel)
@@ -198,10 +198,10 @@ std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneVi
 {
 	std::array<Cascade, CASCADES> cascades;
 	Mat4 sun_view = SunView(camera.sun);
-	double reach = std::max(camera.shadow_reach, camera.near * 2.0);
+	double reach = std::max(camera.shadow_reach, camera.near_plane * 2.0);
 	for (int index = 0; index < CASCADES; index++) {
 		double margin = index < FRESH_CASCADES ? 0.0 : TURN_MARGIN;
-		cascades[index] = this->FitSlice(camera, sun_view, SplitDistance(camera.near, reach, index), SplitDistance(camera.near, reach, index + 1), margin);
+		cascades[index] = this->FitSlice(camera, sun_view, SplitDistance(camera.near_plane, reach, index), SplitDistance(camera.near_plane, reach, index + 1), margin);
 		cascades[index].Decide(camera, DecidedFrom(camera, reach, index), margin);
 	}
 	return cascades;

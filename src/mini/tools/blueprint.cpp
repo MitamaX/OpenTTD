@@ -135,12 +135,6 @@ static void PaintSignals(const SignalPlan &plan, int ppt)
 	}
 }
 
-static AreaPlan VisiblePart(const AreaPlan &area)
-{
-	TileSpan seen = _camera.VisibleTiles();
-	return {true, std::max(area.x0, seen.tx0), std::max(area.y0, seen.ty0), std::min(area.x1, seen.tx1), std::min(area.y1, seen.ty1)};
-}
-
 static void PaintArea(MiniTool kind, const AreaPlan &area, int ppt)
 {
 	if (!area.valid) return;
@@ -150,20 +144,23 @@ static void PaintArea(MiniTool kind, const AreaPlan &area, int ppt)
 	 * that come off and the frame keeps showing how far the drag reaches. The
 	 * area can be the whole map, so only what is on screen is walked. */
 	bool filtered = _tool.FiltersClear();
-	VisiblePart(area).ForEach([&](int tx, int ty) {
-		if (!filtered || _clear_filter.Matches(TileXY(tx, ty))) FillTile(tx, ty, c, FILL_ALPHA);
-	});
+	std::optional<ShownTiles> shown = ShownTiles::Of(area.Region());
+	if (shown.has_value()) {
+		shown->ForEach([&](int tx, int ty) {
+			if (!filtered || _clear_filter.Matches(TileXY(tx, ty))) shown->Fill(tx, ty, c, FILL_ALPHA);
+		});
+	}
 	FrameArea(area.x0, area.y0, area.x1, area.y1, EdgeWidth(ppt), c);
 
 	/* A refused patch is painted over the area, so the run shows its holes
 	 * before the drag is let go. */
-	if (_estimate.FitsPerTile()) {
-		area.ForEach([&](int tx, int ty) {
+	if (shown.has_value() && _estimate.FitsPerTile()) {
+		shown->ForEach([&](int tx, int ty) {
 			if (_estimate.Fits(area.Index(tx, ty))) return;
 			/* Outside the filter is not a hole; nothing was going to come
 			 * off there in the first place. */
 			if (filtered && !_clear_filter.Matches(TileXY(tx, ty))) return;
-			FillTile(tx, ty, COL_BP_NO, HOLE_ALPHA);
+			shown->Fill(tx, ty, COL_BP_NO, HOLE_ALPHA);
 		});
 	}
 

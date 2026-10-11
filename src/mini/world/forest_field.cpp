@@ -141,7 +141,7 @@ private:
 	double nearest;
 };
 
-ForestField::DetailReach::DetailReach(const SceneView &camera, TreeDetail coarsest) : coarsest(static_cast<size_t>(coarsest)), nearest(camera.near * camera.near)
+ForestField::DetailReach::DetailReach(const SceneView &camera, TreeDetail coarsest) : coarsest(static_cast<size_t>(coarsest)), nearest(camera.near_plane * camera.near_plane)
 {
 	auto squared_reach = [&](double tile_pixels) { return camera.focal * camera.focal / (tile_pixels * tile_pixels); };
 	for (size_t detail = 0; detail < TREE_DETAILS; detail++) {
