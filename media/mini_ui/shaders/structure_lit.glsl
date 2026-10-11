@@ -155,7 +155,7 @@ vec4 CladRadiance(Clad clad, vec3 normal, mat3 frame)
 	vec3 light = clad.glass < 1.0 ? SurfaceLight(albedo, Surroundings(mirror_way), normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, lighting, lighting.sun) : vec3(0.0);
 	if (clad.glass > 0.0) {
 		ivec2 own = Coated() ? AnchorAt(ivec2(floor(v_position.xy - frame[2].xy * FACE_INSET))) : NO_ANCHOR;
-		vec3 reflection = Mirrored(v_position, frame[2], mirror_way, own, roughness, clouds, Coated());
+		vec3 reflection = Mirrored(v_position, frame[2], mirror_way, own, roughness, clouds);
 		light = mix(light, PaneLight(PaneOf(albedo, clad), reflection, normal, view, roughness, occlusion, lighting), clad.glass);
 	}
 	return vec4(light + albedo * clad.glow, AmbientShare(lighting.ambient, lighting.sun));

@@ -26,12 +26,24 @@ float GroundBelow(vec2 at)
 	return FacetLevel(SurfaceOf(tile), clamp(at - vec2(tile), 0.0, 1.0)) * LevelRise();
 }
 
+float RunToGround(vec3 from, vec3 way)
+{
+	return max(from.z - GroundBelow(from.xy), LEAST_RISE) / -way.z;
+}
+
 vec3 Beyond(vec3 from, vec3 way)
 {
 	if (way.z >= 0.0) return CloudedSky(way, MIRRORED_CLOUD_OCTAVES);
-	float rise = max(from.z - GroundBelow(from.xy), LEAST_RISE);
 	vec3 town = DISTANT_TOWN * (Sunlight(UPWARD, 1.0) + AmbientLight(UPWARD));
-	return Hazed(town, way, from, from + way * (rise / -way.z));
+	return Hazed(town, way, from, from + way * RunToGround(from, way));
+}
+
+Sighting Landed(vec3 from, vec3 way)
+{
+	if (way.z >= 0.0) return Unsighted(from, ivec2(floor(from.xy)));
+	float run = RunToGround(from, way);
+	vec3 point = from + way * run;
+	return Sighting(SEEN_GROUND, point, UPWARD, run, Clamped(ivec2(floor(point.xy))), NO_BOX, uvec4(0u));
 }
 
 float CanyonOpenness(float above_foot)
@@ -113,14 +125,14 @@ vec3 LitAt(Seen seen, vec3 point, float clouds)
 	return seen.albedo * (Sunlight(seen.normal, sunlit) + AmbientLight(seen.normal) * seen.openness) + seen.sheen;
 }
 
-vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float clouds, bool traces)
+vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float clouds)
 {
 	vec3 from = point + face * MIRRORED_LIFT;
 	float far = distance(Eye(), from);
-	float traced = traces ? smoothstep(MIRRORED_TRACED_PIXELS.x, MIRRORED_TRACED_PIXELS.y, TilePixelsAt(far)) : 0.0;
+	float traced = smoothstep(MIRRORED_TRACED_PIXELS.x, MIRRORED_TRACED_PIXELS.y, TilePixelsAt(far));
 	vec4 near = vec4(0.0);
 	if (traced > 0.0) {
-		Sighting sighting = Traced(from, way, own);
+		Sighting sighting = own != NO_ANCHOR ? Traced(from, way, own) : Landed(from, way);
 		if (sighting.seen != SEEN_NOTHING) {
 			float blur = 1.0 / TilePixelsAt(far + sighting.run) + roughness * roughness * sighting.run;
 			Seen seen = SeenAt(sighting, way, blur);

@@ -123,16 +123,15 @@ Sighting Traced(vec3 from, vec3 way, ivec2 own)
 		bool across_x = next.x < next.y;
 		float leave = across_x ? next.x : next.y;
 		uvec4 texel = texelFetch(u_massing, cell, 0);
-		if (AnchorOf(cell, texel.w) != own) {
-			Corners ground = SurfaceOf(cell);
-			float lowest = LowestCorner(ground);
-			float sunk = way.z < 0.0 ? (lowest * LevelRise() - from.z) / way.z : leave;
-			vec2 span = vec2(enter, min(leave, sunk));
-			Sighting met = texel.x != 0u ? MetBox(from, way, span, BoxOf(cell, texel, lowest), inverse, cell, texel) : Unsighted(from, cell);
-			float landed = MetGround(from, way, span, ground, cell);
-			if (landed >= 0.0 && (met.seen == SEEN_NOTHING || landed < met.run)) return Sighting(SEEN_GROUND, from + way * landed, UPWARD, landed, cell, NO_BOX, texel);
-			if (met.seen != SEEN_NOTHING || sunk < leave) return met;
-		}
+		Corners ground = SurfaceOf(cell);
+		float lowest = LowestCorner(ground);
+		float sunk = way.z < 0.0 ? (lowest * LevelRise() - from.z) / way.z : leave;
+		vec2 span = vec2(enter, min(leave, sunk));
+		bool standing = texel.x != 0u && AnchorOf(cell, texel.w) != own;
+		Sighting met = standing ? MetBox(from, way, span, BoxOf(cell, texel, lowest), inverse, cell, texel) : Unsighted(from, cell);
+		float landed = MetGround(from, way, span, ground, cell);
+		if (landed >= 0.0 && (met.seen == SEEN_NOTHING || landed < met.run)) return Sighting(SEEN_GROUND, from + way * landed, UPWARD, landed, cell, NO_BOX, texel);
+		if (met.seen != SEEN_NOTHING || sunk < leave) return met;
 		enter = leave;
 		cell += across_x ? ivec2(stride.x, 0) : ivec2(0, stride.y);
 		next += across_x ? vec2(per_cell.x, 0.0) : vec2(0.0, per_cell.y);
