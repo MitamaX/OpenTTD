@@ -327,7 +327,7 @@ Sight PieceSeen(Sight sight, Room room, Shell shell, Sightline line, int slot)
 	return Sight(paint * shade, line.from + line.shift * sunk, sunk, false);
 }
 
-Clad RoomSeen(Room room, Bay bay, Elevation elevation)
+Clad RoomSeen(Room room, Bay bay, Elevation elevation, Opening unscreened)
 {
 	Shell shell = ShellOf(room, bay, elevation.grid);
 	vec2 shift = SightShift(elevation.outlook);
@@ -337,7 +337,7 @@ Clad RoomSeen(Room room, Bay bay, Elevation elevation)
 	float lamp_depth = shell.depth * LAMP_DEPTH_SHARE;
 	bool glowing = sight.overhead && UnderCeilingLamp(room, vec2(sight.hit.x, sight.sunk), shell.span, lamp_depth);
 	vec3 lamp = glowing ? room.lamp * CEILING_LAMP_GLOW : LampLightAt(room, vec3(sight.hit, sight.sunk), vec3(0.0, shell.high.y, lamp_depth));
-	float sunbeam = SUNBEAM_LIGHT * SunThrough(Unscreened(bay.opening, room), sight.hit, sight.sunk, elevation.outlook.sun);
+	float sunbeam = SUNBEAM_LIGHT * SunThrough(unscreened, sight.hit, sight.sunk, elevation.outlook.sun);
 	return PaneOver(sight.surface * room.tone, mix(1.0, ROOM_FAR_LIGHT, sight.sunk / DEEPEST_ROOM), sunbeam, lamp);
 }
 
@@ -354,12 +354,12 @@ Clad Drape(vec3 paint, Room room)
 
 Clad SeenThrough(Room room, Bay bay, Elevation elevation)
 {
-	Opening opening = bay.opening;
-	if (bay.at.y > opening.height * (1.0 - room.drop)) return Drape(BlindPaint(room), room);
-	if (abs(bay.at.x) > opening.width * (0.5 - room.drawn)) return Drape(CurtainPaint(room), room);
+	Opening unscreened = Unscreened(bay.opening, room);
+	if (bay.at.y > unscreened.height) return Drape(BlindPaint(room), room);
+	if (abs(bay.at.x) > unscreened.width * 0.5) return Drape(CurtainPaint(room), room);
 	float resolved = 1.0 - smoothstep(ROOM_RESOLVED_PIXELS.x, ROOM_RESOLVED_PIXELS.y, elevation.pixel);
 	if (resolved <= 0.0) return RoomMean(room);
-	Clad seen = RoomSeen(room, bay, elevation);
+	Clad seen = RoomSeen(room, bay, elevation, unscreened);
 	return resolved >= 1.0 ? seen : Mixed(RoomMean(room), seen, resolved);
 }
 
