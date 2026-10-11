@@ -184,6 +184,7 @@ const float OUTCROPS_PER_TILE = 0.9;
 const float STONE_PATCHES_PER_TILE = 1.7;
 const float STONE_GAPS = 0.3;
 const float PALE_STONE = 1.15;
+const float STONE_BED_SHADE = 0.85;
 const float BOULDERS_PER_TILE = 5.5;
 const float GULLIES_PER_TILE = 2.8;
 const float GULLY_WANDER = 1.5;
@@ -866,8 +867,9 @@ Patch Rocks(Site site)
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
 	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
-	vec3 strewn = mix(Meadow(site), bare.scree * PALE_STONE, stones);
-	return Patch(mix(strewn, bare.rock * PALE_STONE, outcrop), mix(mix(GRASS_RUGGED, StoneRugged(SCREE_RUGGED), patches), StoneRugged(ROCK_RUGGED), outcrop));
+	float paleness = mix(PALE_STONE, STONE_BED_SHADE, smoothstep(ROCK_SHOWN_PIXELS, ROCK_SOLID_PIXELS, TilePixelsAt(RenderPoint(v_world))));
+	vec3 strewn = mix(Meadow(site), bare.scree * paleness, stones);
+	return Patch(mix(strewn, bare.rock * paleness, outcrop), mix(mix(GRASS_RUGGED, StoneRugged(SCREE_RUGGED), patches), StoneRugged(ROCK_RUGGED), outcrop));
 }
 
 /* A field's crop grows in rows across it, ripening and thinning unevenly, with bare soil between the rows and a pair of wheel tracks every so often;

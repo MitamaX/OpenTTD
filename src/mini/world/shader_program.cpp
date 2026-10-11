@@ -43,6 +43,7 @@
 #include "frame_units.h"
 #include "massing_field.h"
 #include "network_field.h"
+#include "rockfall.h"
 #include "scene_view.h"
 #include "seabed.h"
 #include "shadow_map.h"
@@ -251,6 +252,8 @@ static std::string ShaderHeader()
 	DefineFloat(header, "SHADOW_LEAST_OFFSET_SHARE", ShadowMap::LEAST_OFFSET_SHARE);
 	DefineFloat(header, "SHADOW_GRAZING_OFFSET_SHARE", ShadowMap::GRAZING_OFFSET_SHARE);
 	DefineFloat(header, "SHADOW_CASCADE_BLEND", ShadowMap::CASCADE_BLEND);
+	DefineFloat(header, "ROCK_SHOWN_PIXELS", ROCK_SHOWN_PIXELS);
+	DefineFloat(header, "ROCK_SOLID_PIXELS", ROCK_SOLID_PIXELS);
 	DefineFloat(header, "STANDARD_SLOPE", STANDARD_SLOPE);
 	DefineFloat(header, "STEEPEST_SLOPE", STEEPEST_SLOPE);
 	DefineFloat(header, "ALPINE_ALTITUDE", ALPINE_ALTITUDE);
