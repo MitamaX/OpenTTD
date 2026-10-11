@@ -93,6 +93,8 @@ const float WET_GRAVEL_SHADE = 0.8;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
 const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
+const vec3 TOY_WET_SAND = vec3(0.7, 0.58, 0.5);
+const vec3 TOY_DRY_SAND = vec3(0.95, 0.84, 0.66);
 const vec3 TOY_MINT = vec3(0.5, 0.86, 0.48);
 const float TOY_LAWN_CONTRAST = 0.9;
 const float TOY_LAWN_PLOT_TILES = 3.0;
@@ -561,10 +563,26 @@ vec3 Paving()
 	return Landscape() == LANDSCAPE_TROPIC ? SANDSTONE_PAVING : PAVING;
 }
 
+vec3 ToyOr(vec3 toy, vec3 real)
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? toy : real;
+}
+
 vec3 Soil()
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? TOY_SOIL : SOIL;
+	return ToyOr(TOY_SOIL, SOIL);
 }
+
+vec3 WetSand()
+{
+	return ToyOr(TOY_WET_SAND, WET_SAND);
+}
+
+vec3 DrySand()
+{
+	return ToyOr(TOY_DRY_SAND, DRY_SAND);
+}
+
 
 /* Below the sea the waves scatter the sunlight, so the shadows falling on the bed lighten with the depth of the water over it. */
 vec4 Lit(Shade shade)
@@ -928,17 +946,22 @@ Patch Beach(Site site)
 {
 	Grain grain = site.grain;
 	float lift = ShoreLift(site);
-	vec3 sand = mix(WET_SAND, DRY_SAND, Dried(lift)) * Varied(grain.local, 0.12) * Varied(grain.micro, 0.12);
+	vec3 sand = mix(WetSand(), DrySand(), Dried(lift)) * Varied(grain.local, 0.12) * Varied(grain.micro, 0.12);
 	float grassed = smoothstep(0.45, 0.75, lift + (grain.local - 0.5) * 0.4);
 	return Patch(mix(sand, Meadow(site), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
+vec3 RiprapStone(Bare bare)
+{
+	return ToyOr(bare.scree, mix(bare.scree, ROCK, 0.5));
+}
+
 vec3 Riprap(Site site)
 {
 	vec2 p = site.p;
 	float lumps = smoothstep(0.3, 0.7, Octave(p, BOULDERS_PER_TILE));
-	vec3 stone = mix(site.bare.scree, ROCK, 0.5) * Varied(Octave(p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
+	vec3 stone = RiprapStone(site.bare) * Varied(Octave(p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
 	return stone * mix(0.62, 1.12, lumps) * mix(SPLASH_SHADE, 1.0, Dried(ShoreLift(site)));
 }
 
