@@ -99,7 +99,7 @@ DrawnGround::DrawnGround(const TileSpan &tiles) : tiles(tiles), span(GroundOver(
 
 bool DrawnGround::Holds(int tx, int ty) const
 {
-	return tx >= this->tiles.tx0 && ty >= this->tiles.ty0 && tx <= this->tiles.tx1 && ty <= this->tiles.ty1;
+	return this->tiles.Holds(tx, ty);
 }
 
 WorldPoint Between(const WorldPoint &from, const WorldPoint &to, double share)

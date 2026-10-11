@@ -100,6 +100,8 @@ struct TileSpan {
 	int ty0;
 	int tx1;
 	int ty1;
+
+	bool Holds(int tx, int ty) const { return tx >= this->tx0 && ty >= this->ty0 && tx <= this->tx1 && ty <= this->ty1; }
 };
 
 double GroundLevel(double tx, double ty);

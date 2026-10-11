@@ -11,6 +11,7 @@
 #define MINI_WORLD_TERRAIN_MESH_H
 
 #include <array>
+#include <bitset>
 #include <cstddef>
 #include <vector>
 
@@ -67,9 +68,19 @@ private:
 	std::vector<Known> corners;
 };
 
+inline constexpr int GROUND_BLOCK_TILES = 32;
+inline constexpr int FINE_RELIEF_DIVISIONS = 2;
+
+using BlockTiles = std::bitset<GROUND_BLOCK_TILES * GROUND_BLOCK_TILES>;
+
+inline size_t BlockBit(const TileSpan &block, int tx, int ty)
+{
+	return static_cast<size_t>(ty - block.ty0) * GROUND_BLOCK_TILES + static_cast<size_t>(tx - block.tx0);
+}
+
 struct GroundGrain {
 	int step;
-	int divisions;
+	BlockTiles fine;
 
 	bool operator==(const GroundGrain &) const = default;
 };
@@ -88,6 +99,8 @@ public:
 
 private:
 	void AddTile(int tx, int ty);
+	int DivisionsOf(int tx, int ty) const;
+	bool CutApart(int tx, int ty, int nx, int ny) const;
 
 	TileSpan tiles;
 	GroundGrain grain;

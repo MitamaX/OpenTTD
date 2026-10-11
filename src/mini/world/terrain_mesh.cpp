@@ -274,6 +274,13 @@ static OpenSides OpenSidesOf(const TileSpan &block, const TileSpan &area)
 	};
 }
 
+template <class CutApart>
+static OpenSides ReliefSidesOf(const TileSpan &block, int tx, int ty, CutApart cut_apart)
+{
+	OpenSides open = OpenSidesOf(block, {tx, ty, tx, ty});
+	return {open.low_x || cut_apart(tx - 1, ty), open.high_x || cut_apart(tx + 1, ty), open.low_y || cut_apart(tx, ty - 1), open.high_y || cut_apart(tx, ty + 1)};
+}
+
 static void SkirtOpenSides(TerrainMesh &mesh, std::span<const uint32_t> grid, size_t columns, const OpenSides &open, double drop)
 {
 	size_t rows = grid.size() / columns;
@@ -314,12 +321,23 @@ void TerrainBuild::AddTile(int tx, int ty)
 		return;
 	}
 	if (this->land.Bends(tx, ty)) {
-		int divisions = this->grain.divisions;
+		int divisions = this->DivisionsOf(tx, ty);
 		std::vector<uint32_t> grid = AddRelief(mesh, HillRelief(this->land, tx, ty), corners, tx, ty, divisions);
-		SkirtOpenSides(mesh, grid, divisions + 1, OpenSidesOf(this->tiles, {tx, ty, tx, ty}), RELIEF_SKIRT_LEVELS);
+		OpenSides open = ReliefSidesOf(this->tiles, tx, ty, [&](int nx, int ny) { return this->CutApart(tx, ty, nx, ny); });
+		SkirtOpenSides(mesh, grid, divisions + 1, open, RELIEF_SKIRT_LEVELS);
 		return;
 	}
 	for (const Facet &facet : tile.Facets()) mesh.Triangle(corners[facet[0]], corners[facet[1]], corners[facet[2]]);
+}
+
+int TerrainBuild::DivisionsOf(int tx, int ty) const
+{
+	return this->grain.fine[BlockBit(this->tiles, tx, ty)] ? FINE_RELIEF_DIVISIONS : 1;
+}
+
+bool TerrainBuild::CutApart(int tx, int ty, int nx, int ny) const
+{
+	return this->tiles.Holds(nx, ny) && this->land.Bends(nx, ny) && this->DivisionsOf(nx, ny) != this->DivisionsOf(tx, ty);
 }
 
 static bool StandsInSea(int tx, int ty)

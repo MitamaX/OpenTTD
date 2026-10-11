@@ -28,19 +28,18 @@ static constexpr double OUTER_SEA_REACH = 8192.0;
 /* The ground keeps every tile's own facets and banks wherever the network's meshes may stand on it. */
 static constexpr double FINEST_CELL_PIXELS = NETWORK_FADE_START;
 static constexpr int COARSEST_STEP = 8;
-static constexpr GroundGrain COARSEST_GRAIN = {COARSEST_STEP, 1};
+static constexpr GroundGrain COARSEST_GRAIN = {COARSEST_STEP, {}};
 static constexpr double RELIEF_CELL_PIXELS = 32.0;
-static constexpr int MOST_RELIEF_DIVISIONS = 2;
+static constexpr double FINE_RELIEF_PIXELS = RELIEF_CELL_PIXELS * FINE_RELIEF_DIVISIONS;
+static constexpr double FINE_RELIEF_LEAD = 1.25;
+static constexpr double FINE_RELIEF_KEPT_PIXELS = FINE_RELIEF_PIXELS / (FINE_RELIEF_LEAD * FINE_RELIEF_LEAD);
 
-/* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles;
- * at full detail, curving ground is cut as finely as keeps its cells some pixels across. */
-static GroundGrain GrainFor(double tile_pixels)
+/* The longest lattice step whose cells still span no more than a few pixels, so distant ground keeps few triangles. */
+static int StepFor(double tile_pixels)
 {
 	int step = 1;
 	while (step < COARSEST_STEP && tile_pixels * step < FINEST_CELL_PIXELS) step *= 2;
-	int divisions = 1;
-	while (step == 1 && divisions < MOST_RELIEF_DIVISIONS && tile_pixels / (2 * divisions) >= RELIEF_CELL_PIXELS) divisions *= 2;
-	return {step, divisions};
+	return step;
 }
 
 /* A tile whose shape or water changed reshapes the walls, the shading and the seabed of the tiles beside it, and one whose ways changed eases the runs through it afresh,
@@ -105,6 +104,34 @@ std::pair<Vec3, Vec3> TerrainField::Bounds(size_t index)
 	};
 }
 
+/* At full detail, curving ground is cut finely on each tile near enough for its cells to stay some pixels across. */
+GroundGrain TerrainField::GrainOf(const Nearby &near, const SceneView &camera, double nearest_pixels) const
+{
+	int step = StepFor(nearest_pixels);
+	if (step > 1 || nearest_pixels < FINE_RELIEF_KEPT_PIXELS) return {step, {}};
+	return {step, this->FineTiles(near, camera)};
+}
+
+BlockTiles TerrainField::FineTiles(const Nearby &near, const SceneView &camera) const
+{
+	TileSpan tiles = this->grid.TilesOf(near.index);
+	BlockTiles needed;
+	BlockTiles chosen;
+	BlockTiles kept;
+	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
+		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
+			double pixels = camera.NearestTilePixels({static_cast<double>(tx), static_cast<double>(ty), near.low.z}, {tx + 1.0, ty + 1.0, near.high.z});
+			size_t bit = BlockBit(tiles, tx, ty);
+			needed[bit] = pixels >= FINE_RELIEF_PIXELS;
+			chosen[bit] = pixels >= FINE_RELIEF_PIXELS / FINE_RELIEF_LEAD;
+			kept[bit] = pixels >= FINE_RELIEF_KEPT_PIXELS;
+		}
+	}
+	GroundGrain laid = this->chunks[near.index].LatestGrain();
+	bool serves = laid.step == 1 && (needed & ~laid.fine).none() && (laid.fine & ~kept).none();
+	return serves ? laid.fine : chosen;
+}
+
 double TerrainField::Distance(size_t index, const Vec3 &eye) const
 {
 	const Chunk &chunk = this->chunks[index];
@@ -137,7 +164,7 @@ void TerrainField::Refresh(const SceneView &camera)
 		Chunk &chunk = this->chunks[near.index];
 		chunk.drawn = this->frame;
 		if (in_sight) blank = blank && chunk.ground.Empty();
-		GroundGrain grain = GrainFor(nearest_pixels);
+		GroundGrain grain = this->GrainOf(near, camera, nearest_pixels);
 		if (chunk.Outdated(grain)) {
 			this->due.push_back({near.index, grain, in_sight});
 		} else {

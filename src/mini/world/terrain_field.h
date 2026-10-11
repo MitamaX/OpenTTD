@@ -26,7 +26,7 @@
 
 class TerrainField {
 public:
-	static constexpr int CHUNK_TILES = 32;
+	static constexpr int CHUNK_TILES = GROUND_BLOCK_TILES;
 
 	void Sync(const WorldChanges &changes);
 	void Refresh(const SceneView &camera);
@@ -44,7 +44,7 @@ public:
 
 private:
 	static constexpr int DRAFT_STEP = 2;
-	static constexpr GroundGrain DRAFT_GRAIN = {DRAFT_STEP, 1};
+	static constexpr GroundGrain DRAFT_GRAIN = {DRAFT_STEP, {}};
 
 	/* A block of tiles: the meshes it shows and the spray off its falls, the grain its ground was built at and whether the world changed under them since, the build that will replace them,
 	 * the frame since which they have waited for it, and the height range its ground spans. */
@@ -64,6 +64,7 @@ private:
 		bool Outdated(const GroundGrain &wanted) const { return this->stale || this->grain != wanted; }
 		/* Ground wanted at full detail is first drafted as a lattice, which costs little, wherever none so fine shows yet. */
 		GroundGrain NextGrain(const GroundGrain &wanted) const { return wanted.step == 1 && (this->ground.Empty() || this->grain.step > DRAFT_STEP) ? DRAFT_GRAIN : wanted; }
+		GroundGrain LatestGrain() const { return this->rebuild.has_value() ? this->rebuild->build.Grain() : this->grain; }
 	};
 
 	/* A block whose meshes are out of date, the grain the camera's view asks of it and whether it lies in that view or only casts its shadow into it. */
@@ -86,6 +87,8 @@ private:
 	void Lay(Dimension map);
 	void Survey(Chunk &chunk, const TileSpan &tiles) const;
 	std::pair<Vec3, Vec3> Bounds(size_t index);
+	GroundGrain GrainOf(const Nearby &near, const SceneView &camera, double nearest_pixels) const;
+	BlockTiles FineTiles(const Nearby &near, const SceneView &camera) const;
 	double Distance(size_t index, const Vec3 &eye) const;
 	void Build(size_t index, GroundGrain grain);
 	void Refine(const BuildSlice &slice);
