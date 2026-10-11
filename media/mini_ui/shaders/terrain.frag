@@ -689,8 +689,7 @@ vec3 Bloomed(vec3 blades, vec2 p)
 	return mix(blades * mix(vec3(1.0), HERBAGE, drift), HerbBloom(Octave(p + HERB_KIND_SEED, HERB_KINDS_PER_TILE)), flowers);
 }
 
-/* Grass grows long in some patches and grazed short in others, turns to straw here and there, and its blades and seed heads fleck it light and dark up close;
- * from afar the patches too small to make out settle into one tone. */
+/* Grass in long and grazed patches, turned to straw here and there and flecked by its blades and seed heads. */
 vec3 Blades(Site site)
 {
 	Grain grain = site.grain;

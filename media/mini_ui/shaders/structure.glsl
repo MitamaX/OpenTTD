@@ -282,7 +282,7 @@ Clad Glazed(vec2 p, vec3 frame, vec2 panes, float bar)
 	return clad;
 }
 
-/* A line of block letters along x, in texels about its middle at y = 0, as a share of the point they ink; letters too fine to show blend into the share they ink. */
+/* A line of block letters along x about its middle at y = 0, as the share of the point they ink. */
 float Lettering(vec2 at, int line, float pixel)
 {
 	float shown = 1.0 - smoothstep(LETTERS_RESOLVED_PIXELS.x, LETTERS_RESOLVED_PIXELS.y, pixel);

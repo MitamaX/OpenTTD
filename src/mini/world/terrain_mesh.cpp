@@ -693,8 +693,7 @@ static std::optional<WorldPoint> Swallowed(const Landform &land, const WorldPoin
 	return Between(crest, foot, high);
 }
 
-/* An eased way stands on a bank of the ground's own earth: a top under the way level with its foot, and sides leaning out and down until the ground swallows them,
- * where they end buried a little under it and lit as it is. */
+/* An eased way's bank of the ground's own earth, its sides leaning out and down until the ground swallows them. */
 static void AddFormation(TerrainMesh &mesh, const Landform &land, const WayCourse &course, double half)
 {
 	int rows = std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE)));

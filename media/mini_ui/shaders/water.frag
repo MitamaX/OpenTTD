@@ -222,8 +222,7 @@ vec3 Streaked(vec2 q, vec2 run, vec2 stretch)
 	return streaks;
 }
 
-/* Where the current has carried a point's pattern from: two phases half a cycle apart, each drifting with the flow for a cycle and then starting afresh,
- * and how far toward the trailing one they blend so neither restart shows. */
+/* Where the current has carried a point's pattern from in two phases half a cycle apart, and how far they blend toward the trailing one. */
 struct Carried {
 	vec2 leading;
 	vec2 trailing;
@@ -323,8 +322,7 @@ float BrimShare(float level, float low, float high)
 	return smoothstep(0.0, BRIM_FADE, level - low) * (1.0 - smoothstep(0.0, BRIM_FADE, high - level));
 }
 
-/* A tile's water as wholly as it joins a sheet at this level, by how far the sheet stands off the levels the water spans: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
-
+/* A tile's water as wholly as it joins a sheet at this level. */
 vec4 SheetWater(ivec2 tile, float level, out float pooled, out float brim)
 {
 	vec4 water = TileWater(tile);
@@ -347,9 +345,7 @@ bool OpenSeaAbout(ivec2 cell)
 	return water.r >= 1.0 && water.g >= 1.0;
 }
 
-/* The water field over only the tiles whose water joins this sheet, so a pool's outline is not drawn out over the water of the pool below it;
- * a stream running down between two pools joins both. A river lying level draws back from dry ground falling away below its sheet instead of brimming to the edge of a drop.
- * Open sea, all flat and at one level, joins every tile it weighs. */
+/* The water field over only the tiles whose water joins this sheet. */
 vec4 SheetField(vec2 p, vec2 warped, float level)
 {
 	vec2 t = warped - TILE_CENTRE;
@@ -648,8 +644,7 @@ float ChannelDepth(vec4 field)
 	return CHANNEL_DEPTH * smoothstep(WATERLINE, WATERLINE + CHANNEL_FALL, field.r);
 }
 
-/* The water at a point: its field and body, how its surface falls and which way it runs, how glassy it runs over a lip, how full of air it races down a drop
- * or how churned it runs on below one, and how shut in it lies from the wind. Its outline and its fall are both read about the point frayed the way natural shores fray, so the bands over a lip and at a foot waver as a shore does. */
+/* The water at a point: its field and body, how its surface falls and runs, and how it breaks and lies from the wind. */
 struct Water {
 	vec2 p;
 	vec4 field;

@@ -53,7 +53,7 @@ ChannelRelief::ChannelRelief(const Seabed &bed, int tx, int ty, const std::array
 {
 }
 
-/* Only riverside ground meeting this tile's own without a step, under water standing at one level with this tile's all along where they meet, curves with it, so the two follow the same outline down to the same bed. */
+/* Whether a riverside neighbour meets this tile's ground and water without a step, so the two curve as one. */
 bool ChannelRelief::Curves(int nx, int ny) const
 {
 	if (!IsRiverside(nx, ny)) return false;
