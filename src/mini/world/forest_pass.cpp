@@ -123,7 +123,7 @@ void ForestPass::Sync(const WorldChanges &changes)
 
 void ForestPass::Refresh(const SceneView &view)
 {
-	this->forest.Refresh(view, COARSEST_SHOWN, COARSEST_CAST);
+	this->forest.Refresh(view, COARSEST_SHOWN, COARSEST_CAST, ShadowMap::LookupReach(TREE_CASTER_WIDTH));
 }
 
 void ForestPass::Cast(const ShadowView &view)

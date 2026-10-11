@@ -188,6 +188,11 @@ static double DecidedFrom(const SceneView &camera, double reach, int index)
 	return std::lerp(before, SplitDistance(camera.near, reach, index), 1.0 - ShadowMap::CASCADE_BLEND);
 }
 
+double ShadowMap::LookupReach(double texel)
+{
+	return texel * LOOKUP_REACH_TEXELS + OFF_SURFACE_REACH;
+}
+
 /* Cascades drawn in turn are given room to spare, so the camera may move a little before they no longer hold their slices. */
 std::array<ShadowMap::Cascade, ShadowMap::CASCADES> ShadowMap::Fit(const SceneView &camera) const
 {
@@ -281,7 +286,7 @@ void ShadowMap::Render(const SceneView &camera, std::span<const std::unique_ptr<
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, this->texture, 0, index);
 		glClear(GL_DEPTH_BUFFER_BIT);
 		this->Aim(index);
-		ShadowView view = {cascade.view_projection, FrustumOf(cascade.view_projection), Grown(cascade.decided, cascade.texel * LOOKUP_REACH_TEXELS + OFF_SURFACE_REACH), camera, cascade.texel};
+		ShadowView view = {cascade.view_projection, FrustumOf(cascade.view_projection), Grown(cascade.decided, LookupReach(cascade.texel)), camera, cascade.texel};
 		for (const auto &pass : passes) {
 			ProfileScope pass_profile("cast", pass->Name());
 			pass->Cast(view);

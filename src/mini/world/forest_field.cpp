@@ -381,16 +381,19 @@ std::pair<Vec3, Vec3> ForestField::Bounds(const Cell &cell, size_t index) const
 
 /* A block is planted once the camera comes near enough to show its trees, or to show their shadows out of its sight, and planted afresh where the flora or the ground changed in it,
  * within a slice of each frame: those in sight first, the nearest of them first, then those casting shadows into the view. Each shows the trees it last grew until then. */
-void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast)
+void ForestField::Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast, double cast_reach)
 {
 	this->due.clear();
+	Frustum shadowed = Grown(camera.frustum, cast_reach);
 	this->grid.ForEachWithin(camera, FewestPixels(coarsest_shown), Crowns().margin, [&](size_t index) {
-		const Cell &cell = this->cells[index];
-		if (!cell.stale) return true;
+		Cell &cell = this->cells[index];
 		auto [low, high] = this->Bounds(cell, index);
 		double pixels = camera.NearestTilePixels(low, high);
 		bool unseen = !BoxMeets(camera.frustum, low, high);
-		if (DetailsAt(pixels, unseen ? coarsest_cast : coarsest_shown).Shows()) this->due.push_back({unseen, pixels, index});
+		if (!DetailsAt(pixels, unseen ? coarsest_cast : coarsest_shown).Shows()) return true;
+		if (unseen && !ShadowMeets(shadowed, camera.sun, low, high)) return true;
+		cell.drawn = this->frame;
+		if (cell.stale) this->due.push_back({unseen, pixels, index});
 		return true;
 	});
 	std::ranges::sort(this->due, {}, [](const Due &entry) { return std::make_pair(entry.unseen, -entry.pixels); });

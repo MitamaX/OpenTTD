@@ -37,6 +37,8 @@ public:
 	static constexpr double GRAZING_OFFSET_SHARE = 1.0;
 	static constexpr double CASCADE_BLEND = 0.12;
 
+	static double LookupReach(double texel);
+
 	void Render(const SceneView &camera, std::span<const std::unique_ptr<WorldPass>> passes);
 	void Warm(std::span<const std::unique_ptr<WorldPass>> passes);
 	void Reload();

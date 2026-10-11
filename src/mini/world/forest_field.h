@@ -54,7 +54,7 @@ public:
 	static constexpr int CELL_TILES = 16;
 
 	void Sync(const WorldChanges &changes);
-	void Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast);
+	void Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast, double cast_reach);
 	void Gather(const Sight &sight, TreeDetail coarsest, TreeBatch &batch);
 	void Release();
 
