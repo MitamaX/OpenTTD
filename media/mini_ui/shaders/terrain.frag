@@ -33,11 +33,9 @@ const float TERRAIN_ROUGHNESS = 0.85;
 const float TOY_ROUGHNESS = 0.72;
 const float SNOW_ROUGHNESS = 0.7;
 const float SAND_ROUGHNESS = 0.9;
-const float WALL_MARK = 0.75;
-const float RETAINING_MARK = 0.9375;
-const float EDGE_MARK = 0.375;
-const float FILL_MARK = 0.25;
-const float ARMOUR_MARK = 0.3125;
+const float EDGE_THRESHOLD = 0.5 * (FILL_MARK + EDGE_MARK);
+const float WALL_THRESHOLD = 0.5 * (EDGE_MARK + MASONRY_MARK);
+const float RETAINING_THRESHOLD = 0.5 * (MASONRY_MARK + WALL_MARK);
 const vec2 CHANNEL_WALL_LEVELS = vec2(0.42, 0.52);
 const float SUBMERGED_MARK = 0.08;
 const float RIVERBED_DEEP_MARK = 0.2;
@@ -321,7 +319,7 @@ const float COURSES_PER_TILE = 12.0;
 const float BLOCKS_PER_TILE = 6.0;
 const float MORTAR_SHARE = 0.08;
 const vec3 MASONRY = vec3(0.56, 0.53, 0.49);
-const float COPING_DEPTH = 0.035;
+const float COPING_BAND = 0.035;
 const float COPING_LIFT = 1.15;
 const float DRIP_WIDTH = 0.012;
 const float DRIP_SHADE = 0.45;
@@ -1438,8 +1436,8 @@ vec3 Damp(vec3 stone, float along, float rise)
 vec3 Coped(vec3 stone, float along, float drop)
 {
 	float pixel = 1.0 / tile_pixels;
-	float cap = 1.0 - smoothstep(COPING_DEPTH - pixel, COPING_DEPTH + pixel, drop);
-	float drip = Stroke(abs(drop - COPING_DEPTH - DRIP_WIDTH), DRIP_WIDTH, pixel);
+	float cap = 1.0 - smoothstep(COPING_BAND - pixel, COPING_BAND + pixel, drop);
+	float drip = Stroke(abs(drop - COPING_BAND - DRIP_WIDTH), DRIP_WIDTH, pixel);
 	float reach = mix(STREAK_REACHES.x, STREAK_REACHES.y, Noise(vec2(along * STREAK_LENGTHS_PER_TILE, STREAK_SEEDS.y)));
 	float streaks = smoothstep(STREAK_EDGES.x, STREAK_EDGES.y, Noise(vec2(along * STREAKS_PER_TILE, STREAK_SEEDS.x))) * (1.0 - smoothstep(0.0, reach, drop)) * Resolved(STREAKS_PER_TILE);
 	vec3 face = stone * mix(1.0, STREAK_SHADE, streaks) * (1.0 - DRIP_SHADE * drip);
@@ -1457,7 +1455,7 @@ vec3 WallFace(vec3 normal)
 	float detail = Resolved(COURSES_PER_TILE);
 	vec3 stone = MASONRY * Varied(Hash(ivec2(floor(block), floor(course))), 0.18 * detail) * (1.0 - 0.3 * mortar * detail);
 	stone = Damp(stone, along, (v_world.z - LevelToward(normal.xy * HALF_TILE)) * LevelRise());
-	if (v_mark > RETAINING_MARK) stone = Coped(stone, along, (LevelToward(-normal.xy * HALF_TILE) - v_world.z) * LevelRise());
+	if (v_mark > RETAINING_THRESHOLD) stone = Coped(stone, along, (LevelToward(-normal.xy * HALF_TILE) - v_world.z) * LevelRise());
 	return stone;
 }
 
@@ -1733,13 +1731,13 @@ void main()
 	relief.steep *= 1.0 - smoothstep(CHANNEL_WALL_LEVELS.x, CHANNEL_WALL_LEVELS.y, water.level) * (1.0 - water.sea);
 	float face_pixels = 1.0 / max(max(length(pixel[0]), length(pixel[1])), levels_per_pixel * LevelRise());
 
-	bool edge = v_mark > EDGE_MARK && v_mark <= WALL_MARK;
+	bool edge = v_mark > EDGE_THRESHOLD && v_mark <= WALL_THRESHOLD;
 	Grain grain = GrainAt(p, detail);
 
 	Shade shade;
 	if (!edge && OutsideMap(p)) {
 		shade = Plain(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), grain, 1.0), normal);
-	} else if (v_mark > WALL_MARK) {
+	} else if (v_mark > WALL_THRESHOLD) {
 		shade = Plain(WallFace(normal), normal);
 	} else {
 		Underfoot underfoot = UnderfootAt(p, grain, edge ? EdgeFooting(levels_per_pixel) : FootingAt(p, water, relief));

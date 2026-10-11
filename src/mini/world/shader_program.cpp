@@ -48,6 +48,7 @@
 #include "seabed.h"
 #include "shadow_map.h"
 #include "structure_mesh.h"
+#include "terrain_mesh.h"
 #include "track_models.h"
 #include "tree_models.h"
 #include "vehicle_models.h"
@@ -170,6 +171,11 @@ static std::string ShaderHeader()
 	DefineFloat(header, "FLOW_TEXEL_SPAN", FLOW_TEXEL_SPAN);
 	DefineFloat(header, "WATERLINE", WATERLINE);
 	DefineFloat(header, "CHANNEL_FALL", CHANNEL_FALL);
+	DefineFloat(header, "WALL_MARK", WALL_MARK);
+	DefineFloat(header, "MASONRY_MARK", MASONRY_MARK);
+	DefineFloat(header, "EDGE_MARK", EDGE_MARK);
+	DefineFloat(header, "FILL_MARK", FILL_MARK);
+	DefineFloat(header, "ARMOUR_MARK", ARMOUR_MARK);
 	DefineFloat(header, "SHORE_WARP", SHORE_WARP);
 	DefineFloat(header, "SHORE_WARP_FREQUENCY", SHORE_WARP_FREQUENCY);
 	DefineFloats(header, "SHORE_WARP_SEEDS", SHORE_WARP_SEEDS);
