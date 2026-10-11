@@ -88,13 +88,22 @@ double TileRelief::Ground(double x, double y) const
 
 Vec3 TileRelief::Normal(double x, double y, const Vec3 &faceted) const
 {
-	MapVector bend = ClimbOf([this](double px, double py) { return this->Level(px, py) - this->Faceted(px, py); }, x, y, SLOPE_PROBE) * LevelRise();
+	return this->BentNormal(this->LevelClimb(x, y), x, y, faceted);
+}
+
+MapVector TileRelief::LevelClimb(double x, double y) const
+{
+	return ClimbOf([this](double px, double py) { return this->Level(px, py); }, x, y, SLOPE_PROBE);
+}
+
+Vec3 TileRelief::BentNormal(const MapVector &level_climb, double x, double y, const Vec3 &faceted) const
+{
+	MapVector bend = (level_climb - this->FacetedClimb(x, y)) * LevelRise();
 	double upright = std::max(faceted.z, LEAST_UPRIGHT);
 	return Normalised({faceted.x / upright - bend.x, faceted.y / upright - bend.y, 1.0});
 }
 
-/* The tile's corners spread over it, straight along each side as every neighbour's edge runs. Corners go north, west, east, south. */
-double TileRelief::Faceted(double x, double y) const
+const std::array<double, 4> &TileRelief::HeldCorners() const
 {
 	if (!this->held.has_value()) {
 		std::array<double, 4> held;
@@ -105,12 +114,27 @@ double TileRelief::Faceted(double x, double y) const
 		}
 		this->held = held;
 	}
-	const std::array<double, 4> &corner = *this->held;
+	return *this->held;
+}
+
+/* The tile's corners spread over it, straight along each side as every neighbour's edge runs. Corners go north, west, east, south. */
+double TileRelief::Faceted(double x, double y) const
+{
+	const std::array<double, 4> &corner = this->HeldCorners();
 	double fx = x - this->tx;
 	double fy = y - this->ty;
 	double north = std::lerp(corner[0], corner[1], fx);
 	double south = std::lerp(corner[2], corner[3], fx);
 	return std::lerp(north, south, fy);
+}
+
+MapVector TileRelief::FacetedClimb(double x, double y) const
+{
+	const std::array<double, 4> &corner = this->HeldCorners();
+	double fx = x - this->tx;
+	double north = std::lerp(corner[0], corner[1], fx);
+	double south = std::lerp(corner[2], corner[3], fx);
+	return {std::lerp(corner[1] - corner[0], corner[3] - corner[2], y - this->ty), south - north};
 }
 
 /* How far the ground may curve at a point: not at all on the edge of a tile that keeps its facets, and freely from the straightening reach away from every one. */

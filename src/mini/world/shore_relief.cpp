@@ -51,8 +51,8 @@ ShoreRelief::ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<dou
 
 Vec3 ShoreRelief::Normal(double x, double y, const Vec3 &faceted) const
 {
-	Vec3 curved = ClimbNormal(ClimbOf([this](double px, double py) { return this->Level(px, py); }, x, y, SLOPE_PROBE));
-	return Normalised(Lerp(TileRelief::Normal(x, y, faceted), curved, this->Freedom(x, y)));
+	MapVector climb = this->LevelClimb(x, y);
+	return Normalised(Lerp(this->BentNormal(climb, x, y, faceted), ClimbNormal(climb), this->Freedom(x, y)));
 }
 
 bool ShoreRelief::Banked() const

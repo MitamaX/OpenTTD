@@ -82,6 +82,8 @@ protected:
 	virtual double Lift(double, double, double) const { return 0.0; }
 	double Ground(double x, double y) const;
 	double Freedom(double x, double y) const;
+	MapVector LevelClimb(double x, double y) const;
+	Vec3 BentNormal(const MapVector &level_climb, double x, double y, const Vec3 &faceted) const;
 
 	int tx;
 	int ty;
@@ -91,7 +93,9 @@ private:
 	static constexpr int CURVING_REACH = 2;
 	static constexpr int CURVING_SIDE = 2 * CURVING_REACH + 1;
 
+	const std::array<double, 4> &HeldCorners() const;
 	double Faceted(double x, double y) const;
+	MapVector FacetedClimb(double x, double y) const;
 	bool Curving(int nx, int ny) const;
 
 	std::array<double, 4> corners;
