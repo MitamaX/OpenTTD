@@ -100,14 +100,14 @@ static constexpr int FIGURE_SIDES = 12;
 static constexpr int LIMB_SIDES = 6;
 static constexpr double STATUE_FOOT_RADIUS = 0.16;
 static constexpr double STATUE_FOOT_HEIGHT = 0.03;
-static constexpr std::array<LatheRing, 3> COAT_SKIRT = {{{0.105, 0.2}, {0.085, 0.38}, {0.072, 0.47}}};
-static constexpr std::array<LatheRing, 5> TORSO = {{{0.072, 0.46}, {0.084, 0.64}, {0.088, 0.74}, {0.042, 0.8}, {0.032, 0.84}}};
-static constexpr std::array<LatheRing, 5> HEAD = {{{0.03, 0.83}, {0.05, 0.87}, {0.052, 0.915}, {0.036, 0.955}, {0.0, 0.975}}};
 static constexpr double HIP_HEIGHT = 0.47;
+static constexpr double SHOULDER_HEIGHT = 0.74;
+static constexpr std::array<LatheRing, 3> COAT_SKIRT = {{{0.105, 0.2}, {0.085, 0.38}, {0.072, HIP_HEIGHT}}};
+static constexpr std::array<LatheRing, 5> TORSO = {{{0.072, HIP_HEIGHT - 0.01}, {0.084, 0.64}, {0.088, SHOULDER_HEIGHT}, {0.042, 0.8}, {0.032, 0.84}}};
+static constexpr std::array<LatheRing, 5> HEAD = {{{0.03, 0.83}, {0.05, 0.87}, {0.052, 0.915}, {0.036, 0.955}, {0.0, 0.975}}};
 static constexpr double HIP_SPREAD = 0.045;
 static constexpr double HIP_RADIUS = 0.05;
 static constexpr double ANKLE_RADIUS = 0.038;
-static constexpr double SHOULDER_HEIGHT = 0.74;
 static constexpr double SHOULDER_SPREAD = 0.115;
 static constexpr double SHOULDER_RADIUS = 0.046;
 static constexpr double WRIST_RADIUS = 0.034;
@@ -308,7 +308,7 @@ private:
 	/* A car parked lengthways on its spot, its nose either way, as tall as one parked at the kerb. */
 	void DressCar()
 	{
-		double heading = (this->HalfX() >= this->HalfY() ? 0.0 : HALF_TURN * 0.5) + (this->dice.Share() < 0.5 ? 0.0 : HALF_TURN);
+		double heading = (this->HalfX() >= this->HalfY() ? 0.0 : QUARTER_TURN) + (this->dice.Share() < 0.5 ? 0.0 : HALF_TURN);
 		Mat4 placed = Mat4::Translation({this->CentreX(), this->CentreY(), this->solid.base}) * Mat4::Turn(UPRIGHT, heading) * Mat4::Scaling({1.0, 1.0, 1.0 / FORM_HEIGHT_SCALE});
 		this->Clad(CarModel(this->solid.wall_tint).Transform(placed), FinishedCoat);
 	}
