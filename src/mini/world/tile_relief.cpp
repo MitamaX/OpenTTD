@@ -63,14 +63,6 @@ Vec3 ClimbNormal(const MapVector &climb)
 	return Normalised(Vec3{-climb.x * rise, -climb.y * rise, 1.0});
 }
 
-/* How far a point lies from a tile's square. */
-static double DistanceToTile(double x, double y, int tx, int ty)
-{
-	double dx = std::max({tx - x, 0.0, x - (tx + 1)});
-	double dy = std::max({ty - y, 0.0, y - (ty + 1)});
-	return std::hypot(dx, dy);
-}
-
 TileRelief::TileRelief(int tx, int ty, const std::array<double, 4> &corners, double straightening_reach) : tx(tx), ty(ty), corners(corners), straightening_reach(straightening_reach)
 {
 }
@@ -146,7 +138,7 @@ double TileRelief::Freedom(double x, double y) const
 	for (int ny = cy - SPLINE_REACH; ny <= cy + SPLINE_REACH; ny++) {
 		for (int nx = cx - SPLINE_REACH; nx <= cx + SPLINE_REACH; nx++) {
 			if (this->Curving(nx, ny)) continue;
-			freedom = std::min(freedom, SmoothStep(0.0, this->straightening_reach, DistanceToTile(x, y, nx, ny)));
+			freedom = std::min(freedom, SmoothStep(0.0, this->straightening_reach, std::sqrt(SquaredDistanceToTile(x, y, nx, ny))));
 		}
 	}
 	return freedom;

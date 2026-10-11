@@ -56,9 +56,7 @@ static double ShoreDistance(double x, double y)
 	double reach = SHELF_TILES;
 	double weight = 0.0;
 	auto weigh = [&](int tx, int ty) {
-		double dx = std::max({tx - x, 0.0, x - (tx + 1)});
-		double dy = std::max({ty - y, 0.0, y - (ty + 1)});
-		double squared = dx * dx + dy * dy;
+		double squared = SquaredDistanceToTile(x, y, tx, ty);
 		if (squared >= reach * reach || WaterFormOf(tx, ty) == WaterForm::Open) return;
 		double distance = std::sqrt(squared);
 		weight += std::exp(-SHORE_BLEND_SHARPNESS * distance);

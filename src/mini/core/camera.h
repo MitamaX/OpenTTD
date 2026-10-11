@@ -139,6 +139,13 @@ struct Lens {
 	double FarthestTilePixels(const Vec3 &low, const Vec3 &high) const;
 };
 
+inline double SquaredDistanceToTile(double x, double y, int tx, int ty)
+{
+	double dx = std::max({tx - x, 0.0, x - (tx + 1)});
+	double dy = std::max({ty - y, 0.0, y - (ty + 1)});
+	return dx * dx + dy * dy;
+}
+
 double GroundLevel(double tx, double ty);
 double LevelRise();
 Vec3 RenderPoint(const WorldPoint &point);
