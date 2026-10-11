@@ -1,5 +1,5 @@
 const float PANE_REFLECTANCE = 0.08;
-const float ROOM_SUNLIT_SHARE = 0.12;
+const float ROOM_SUNLIT_SHARE = 0.03;
 
 struct Pane {
 	vec3 room;

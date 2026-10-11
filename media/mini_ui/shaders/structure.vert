@@ -22,6 +22,8 @@ const float FILM_TINT = 0.1;
 const float COATED_FILM_TINT = 0.2;
 const float TRANSMISSION_TINT = 0.3;
 const float COATED_TRANSMISSION_TINT = 0.4;
+const float PANE_TRANSMITTANCE = 0.75;
+const float COATED_TRANSMITTANCE = 0.4;
 
 vec3 Tinted(vec3 hue, float share)
 {
@@ -40,6 +42,7 @@ void main()
 	vec3 hue = glass / max(Luminance(glass), LEAST_GLASS_LUMINANCE);
 	bool coated = v_surface.x == CLAD_GLASS;
 	v_film = Tinted(hue, coated ? COATED_FILM_TINT : FILM_TINT);
-	v_transmission = Tinted(hue, coated ? COATED_TRANSMISSION_TINT : TRANSMISSION_TINT);
+	float transmittance = Landscape() == LANDSCAPE_TOYLAND ? 1.0 : coated ? COATED_TRANSMITTANCE : PANE_TRANSMITTANCE;
+	v_transmission = Tinted(hue, coated ? COATED_TRANSMISSION_TINT : TRANSMISSION_TINT) * transmittance;
 	gl_Position = ClipPosition(a_position);
 }
