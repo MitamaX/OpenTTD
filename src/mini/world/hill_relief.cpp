@@ -151,3 +151,9 @@ double LaidGround::Level(double x, double y) const
 {
 	return this->relief.has_value() ? this->relief->Level(x, y) : BedLevel(this->tx, this->ty, x, y);
 }
+
+std::unique_ptr<DrawnSurface> RolledSpan::Surface(int tx, int ty) const
+{
+	if (!this->land->Bends(tx, ty)) return std::make_unique<TileGround>(tx, ty);
+	return std::make_unique<RolledSurface>(this->land, tx, ty);
+}

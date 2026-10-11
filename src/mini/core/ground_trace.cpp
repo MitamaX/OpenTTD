@@ -15,6 +15,7 @@
 #include <limits>
 
 #include "../../map_func.h"
+#include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
 
 #include "../../safeguards.h"
@@ -29,8 +30,7 @@ static constexpr int CURVE_REFINES = 12;
 
 class FacetedSpan : public GroundSpan {
 public:
-	bool Curves(int, int) const override { return false; }
-	double CurvedLevel(int tx, int ty, double x, double y) const override { return FacetLevel(_world_tiles.SurfaceAt(TileXY(tx, ty)), x - tx, y - ty); }
+	std::unique_ptr<DrawnSurface> Surface(int tx, int ty) const override { return std::make_unique<TileGround>(tx, ty); }
 };
 
 static const GroundForm *_ground_form = nullptr;
@@ -182,14 +182,14 @@ public:
 	{
 		double facet = this->facets.At(t);
 		if (facet >= -WALL_TOLERANCE) return false;
-		return facet < -this->Margin() || !this->Curves() || this->CurvedAt(t) < -WALL_TOLERANCE;
+		return facet < -this->Margin() || !this->Surface().Curves() || this->CurvedAt(t) < -WALL_TOLERANCE;
 	}
 
 	std::optional<double> FirstHit(double from, double to) const
 	{
 		std::optional<double> near = this->facets.FirstHit(from, to, this->Margin());
 		if (!near.has_value()) return std::nullopt;
-		return this->Curves() ? this->CurvedHit(*near, to) : this->facets.FirstHit(*near, to);
+		return this->Surface().Curves() ? this->CurvedHit(*near, to) : this->facets.FirstHit(*near, to);
 	}
 
 private:
@@ -198,16 +198,16 @@ private:
 		return MOST_CURVE_LEVELS * this->sight.rise;
 	}
 
-	bool Curves() const
+	const DrawnSurface &Surface() const
 	{
-		if (this->ground == nullptr) this->ground = GroundOver({this->tx, this->ty, this->tx, this->ty});
-		return this->ground->Curves(this->tx, this->ty);
+		if (this->surface == nullptr) this->surface = GroundOver({this->tx, this->ty, this->tx, this->ty})->Surface(this->tx, this->ty);
+		return *this->surface;
 	}
 
 	double CurvedAt(double t) const
 	{
 		Vec3 at = this->sight.At(t);
-		return at.z - this->ground->CurvedLevel(this->tx, this->ty, at.x, at.y) * this->sight.rise;
+		return at.z - this->Surface().Level(at.x, at.y) * this->sight.rise;
 	}
 
 	std::optional<double> CurvedHit(double from, double to) const
@@ -233,7 +233,7 @@ private:
 	int tx;
 	int ty;
 	TileClearance facets;
-	mutable std::unique_ptr<GroundSpan> ground;
+	mutable std::unique_ptr<DrawnSurface> surface;
 };
 
 static GroundHit HitAt(const SightLine &sight, double t)

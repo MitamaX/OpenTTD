@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 #include "../../direction_func.h"
@@ -79,18 +80,13 @@ double TileGround::Lowest() const
 	return this->surface.Lowest();
 }
 
-DrawnTile::DrawnTile(const GroundSpan &span, int tx, int ty) : span(span), facets(tx, ty), tx(tx), ty(ty), curves(span.Curves(tx, ty))
+DrawnTile::DrawnTile(std::unique_ptr<DrawnSurface> surface, int tx, int ty) : surface(std::move(surface)), tx(tx), ty(ty)
 {
-}
-
-WorldPoint DrawnTile::At(double x, double y) const
-{
-	return this->curves ? WorldPoint{x, y, this->span.CurvedLevel(this->tx, this->ty, x, y)} : this->facets.At(x, y);
 }
 
 int DrawnTile::Divisions() const
 {
-	return this->curves ? CURVED_SHAPE_DIVISIONS : 1;
+	return this->surface->Curves() ? CURVED_SHAPE_DIVISIONS : 1;
 }
 
 DrawnGround::DrawnGround(const TileSpan &tiles) : tiles(tiles), span(GroundOver(tiles))

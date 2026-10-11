@@ -31,11 +31,18 @@ struct GroundHit {
 	double level;
 };
 
+/* One tile's ground as it is drawn, read at any point over the tile. */
+class DrawnSurface {
+public:
+	virtual ~DrawnSurface() = default;
+	virtual double Level(double x, double y) const = 0;
+	virtual bool Curves() const = 0;
+};
+
 class GroundSpan {
 public:
 	virtual ~GroundSpan() = default;
-	virtual bool Curves(int tx, int ty) const = 0;
-	virtual double CurvedLevel(int tx, int ty, double x, double y) const = 0;
+	virtual std::unique_ptr<DrawnSurface> Surface(int tx, int ty) const = 0;
 };
 
 class GroundForm {

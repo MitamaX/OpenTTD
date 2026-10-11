@@ -29,12 +29,13 @@
 inline constexpr double HALF_TILE = 0.5;
 
 /* A tile's own surface, read for every point that belongs to the tile, so a point on its edge stays on it and not on the neighbour across. */
-class TileGround {
+class TileGround final : public DrawnSurface {
 public:
 	TileGround(int tx, int ty);
 	explicit TileGround(TileIndex tile);
 
-	double Level(double x, double y) const;
+	double Level(double x, double y) const override;
+	bool Curves() const override { return false; }
 	double Lowest() const;
 	WorldPoint At(double x, double y) const { return {x, y, this->Level(x, y)}; }
 	WorldPoint At(TilePoint at) const { return this->At(at.first, at.second); }
@@ -47,18 +48,17 @@ private:
 
 class DrawnTile {
 public:
-	DrawnTile(const GroundSpan &span, int tx, int ty);
+	DrawnTile(std::unique_ptr<DrawnSurface> surface, int tx, int ty);
 
-	WorldPoint At(double x, double y) const;
+	bool Is(int x, int y) const { return this->tx == x && this->ty == y; }
+	WorldPoint At(double x, double y) const { return {x, y, this->surface->Level(x, y)}; }
 	WorldPoint At(TilePoint at) const { return this->At(at.first, at.second); }
 	int Divisions() const;
 
 private:
-	const GroundSpan &span;
-	TileGround facets;
+	std::unique_ptr<DrawnSurface> surface;
 	int tx;
 	int ty;
-	bool curves;
 };
 
 class DrawnGround {
@@ -66,7 +66,7 @@ public:
 	explicit DrawnGround(const TileSpan &tiles);
 
 	bool Holds(int tx, int ty) const;
-	DrawnTile Tile(int tx, int ty) const { return DrawnTile(*this->span, tx, ty); }
+	DrawnTile Tile(int tx, int ty) const { return DrawnTile(this->span->Surface(tx, ty), tx, ty); }
 
 private:
 	TileSpan tiles;

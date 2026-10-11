@@ -11,6 +11,7 @@
 #define MINI_WORLD_HILL_RELIEF_H
 
 #include <array>
+#include <memory>
 #include <optional>
 
 #include "../core/camera.h"
@@ -76,15 +77,26 @@ private:
 	std::optional<HillRelief> relief;
 };
 
-class RolledSpan : public GroundSpan {
+class RolledSurface : public DrawnSurface {
 public:
-	explicit RolledSpan(const TileSpan &tiles) : land(tiles) {}
+	RolledSurface(std::shared_ptr<const Landform> land, int tx, int ty) : land(std::move(land)), relief(*this->land, tx, ty) {}
 
-	bool Curves(int tx, int ty) const override { return this->land.Bends(tx, ty); }
-	double CurvedLevel(int tx, int ty, double x, double y) const override { return HillRelief(this->land, tx, ty).Level(x, y); }
+	double Level(double x, double y) const override { return this->relief.Level(x, y); }
+	bool Curves() const override { return true; }
 
 private:
-	Landform land;
+	std::shared_ptr<const Landform> land;
+	HillRelief relief;
+};
+
+class RolledSpan : public GroundSpan {
+public:
+	explicit RolledSpan(const TileSpan &tiles) : land(std::make_shared<Landform>(tiles)) {}
+
+	std::unique_ptr<DrawnSurface> Surface(int tx, int ty) const override;
+
+private:
+	std::shared_ptr<const Landform> land;
 };
 
 class RolledLand : public GroundForm {
