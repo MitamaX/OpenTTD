@@ -108,7 +108,7 @@ const SpeckLattice DRAIN_LATTICE = SpeckLattice(ivec2(1301, 727), 0.25, 0.7, 0.5
 const float POND_RADIUS = 0.16;
 const vec2 POND_EDGES = vec2(0.2, 0.5);
 const float POND_RAGS_PER_TILE = 16.0;
-const float POND_RAGGED = 0.7;
+const float POND_RAGGED = 1.0;
 const float POND_ROUGHNESS = 0.45;
 const float PATCHES_PER_TILE = 3.5;
 const float PATCH_SHARE = 0.3;
@@ -267,8 +267,9 @@ Clad Membrane(vec2 p, vec3 tint, vec3 aged)
 {
 	Clad clad = Coursed(p, aged, MEMBRANE_ROLLS, MEMBRANE_LAP, MEMBRANE_VARIETY, aged * MEMBRANE_LAP_SHADE);
 	vec2 q = p * DRAINS_PER_TILE;
-	float drain = Speck(q, DRAIN_SHARE, vec2(1.0, 0.0), vec2(DRAIN_RADIUS), DRAIN_LATTICE) * Sharpness(q / (2.0 * DRAIN_RADIUS));
-	float pond = Speck(q, DRAIN_SHARE, vec2(1.0, 0.0), vec2(POND_RADIUS), DRAIN_LATTICE) + (Noise(p * POND_RAGS_PER_TILE) - 0.5) * POND_RAGGED;
+	float reach = SpeckReach(q, DRAIN_SHARE, vec2(1.0, 0.0), vec2(1.0), DRAIN_LATTICE);
+	float drain = SpeckAt(reach / DRAIN_RADIUS, DRAIN_LATTICE) * Sharpness(q / (2.0 * DRAIN_RADIUS));
+	float pond = SpeckAt(reach / POND_RADIUS, DRAIN_LATTICE) * (1.0 + (Noise(p * POND_RAGS_PER_TILE) - 0.5) * POND_RAGGED);
 	float ponded = smoothstep(POND_EDGES.x, POND_EDGES.y, pond) * Sharpness(q / (2.0 * POND_RADIUS));
 	vec2 patch_at = p * PATCHES_PER_TILE;
 	float inside = PatchInside(patch_at, PATCH_SHARE);

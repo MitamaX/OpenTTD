@@ -58,14 +58,25 @@ struct SpeckLattice {
 	float softness;
 };
 
-float Speck(vec2 q, float share, vec2 run, vec2 extent, SpeckLattice lattice)
+const float PAST_EVERY_SPECK = 1e4;
+
+float SpeckReach(vec2 q, float share, vec2 run, vec2 extent, SpeckLattice lattice)
 {
 	ivec2 cell = ivec2(floor(q));
 	vec2 roll = Hash2(cell + lattice.seed);
-	if (roll.x > share) return 0.0;
+	if (roll.x > share) return PAST_EVERY_SPECK;
 	vec2 offset = fract(q) - mix(vec2(lattice.margin), vec2(1.0 - lattice.margin), Hash2(cell));
-	vec2 local = vec2(dot(offset, run), dot(offset, vec2(-run.y, run.x))) / (extent * mix(lattice.smallest, 1.0, roll.y));
-	return 1.0 - smoothstep(lattice.softness, 1.0, length(local));
+	return length(vec2(dot(offset, run), dot(offset, vec2(-run.y, run.x))) / (extent * mix(lattice.smallest, 1.0, roll.y)));
+}
+
+float SpeckAt(float reach, SpeckLattice lattice)
+{
+	return 1.0 - smoothstep(lattice.softness, 1.0, reach);
+}
+
+float Speck(vec2 q, float share, vec2 run, vec2 extent, SpeckLattice lattice)
+{
+	return SpeckAt(SpeckReach(q, share, run, extent, lattice), lattice);
 }
 
 /* Value noise with its gradient, smooth enough in both to light bumps with. */
