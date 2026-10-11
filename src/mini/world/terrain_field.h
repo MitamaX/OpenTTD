@@ -91,7 +91,9 @@ private:
 	BlockTiles FineTiles(const Nearby &near, const SceneView &camera, double nearest_pixels) const;
 	double Distance(size_t index, const Vec3 &eye) const;
 	void GatherNearby(const SceneView &camera);
-	bool QueueDue(const SceneView &camera);
+	void QueueDue(const SceneView &camera);
+	bool ViewBlank(const SceneView &camera) const;
+	GroundGrain FirstSightGrain(const Due &entry, bool blank, const BuildSlice &slice) const;
 	void Build(size_t index, GroundGrain grain);
 	void Refine(const BuildSlice &slice);
 	void Finish(size_t index);

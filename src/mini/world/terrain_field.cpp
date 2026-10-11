@@ -162,18 +162,16 @@ void TerrainField::GatherNearby(const SceneView &camera)
 	std::ranges::sort(this->nearby, {}, &Nearby::distance);
 }
 
-bool TerrainField::QueueDue(const SceneView &camera)
+void TerrainField::QueueDue(const SceneView &camera)
 {
 	double casting_pixels = camera.TilePixelsAt(camera.shadow_reach);
 	this->due.clear();
-	bool blank = true;
 	for (const Nearby &near : this->nearby) {
 		bool in_sight = BoxMeets(camera.frustum, near.low, near.high);
 		double nearest_pixels = camera.NearestTilePixels(near.low, near.high);
 		if (!in_sight && (nearest_pixels < casting_pixels || !this->ShadowShows(near, camera))) continue;
 		Chunk &chunk = this->chunks[near.index];
 		chunk.drawn = this->frame;
-		if (in_sight) blank = blank && chunk.ground.Empty();
 		GroundGrain grain = this->GrainOf(near, camera, nearest_pixels);
 		if (chunk.Outdated(grain)) {
 			this->due.push_back({near.index, grain, in_sight});
@@ -182,20 +180,30 @@ bool TerrainField::QueueDue(const SceneView &camera)
 			chunk.due_since = 0;
 		}
 	}
-	return blank;
+}
+
+bool TerrainField::ViewBlank(const SceneView &camera) const
+{
+	return std::ranges::none_of(this->nearby, [&](const Nearby &near) { return this->Shows(near, camera); });
+}
+
+GroundGrain TerrainField::FirstSightGrain(const Due &entry, bool blank, const BuildSlice &slice) const
+{
+	if (blank) return entry.grain;
+	return slice.Spent() ? COARSEST_GRAIN : this->chunks[entry.index].NextGrain(entry.grain);
 }
 
 /* Brings the blocks the views show, and those casting shadows into them, to the step they are due. */
 void TerrainField::Refresh(const SceneView &camera)
 {
 	this->GatherNearby(camera);
-	bool blank = this->QueueDue(camera);
+	this->QueueDue(camera);
 
 	BuildSlice slice(std::ranges::any_of(this->due, &Due::in_sight));
+	bool blank = this->ViewBlank(camera);
 	for (const Due &entry : this->due) {
-		const Chunk &chunk = this->chunks[entry.index];
-		if (!entry.in_sight || !chunk.ground.Empty()) continue;
-		this->Build(entry.index, blank ? entry.grain : slice.Spent() ? COARSEST_GRAIN : chunk.NextGrain(entry.grain));
+		if (!entry.in_sight || !this->chunks[entry.index].ground.Empty()) continue;
+		this->Build(entry.index, this->FirstSightGrain(entry, blank, slice));
 	}
 	std::erase_if(this->due, [&](const Due &entry) { return !this->chunks[entry.index].Outdated(entry.grain); });
 	for (const Due &entry : this->due) {
