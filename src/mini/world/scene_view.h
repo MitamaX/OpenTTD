@@ -11,13 +11,17 @@
 #define MINI_WORLD_SCENE_VIEW_H
 
 #include <array>
-#include <utility>
 
 #include "../../core/geometry_type.hpp"
 #include "../core/camera.h"
 #include "../core/space.h"
 
 inline constexpr uint32_t SCENE_BINDING = 0;
+
+struct ViewSpread {
+	double across;
+	double up;
+};
 
 /* Render space runs along map X and Y in tiles, with heights raised by the level rise. */
 struct SceneView {
@@ -47,11 +51,12 @@ struct SceneView {
 	/* How far from the eye the corners of the far plane lie, beyond which nothing shows. */
 	double Reach() const;
 	Vec3 Back() const { return {this->view.At(2, 0), this->view.At(2, 1), this->view.At(2, 2)}; }
+	ViewSpread SpreadPerDepth() const;
 	Frustum Slice(double near, double far) const;
 	std::array<Vec3, 8> SliceCorners(double near, double far) const;
 };
 
-std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high);
+bool ShadowMeets(const Frustum &frustum, const Vec3 &sun, const Vec3 &low, const Vec3 &high);
 
 /* How the sun sees the world for one shadow cascade; meshes keep the detail the camera asks of them, so what casts matches what receives.
  * A cascade whose texels are coarser than a pass's casters would only speckle the ground with them, so the pass leaves it be. */

@@ -149,9 +149,8 @@ bool ShadowMap::Build()
 /* The sphere about a slice of the view keeps its size however the camera turns, and moves in whole texels so shadow edges hold still while the camera pans. */
 ShadowMap::Cascade ShadowMap::FitSlice(const SceneView &camera, const Mat4 &sun_view, double near, double far, double margin) const
 {
-	double half_x = camera.viewport.width * 0.5 / camera.focal;
-	double half_y = camera.viewport.height * 0.5 / camera.focal;
-	double spread = half_x * half_x + half_y * half_y;
+	ViewSpread lens = camera.SpreadPerDepth();
+	double spread = lens.across * lens.across + lens.up * lens.up;
 	double ahead = std::min((near + far) * (1.0 + spread) * 0.5, far);
 	double radius = std::sqrt((far - ahead) * (far - ahead) + far * far * spread);
 

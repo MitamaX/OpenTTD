@@ -14,7 +14,6 @@
 #include <cstddef>
 #include <memory>
 #include <span>
-#include <utility>
 #include <vector>
 
 #include "shader_program.h"

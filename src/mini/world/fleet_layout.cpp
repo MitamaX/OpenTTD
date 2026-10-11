@@ -127,8 +127,7 @@ bool FleetLayout::MayShow(const SceneView &view, const Vehicle *head, double rea
 	double length = ConsistTiles(head);
 	Vec3 spread = {grown + length, grown + length, grown + length * LevelRise()};
 	Vec3 at = TickPoint(head);
-	auto [low, high] = SunSwept(view.sun, at - spread, at + spread);
-	return BoxMeets(view.frustum, low, high);
+	return ShadowMeets(view.frustum, view.sun, at - spread, at + spread);
 }
 
 void FleetLayout::Lay(const SceneView &view, double reach)

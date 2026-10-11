@@ -14,6 +14,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <utility>
 
 #include "../../landscape.h"
 #include "../../settings_type.h"
@@ -113,20 +114,28 @@ double SceneView::NearestTilePixels(const Vec3 &low, const Vec3 &high) const
 
 double SceneView::Reach() const
 {
-	return this->far * std::hypot(1.0, this->viewport.width * 0.5 / this->focal, this->viewport.height * 0.5 / this->focal);
+	ViewSpread spread = this->SpreadPerDepth();
+	return this->far * std::hypot(1.0, spread.across, spread.up);
+}
+
+ViewSpread SceneView::SpreadPerDepth() const
+{
+	return {this->viewport.width * 0.5 / this->focal, this->viewport.height * 0.5 / this->focal};
 }
 
 Frustum SceneView::Slice(double near, double far) const
 {
-	return FrustumOf(Mat4::Perspective(2.0 * this->focal / this->viewport.width, 2.0 * this->focal / this->viewport.height, near, far) * this->view);
+	ViewSpread spread = this->SpreadPerDepth();
+	return FrustumOf(Mat4::Perspective(1.0 / spread.across, 1.0 / spread.up, near, far) * this->view);
 }
 
 std::array<Vec3, 8> SceneView::SliceCorners(double near, double far) const
 {
 	Vec3 right = {this->view.At(0, 0), this->view.At(0, 1), this->view.At(0, 2)};
 	Vec3 up = {this->view.At(1, 0), this->view.At(1, 1), this->view.At(1, 2)};
-	Vec3 across = right * (this->viewport.width * 0.5 / this->focal);
-	Vec3 down = up * (this->viewport.height * 0.5 / this->focal);
+	ViewSpread spread = this->SpreadPerDepth();
+	Vec3 across = right * spread.across;
+	Vec3 down = up * spread.up;
 	std::array<Vec3, 8> corners;
 	auto corner = corners.begin();
 	for (double depth : {near, far}) {
@@ -144,7 +153,7 @@ static MapVector ShadowFall(const Vec3 &sun)
 	return {-sun.x / rise, -sun.y / rise};
 }
 
-std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high)
+static std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &high)
 {
 	double floor = -DEEPEST_SINK * LevelRise();
 	MapVector fall = ShadowFall(sun);
@@ -155,12 +164,15 @@ std::pair<Vec3, Vec3> SunSwept(const Vec3 &sun, const Vec3 &low, const Vec3 &hig
 	};
 }
 
+bool ShadowMeets(const Frustum &frustum, const Vec3 &sun, const Vec3 &low, const Vec3 &high)
+{
+	auto [swept_low, swept_high] = SunSwept(sun, low, high);
+	return BoxMeets(frustum, swept_low, swept_high);
+}
+
 bool Sight::Sees(const Vec3 &low, const Vec3 &high) const
 {
-	if (!BoxMeets(this->frustum, low, high)) return false;
-	if (this->decided == nullptr) return true;
-	auto [shadow_low, shadow_high] = SunSwept(this->sun, low, high);
-	return BoxMeets(*this->decided, shadow_low, shadow_high);
+	return BoxMeets(this->frustum, low, high) && (this->decided == nullptr || ShadowMeets(*this->decided, this->sun, low, high));
 }
 
 bool Sight::SeesWhole(const Vec3 &low, const Vec3 &high) const

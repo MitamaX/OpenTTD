@@ -222,8 +222,7 @@ bool TerrainField::Shows(const Nearby &near, const SceneView &camera) const
 
 bool TerrainField::ShadowShows(const Nearby &near, const SceneView &camera) const
 {
-	auto [low, high] = SunSwept(camera.sun, near.low, near.high);
-	return BoxMeets(camera.frustum, low, high);
+	return ShadowMeets(camera.frustum, camera.sun, near.low, near.high);
 }
 
 void TerrainField::DrawWater(const SceneView &camera)
