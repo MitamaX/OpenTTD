@@ -10,9 +10,14 @@
 #ifndef MINI_GPU_MESH_BUFFER_H
 #define MINI_GPU_MESH_BUFFER_H
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstddef>
 #include <span>
 #include <vector>
+
+#include "../core/space.h"
 
 enum class AttributeType : uint8_t {
 	Float,
@@ -21,6 +26,27 @@ enum class AttributeType : uint8_t {
 };
 
 inline constexpr double NORMALISED_BYTE_MAX = 127.0;
+
+/* Halves round away from zero, as std::lround rounds them. */
+inline int RoundedAway(double value)
+{
+	return static_cast<int>(value + std::copysign(0.5, value));
+}
+
+inline int8_t SignedByte(double share)
+{
+	return static_cast<int8_t>(RoundedAway(std::clamp(share, -1.0, 1.0) * NORMALISED_BYTE_MAX));
+}
+
+inline double ShareOfByte(int8_t byte)
+{
+	return byte / NORMALISED_BYTE_MAX;
+}
+
+inline Vec3 NormalOfBytes(const std::array<int8_t, 4> &bytes)
+{
+	return {ShareOfByte(bytes[0]), ShareOfByte(bytes[1]), ShareOfByte(bytes[2])};
+}
 
 struct VertexAttribute {
 	uint32_t location;

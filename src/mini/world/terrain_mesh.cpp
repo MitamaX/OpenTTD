@@ -82,14 +82,9 @@ using Facet = std::array<TileCorner, 3>;
 /* Each corner's offset from the tile's north corner. */
 static constexpr std::array<std::array<int, 2>, CORNER_COUNT> CORNER_OFFSETS = {{{0, 0}, {1, 0}, {0, 1}, {1, 1}}};
 
-static int8_t NormalByte(double component)
-{
-	return static_cast<int8_t>(std::lround(std::clamp(component, -1.0, 1.0) * NORMALISED_BYTE_MAX));
-}
-
 uint32_t TerrainMesh::Add(const WorldPoint &at, const Vec3 &normal, double mark)
 {
-	return this->Add({static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.level), {NormalByte(normal.x), NormalByte(normal.y), NormalByte(normal.z), NormalByte(mark)}});
+	return this->Add({static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.level), {SignedByte(normal.x), SignedByte(normal.y), SignedByte(normal.z), SignedByte(mark)}});
 }
 
 double SunkMark(double sink)
@@ -217,8 +212,7 @@ static TileCorner CornerAt(int dx, int dy)
 
 static Vec3 VertexNormal(const TerrainMesh &mesh, uint32_t index)
 {
-	const std::array<int8_t, 4> &normal = mesh.vertices[index].normal;
-	return Vec3{static_cast<double>(normal[0]), static_cast<double>(normal[1]), static_cast<double>(normal[2])} * (1.0 / NORMALISED_BYTE_MAX);
+	return NormalOfBytes(mesh.vertices[index].normal);
 }
 
 static Vec3 FacetedNormal(const TerrainMesh &mesh, const std::array<uint32_t, CORNER_COUNT> &corners, double fx, double fy)
