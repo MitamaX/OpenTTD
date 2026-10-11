@@ -50,7 +50,7 @@ public:
 	double Rolled(double x, double y) const;
 	Vec3 RolledNormal(double x, double y) const;
 	const Seabed &Bed() const { return this->bed; }
-	BankSite BanksAround(int tx, int ty) const { return this->banks.Around(this->bed, tx, ty); }
+	const BankSite &BanksAround(int tx, int ty) const { return this->banks.Around(this->bed, tx, ty); }
 
 private:
 	double Corner(int cx, int cy) const;

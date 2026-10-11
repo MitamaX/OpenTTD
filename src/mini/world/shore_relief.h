@@ -26,7 +26,7 @@ bool LiesAlongShore(const Seabed &bed, int tx, int ty);
 /* A bare coast's ground: a spline through the bed's corners. */
 class ShoreRelief : public TileRelief {
 public:
-	ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners, BankSite banks);
+	ShoreRelief(const Seabed &bed, int tx, int ty, const std::array<double, 4> &corners, const BankSite &banks);
 
 	Vec3 Normal(double x, double y, const Vec3 &faceted) const override;
 	bool Banked() const;
@@ -40,7 +40,7 @@ private:
 	bool LiftsAnywhere() const;
 
 	const Seabed &bed;
-	BankSite banks;
+	const BankSite &banks;
 	mutable std::optional<bool> banked;
 };
 

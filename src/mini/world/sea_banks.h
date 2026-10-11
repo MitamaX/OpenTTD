@@ -11,7 +11,9 @@
 #define MINI_WORLD_SEA_BANKS_H
 
 #include <array>
+#include <map>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "../core/camera.h"
@@ -64,7 +66,7 @@ class SeaBanks {
 public:
 	explicit SeaBanks(const TileSpan &tiles) : tiles(tiles) {}
 
-	BankSite Around(const Seabed &bed, int tx, int ty) const;
+	const BankSite &Around(const Seabed &bed, int tx, int ty) const;
 
 private:
 	struct Gathered {
@@ -73,9 +75,11 @@ private:
 	};
 
 	const Gathered &Gather(const Seabed &bed) const;
+	BankSite Collect(const Seabed &bed, int tx, int ty) const;
 
 	TileSpan tiles;
 	mutable std::optional<Gathered> gathered;
+	mutable std::map<std::pair<int, int>, BankSite> sites;
 };
 
 #endif /* MINI_WORLD_SEA_BANKS_H */

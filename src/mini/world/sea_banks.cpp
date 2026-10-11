@@ -191,7 +191,14 @@ const SeaBanks::Gathered &SeaBanks::Gather(const Seabed &bed) const
 	return found;
 }
 
-BankSite SeaBanks::Around(const Seabed &bed, int tx, int ty) const
+const BankSite &SeaBanks::Around(const Seabed &bed, int tx, int ty) const
+{
+	auto [site, fresh] = this->sites.try_emplace(std::pair{tx, ty});
+	if (fresh) site->second = this->Collect(bed, tx, ty);
+	return site->second;
+}
+
+BankSite SeaBanks::Collect(const Seabed &bed, int tx, int ty) const
 {
 	const Gathered &all = this->Gather(bed);
 	MapVector middle = {tx + HALF_TILE, ty + HALF_TILE};
