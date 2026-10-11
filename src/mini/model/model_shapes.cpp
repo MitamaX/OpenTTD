@@ -40,6 +40,14 @@ static std::vector<uint32_t> AddRing(ModelMesh &mesh, const LatheRing &ring, int
 	return corners;
 }
 
+/* A ring's middle and then its corners round to the first again, so a fan from the middle covers the rim however it is reshaped. */
+static std::vector<Vec3> HubbedRim(const LatheRing &ring, int sides)
+{
+	std::vector<Vec3> rim = {{0.0, 0.0, ring.z}};
+	for (int side = 0; side <= sides; side++) rim.push_back(RingPoint(ring.radius, ring.z, side % sides, sides));
+	return rim;
+}
+
 static void JoinRings(ModelMesh &mesh, const std::vector<uint32_t> &low, const std::vector<uint32_t> &high, int sides)
 {
 	for (int side = 0; side < sides; side++) {
@@ -54,6 +62,7 @@ static void JoinRings(ModelMesh &mesh, const std::vector<uint32_t> &low, const s
 	}
 }
 
+/* A flat cap of corners of its own, so the rim stays sharp however the mesh is shaded. */
 static void Fan(ModelMesh &mesh, std::span<const Vec3> rim, const Vec3 &facing, const Vec3 &turning)
 {
 	uint32_t first = static_cast<uint32_t>(mesh.vertices.size());
@@ -68,22 +77,6 @@ static void Fan(ModelMesh &mesh, std::span<const Vec3> rim, const Vec3 &facing, 
 	}
 }
 
-/* A flat cap of corners of its own, so the rim stays sharp however the mesh is shaded. */
-static void Cap(ModelMesh &mesh, const LatheRing &ring, int sides, const Vec3 &facing)
-{
-	uint32_t centre = mesh.Point({0.0, 0.0, ring.z}, facing);
-	std::vector<uint32_t> rim;
-	for (int side = 0; side < sides; side++) rim.push_back(mesh.Point(RingPoint(ring.radius, ring.z, side, sides), facing));
-	for (int side = 0; side < sides; side++) {
-		int next = (side + 1) % sides;
-		if (facing.z > 0.0) {
-			mesh.Triangle(centre, rim[side], rim[next]);
-		} else {
-			mesh.Triangle(centre, rim[next], rim[side]);
-		}
-	}
-}
-
 ModelMesh Lathe(std::span<const LatheRing> profile, int sides)
 {
 	ModelMesh mesh;
@@ -94,8 +87,8 @@ ModelMesh Lathe(std::span<const LatheRing> profile, int sides)
 		below = std::move(above);
 	}
 	mesh.Smooth();
-	if (profile.front().radius > 0.0) Cap(mesh, profile.front(), sides, DOWN);
-	if (profile.back().radius > 0.0) Cap(mesh, profile.back(), sides, UP);
+	if (profile.front().radius > 0.0) Fan(mesh, HubbedRim(profile.front(), sides), DOWN, UP);
+	if (profile.back().radius > 0.0) Fan(mesh, HubbedRim(profile.back(), sides), UP, UP);
 	return mesh;
 }
 
