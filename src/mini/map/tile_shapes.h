@@ -100,7 +100,18 @@ struct StepFace {
 	std::array<WorldPoint, 4> ring;
 };
 
+struct CornerTile {
+	int tx;
+	int ty;
+	int corner_x;
+	int corner_y;
+
+	uint8_t Level() const;
+};
+
 bool OnMap(int tx, int ty);
+bool IsMapTile(int tx, int ty);
+std::array<CornerTile, 4> TilesAtCorner(int cx, int cy);
 /* The map's tiles within so many tiles of an area. */
 Rect TilesNear(const Rect &area, int reach);
 /* The area grown just enough to take in a tile. */

@@ -10,6 +10,7 @@
 #ifndef MINI_WORLD_SEABED_H
 #define MINI_WORLD_SEABED_H
 
+#include <array>
 #include <optional>
 
 #include "../../map_type.h"
@@ -31,6 +32,7 @@ enum class WaterForm : uint8_t {
 WaterForm WaterFormOf(int tx, int ty);
 double SurfaceLevelOf(int tx, int ty);
 double CornerSink(int cx, int cy);
+double LowestCornerAt(int cx, int cy);
 double CentreSink(int tx, int ty);
 bool SharesBasin(int tx, int ty, int nx, int ny);
 /* A tile of level river water, whose bed may follow the water's curved outline. */
@@ -57,8 +59,13 @@ public:
 	double Level(int hx, int hy) const;
 	double Sink(int cx, int cy) const;
 	Vec3 Normal(int hx, int hy, int reach) const;
+	std::array<double, 4> SettledCorners(int tx, int ty) const;
 
 private:
+	double LevelAt(int hx, int hy) const;
+	double CornerLevel(int cx, int cy) const;
+	double CornerMean(int tx, int ty) const;
+
 	LazyLattice<double> levels;
 };
 

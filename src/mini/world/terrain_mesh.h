@@ -104,7 +104,6 @@ private:
 	TileSpan tiles;
 	GroundGrain grain;
 	int next_row;
-	Seabed bed;
 	Landform land;
 	CornerNormals normals;
 	TerrainMesh mesh;

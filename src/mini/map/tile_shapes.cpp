@@ -138,6 +138,21 @@ bool OnMap(int tx, int ty)
 	return tx >= 0 && ty >= 0 && tx <= static_cast<int>(Map::MaxX()) && ty <= static_cast<int>(Map::MaxY());
 }
 
+bool IsMapTile(int tx, int ty)
+{
+	return OnMap(tx, ty) && !IsTileType(TileXY(tx, ty), MP_VOID);
+}
+
+uint8_t CornerTile::Level() const
+{
+	return _world_tiles.SurfaceAt(TileXY(this->tx, this->ty)).CornerAt(this->corner_x, this->corner_y);
+}
+
+std::array<CornerTile, 4> TilesAtCorner(int cx, int cy)
+{
+	return {{{cx - 1, cy - 1, 1, 1}, {cx, cy - 1, 0, 1}, {cx - 1, cy, 1, 0}, {cx, cy, 0, 0}}};
+}
+
 Rect TilesNear(const Rect &area, int reach)
 {
 	Rect grown = area.Expand(reach);

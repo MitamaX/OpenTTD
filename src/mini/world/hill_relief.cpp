@@ -14,7 +14,6 @@
 #include <cmath>
 
 #include "../../map_func.h"
-#include "../../tile_map.h"
 #include "../core/lattice_noise.h"
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
@@ -29,11 +28,6 @@ static constexpr double CREST_FULL_BEND = 0.5;
 static constexpr double CREST_WAVES_PER_TILE = 0.4;
 static constexpr uint32_t CREST_SALT = 0x6C2E57A1U;
 
-static bool IsMapTile(int tx, int ty)
-{
-	return OnMap(tx, ty) && !IsTileType(TileXY(tx, ty), MP_VOID);
-}
-
 static bool IsRollingLand(int tx, int ty)
 {
 	return IsMapTile(tx, ty) && IsOpenLand(tx, ty) && (_world_tiles.NetworkAt(TileXY(tx, ty)).style & NETWORK_BRIDGE_BIT) == 0 && !IsRiverBank(tx, ty);
@@ -41,7 +35,8 @@ static bool IsRollingLand(int tx, int ty)
 
 Landform::Landform(const TileSpan &tiles) :
 	rolling(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * LANDFORM_MARGIN),
-	corners(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 2 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 2 + 2 * LANDFORM_MARGIN)
+	corners(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 2 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 2 + 2 * LANDFORM_MARGIN),
+	bed(tiles)
 {
 }
 
@@ -104,18 +99,10 @@ double Landform::Corner(int cx, int cy) const
 
 double Landform::MeetingCorner(int cx, int cy) const
 {
-	std::optional<double> lowest;
-	for (int dy = 0; dy <= 1; dy++) {
-		for (int dx = 0; dx <= 1; dx++) {
-			int tx = cx - 1 + dx;
-			int ty = cy - 1 + dy;
-			if (!IsMapTile(tx, ty)) continue;
-			double level = _world_tiles.SurfaceAt(TileXY(tx, ty)).CornerAt(1 - dx, 1 - dy);
-			if (this->Rolls(tx, ty)) return level;
-			lowest = std::min(lowest.value_or(level), level);
-		}
+	for (const CornerTile &meeting : TilesAtCorner(cx, cy)) {
+		if (this->Rolls(meeting.tx, meeting.ty)) return meeting.Level();
 	}
-	return lowest.value_or(GroundLevel(cx, cy));
+	return LowestCornerAt(cx, cy);
 }
 
 bool Landform::Planar(int tx, int ty) const
@@ -144,12 +131,23 @@ Vec3 HillRelief::Normal(double x, double y, const Vec3 &faceted) const
 
 LaidGround::LaidGround(const Landform &land, int tx, int ty) : tx(tx), ty(ty)
 {
-	if (land.Bends(tx, ty)) this->relief.emplace(land, tx, ty);
+	if (IsBareCoast(tx, ty)) {
+		this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty));
+	} else if (land.Bends(tx, ty)) {
+		this->relief.emplace<HillRelief>(land, tx, ty);
+	}
 }
 
 double LaidGround::Level(double x, double y) const
 {
-	return this->relief.has_value() ? this->relief->Level(x, y) : BedLevel(this->tx, this->ty, x, y);
+	const TileRelief *relief = this->Relief();
+	return relief != nullptr ? relief->Level(x, y) : BedLevel(this->tx, this->ty, x, y);
+}
+
+const TileRelief *LaidGround::Relief() const
+{
+	if (const HillRelief *hill = std::get_if<HillRelief>(&this->relief); hill != nullptr) return hill;
+	return std::get_if<ShoreRelief>(&this->relief);
 }
 
 std::unique_ptr<DrawnSurface> RolledSpan::Surface(int tx, int ty) const

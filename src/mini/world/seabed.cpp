@@ -75,18 +75,23 @@ static double SinkAt(double shore_distance)
 /* A corner sinks only where every tile meeting there holds level water at the corner's own height, so the ground never breaks open beside land or a sloping stream. */
 double CornerSink(int cx, int cy)
 {
-	for (int dy = 0; dy <= 1; dy++) {
-		for (int dx = 0; dx <= 1; dx++) {
-			int tx = cx - 1 + dx;
-			int ty = cy - 1 + dy;
-			WaterForm form = WaterFormOf(tx, ty);
-			if (form != WaterForm::Open && form != WaterForm::Shore) return 0.0;
-			if (!OnMap(tx, ty)) continue;
-			SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-			if (surface.CornerAt(1 - dx, 1 - dy) != surface.Lowest()) return 0.0;
-		}
+	for (const CornerTile &meeting : TilesAtCorner(cx, cy)) {
+		WaterForm form = WaterFormOf(meeting.tx, meeting.ty);
+		if (form != WaterForm::Open && form != WaterForm::Shore) return 0.0;
+		if (OnMap(meeting.tx, meeting.ty) && meeting.Level() != SurfaceLevelOf(meeting.tx, meeting.ty)) return 0.0;
 	}
 	return SinkAt(ShoreDistance(cx, cy));
+}
+
+double LowestCornerAt(int cx, int cy)
+{
+	std::optional<double> lowest;
+	for (const CornerTile &meeting : TilesAtCorner(cx, cy)) {
+		if (!IsMapTile(meeting.tx, meeting.ty)) continue;
+		double level = meeting.Level();
+		lowest = std::min(lowest.value_or(level), level);
+	}
+	return lowest.value_or(GroundLevel(cx, cy));
 }
 
 double CentreSink(int tx, int ty)
@@ -175,28 +180,6 @@ bool IsRiverside(int tx, int ty)
 	return IsChannel(tx, ty) || IsRapids(tx, ty) || IsRiverMouth(tx, ty) || IsRiverBank(tx, ty);
 }
 
-static double CornerBedLevel(int cx, int cy)
-{
-	return GroundLevel(cx, cy) - CornerSink(cx, cy);
-}
-
-/* The bed at a point of the half tile lattice. An edge's middle sinks where open water runs on across it, and otherwise lies on the line between the edge's ends. */
-static double BedLevelAt(int hx, int hy)
-{
-	int x = hx >> 1;
-	int y = hy >> 1;
-	bool across_half = (hx & 1) != 0;
-	bool down_half = (hy & 1) != 0;
-	if (!across_half && !down_half) return CornerBedLevel(x, y);
-	if (across_half && down_half) return WaterFormOf(x, y) == WaterForm::Open ? SurfaceLevelOf(x, y) - CentreSink(x, y) : GroundLevel(x + HALF_TILE, y + HALF_TILE);
-
-	int nx = across_half ? x : x - 1;
-	int ny = across_half ? y - 1 : y;
-	if (SharesBasin(x, y, nx, ny)) return SurfaceLevelOf(x, y) - SinkAt(ShoreDistance(hx * HALF_TILE, hy * HALF_TILE));
-	int ex = across_half ? x + 1 : x;
-	int ey = across_half ? y : y + 1;
-	return (CornerBedLevel(x, y) + CornerBedLevel(ex, ey)) * 0.5;
-}
 
 double BedLevel(int tx, int ty, double x, double y)
 {
@@ -216,12 +199,12 @@ Seabed::Seabed(const TileSpan &tiles) :
 
 double Seabed::Level(int hx, int hy) const
 {
-	return this->levels.At(hx, hy, BedLevelAt);
+	return this->levels.At(hx, hy, [this](int x, int y) { return this->LevelAt(x, y); });
 }
 
 double Seabed::Sink(int cx, int cy) const
 {
-	return GroundLevel(cx, cy) - this->Level(2 * cx, 2 * cy);
+	return LowestCornerAt(cx, cy) - this->CornerLevel(cx, cy);
 }
 
 /* The bed's slope across a reach of half tiles either side. */
@@ -232,4 +215,44 @@ Vec3 Seabed::Normal(int hx, int hy, int reach) const
 	double slope_x = (this->Level(hx + reach, hy) - this->Level(hx - reach, hy)) * rise / span;
 	double slope_y = (this->Level(hx, hy + reach) - this->Level(hx, hy - reach)) * rise / span;
 	return Normalised({-slope_x, -slope_y, 1.0});
+}
+
+std::array<double, 4> Seabed::SettledCorners(int tx, int ty) const
+{
+	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
+	std::array<double, 4> corners;
+	for (size_t i = 0; i < corners.size(); i++) {
+		int dx = static_cast<int>(i % 2);
+		int dy = static_cast<int>(i / 2);
+		corners[i] = surface.CornerAt(dx, dy) - this->Sink(tx + dx, ty + dy);
+	}
+	return corners;
+}
+
+/* The bed at a point of the half tile lattice. An edge's middle sinks where open water runs on across it, and otherwise lies on the line between the edge's ends. */
+double Seabed::LevelAt(int hx, int hy) const
+{
+	int x = hx >> 1;
+	int y = hy >> 1;
+	bool across_half = (hx & 1) != 0;
+	bool down_half = (hy & 1) != 0;
+	if (!across_half && !down_half) return LowestCornerAt(x, y) - CornerSink(x, y);
+	if (across_half && down_half) return WaterFormOf(x, y) == WaterForm::Open ? SurfaceLevelOf(x, y) - CentreSink(x, y) : this->CornerMean(x, y);
+
+	int nx = across_half ? x : x - 1;
+	int ny = across_half ? y - 1 : y;
+	if (SharesBasin(x, y, nx, ny)) return SurfaceLevelOf(x, y) - SinkAt(ShoreDistance(hx * HALF_TILE, hy * HALF_TILE));
+	int ex = across_half ? x + 1 : x;
+	int ey = across_half ? y : y + 1;
+	return (this->CornerLevel(x, y) + this->CornerLevel(ex, ey)) * 0.5;
+}
+
+double Seabed::CornerLevel(int cx, int cy) const
+{
+	return this->Level(2 * cx, 2 * cy);
+}
+
+double Seabed::CornerMean(int tx, int ty) const
+{
+	return (this->CornerLevel(tx, ty) + this->CornerLevel(tx + 1, ty) + this->CornerLevel(tx, ty + 1) + this->CornerLevel(tx + 1, ty + 1)) * 0.25;
 }

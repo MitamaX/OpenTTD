@@ -12,11 +12,13 @@
 
 #include <array>
 #include <memory>
-#include <optional>
+#include <variant>
 
 #include "../core/camera.h"
 #include "../core/ground_trace.h"
 #include "lazy_lattice.h"
+#include "seabed.h"
+#include "shore_relief.h"
 #include "tile_relief.h"
 
 inline constexpr int LANDFORM_REACH = 2;
@@ -47,6 +49,7 @@ public:
 	std::array<double, 4> Corners(int tx, int ty) const;
 	double Rolled(double x, double y) const;
 	Vec3 RolledNormal(double x, double y) const;
+	const Seabed &Bed() const { return this->bed; }
 
 private:
 	double Corner(int cx, int cy) const;
@@ -55,6 +58,7 @@ private:
 
 	LazyLattice<bool> rolling;
 	LazyLattice<double> corners;
+	Seabed bed;
 };
 
 class HillRelief : public TileRelief {
@@ -79,11 +83,13 @@ public:
 	double Level(double x, double y) const;
 	double Level(const MapVector &at) const { return this->Level(at.x, at.y); }
 	WorldPoint At(const MapVector &at) const { return {at.x, at.y, this->Level(at)}; }
+	const TileRelief *Relief() const;
+	bool Rolls() const { return std::holds_alternative<HillRelief>(this->relief); }
 
 private:
 	int tx;
 	int ty;
-	std::optional<HillRelief> relief;
+	std::variant<std::monostate, HillRelief, ShoreRelief> relief;
 };
 
 class RolledSurface : public DrawnSurface {
