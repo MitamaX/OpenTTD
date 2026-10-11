@@ -94,15 +94,12 @@ static constexpr double RIM_HEIGHT = 0.01;
 static constexpr double LADDER_WIDTH = 0.012;
 static constexpr double LADDER_DEPTH = 0.005;
 
-static constexpr Vec3 FORWARD = {1.0, 0.0, 0.0};
-static constexpr Vec3 SIDEWAYS = {0.0, 1.0, 0.0};
 static constexpr double QUARTER_TURN = HALF_TURN * 0.5;
 static constexpr uint32_t QUARTER_TURNS = 4;
 static constexpr int FIGURE_SIDES = 12;
 static constexpr int LIMB_SIDES = 6;
 static constexpr double STATUE_FOOT_RADIUS = 0.16;
 static constexpr double STATUE_FOOT_HEIGHT = 0.03;
-static constexpr double SHOULDERS_BREADTH = 1.6;
 static constexpr std::array<LatheRing, 3> COAT_SKIRT = {{{0.105, 0.2}, {0.085, 0.38}, {0.072, 0.47}}};
 static constexpr std::array<LatheRing, 5> TORSO = {{{0.072, 0.46}, {0.084, 0.64}, {0.088, 0.74}, {0.042, 0.8}, {0.032, 0.84}}};
 static constexpr std::array<LatheRing, 5> HEAD = {{{0.03, 0.83}, {0.05, 0.87}, {0.052, 0.915}, {0.036, 0.955}, {0.0, 0.975}}};
@@ -131,22 +128,15 @@ bool ReplacesSolid(const Solid &solid)
 	return solid.fixture == Fixture::WaterTank || solid.fixture == Fixture::Car || solid.fixture == Fixture::Statue;
 }
 
-static ModelMesh BronzeLimb(double joint_radius, double end_radius, double length, const Vec3 &joint, double swing, double splay)
-{
-	ModelMesh limb = Column(LIMB_SIDES, end_radius, joint_radius, length).Move({0.0, 0.0, -length});
-	return limb.Transform(Mat4::Translation(joint) * Mat4::Turn(SIDEWAYS, swing) * Mat4::Turn(FORWARD, splay));
-}
-
 static ModelMesh StatueFigure()
 {
-	Mat4 shouldered = Mat4::Scaling({1.0, SHOULDERS_BREADTH, 1.0});
 	ModelMesh figure = Prism(FIGURE_SIDES, STATUE_FOOT_RADIUS, STATUE_FOOT_HEIGHT);
-	figure.Append(Lathe(COAT_SKIRT, FIGURE_SIDES).Transform(shouldered));
-	figure.Append(Lathe(TORSO, FIGURE_SIDES).Transform(shouldered));
+	figure.Append(Torso(COAT_SKIRT, FIGURE_SIDES));
+	figure.Append(Torso(TORSO, FIGURE_SIDES));
 	figure.Append(Lathe(HEAD, FIGURE_SIDES));
-	for (double side : {-1.0, 1.0}) figure.Append(BronzeLimb(HIP_RADIUS, ANKLE_RADIUS, HIP_HEIGHT - STATUE_FOOT_HEIGHT, {0.0, side * HIP_SPREAD, HIP_HEIGHT}, 0.0, 0.0));
-	figure.Append(BronzeLimb(SHOULDER_RADIUS, WRIST_RADIUS, ARM_LENGTH, {0.0, -SHOULDER_SPREAD, SHOULDER_HEIGHT}, RAISED_ARM_SWING, -ARM_SPLAY));
-	figure.Append(BronzeLimb(SHOULDER_RADIUS, WRIST_RADIUS, ARM_LENGTH, {0.0, SHOULDER_SPREAD, SHOULDER_HEIGHT}, HANGING_ARM_SWING, ARM_SPLAY));
+	for (double side : {-1.0, 1.0}) figure.Append(Limb(LIMB_SIDES, HIP_RADIUS, ANKLE_RADIUS, HIP_HEIGHT - STATUE_FOOT_HEIGHT, {0.0, side * HIP_SPREAD, HIP_HEIGHT}, 0.0));
+	figure.Append(Limb(LIMB_SIDES, SHOULDER_RADIUS, WRIST_RADIUS, ARM_LENGTH, {0.0, -SHOULDER_SPREAD, SHOULDER_HEIGHT}, RAISED_ARM_SWING, -ARM_SPLAY));
+	figure.Append(Limb(LIMB_SIDES, SHOULDER_RADIUS, WRIST_RADIUS, ARM_LENGTH, {0.0, SHOULDER_SPREAD, SHOULDER_HEIGHT}, HANGING_ARM_SWING, ARM_SPLAY));
 	return figure;
 }
 
