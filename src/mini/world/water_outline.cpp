@@ -79,8 +79,8 @@ static SheetSpan SheetSpanOf(int tx, int ty)
 	TileIndex tile = TileXY(std::clamp<int>(tx, 0, Map::MaxX()), std::clamp<int>(ty, 0, Map::MaxY()));
 	WaterTexel water = _world_tiles.WaterAt(tile);
 	SurfaceTexel surface = _world_tiles.SurfaceAt(tile);
-	double low = std::min({surface.north, surface.west, surface.east, surface.south});
-	double top = std::max({surface.north, surface.west, surface.east, surface.south});
+	double low = surface.Lowest();
+	double top = surface.Highest();
 	return {water, low, water.level == FULL_WATER ? top : low, top};
 }
 

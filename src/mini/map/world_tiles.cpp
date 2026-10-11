@@ -75,11 +75,6 @@ double FacetLevel(const SurfaceTexel &surface, double fx, double fy)
 	return north + (east - north) * fy + (south - east) * fx;
 }
 
-static uint HighestLevel(const SurfaceTexel &surface)
-{
-	return std::max({surface.north, surface.west, surface.east, surface.south});
-}
-
 /* Every corner of a halftile foundation's raised half stands at its top, so the step down to the other half becomes a slope. */
 static uint8_t CornerLevel(Slope slope, int z, Corner corner)
 {
@@ -534,7 +529,7 @@ void WorldTiles::Store(size_t i, const Texels &texels)
 	this->network[i] = texels.network;
 	this->ramps[i] = texels.ramp;
 	this->eases[i] = texels.eases;
-	this->peak = std::max(this->peak, HighestLevel(texels.surface));
+	this->peak = std::max<uint>(this->peak, texels.surface.Highest());
 }
 
 void WorldTiles::Rebuild()

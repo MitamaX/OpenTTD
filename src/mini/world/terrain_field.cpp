@@ -82,8 +82,8 @@ void TerrainField::Survey(Chunk &chunk, const TileSpan &tiles) const
 	for (int ty = std::max(tiles.ty0 - ROLL_SPREAD, 0); ty <= std::min(tiles.ty1 + ROLL_SPREAD, static_cast<int>(Map::MaxY())); ty++) {
 		for (int tx = std::max(tiles.tx0 - ROLL_SPREAD, 0); tx <= std::min(tiles.tx1 + ROLL_SPREAD, static_cast<int>(Map::MaxX())); tx++) {
 			SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-			chunk.low = std::min({chunk.low, surface.north, surface.west, surface.east, surface.south});
-			chunk.high = std::max({chunk.high, surface.north, surface.west, surface.east, surface.south});
+			chunk.low = std::min(chunk.low, surface.Lowest());
+			chunk.high = std::max(chunk.high, surface.Highest());
 		}
 	}
 	chunk.surveyed = true;

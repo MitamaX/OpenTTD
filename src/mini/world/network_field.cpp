@@ -86,8 +86,8 @@ void NetworkField::Survey(NetworkChunk &chunk, const TileSpan &tiles) const
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			TileIndex tile = TileXY(tx, ty);
 			SurfaceTexel surface = _world_tiles.SurfaceAt(tile);
-			chunk.low = std::min<uint>({chunk.low, surface.north, surface.west, surface.east, surface.south});
-			chunk.high = std::max<uint>({chunk.high, surface.north, surface.west, surface.east, surface.south});
+			chunk.low = std::min<uint>(chunk.low, surface.Lowest());
+			chunk.high = std::max<uint>(chunk.high, surface.Highest());
 			if (IsBridgeAbove(tile)) chunk.high = std::max<uint>(chunk.high, GetBridgeHeight(GetSouthernBridgeEnd(tile)));
 		}
 	}

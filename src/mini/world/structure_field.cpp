@@ -125,8 +125,8 @@ void StructureField::Survey(StructureChunk &chunk, size_t index) const
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
 			SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-			low = std::min<uint>({low, surface.north, surface.west, surface.east, surface.south});
-			high = std::max<uint>({high, surface.north, surface.west, surface.east, surface.south});
+			low = std::min<uint>(low, surface.Lowest());
+			high = std::max<uint>(high, surface.Highest());
 		}
 	}
 	chunk.low = {static_cast<double>(tiles.tx0), static_cast<double>(tiles.ty0), (low - FOOTING_LEVELS) * this->rise};

@@ -33,8 +33,7 @@ static std::optional<TileIndex> RapidsFollowed(int tx, int ty)
 
 static double TopLevelOf(int tx, int ty)
 {
-	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-	return std::max({surface.north, surface.west, surface.east, surface.south});
+	return _world_tiles.SurfaceAt(TileXY(tx, ty)).Highest();
 }
 
 static double FallShare(double u, double foot, double lip)

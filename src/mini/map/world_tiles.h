@@ -10,6 +10,7 @@
 #ifndef MINI_MAP_WORLD_TILES_H
 #define MINI_MAP_WORLD_TILES_H
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <span>
@@ -100,6 +101,8 @@ struct SurfaceTexel {
 	uint8_t south;
 
 	uint8_t CornerAt(int dx, int dy) const { return dy == 0 ? (dx == 0 ? this->north : this->west) : (dx == 0 ? this->east : this->south); }
+	uint8_t Lowest() const { return std::min({this->north, this->west, this->east, this->south}); }
+	uint8_t Highest() const { return std::max({this->north, this->west, this->east, this->south}); }
 	bool operator==(const SurfaceTexel &) const = default;
 };
 

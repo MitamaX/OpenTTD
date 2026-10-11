@@ -29,11 +29,6 @@ static bool IsFlat(const SurfaceTexel &surface)
 	return surface.north == surface.west && surface.north == surface.east && surface.north == surface.south;
 }
 
-static uint8_t LowestCorner(const SurfaceTexel &surface)
-{
-	return std::min({surface.north, surface.west, surface.east, surface.south});
-}
-
 WaterForm WaterFormOf(int tx, int ty)
 {
 	if (!OnMap(tx, ty)) return WaterForm::Open;
@@ -46,7 +41,7 @@ WaterForm WaterFormOf(int tx, int ty)
 
 double SurfaceLevelOf(int tx, int ty)
 {
-	return OnMap(tx, ty) ? LowestCorner(_world_tiles.SurfaceAt(TileXY(tx, ty))) : 0.0;
+	return OnMap(tx, ty) ? _world_tiles.SurfaceAt(TileXY(tx, ty)).Lowest() : 0.0;
 }
 
 /* How far a point lies from the nearest tile that is not open water, searched out to the edge of the shelf; tiles are weighed by their squared distance, so only the nearest is measured. */
@@ -88,7 +83,7 @@ double CornerSink(int cx, int cy)
 			if (form != WaterForm::Open && form != WaterForm::Shore) return 0.0;
 			if (!OnMap(tx, ty)) continue;
 			SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-			if (surface.CornerAt(1 - dx, 1 - dy) != LowestCorner(surface)) return 0.0;
+			if (surface.CornerAt(1 - dx, 1 - dy) != surface.Lowest()) return 0.0;
 		}
 	}
 	return SinkAt(ShoreDistance(cx, cy));

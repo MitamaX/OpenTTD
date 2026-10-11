@@ -74,7 +74,7 @@ double TileGround::Level(double x, double y) const
 
 double TileGround::Lowest() const
 {
-	return std::min({this->surface.north, this->surface.west, this->surface.east, this->surface.south});
+	return this->surface.Lowest();
 }
 
 WorldPoint Between(const WorldPoint &from, const WorldPoint &to, double share)
