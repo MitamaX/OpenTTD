@@ -58,7 +58,6 @@
 #include "../../safeguards.h"
 
 static constexpr double GRID_FADE_PPT = INFRASTRUCTURE_PPT / 2.0;
-static constexpr std::array<Swatch, 4> TOWN_WALL_SWATCHES = {Swatch::Brick, Swatch::Render, Swatch::Concrete, Swatch::Stone};
 
 template <size_t N>
 static void DefineCodes(std::string &header, std::string_view prefix, const std::array<std::string_view, N> &names)
@@ -104,13 +103,6 @@ static void DefineTone(std::string &header, std::string_view name, uint32_t argb
 static void DefineTones(std::string &header, std::string_view name, std::span<const uint32_t> tones)
 {
 	header += fmt::format("#define {} vec3[{}]({})\n", name, tones.size(), fmt::join(tones | std::views::transform(Tone), ", "));
-}
-
-static std::vector<uint32_t> TownWallTints()
-{
-	std::vector<uint32_t> tints;
-	for (Swatch swatch : TOWN_WALL_SWATCHES) std::ranges::copy(SwatchTints(swatch), std::back_inserter(tints));
-	return tints;
 }
 
 template <size_t N>
@@ -199,8 +191,6 @@ static std::string ShaderHeader()
 	DefineFloats(header, "TREE_LITTER_COVERS", TREE_LITTER_COVERS);
 	DefineTones(header, "FRAME_TONES", SwatchTints(Swatch::Frame));
 	DefineTones(header, "MULLION_TONES", SwatchTints(Swatch::Mullion));
-	DefineTones(header, "TOWN_WALL_TONES", TownWallTints());
-	DefineTones(header, "CANDY_TONES", SwatchTints(Swatch::Candy));
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
 	DefineTone(header, "DISTANT_BALLAST", COL_DISTANT_BALLAST);

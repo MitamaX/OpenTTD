@@ -40,6 +40,7 @@ const float ROOF_OVER_BOARD_RUN = 1.0;
 const vec2 GLOSS_RESOLVED_PIXELS = vec2(6.0, 24.0);
 const float DISTANT_ROUGHNESS = 0.7;
 const float SHELTERED_GRIME = 0.55;
+const float FACE_INSET = 0.05;
 
 bool Has(uint flag)
 {
@@ -53,6 +54,11 @@ float PaneReflectance(uint material)
 		case CLAD_WATER: return DIELECTRIC_REFLECTANCE;
 		default: return PANE_REFLECTANCE;
 	}
+}
+
+bool Coated()
+{
+	return v_surface.x == CLAD_GLASS;
 }
 
 Pane PaneOf(vec3 room, Clad clad)
@@ -141,13 +147,15 @@ vec4 CladRadiance(Clad clad, vec3 normal, mat3 frame)
 	vec3 view = ToEye(v_position);
 	vec3 albedo = Linear(Overlaid(clad.albedo, int(v_surface.w)));
 	float roughness = mix(max(clad.roughness, DISTANT_ROUGHNESS), clad.roughness, smoothstep(GLOSS_RESOLVED_PIXELS.x, GLOSS_RESOLVED_PIXELS.y, tile_pixels));
-	float sunlit = SunVisibility(v_position, normal) * clad.sunlit;
+	float clouds = CloudLight(v_position);
+	float sunlit = SunVisibility(v_position, normal, clouds) * clad.sunlit;
 	float occlusion = v_colour.a * clad.occlusion;
 	Lighting lighting = LightingOf(normal, view, roughness, Sunlight(normal, sunlit));
 	vec3 mirror_way = reflect(-view, normal);
 	vec3 light = clad.glass < 1.0 ? SurfaceLight(albedo, Surroundings(mirror_way), normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, lighting, lighting.sun) : vec3(0.0);
 	if (clad.glass > 0.0) {
-		vec3 reflection = Mirrored(StreetBefore(v_position, frame[2], v_seed), mirror_way, roughness);
+		ivec2 own = Coated() ? AnchorAt(ivec2(floor(v_position.xy - frame[2].xy * FACE_INSET))) : NO_ANCHOR;
+		vec3 reflection = Mirrored(v_position, frame[2], mirror_way, own, roughness, clouds, Coated());
 		light = mix(light, PaneLight(PaneOf(albedo, clad), reflection, normal, view, roughness, occlusion, lighting), clad.glass);
 	}
 	return vec4(light + albedo * clad.glow, AmbientShare(lighting.ambient, lighting.sun));
