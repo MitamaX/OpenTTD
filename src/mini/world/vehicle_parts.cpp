@@ -15,7 +15,6 @@
 #include <cmath>
 #include <functional>
 #include <iterator>
-#include <numbers>
 #include <vector>
 
 #include "../../safeguards.h"

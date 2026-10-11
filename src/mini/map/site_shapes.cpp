@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 #include <span>
 
 #include "../../direction_func.h"
@@ -788,7 +787,7 @@ static void AddBlock(BuildingForm &form, const Part &block, uint32_t seed)
 static void AddWaterTower(BuildingForm &form, uint32_t tint)
 {
 	for (uint leg = 0; leg < TOWER_LEGS; leg++) {
-		double angle = 2.0 * std::numbers::pi * leg / TOWER_LEGS;
+		double angle = FULL_TURN * leg / TOWER_LEGS;
 		float cx = LOT_CENTRE + TOWER_LEG_SPREAD * static_cast<float>(std::cos(angle));
 		float cy = LOT_CENTRE + TOWER_LEG_SPREAD * static_cast<float>(std::sin(angle));
 		form.Add(Part::Square(cx, cy, TOWER_LEG_SIDE).Height(TOWER_LEG_HEIGHT).Clad(Material::Metal, tint));

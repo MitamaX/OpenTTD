@@ -20,14 +20,13 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 DOWN = {0.0, 0.0, -1.0};
 static constexpr Vec3 BACK = {-1.0, 0.0, 0.0};
 static constexpr Vec3 FORE = {1.0, 0.0, 0.0};
 static constexpr double TORSO_BREADTH = 1.6;
 
 static Vec3 RingPoint(double radius, double z, int side, int sides)
 {
-	double angle = 2.0 * std::numbers::pi * side / sides;
+	double angle = FULL_TURN * side / sides;
 	return {radius * std::cos(angle), radius * std::sin(angle), z};
 }
 

@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <numbers>
 
 #include "../../safeguards.h"
 
@@ -103,7 +102,7 @@ static ModelMesh Propeller(int blades, double reach)
 	ModelMesh propeller;
 	for (int blade = 0; blade < blades; blade++) {
 		ModelMesh arm = Plank({-BLADE_DEPTH * 0.5, -BLADE_HALF_WIDTH, 0.0}, {BLADE_DEPTH * 0.5, BLADE_HALF_WIDTH, reach}, TRIM);
-		propeller.Append(arm.Transform(Mat4::Turn(X_AXIS, 2.0 * std::numbers::pi * blade / blades)));
+		propeller.Append(arm.Transform(Mat4::Turn(X_AXIS, FULL_TURN * blade / blades)));
 	}
 	return propeller.Gloss(TRIM_GLOSS);
 }
@@ -189,7 +188,7 @@ static ModelMesh Rotor(VehicleDetail detail)
 	VehicleKit kit(detail);
 	ModelMesh blades;
 	for (int blade = 0; blade < ROTOR_BLADES; blade++) {
-		blades.Append(Plank({0.0, -0.007, ROTOR_HUB}, {ROTOR_REACH, 0.007, ROTOR_HUB + 0.003}, TRIM).Transform(Mat4::Turn(UP, 2.0 * std::numbers::pi * blade / ROTOR_BLADES)));
+		blades.Append(Plank({0.0, -0.007, ROTOR_HUB}, {ROTOR_REACH, 0.007, ROTOR_HUB + 0.003}, TRIM).Transform(Mat4::Turn(UP, FULL_TURN * blade / ROTOR_BLADES)));
 	}
 	kit.Body(blades);
 	kit.Fine(Prism(HUB_SIDES, 0.014, 0.012).Transform(Mat4::Translation({0.0, 0.0, ROTOR_HUB - 0.004})).Paint(RUNNING_GEAR));

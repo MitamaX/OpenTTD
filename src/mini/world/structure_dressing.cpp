@@ -14,7 +14,6 @@
 #include <array>
 #include <bit>
 #include <cmath>
-#include <numbers>
 
 #include "../../settings_type.h"
 #include "../core/seed.h"

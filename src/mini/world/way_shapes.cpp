@@ -13,14 +13,12 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
-#include <numbers>
 #include <unordered_map>
 
 #include "../map/tile_shapes.h"
 #include "../model/model_shapes.h"
 
 #include "../../safeguards.h"
-
 
 static Vec3 Flat(const MapVector &v, double z = 0.0)
 {
@@ -168,7 +166,7 @@ ModelMesh Strut(const Vec3 &from, const Vec3 &to, double half)
 std::vector<MapVector> Arc(const MapVector &centre, double radius, const MapVector &from, const MapVector &to, int steps)
 {
 	double start = std::atan2(from.y, from.x);
-	double turn = std::remainder(std::atan2(to.y, to.x) - start, 2.0 * std::numbers::pi);
+	double turn = std::remainder(std::atan2(to.y, to.x) - start, FULL_TURN);
 	std::vector<MapVector> points;
 	for (int step = 0; step <= steps; step++) {
 		double angle = start + turn * step / steps;

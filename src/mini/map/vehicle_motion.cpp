@@ -89,7 +89,7 @@ static double StepShare(const Vehicle *front)
 /* The smaller signed angle turning from one bearing to another. */
 static double TurnBetween(double from, double to)
 {
-	return std::remainder(to - from, 2.0 * std::numbers::pi);
+	return std::remainder(to - from, FULL_TURN);
 }
 
 void VehicleMotion::Advance(double delta_ms)

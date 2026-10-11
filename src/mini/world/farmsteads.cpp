@@ -183,7 +183,7 @@ static void Farmstead(ScatterCopies &copies, const LaidGround &ground, int tx, i
 	}
 	for (int bale = 0; bale < YARD_BALES; bale++) {
 		MapVector at = placed({dice.Between(-YARD_REACH, -0.2), dice.Between(-YARD_REACH, YARD_REACH)});
-		Place(copies, bale % 2 == 0 ? FarmPiece::RoundBale : FarmPiece::BaleStack, ground.At(at), dice.Between(0.0, 2.0 * M_PI), hay);
+		Place(copies, bale % 2 == 0 ? FarmPiece::RoundBale : FarmPiece::BaleStack, ground.At(at), dice.Between(0.0, FULL_TURN), hay);
 	}
 }
 

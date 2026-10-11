@@ -21,7 +21,6 @@
 
 #include "../../safeguards.h"
 
-
 static constexpr double POLE_RADIUS = 0.007;
 static constexpr double POLE_HEIGHT = 0.26;
 static constexpr double ARM_REACH = 0.055;
@@ -123,7 +122,7 @@ ModelMesh StreetTree(const MapVector &at, double base, uint32_t seed)
 	canopy.Smooth().Round(crown, CANOPY_ROUNDING).PaintBy([&](const Vec3 &point) {
 		return ScaledRgb(leaves, std::lerp(CANOPY_UNDERSIDE_SHADE, CANOPY_TOP_SHADE, std::clamp((point.z - underside) / (top - underside), 0.0, 1.0)));
 	});
-	tree.Append(canopy.Transform(Mat4::Turn(UP, dice.Between(0.0, 2.0 * M_PI))));
+	tree.Append(canopy.Transform(Mat4::Turn(UP, dice.Between(0.0, FULL_TURN))));
 	return Placed(std::move(tree), at, {1.0, 0.0}, base);
 }
 

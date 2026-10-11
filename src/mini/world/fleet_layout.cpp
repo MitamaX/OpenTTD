@@ -189,7 +189,7 @@ void FleetLayout::LayConsist(const Vehicle *head)
 double FleetLayout::LeanToward(size_t from, size_t to) const
 {
 	if (to >= this->links.size() || this->links[std::min(from, to)].unit->Next() != this->links[std::max(from, to)].unit) return 0.0;
-	double turn = std::remainder(this->links[to].heading - this->links[from].heading, 2.0 * std::numbers::pi);
+	double turn = std::remainder(this->links[to].heading - this->links[from].heading, FULL_TURN);
 	return std::tan(std::clamp(turn * 0.5, -COUPLING_LEAN_LIMIT, COUPLING_LEAN_LIMIT));
 }
 
@@ -244,7 +244,7 @@ void FleetLayout::LayAircraft(const Vehicle *aircraft)
 
 	const Vehicle *rotor = aircraft->Next() != nullptr ? aircraft->Next()->Next() : nullptr;
 	bool turning = rotor != nullptr && Aircraft::From(rotor)->state != ROTOR_STOPPED;
-	double spin = turning ? std::fmod(this->clock * ROTOR_TURNS_PER_SECOND, 1.0) * 2.0 * std::numbers::pi : yaw;
+	double spin = turning ? std::fmod(this->clock * ROTOR_TURNS_PER_SECOND, 1.0) * FULL_TURN : yaw;
 	this->Add(aircraft, VehicleLook::Rotor, at, {spin, 0.0, 0.0}, 1.0);
 }
 

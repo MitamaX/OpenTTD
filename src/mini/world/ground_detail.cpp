@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "../core/seed.h"
+#include "../core/space.h"
 #include "frame_units.h"
 
 #include "../../safeguards.h"
@@ -103,7 +104,7 @@ static std::pair<float, float> LatticeGradient(int x, int y, int period, uint32_
 {
 	uint32_t wx = static_cast<uint32_t>(((x % period) + period) % period);
 	uint32_t wy = static_cast<uint32_t>(((y % period) + period) % period);
-	float angle = Hash32(wx * 0x8DA6B343U ^ Hash32(wy * 0xD8163841U + salt)) / 4294967296.0f * 2.0f * static_cast<float>(M_PI);
+	float angle = Hash32(wx * 0x8DA6B343U ^ Hash32(wy * 0xD8163841U + salt)) / 4294967296.0f * static_cast<float>(FULL_TURN);
 	return {std::cos(angle), std::sin(angle)};
 }
 
@@ -166,8 +167,8 @@ static float StoneHeight(int x, int y, const StoneLayout &layout)
 			float radius = static_cast<float>(dice.Between(layout.radius)) * cell_texels;
 			float stretch = static_cast<float>(dice.Between(0.6, 1.0));
 			float sink = static_cast<float>(dice.Between(0.0, layout.deepest_sink));
-			float turn = static_cast<float>(dice.Between(0.0, 2.0 * M_PI));
-			float lobes = static_cast<float>(dice.Between(0.0, 2.0 * M_PI));
+			float turn = static_cast<float>(dice.Between(0.0, FULL_TURN));
+			float lobes = static_cast<float>(dice.Between(0.0, FULL_TURN));
 			float along = (x - px) * std::cos(turn) + (y - py) * std::sin(turn);
 			float across = ((y - py) * std::cos(turn) - (x - px) * std::sin(turn)) / stretch;
 			float lumpy = radius * (1.0f + STONE_LUMPINESS * std::sin(3.0f * std::atan2(across, along) + lobes));

@@ -88,7 +88,7 @@ static void StrewScrub(const LaidGround &ground, int tx, int ty, const GrassGree
 		if (dice.Share() >= gathering) continue;
 		std::array<uint8_t, 4> colour = shrub ? InstanceColour(SCRUB_GREENS[dice.Below(SCRUB_GREENS.size())]) : TuftGreen(greens, dice.Share(), dice.Between(DESERT_STRAW));
 		size_t shape = shrub ? BLADE_TUFTS + dice.Below(SHRUB_TUFTS) : dice.Below(BLADE_TUFTS);
-		double turn = dice.Between(0.0, 2.0 * M_PI);
+		double turn = dice.Between(0.0, FULL_TURN);
 		double scale = shrub ? dice.Between(SHRUB_SCALE) * std::lerp(LONE_SHRUB_SCALE, 1.0, gathering) : dice.Between(TUFT_SCALE);
 		tufts[shape].push_back(TuftOn(ground, x, y, turn, scale, colour));
 	}
@@ -125,7 +125,7 @@ void GroundCover::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 				double straw = rough ? dice.Between(0.0, 0.8) : dice.Between(0.0, 0.25);
 				std::array<uint8_t, 4> green = TuftGreen(greens, dice.Share(), straw);
 				uint32_t shape = dice.Below(BLADE_TUFTS);
-				double turn = dice.Between(0.0, 2.0 * M_PI);
+				double turn = dice.Between(0.0, FULL_TURN);
 				copies[shape].push_back(TuftOn(laid, x, y, turn, dice.Between(TUFT_SCALE), green));
 			}
 		}

@@ -24,7 +24,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr double TAU = 2.0 * std::numbers::pi;
 static constexpr double FOOT = -0.06;
 
 struct DetailCount {
@@ -284,7 +283,7 @@ public:
 	ModelMesh Lump(const Vec3 &centre, const Vec3 &radii, int subdivisions, double roughness)
 	{
 		ModelMesh lump = Icosphere(subdivisions);
-		lump.Transform(Mat4::Turn(UP, this->dice.Between(0.0, TAU)) * Mat4::Scaling(radii));
+		lump.Transform(Mat4::Turn(UP, this->dice.Between(0.0, FULL_TURN)) * Mat4::Scaling(radii));
 		lump.Displace(roughness * std::min(radii.x, radii.z), this->dice.Next());
 		return lump.Transform(Mat4::Translation(centre));
 	}
@@ -344,7 +343,7 @@ public:
 	void Spindle(std::initializer_list<LatheRing> profile, int sides, double wood_top, double translucency)
 	{
 		ModelMesh spindle = Lathe(profile, sides, Capped::Top);
-		spindle.Transform(Mat4::Turn(UP, this->dice.Between(0.0, TAU)));
+		spindle.Transform(Mat4::Turn(UP, this->dice.Between(0.0, FULL_TURN)));
 		spindle.PaintBy([&](const Vec3 &at) { return at.z < wood_top ? this->tones.wood : this->tones.leaves; }).Translucent(translucency);
 		this->model.Append(spindle.Occlude([&](const Vec3 &at) { return at.z < wood_top ? SHADED_FOOT : 1.0; }));
 	}
@@ -363,11 +362,11 @@ static ModelMesh Clusters(TreeBuilder &tree, const CrownHabit &habit, const Crow
 {
 	SeedDice &dice = tree.Dice();
 	int count = habit.clusters + static_cast<int>(dice.Below(habit.extra_clusters + 1));
-	double turn = dice.Between(0.0, TAU);
+	double turn = dice.Between(0.0, FULL_TURN);
 	ModelMesh clusters;
 	for (int cluster = 0; cluster < count; cluster++) {
 		double height = dice.Between(CLUSTER_HEIGHTS);
-		double angle = turn + TAU * cluster / count + dice.Between(LUMP_SCATTER);
+		double angle = turn + FULL_TURN * cluster / count + dice.Between(LUMP_SCATTER);
 		double radius = dice.Between(habit.cluster);
 		double out = (habit.hull.x - radius) * std::sqrt(1.0 - height * height);
 		Vec3 at = crown.centre + Vec3{out * std::cos(angle), out * std::sin(angle), height * (habit.hull.z - radius * habit.squash)};
@@ -381,7 +380,7 @@ static ModelMesh Clusters(TreeBuilder &tree, const CrownHabit &habit, const Crow
 static void Canopy(TreeBuilder &tree, TreeDetail detail, const CrownHabit &habit)
 {
 	SeedDice &dice = tree.Dice();
-	double heading = dice.Between(0.0, TAU);
+	double heading = dice.Between(0.0, FULL_TURN);
 	Vec3 lean = Vec3{std::cos(heading), std::sin(heading), 0.0} * dice.Between(habit.lean);
 	double base = dice.Between(habit.base);
 	Crown crown = {lean + Vec3{0.0, 0.0, base + habit.hull.z}, base, base + 2.0 * habit.hull.z, habit.hull.x};
@@ -430,7 +429,7 @@ static void Conifer(TreeBuilder &tree, TreeDetail detail, const ConiferHabit &ha
 				double base = habit.boughs + share * (top - habit.boughs) * CONIFER_TIER_SPAN;
 				double height = tier == tiers - 1 ? top - base : (top - habit.boughs) * CONIFER_TIER_DEPTH * (1.0 - share * CONIFER_TIER_SHRINK);
 				ModelMesh bough = Skirt(habit, habit.tips, radius * (1.0 - share * habit.taper), height);
-				bough.Transform(Mat4::Translation({0.0, 0.0, base}) * Mat4::Turn(UP, dice.Between(0.0, TAU)));
+				bough.Transform(Mat4::Translation({0.0, 0.0, base}) * Mat4::Turn(UP, dice.Between(0.0, FULL_TURN)));
 				uint32_t tone = Mix(tree.Tones().leaves, CONIFER_DEEP_GREEN, static_cast<uint>(std::lround(CONIFER_DEEP_SHARE * (1.0 - share))));
 				tree.Leaves(bough.Displace(CONIFER_ROUGHNESS, dice.Next()), crown, tone, LEAF_TRANSLUCENCY);
 			}
@@ -484,10 +483,10 @@ static void Palm(TreeBuilder &tree, TreeDetail detail)
 	tree.Wood(Sweep(Circle(PALM_TRUNK, TRUNK_SIDES.At(detail)), true, spine, Y_AXIS), height);
 
 	int fronds = full ? PALM_FRONDS_FEWEST + static_cast<int>(dice.Below(PALM_EXTRA_FRONDS + 1)) : PALM_SIMPLE_FRONDS;
-	double turn = dice.Between(0.0, TAU);
+	double turn = dice.Between(0.0, FULL_TURN);
 	ModelMesh leaves;
 	for (int frond = 0; frond < fronds; frond++) {
-		double angle = turn + TAU * frond / fronds + dice.Between(FROND_SCATTER);
+		double angle = turn + FULL_TURN * frond / fronds + dice.Between(FROND_SCATTER);
 		leaves.Append(Frond(crown_at, angle, dice.Between(FROND_LENGTH), dice.Between(FROND_DROOP), FROND_POINTS.At(detail), full));
 	}
 	if (full) leaves.Append(tree.Lump(crown_at - Vec3{0.0, 0.0, PALM_NUTS.z * 0.6}, PALM_NUTS, 0, MASS_ROUGHNESS));
@@ -517,7 +516,7 @@ static void Cactus(TreeBuilder &tree, TreeDetail detail)
 			stem.front().z = CACTUS_FOOT;
 			ModelMesh flesh = Lathe(stem, CACTUS_STEM_SIDES.full);
 			int arms = 1 + static_cast<int>(dice.Below(2));
-			double turn = dice.Between(0.0, TAU);
+			double turn = dice.Between(0.0, FULL_TURN);
 			for (int arm = 0; arm < arms; arm++) flesh.Append(CactusArm(turn + std::numbers::pi * arm + dice.Between(CACTUS_ARM_SCATTER), dice.Between(CACTUS_ARM_FROM), CACTUS_ARM_SIDES.full, true));
 			tree.Leaves(std::move(flesh), crown, FLESH_TRANSLUCENCY);
 			tree.Leaves(tree.Lump({0.0, 0.0, height}, CACTUS_FLOWER, 0, MASS_ROUGHNESS), crown, tree.Tones().wood, FLESH_TRANSLUCENCY);
@@ -525,7 +524,7 @@ static void Cactus(TreeBuilder &tree, TreeDetail detail)
 		}
 		case TreeDetail::Simple: {
 			ModelMesh flesh = Lathe(std::array<LatheRing, 3>{{{CACTUS_RADIUS, CACTUS_FOOT}, {CACTUS_RADIUS, height - CACTUS_DOME}, {0.0, height}}}, CACTUS_STEM_SIDES.simple);
-			flesh.Append(CactusArm(dice.Between(0.0, TAU), CACTUS_ARM_FROM.low, CACTUS_ARM_SIDES.simple, false));
+			flesh.Append(CactusArm(dice.Between(0.0, FULL_TURN), CACTUS_ARM_FROM.low, CACTUS_ARM_SIDES.simple, false));
 			tree.Leaves(std::move(flesh), crown, FLESH_TRANSLUCENCY);
 			break;
 		}
