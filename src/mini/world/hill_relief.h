@@ -36,9 +36,13 @@ inline constexpr double FINE_RELIEF_MOVING_KEPT_PIXELS = FINE_RELIEF_CHOSEN_PIXE
 
 bool IsRollingLand(int tx, int ty);
 
+class HillRelief;
+using HillReliefPtr = std::shared_ptr<const HillRelief>;
+
 class Landform {
 public:
 	explicit Landform(const TileSpan &tiles);
+	Landform(Landform &&other) noexcept;
 
 	double LevelAt(double x, double y) const;
 	WorldPoint At(const MapVector &at) const { return {at.x, at.y, this->LevelAt(at.x, at.y)}; }
@@ -48,6 +52,7 @@ public:
 	bool Rolls(int tx, int ty) const;
 	bool RollsRound(int cx, int cy) const;
 	bool Bends(int tx, int ty) const;
+	HillReliefPtr ReliefAt(int tx, int ty) const;
 	std::array<double, 4> Corners(int tx, int ty) const;
 	double Rolled(double x, double y) const;
 	Vec3 RolledNormal(double x, double y) const;
@@ -63,6 +68,7 @@ private:
 	LazyLattice<double> corners;
 	Seabed bed;
 	SeaBanks banks;
+	LazyLattice<HillReliefPtr> reliefs;
 };
 
 class HillRelief : public TileRelief {
@@ -95,20 +101,20 @@ public:
 private:
 	int tx;
 	int ty;
-	std::variant<std::monostate, HillRelief, ShoreRelief> relief;
+	std::variant<std::monostate, HillReliefPtr, ShoreRelief> relief;
 };
 
 class RolledSurface : public DrawnSurface {
 public:
-	RolledSurface(std::shared_ptr<const Landform> land, int tx, int ty) : land(std::move(land)), relief(*this->land, tx, ty) {}
+	RolledSurface(std::shared_ptr<const Landform> land, HillReliefPtr relief) : land(std::move(land)), relief(std::move(relief)) {}
 
-	double Level(double x, double y) const override { return this->relief.Level(x, y); }
+	double Level(double x, double y) const override { return this->relief->Level(x, y); }
 	bool Curves() const override { return true; }
 	int Divisions(double tile_pixels) const override { return tile_pixels >= FINE_RELIEF_MOVING_KEPT_PIXELS ? FINE_RELIEF_DIVISIONS : 1; }
 
 private:
 	std::shared_ptr<const Landform> land;
-	HillRelief relief;
+	HillReliefPtr relief;
 };
 
 class RolledSpan : public GroundSpan {

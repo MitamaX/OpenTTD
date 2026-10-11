@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "../../map_func.h"
 #include "../core/lattice_noise.h"
@@ -37,7 +38,12 @@ Landform::Landform(const TileSpan &tiles) :
 	rolling(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * LANDFORM_MARGIN),
 	corners(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 2 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 2 + 2 * LANDFORM_MARGIN),
 	bed(tiles),
-	banks(tiles)
+	banks(tiles),
+	reliefs(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * LANDFORM_MARGIN)
+{
+}
+
+Landform::Landform(Landform &&other) noexcept : rolling(std::move(other.rolling)), corners(std::move(other.corners)), bed(std::move(other.bed)), banks(std::move(other.banks)), reliefs(other.reliefs.Emptied())
 {
 }
 
@@ -66,6 +72,11 @@ bool Landform::RollsRound(int cx, int cy) const
 bool Landform::Bends(int tx, int ty) const
 {
 	return this->Rolls(tx, ty) && !this->Planar(tx, ty);
+}
+
+HillReliefPtr Landform::ReliefAt(int tx, int ty) const
+{
+	return this->reliefs.At(tx, ty, [this](int x, int y) -> HillReliefPtr { return this->Bends(x, y) ? std::make_shared<const HillRelief>(*this, x, y) : nullptr; });
 }
 
 std::array<double, 4> Landform::Corners(int tx, int ty) const
@@ -139,7 +150,7 @@ enum class GroundKind : uint8_t {
 static GroundKind GroundKindAt(const Landform &land, int tx, int ty)
 {
 	if (LiesAlongShore(land.Bed(), tx, ty)) return GroundKind::Shore;
-	return land.Bends(tx, ty) ? GroundKind::Hill : GroundKind::Flat;
+	return land.ReliefAt(tx, ty) != nullptr ? GroundKind::Hill : GroundKind::Flat;
 }
 
 bool LaidGround::RollsAt(const Landform &land, int tx, int ty)
@@ -154,7 +165,7 @@ LaidGround::LaidGround(const Landform &land, int tx, int ty) : tx(tx), ty(ty)
 			this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty), land.BanksAround(tx, ty));
 			break;
 		case GroundKind::Hill:
-			this->relief.emplace<HillRelief>(land, tx, ty);
+			this->relief.emplace<HillReliefPtr>(land.ReliefAt(tx, ty));
 			break;
 		case GroundKind::Flat:
 			break;
@@ -175,12 +186,13 @@ bool LaidGround::Banked() const
 
 const TileRelief *LaidGround::Relief() const
 {
-	if (const HillRelief *hill = std::get_if<HillRelief>(&this->relief); hill != nullptr) return hill;
+	if (const HillReliefPtr *hill = std::get_if<HillReliefPtr>(&this->relief); hill != nullptr) return hill->get();
 	return std::get_if<ShoreRelief>(&this->relief);
 }
 
 std::unique_ptr<DrawnSurface> RolledSpan::Surface(int tx, int ty) const
 {
-	if (!this->land->Bends(tx, ty)) return std::make_unique<TileGround>(tx, ty);
-	return std::make_unique<RolledSurface>(this->land, tx, ty);
+	HillReliefPtr relief = this->land->ReliefAt(tx, ty);
+	if (relief == nullptr) return std::make_unique<TileGround>(tx, ty);
+	return std::make_unique<RolledSurface>(this->land, std::move(relief));
 }

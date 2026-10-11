@@ -20,6 +20,8 @@ public:
 	{
 	}
 
+	LazyLattice Emptied() const { return LazyLattice(this->x0, this->y0, this->columns, this->rows); }
+
 	template <class Compute>
 	Value At(int x, int y, Compute compute) const
 	{
