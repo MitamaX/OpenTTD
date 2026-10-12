@@ -15,9 +15,8 @@
 #include "tile_track.h"
 #include "way_shapes.h"
 
-/* The top of the rails above whatever the track is laid on, and how far the ballast spreads either side of the middle, in tiles. */
-inline constexpr double RAIL_TOP = 0.068;
-inline constexpr double BALLAST_HALF = 0.27;
+inline constexpr double RAIL_HALF = 0.011;
+inline constexpr double ARM_LOW = 0.41;
 
 double RideHeight(RailLook look);
 void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing);

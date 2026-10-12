@@ -15,4 +15,16 @@ inline constexpr double DISTANT_RAIL_HALF = 0.13;
 inline constexpr double ROAD_HALF = 0.30;
 inline constexpr double TRAM_BED_HALF = 0.18;
 
+/* How far the ballast spreads either side of the middle, in tiles. */
+inline constexpr double BALLAST_HALF = 0.27;
+
+/* The top of the rails and of the asphalt above whatever they are laid on, in tiles. */
+inline constexpr double RAIL_TOP = 0.068;
+inline constexpr double ASPHALT_TOP = 0.012;
+
+inline constexpr double CROSSING_PROUD = 0.005;
+inline constexpr double CROSSING_DECK = RAIL_TOP - ASPHALT_TOP - CROSSING_PROUD;
+
+static_assert(ASPHALT_TOP + CROSSING_DECK < RAIL_TOP);
+
 #endif /* MINI_MAP_NETWORK_STYLE_H */

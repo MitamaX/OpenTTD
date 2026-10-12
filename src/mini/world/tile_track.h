@@ -57,7 +57,7 @@ public:
 		return pair;
 	}
 
-	std::optional<std::pair<double, double>> Distances() const;
+	std::optional<RunStretch> Stretch() const;
 	Footing FootingOn(const Footing &ground) const;
 
 private:

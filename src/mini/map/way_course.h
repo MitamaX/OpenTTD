@@ -21,9 +21,24 @@
 /* How many joints along a run a change of the ways can move its ease, which is also how many tiles away it can reach. */
 inline constexpr int WAY_EASE_REACH = 16;
 
+inline constexpr double STRAIGHT_RADIUS = 4.0;
+inline constexpr double STRAIGHT_CURVATURE = 1.0 / STRAIGHT_RADIUS;
+
+inline double OuterSide(double curvature)
+{
+	return curvature < -STRAIGHT_CURVATURE ? 1.0 : -1.0;
+}
+
 struct Joint;
 struct Piece;
 struct WorldChanges;
+
+struct RunEnd {
+	double distance;
+	double outer;
+};
+
+using RunStretch = std::pair<RunEnd, RunEnd>;
 
 /* One piece of way across a tile, from one side to another along its eased line, and the level it is eased to along its length.
  * Its ends meet the pieces either side at one point, heading and level; an end at a junction, station, crossing, depot, bridge, tunnel or town street
@@ -43,17 +58,17 @@ public:
 	MapVector OnwardFrom(const MapVector &end) const;
 	double Length() const;
 	double ShareAt(const MapVector &point) const { return this->line.ShareOf(point); }
-	/* How far along its run from the run's first end the course's first and last ends lie, unless it holds at both; read afresh, as a change far along the run moves them. */
-	std::optional<std::pair<double, double>> Distances() const;
+	/* Where the course's first and last ends lie along their run, unless it holds at both; read afresh, as a change far along the run moves them. */
+	std::optional<RunStretch> Stretch() const;
 	double Level(double share) const;
 	/* How far the eased level stands above the tile's ground under the middle line. */
 	double Lift(double share) const;
 	bool Raised() const;
 
 private:
-	/* How far along its run an end lies, and whether that grows or shrinks along the course. */
+	/* Where an end lies along its run, and whether the distance grows or shrinks along the course. */
 	struct RunMark {
-		double distance;
+		RunEnd end;
 		double growth;
 	};
 

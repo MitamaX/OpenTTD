@@ -79,10 +79,10 @@ ModelMesh TrackPiece::Body(Section section, bool capped) const
 	return body;
 }
 
-std::optional<std::pair<double, double>> TrackPiece::Distances() const
+std::optional<RunStretch> TrackPiece::Stretch() const
 {
 	if (!this->drawn.course.has_value()) return std::nullopt;
-	return this->drawn.course->Distances();
+	return this->drawn.course->Stretch();
 }
 
 /* An eased piece is laid at its course's level; any other on what it stands on. */

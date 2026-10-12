@@ -15,7 +15,10 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <functional>
+#include <limits>
 #include <memory>
+#include <ranges>
 #include <unordered_map>
 #include <vector>
 
@@ -39,10 +42,15 @@ static constexpr double CORNER_MARGIN = 0.05;
 static constexpr double SLIDE_PULL = 0.5;
 /* A rail's heading across a tile side never leans nearer to the side than this cosine allows, so a bend stays within the tiles it joins. */
 static constexpr double LEAST_CROSSING = 0.5;
+static constexpr double FOLD_CLEARANCE = 0.1;
+static constexpr double FOLD_CURVATURE = 1.0 / (BALLAST_HALF + FOLD_CLEARANCE);
+static constexpr double FOLD_RELIEF = 0.5;
+static constexpr int FOLD_ROUNDS = 6;
 /* A run is traced no further than this many joints either way from where it is first asked for. */
 static constexpr int LONGEST_WALK = 1024;
 static constexpr double RAISED_LIFT = 0.02;
 static constexpr int RAISED_SAMPLES = 8;
+static constexpr double CROSSING_SLACK = 0.01;
 static constexpr int ROAD_ARMS = 4;
 /* A drawn piece reads the eases at the sides of its tile and of the tiles beside it, which ease with the tiles beyond those. */
 static constexpr int DRAWN_READ_REACH = 2;
@@ -124,7 +132,8 @@ static double GroundAt(const TileCoord &tile, const Joint &joint)
 }
 
 /* A joint's eased place, level and climb, and the run's heading through it, the climb and the heading both toward the joint's higher tile;
- * and how far along the run from the run's first end it lies, unless a loop closes there, and whether that grows toward its higher tile. */
+ * how far along the run from the run's first end it lies, unless a loop closes there, and whether that grows toward its higher tile;
+ * and which side of the run its curve leans away to there, along the growing distance. */
 struct JointEase {
 	MapVector at;
 	double level;
@@ -132,6 +141,7 @@ struct JointEase {
 	MapVector heading;
 	std::optional<double> distance;
 	bool rising;
+	double outer;
 };
 
 /* Neither steeper than the gentler of the two runs either side, nor anything but level where they do not climb the same way. */
@@ -151,6 +161,19 @@ static MapVector Crossing(const MapVector &heading, const MapVector &upward)
 	return upward * LEAST_CROSSING + side * (lean * std::sqrt(1.0 - LEAST_CROSSING * LEAST_CROSSING));
 }
 
+static MapVector OnwardAcross(const Joint &joint, const TileCoord &tile, const MapVector &leaving)
+{
+	std::optional<Piece> beyond = StraightestAt(joint.Beyond(tile), joint, leaving);
+	return beyond.has_value() ? beyond->From(joint) : leaving;
+}
+
+struct RunLine {
+	std::vector<MapVector> places;
+	std::vector<MapVector> headings;
+
+	Bend Between(size_t from, size_t to) const { return Bend(this->places[from], this->places[to], this->headings[from], this->headings[to]); }
+};
+
 /* A run of way through easing joints, traced whole to the joints holding at either end or round a loop back to its start, and eased all at once. */
 class Run {
 public:
@@ -166,11 +189,22 @@ private:
 		double place;
 		double ground;
 		bool held;
+		MapVector onward{};
 	};
 
 	std::optional<double> Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &nodes) const;
 	std::vector<double> EasedLevels() const;
-	std::vector<MapVector> EasedPlaces() const;
+	RunLine EasedLine() const;
+	std::vector<double> SlideLimits() const;
+	void Slide(std::vector<MapVector> &places, const std::vector<double> &limits) const;
+	std::vector<MapVector> ChordHeadings(const std::vector<MapVector> &places) const;
+	RunLine SlidLine(const std::vector<double> &limits) const;
+	std::vector<size_t> Folded(const RunLine &line) const;
+	std::vector<double> Outers(const RunLine &line) const;
+	RunLine SquareLine() const;
+	double Facing(size_t index) const;
+	MapVector SquareAcross(size_t index) const;
+	size_t Segments() const;
 	size_t Before(size_t index) const;
 	size_t After(size_t index) const;
 	double Gap(size_t from, size_t to) const;
@@ -194,11 +228,11 @@ std::optional<double> Run::Walk(Joint at, TileCoord tile, double direction, std:
 		place += piece->Span() * direction;
 		if (next == start) return std::abs(place);
 		if (!Eases(next)) {
-			walked.push_back({next, place, GroundAt(tile, next), true});
+			walked.push_back({next, place, GroundAt(tile, next), true, OnwardAcross(next, tile, piece->From(at))});
 			return std::nullopt;
 		}
 		auto [low, high] = next.Tiles();
-		walked.push_back({next, place, std::max(GroundAt(low, next), GroundAt(high, next)), false});
+		walked.push_back({next, place, std::max(GroundAt(low, next), GroundAt(high, next)), false, piece->From(at)});
 		tile = next.Beyond(tile);
 		at = next;
 	}
@@ -263,18 +297,40 @@ std::vector<double> Run::EasedLevels() const
 	return levels;
 }
 
-std::vector<MapVector> Run::EasedPlaces() const
+double Run::Facing(size_t index) const
 {
-	std::vector<MapVector> places(this->nodes.size());
-	std::ranges::transform(this->nodes, places.begin(), [](const Node &node) { return node.joint.Point(); });
-	if (this->kind != WayKind::Rail) return places;
+	const Node &node = this->nodes[index];
+	return this->nodes[this->After(index)].joint.Joins(node.joint.Tiles()[1]) ? 1.0 : -1.0;
+}
 
+MapVector Run::SquareAcross(size_t index) const
+{
+	const Node &node = this->nodes[index];
+	if (node.held) return index == 0 ? node.onward * -1.0 : node.onward;
+	return node.joint.Upward() * this->Facing(index);
+}
+
+size_t Run::Segments() const
+{
+	return this->loop.has_value() ? this->nodes.size() : this->nodes.size() - 1;
+}
+
+std::vector<double> Run::SlideLimits() const
+{
+	std::vector<MapVector> points(this->nodes.size());
+	std::ranges::transform(this->nodes, points.begin(), [](const Node &node) { return node.joint.Point(); });
 	std::vector<double> limits(this->nodes.size(), 0.0);
 	for (size_t index = 0; index < this->nodes.size(); index++) {
-		if (this->nodes[index].held) continue;
-		MapVector course = Unit(places[this->After(index)] - places[this->Before(index)]);
-		limits[index] = std::min(DRIFT_LIMIT / std::abs(Dot(course, this->nodes[index].joint.Upward())), HALF_TILE - CORNER_MARGIN);
+		const Node &node = this->nodes[index];
+		if (node.held) continue;
+		MapVector course = Unit(points[this->After(index)] - points[this->Before(index)]);
+		limits[index] = std::min(DRIFT_LIMIT / std::abs(Dot(course, node.joint.Upward())), HALF_TILE - CORNER_MARGIN);
 	}
+	return limits;
+}
+
+void Run::Slide(std::vector<MapVector> &places, const std::vector<double> &limits) const
+{
 	std::vector<double> slides(this->nodes.size(), 0.0);
 	std::vector<double> next = slides;
 	for (int pass = 0; pass < WAY_EASE_REACH; pass++) {
@@ -290,7 +346,102 @@ std::vector<MapVector> Run::EasedPlaces() const
 		next = slides;
 		for (size_t index = 0; index < this->nodes.size(); index++) places[index] = this->nodes[index].joint.Point() + this->nodes[index].joint.Side() * slides[index];
 	}
-	return places;
+}
+
+std::vector<MapVector> Run::ChordHeadings(const std::vector<MapVector> &places) const
+{
+	std::vector<MapVector> headings(this->nodes.size());
+	for (size_t index = 0; index < this->nodes.size(); index++) {
+		MapVector square = this->SquareAcross(index);
+		headings[index] = this->nodes[index].held ? square : Crossing(Unit(places[this->After(index)] - places[this->Before(index)]), square);
+	}
+	return headings;
+}
+
+RunLine Run::SquareLine() const
+{
+	RunLine line;
+	for (size_t index = 0; index < this->nodes.size(); index++) {
+		line.places.push_back(this->nodes[index].joint.Point());
+		line.headings.push_back(this->SquareAcross(index));
+	}
+	return line;
+}
+
+RunLine Run::SlidLine(const std::vector<double> &limits) const
+{
+	RunLine line = this->SquareLine();
+	this->Slide(line.places, limits);
+	line.headings = this->ChordHeadings(line.places);
+	return line;
+}
+
+std::vector<size_t> Run::Folded(const RunLine &line) const
+{
+	std::vector<size_t> folded;
+	for (size_t segment = 0; segment < this->Segments(); segment++) {
+		if (line.Between(segment, this->After(segment)).PeakSharpness() <= FOLD_CURVATURE) continue;
+		folded.insert(folded.end(), {segment, this->After(segment)});
+	}
+	return folded;
+}
+
+RunLine Run::EasedLine() const
+{
+	if (this->kind != WayKind::Rail) return this->SquareLine();
+
+	std::vector<double> limits = this->SlideLimits();
+	RunLine line = this->SlidLine(limits);
+	for (int round = 0; round < FOLD_ROUNDS; round++) {
+		std::vector<size_t> folded = this->Folded(line);
+		if (folded.empty()) break;
+		for (size_t index : folded) limits[index] *= FOLD_RELIEF;
+		line = this->SlidLine(limits);
+	}
+	return line;
+}
+
+std::vector<double> Run::Outers(const RunLine &line) const
+{
+	size_t count = this->nodes.size();
+	std::vector<double> leaning(count, 0.0);
+	std::vector<int> bends(count, 0);
+	for (size_t segment = 0; segment < this->Segments(); segment++) {
+		Bend bend = line.Between(segment, this->After(segment));
+		for (size_t joint : {segment, this->After(segment)}) {
+			leaning[joint] += bend.MeanCurvature();
+			bends[joint]++;
+		}
+	}
+
+	std::vector<double> curved(count, 0.0);
+	std::vector<size_t> nearest(count, std::numeric_limits<size_t>::max());
+	for (size_t index = 0; index < count; index++) {
+		leaning[index] /= std::max(bends[index], 1);
+		if (std::abs(leaning[index]) <= STRAIGHT_CURVATURE) continue;
+		curved[index] = OuterSide(leaning[index]);
+		nearest[index] = 0;
+	}
+
+	std::vector<double> outers = curved;
+	auto spread = [&](auto indices) {
+		double value = 0.0;
+		size_t since = 0;
+		for (size_t index : indices) {
+			if (curved[index] != 0.0) {
+				value = curved[index];
+				since = 0;
+			} else if (value != 0.0 && ++since < nearest[index]) {
+				nearest[index] = since;
+				outers[index] = value;
+			}
+		}
+	};
+	spread(std::views::iota(size_t{0}, count));
+	spread(std::views::iota(size_t{0}, count) | std::views::reverse);
+
+	std::ranges::replace(outers, 0.0, -1.0);
+	return outers;
 }
 
 /* Every joint of the run is stored with its ease, told the way round the joint's own tiles see it, or with none where it holds. */
@@ -298,7 +449,8 @@ template <typename Store>
 void Run::Ease(Store store)
 {
 	std::vector<double> levels = this->EasedLevels();
-	std::vector<MapVector> places = this->EasedPlaces();
+	RunLine line = this->EasedLine();
+	std::vector<double> outers = this->Outers(line);
 	bool from_front = this->nodes.front().joint.Key() <= this->nodes.back().joint.Key();
 	double origin = from_front ? this->nodes.front().place : this->nodes.back().place;
 	auto climb = [&](size_t a, size_t b) { return (levels[b] - levels[a]) / this->Gap(a, b); };
@@ -310,13 +462,11 @@ void Run::Ease(Store store)
 		}
 		size_t before = this->Before(index);
 		size_t after = this->After(index);
-		bool upward = this->nodes[after].joint.Joins(node.joint.Tiles()[1]);
-		double sign = upward ? 1.0 : -1.0;
-		MapVector heading = this->kind == WayKind::Rail ? Crossing(Unit(places[after] - places[before]) * sign, node.joint.Upward()) : node.joint.Upward();
+		double sign = this->Facing(index);
 		double slope = JointSlope(climb(before, index), climb(index, after)) * sign;
 		std::optional<double> distance;
 		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
-		store(node.joint, JointEase{places[index], levels[index], slope, heading, distance, upward == from_front});
+		store(node.joint, JointEase{line.places[index], levels[index], slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0)});
 	}
 }
 
@@ -392,17 +542,18 @@ std::optional<WayCourse::RunMark> WayCourse::MarkAt(const MapVector &point, bool
 	Joint joint = Joint::At(point);
 	std::optional<JointEase> ease = _ease_book.At(joint);
 	if (!ease.has_value() || !ease->distance.has_value()) return std::nullopt;
-	return RunMark{*ease->distance, ease->rising == this->Onward(joint, leaving) ? 1.0 : -1.0};
+	double growth = ease->rising == this->Onward(joint, leaving) ? 1.0 : -1.0;
+	return RunMark{{*ease->distance, ease->outer * growth}, growth};
 }
 
-std::optional<std::pair<double, double>> WayCourse::Distances() const
+std::optional<RunStretch> WayCourse::Stretch() const
 {
 	std::optional<RunMark> first = this->MarkAt(this->from, true);
 	std::optional<RunMark> last = this->MarkAt(this->to, false);
 	if (!first.has_value() && !last.has_value()) return std::nullopt;
-	double start = first.has_value() ? first->distance : last->distance - last->growth * this->Length();
-	double end = last.has_value() ? last->distance : first->distance + first->growth * this->Length();
-	return std::pair{start, end};
+	RunEnd start = first.has_value() ? first->end : RunEnd{last->end.distance - last->growth * this->Length(), last->end.outer};
+	RunEnd end = last.has_value() ? last->end : RunEnd{first->end.distance + first->growth * this->Length(), first->end.outer};
+	return RunStretch{start, end};
 }
 
 /* A road heads square across the tile side; a rail heads on along whichever piece beyond the side runs on most nearly straight, or along its own piece where none does. */
@@ -414,9 +565,7 @@ MapVector WayCourse::HeldHeading(const MapVector &point, bool leaving) const
 	if (this->road) return along;
 
 	MapVector chord = Unit(this->to - this->from);
-	std::optional<Piece> beyond = StraightestAt(joint.Beyond({this->tx, this->ty}), joint, leaving ? chord * -1.0 : chord);
-	if (!beyond.has_value()) return chord;
-	MapVector onward = beyond->From(joint);
+	MapVector onward = OnwardAcross(joint, {this->tx, this->ty}, leaving ? chord * -1.0 : chord);
 	return leaving ? onward * -1.0 : onward;
 }
 
@@ -610,6 +759,24 @@ WorldPoint TrainPoint(double x, double y)
 {
 	const DrawnTrack *drawn = DrawnUnder({x, y});
 	return drawn != nullptr ? drawn->Centred({x, y}) : WorldPoint{x, y, GroundLevel(x, y)};
+}
+
+std::optional<MapVector> CrossingRails(int tx, int ty)
+{
+	if (!OnMap(tx, ty) || !IsLevelCrossingTile(TileXY(tx, ty))) return std::nullopt;
+	return GetCrossingRailAxis(TileXY(tx, ty)) == AXIS_X ? MapVector{1.0, 0.0} : MapVector{0.0, 1.0};
+}
+
+static double CrossingLift(const MapVector &offset, const MapVector &rails)
+{
+	if (std::abs(Dot(offset, rails)) > ROAD_HALF + CROSSING_SLACK) return 0.0;
+	double falling = (HALF_TILE - std::abs(Dot(offset, RightOf(rails)))) / (HALF_TILE - ROAD_HALF - CROSSING_SLACK);
+	return CROSSING_DECK * std::clamp(falling, 0.0, 1.0);
+}
+
+double CrossingRise(int tx, int ty, double x, double y, const MapVector &rails)
+{
+	return CrossingLift({x - tx - HALF_TILE, y - ty - HALF_TILE}, rails) / LevelRise();
 }
 
 WorldPoint RoadPoint(double x, double y)

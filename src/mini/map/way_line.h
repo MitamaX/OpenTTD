@@ -35,12 +35,17 @@ public:
 
 	MapVector Centre(double share) const;
 	double Curvature(double share) const;
+	double MeanCurvature() const;
+	double MeanSharpness() const;
+	double PeakSharpness() const;
 	MapVector At(double share, double lateral) const override;
 	MapVector Along(double share) const override;
 	double Span() const override;
 	double ShareOf(const MapVector &point) const override;
 
 private:
+	template <typename Visit>
+	void Sample(Visit visit) const;
 	MapVector Velocity(double share) const;
 	MapVector Acceleration(double share) const;
 

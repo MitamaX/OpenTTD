@@ -16,6 +16,7 @@
 #include "../../safeguards.h"
 
 static constexpr int SPAN_STEPS = 8;
+static constexpr int CURVATURE_SAMPLES = 12;
 static constexpr int SHARE_PROBES = 8;
 static constexpr int SHARE_REFINES = 3;
 
@@ -60,6 +61,33 @@ double Bend::Curvature(double share) const
 	double speed = Length(velocity);
 	if (speed <= 0.0) return 0.0;
 	return Dot(this->Acceleration(share), RightOf(velocity)) / (speed * speed * speed);
+}
+
+template <typename Visit>
+void Bend::Sample(Visit visit) const
+{
+	for (int sample = 0; sample <= CURVATURE_SAMPLES; sample++) visit(this->Curvature(static_cast<double>(sample) / CURVATURE_SAMPLES));
+}
+
+double Bend::MeanCurvature() const
+{
+	double total = 0.0;
+	this->Sample([&](double curvature) { total += curvature; });
+	return total / (CURVATURE_SAMPLES + 1);
+}
+
+double Bend::MeanSharpness() const
+{
+	double total = 0.0;
+	this->Sample([&](double curvature) { total += std::abs(curvature); });
+	return total / (CURVATURE_SAMPLES + 1);
+}
+
+double Bend::PeakSharpness() const
+{
+	double peak = 0.0;
+	this->Sample([&](double curvature) { peak = std::max(peak, std::abs(curvature)); });
+	return peak;
 }
 
 MapVector Bend::Along(double share) const
