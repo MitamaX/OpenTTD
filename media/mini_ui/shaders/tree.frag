@@ -11,7 +11,7 @@ out vec4 frag_colour;
 
 const vec3 TINT_VARIETY = vec3(0.32, 0.24, 0.1);
 const vec3 HUE_VARIETY = vec3(0.36, 0.24, -0.12);
-const vec3 FRESH_TIPS = vec3(1.12, 1.1, 0.84);
+const vec3 FRESH_TIPS = vec3(1.12, 1.1, 0.95);
 const vec2 TIP_REACH = vec2(0.75, 1.0);
 const vec3 AUTUMN_GOLD = vec3(0.80, 0.58, 0.16);
 const vec3 AUTUMN_RUST = vec3(0.74, 0.40, 0.15);
