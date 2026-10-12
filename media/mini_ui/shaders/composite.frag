@@ -23,8 +23,7 @@ const mat3 AGX_OUTSET = mat3(
 	-0.0980208811401368, 1.15190312990417, -0.0980434501171241,
 	-0.0990297440797205, -0.0989611768448433, 1.15107367264116);
 const vec2 LOOK_POWERS = vec2(1.15, 1.5);
-const vec2 LOOK_SATURATION = vec2(1.42, 1.55);
-const vec2 SATURATING_LUMA = vec2(0.3, 0.8);
+const float LOOK_SATURATION = 1.2;
 
 const vec3 SHADOW_TINT = vec3(0.98, 0.985, 1.06);
 const vec3 HIGHLIGHT_TINT = vec3(1.035, 1.0, 0.955);
@@ -50,7 +49,7 @@ vec3 Tonemap(vec3 radiance)
 	vec3 encoded = AgxCurve((clamp(log2(inset), AGX_LOWEST_EV, AGX_HIGHEST_EV) - AGX_LOWEST_EV) / (AGX_HIGHEST_EV - AGX_LOWEST_EV));
 	encoded = max(encoded, 0.0);
 	encoded = pow(encoded, mix(vec3(LOOK_POWERS.x), vec3(LOOK_POWERS.y), encoded));
-	encoded = Saturated(encoded, mix(LOOK_SATURATION.x, LOOK_SATURATION.y, smoothstep(SATURATING_LUMA.x, SATURATING_LUMA.y, Luminance(encoded))));
+	encoded = Saturated(encoded, LOOK_SATURATION);
 	return pow(max(AGX_OUTSET * encoded, 0.0), vec3(1.0 / DISPLAY_GAMMA));
 }
 
