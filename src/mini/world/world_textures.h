@@ -19,7 +19,6 @@
 #include "flow_field.h"
 #include "massing_field.h"
 #include "shader_program.h"
-#include "shore_field.h"
 
 class WorldTextures {
 public:
@@ -30,7 +29,6 @@ public:
 		SURFACES_UNIT,
 		NETWORK_UNIT,
 		BENDS_UNIT,
-		SHORE_UNIT,
 		FLOW_UNIT,
 		MASSING_UNIT,
 		UNIT_COUNT,
@@ -45,7 +43,7 @@ public:
 	static void BindSamplers(const ShaderProgram &program);
 
 private:
-	/* A texture's texels, and the kinds of change they follow; the bends, the shore and the flow keep track of their own changes. */
+	/* A texture's texels, and the kinds of change they follow; the bends and the flow keep track of their own changes. */
 	struct Source {
 		TexelFormat format;
 		const void *texels;
@@ -62,11 +60,9 @@ private:
 	void Take(const Rect &changed);
 	void Coalesce();
 	void SendSpans(uint unit, const void *texels);
-	void ResurveyShore(std::span<const Rect> water_moves);
 	void ResurveyFlow(std::span<const Rect> water_moves);
 
 	std::array<DataTexture, UNIT_COUNT> textures;
-	ShoreField shore;
 	FlowField flow;
 	MassingField massing;
 	std::vector<ChangedSpan> spans;

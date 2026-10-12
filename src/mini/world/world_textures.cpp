@@ -20,7 +20,7 @@
 
 #include "../../safeguards.h"
 
-static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_shore", "u_flow", "u_massing"};
+static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_flow", "u_massing"};
 /* Two spans go up as one where the area bounding both is at most this many times what they cover, or at most this many texels. */
 static constexpr int64_t MOST_JOINED_SPREAD = 2;
 static constexpr int64_t FREELY_JOINED_TEXELS = 128 * 128;
@@ -45,7 +45,6 @@ WorldTextures::Source WorldTextures::SourceOf(uint unit) const
 		case SURFACES_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Surfaces(), ChangeKind::Shape};
 		case NETWORK_UNIT: return {TexelFormat::ExactRgba, _world_tiles.Network(), ChangeKind::Ways};
 		case BENDS_UNIT: return {TexelFormat::ExactRgba, _way_bends.Texels(), {}};
-		case SHORE_UNIT: return {TexelFormat::FilteredRed, this->shore.Texels(), {}};
 		case FLOW_UNIT: return {TexelFormat::FilteredRg, this->flow.Texels(), {}};
 		case MASSING_UNIT: return {TexelFormat::ExactRgba16, this->massing.Texels(), {}};
 		default: NOT_REACHED();
@@ -61,11 +60,6 @@ void WorldTextures::Allocate(uint unit)
 void WorldTextures::Sync(const WorldChanges &changes)
 {
 	if (changes.whole || !this->textures[TILES_UNIT].Allocated()) {
-		_frame_profile.Count("shore_surveys");
-		{
-			ProfileScope profile("build", "shore", ProfileClock::Cpu);
-			this->shore.Survey(_world_tiles.Size());
-		}
 		{
 			ProfileScope profile("build", "flow", ProfileClock::Cpu);
 			this->flow.Survey(_world_tiles.Size());
@@ -86,25 +80,9 @@ void WorldTextures::Sync(const WorldChanges &changes)
 		this->SendSpans(MASSING_UNIT, this->massing.Texels());
 		std::vector<Rect> water_moves;
 		for (ChangeKind kind : WATER_MOVES) std::ranges::copy(changes.Of(kind), std::back_inserter(water_moves));
-		if (!water_moves.empty()) {
-			this->ResurveyShore(water_moves);
-			this->ResurveyFlow(water_moves);
-		}
+		if (!water_moves.empty()) this->ResurveyFlow(water_moves);
 	}
 	if (std::optional<Rect> bent = _way_bends.TakeUpdate(); bent.has_value()) this->textures[BENDS_UNIT].Update(*bent, _way_bends.Texels());
-}
-
-/* The shore's distances move only out to the shelf's edge about a tile whose water or shape changed, so only there are they measured again and sent up. */
-void WorldTextures::ResurveyShore(std::span<const Rect> water_moves)
-{
-	ProfileScope profile("build", "shore", ProfileClock::Cpu);
-	this->spans.clear();
-	for (const Rect &span : water_moves) {
-		_frame_profile.Count("shore_surveys");
-		std::optional<Rect> shifted = this->shore.Resurvey(span);
-		if (shifted.has_value()) this->Take(*shifted);
-	}
-	this->SendSpans(SHORE_UNIT, this->shore.Texels());
 }
 
 void WorldTextures::ResurveyFlow(std::span<const Rect> water_moves)

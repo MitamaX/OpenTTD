@@ -75,8 +75,6 @@ add_files(
     shadow_map.cpp
     shadow_map.h
     ship_models.cpp
-    shore_field.cpp
-    shore_field.h
     shore_relief.cpp
     shore_relief.h
     signal_models.cpp

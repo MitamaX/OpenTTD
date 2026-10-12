@@ -139,11 +139,9 @@ const vec3 BREAKER_WAKE = vec3(0.25, 0.32, 0.75);
 const float BREAKER_WAKE_SHARE = 0.85;
 const float BREAKER_FAR_OPACITY = 0.3;
 const float CONTACT_FOAM_REACH = 0.05;
-const float SHELF_DEPTH = 0.4;
 const float DECK_SHELTER = 0.75;
 const float DECK_SHADE_INNER = 0.2;
 const float DECK_SHADE_OUTER = 0.5;
-const float SHELF_REACH = 2.5;
 const float CHANNEL_DEPTH = 0.25;
 const float OPEN_SEA_LEVEL = 0.0;
 const float OPEN_SEA_LOD = 2.0;
@@ -662,15 +660,6 @@ float Enclosed(vec2 p)
 	return inland * (1.0 - smoothstep(OPEN_FETCH.x, OPEN_FETCH.y, textureLod(u_water, p / MapSize(), FETCH_LOD).r));
 }
 
-/* Off a sea shore the water deepens smoothly with the distance out from the land, measured straight across the water,
- * however the ground under it steps, so the bed of coast tiles shows no saw teeth through it and the shallows keep one breadth round every corner.
- * Past the map's edge it deepens on with the distance out from the edge. */
-float ShelfDepth(vec2 p)
-{
-	float offshore = texture(u_shore, p / MapSize()).r * SHELF_TILES + DistancePastEdge(p);
-	return SHELF_DEPTH * smoothstep(0.0, SHELF_REACH, offshore);
-}
-
 float ChannelDepth(vec4 field)
 {
 	return CHANNEL_DEPTH * smoothstep(WATERLINE, WATERLINE + CHANNEL_FALL, field.r);
@@ -845,7 +834,7 @@ void main()
 	vec3 sky = SkyOnWater(way, waves, view, mix(WATER_REFLECTANCE, INLAND_REFLECTANCE, water.body.sheen), reflected) * sheltered;
 	vec3 mirrored = WorldOver(sky, v_position, Skyward(reflect(sight, waves.broad), REFLECTED_LIFT), water.body.calm * (1.0 - waves.ruffled));
 	vec3 glitter = SunOnWater(waves, view, p, sunlit, mix(1.0, INLAND_SPARKLE, water.body.sheen));
-	float least_depth = mix(ChannelDepth(water.field), ShelfDepth(water.p), water.body.sea);
+	float least_depth = ChannelDepth(water.field) * (1.0 - water.body.sea);
 	vec3 below = Below(bent_uv, PathThrough(water, sight, bent.x, least_depth), water.body, light, ripples);
 	vec3 colour = Frothed(mix(below, mirrored, reflected) + glitter, water, flecks, straight.x, light, glitter);
 

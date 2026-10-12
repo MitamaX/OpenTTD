@@ -1,7 +1,6 @@
 uniform usampler2D u_surfaces;
 uniform usampler2D u_tiles;
 uniform sampler2D u_water;
-uniform sampler2D u_shore;
 uniform sampler2D u_flow;
 uniform usampler2D u_network;
 uniform usampler2D u_bends;
