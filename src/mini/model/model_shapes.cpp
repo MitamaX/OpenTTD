@@ -20,8 +20,7 @@
 
 #include "../../safeguards.h"
 
-static constexpr Vec3 BACK = {-1.0, 0.0, 0.0};
-static constexpr Vec3 FORE = {1.0, 0.0, 0.0};
+static constexpr Vec3 BACK = X_AXIS * -1.0;
 static constexpr double TORSO_BREADTH = 1.6;
 
 static Vec3 RingPoint(double radius, double z, int side, int sides)
@@ -119,7 +118,7 @@ ModelMesh Cone(int sides, double radius, double height, Capped capped)
 ModelMesh Limb(int sides, double joint_radius, double end_radius, double length, const Vec3 &joint, double swing, double splay)
 {
 	ModelMesh limb = Column(sides, end_radius, joint_radius, length).Move({0.0, 0.0, -length});
-	return limb.Transform(Mat4::Translation(joint) * Mat4::Turn(Y_AXIS, swing) * Mat4::Turn(FORE, splay));
+	return limb.Transform(Mat4::Translation(joint) * Mat4::Turn(Y_AXIS, swing) * Mat4::Turn(X_AXIS, splay));
 }
 
 ModelMesh Torso(std::span<const LatheRing> profile, int sides, Capped capped)
@@ -241,8 +240,8 @@ ModelMesh Loft(std::span<const MapVector> section, double foot, std::span<const 
 		behind = std::move(here);
 	}
 	mesh.Smooth();
-	Fan(mesh, LoftRim(section, foot, rings.front()), BACK, FORE);
-	Fan(mesh, LoftRim(section, foot, rings.back()), FORE, FORE);
+	Fan(mesh, LoftRim(section, foot, rings.front()), BACK, X_AXIS);
+	Fan(mesh, LoftRim(section, foot, rings.back()), X_AXIS, X_AXIS);
 	return mesh;
 }
 

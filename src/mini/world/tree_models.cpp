@@ -517,7 +517,7 @@ static void Cactus(TreeBuilder &tree, TreeDetail detail)
 			ModelMesh flesh = Lathe(stem, CACTUS_STEM_SIDES.full);
 			int arms = 1 + static_cast<int>(dice.Below(2));
 			double turn = dice.Between(0.0, FULL_TURN);
-			for (int arm = 0; arm < arms; arm++) flesh.Append(CactusArm(turn + std::numbers::pi * arm + dice.Between(CACTUS_ARM_SCATTER), dice.Between(CACTUS_ARM_FROM), CACTUS_ARM_SIDES.full, true));
+			for (int arm = 0; arm < arms; arm++) flesh.Append(CactusArm(turn + HALF_TURN * arm + dice.Between(CACTUS_ARM_SCATTER), dice.Between(CACTUS_ARM_FROM), CACTUS_ARM_SIDES.full, true));
 			tree.Leaves(std::move(flesh), crown, FLESH_TRANSLUCENCY);
 			tree.Leaves(tree.Lump({0.0, 0.0, height}, CACTUS_FLOWER, 0, MASS_ROUGHNESS), crown, tree.Tones().wood, FLESH_TRANSLUCENCY);
 			break;

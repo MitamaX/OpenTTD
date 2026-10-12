@@ -175,7 +175,7 @@ void FleetLayout::LayConsist(const Vehicle *head)
 		const Link &link = this->links[at];
 		bool reversed = IsReversed(link.unit);
 		double run = Length(Flat(link.front) - Flat(link.back));
-		double yaw = link.heading + (reversed ? std::numbers::pi : 0.0);
+		double yaw = link.heading + (reversed ? HALF_TURN : 0.0);
 		double pitch = std::atan2((link.front.level - link.back.level) * LevelRise(), std::max(run, 1e-6)) * (reversed ? -1.0 : 1.0);
 		CouplingLeans leans = {this->LeanToward(at, at + 1), at > 0 ? this->LeanToward(at, at - 1) : 0.0};
 		if (reversed) std::swap(leans.back, leans.front);
