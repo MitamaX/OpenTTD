@@ -15,6 +15,7 @@
 #include <map>
 #include <optional>
 #include <span>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -56,6 +57,7 @@ static constexpr double WING_LEAST_RISE = 0.05;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr double SAME_POINT = 1e-6;
+static constexpr double PARALLEL_LEAST = 1.0 - SAME_POINT;
 static constexpr double WALL_OVERLAP_LEAST = 0.1;
 static constexpr int LEAST_SHORE_DIVISIONS = 2;
 static constexpr int BANK_DIVISIONS_FACTOR = 2;
@@ -63,12 +65,22 @@ static constexpr int BASIN_SIDE_CUTS = 2;
 static constexpr int NO_SHORE_CUTS = 0;
 static constexpr ShoreCut NO_SHORE_CUT = {NO_SHORE_CUTS, false};
 static constexpr int SHORE_CUTS_MARGIN = 1;
-static constexpr double FORMATION_DEPTH = 1.0;
 static constexpr double FORMATION_RUN = 2.0;
 static constexpr double FORMATION_ROWS_PER_TILE = 4.0;
 static constexpr int FORMATION_TOE_STEPS = 8;
 static constexpr int FORMATION_TOE_REFINES = 4;
+static constexpr int NEIGHBOUR_WAY_REACH = 1;
+static constexpr double WAY_MIDLINE_MARGIN = 0.02;
+static constexpr double SEAT_STEP_LEAST = 0.2;
+static constexpr double WAY_CESS = DECK_HALF - BALLAST_HALF;
 static constexpr double SEA_FLOOR = -DEEPEST_SINK;
+static constexpr double CREST_ROUNDING = 0.5;
+static constexpr double END_PROBE = 0.05;
+static constexpr double MIDWAY = 0.5;
+static constexpr double OWN_TILE_INSET = 1e-3;
+static constexpr double JOINT_REACH = 0.1;
+static constexpr int BANK_SOURCE_REACH = 2;
+static_assert(BANK_SOURCE_REACH >= FAR_EARTH_BANK_RUN);
 
 /** A tile's corners as the surface texel names them. */
 enum TileCorner : uint8_t {
@@ -422,10 +434,25 @@ static bool AtCorner(const WorldPoint &at)
 	return at.x == std::floor(at.x) && at.y == std::floor(at.y);
 }
 
+static bool SameSpot(const WorldPoint &first, const WorldPoint &second)
+{
+	return std::abs(first.x - second.x) <= SAME_POINT && std::abs(first.y - second.y) <= SAME_POINT;
+}
+
+static bool SamePlace(const WorldPoint &first, const WorldPoint &second)
+{
+	return SameSpot(first, second) && std::abs(first.level - second.level) <= SAME_POINT;
+}
+
 static Groundwork GroundworkAt(int tx, int ty)
 {
 	TileIndex tile = TileXY(tx, ty);
 	return GroundworkOf(_world_tiles.GroundAt(tile), _world_tiles.NetworkAt(tile));
+}
+
+static bool StandsBlocked(int tx, int ty)
+{
+	return IsTunnelTile(TileXY(tx, ty)) || GroundworkAt(tx, ty) == Groundwork::Built;
 }
 
 static constexpr std::array<std::array<size_t, 2>, 2> STEP_ENDS = {{{0, 1}, {3, 2}}};
@@ -434,6 +461,12 @@ static constexpr std::array<std::array<size_t, 2>, 2> STEP_ENDS = {{{0, 1}, {3, 
 struct EarthBank {
 	double run;
 	bool fill;
+
+	/* Whether earth could hold a fall this deep over a reach; a cutting is left rock, however steep. */
+	bool HoldsFall(double fall, double reach) const
+	{
+		return !this->fill || fall * LevelRise() <= reach * STEEPEST_EARTH;
+	}
 
 	bool Holds(const StepFace &step, const std::array<double, 2> &runs) const
 	{
@@ -449,10 +482,10 @@ struct EarthBank {
 /* Earth banks lean out over the lower tile under ways, short of a way along it and farther over open ground; buildings and tunnel entrances keep stone walls. */
 static std::optional<EarthBank> EarthBankOf(int tx, int ty, int nx, int ny)
 {
-	if (!OnMap(nx, ny) || IsTunnelTile(TileXY(nx, ny))) return std::nullopt;
+	if (!OnMap(nx, ny) || StandsBlocked(nx, ny)) return std::nullopt;
 	Groundwork high = GroundworkAt(tx, ty);
 	Groundwork low = GroundworkAt(nx, ny);
-	if (high == Groundwork::Built || low == Groundwork::Built || (high == Groundwork::Open && low == Groundwork::Open)) return std::nullopt;
+	if (high == Groundwork::Built || (high == Groundwork::Open && low == Groundwork::Open)) return std::nullopt;
 	bool fill = high == Groundwork::Way;
 	if (low == Groundwork::Way) return EarthBank{WAYSIDE_EARTH_BANK_RUN, fill};
 	int fx = 2 * nx - tx;
@@ -461,6 +494,7 @@ static std::optional<EarthBank> EarthBankOf(int tx, int ty, int nx, int ny)
 	return EarthBank{open_beyond ? FAR_EARTH_BANK_RUN : OPEN_EARTH_BANK_RUN, fill};
 }
 
+/* The points down one end of a bank, from its top at the step's top to its foot on the ground, their normals, and the ground under each. */
 struct BankEdge {
 	std::array<WorldPoint, EARTH_BANK_ROWS + 1> points;
 	std::array<Vec3, EARTH_BANK_ROWS + 1> normals;
@@ -484,7 +518,30 @@ static double GroundBeyond(const Landform &land, const LaidGround &low, double x
 	return reach <= 1.0 ? low.Level(x, y) : land.LevelAt(x, y);
 }
 
-/* One end of an earth bank: from the step's top it grades out over the lower ground, as far as its run allows for the height it falls, onto the ground there;
+struct BankProfile {
+	double (*fall)(double share);
+	double (*slope)(double share);
+};
+
+static double StraightFall(double share)
+{
+	return share;
+}
+
+static double StraightFallSlope(double)
+{
+	return 1.0;
+}
+
+static constexpr BankProfile EASED_PROFILE = {BankFall, BankFallSlope};
+static constexpr BankProfile STRAIGHT_PROFILE = {StraightFall, StraightFallSlope};
+
+static double EarthReach(const WorldPoint &top, const WorldPoint &foot, double run_per_rise, double run)
+{
+	return std::clamp((top.level - foot.level) * LevelRise() * run_per_rise, 0.0, run);
+}
+
+/* One end of a bank: from its top it grades out over the lower ground, a reach out, onto the ground there;
  * the ground is read a point and how far out it lies. */
 template <class GroundUnder>
 static BankEdge BankEnd(const Landform &land, const GroundUnder &ground_under, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double run, const MapVector &top_climb = {})
@@ -507,7 +564,30 @@ static BankEdge BankEnd(const Landform &land, const GroundUnder &ground_under, c
 	return edge;
 }
 
-static void AddBankStrip(TerrainMesh &mesh, const BankEdge &first, const BankEdge &second, double mark)
+static double BankMark(const WorldPoint &at, double dry_mark)
+{
+	int tx = static_cast<int>(std::floor(at.x));
+	int ty = static_cast<int>(std::floor(at.y));
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) == WaterForm::Dry) return dry_mark;
+	double water = WaterSheet(tx, ty).Level(at.x, at.y);
+	return at.level < water ? SunkMark(water - at.level) : dry_mark;
+}
+
+struct StripVertex {
+	WorldPoint at;
+	Vec3 normal;
+	double mark;
+};
+
+using StripRow = std::array<StripVertex, 2>;
+
+template <class Footing>
+static StripVertex CrestVertexOn(const Footing &footing, const WorldPoint &at)
+{
+	return {at, ClimbNormal(ClimbOf(footing, at.x, at.y)), FILL_MARK};
+}
+
+static void AddStrip(TerrainMesh &mesh, std::span<const StripRow> rows)
 {
 	uint32_t previous = 0;
 	for (int row = 0; row <= EARTH_BANK_ROWS; row++) {
@@ -530,6 +610,7 @@ static void AddStoneQuad(TerrainMesh &mesh, const std::array<WorldPoint, 4> &cor
 	mesh.Quad(first, first + 1, first + 2, first + 3);
 }
 
+/* A stone face from a line of points down to the feet under them, facing out one way. */
 static void AddMasonry(TerrainMesh &mesh, std::span<const WorldPoint> line, std::span<const WorldPoint> feet, const MapVector &facing)
 {
 	Vec3 outward = Upright(facing);
@@ -613,12 +694,72 @@ static std::optional<BankedStep> BankOn(int tx, int ty, DiagDirection side)
 	return BankedStep{*stepped, runs};
 }
 
+static bool IsRiverWater(int tx, int ty)
+{
+	return OnMap(tx, ty) && (IsChannel(tx, ty) || IsRapids(tx, ty));
+}
+
+template <class BankOnSide>
+static bool Walled(int tx, int ty, DiagDirection side, BankOnSide bank_on)
+{
+	return StepFaceOf(tx, ty, side).has_value() && !bank_on(tx, ty, side).has_value();
+}
+
+static bool StepEndsAt(const StepFace &step, const WorldPoint &corner)
+{
+	return std::ranges::any_of(STEP_ENDS, [&](const std::array<size_t, 2> &end) { return SameSpot(step.ring[end[0]], corner); });
+}
+
+template <class Meets>
+static bool AnyStepAtCorner(const WorldPoint &corner, const Meets &meets)
+{
+	for (const CornerTile &around : TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y))) {
+		if (!OnMap(around.tx, around.ty)) continue;
+		for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+			std::optional<StepFace> step = StepFaceOf(around.tx, around.ty, side);
+			if (step.has_value() && meets(around.tx, around.ty, side, *step)) return true;
+		}
+	}
+	return false;
+}
+
+static bool WallRisesAt(int tx, int ty, DiagDirection own_side, const WorldPoint &corner)
+{
+	return AnyStepAtCorner(corner, [&](int around_x, int around_y, DiagDirection side, const StepFace &step) {
+		bool own = around_x == tx && around_y == ty && side == own_side;
+		return !own && StepEndsAt(step, corner) && Walled(around_x, around_y, side, BankOnPlain);
+	});
+}
+
+static bool ShutOutByRiver(int tx, int ty, DiagDirection side, const StepFace &step)
+{
+	double lowest_rise = std::min(step.ring[STEP_ENDS[0][0]].level - step.ring[STEP_ENDS[0][1]].level, step.ring[STEP_ENDS[1][0]].level - step.ring[STEP_ENDS[1][1]].level);
+	for (const std::array<size_t, 2> &end : STEP_ENDS) {
+		const WorldPoint &corner = step.ring[end[0]];
+		if (corner.level - step.ring[end[1]].level > lowest_rise || !AtCorner(corner)) continue;
+		auto touches_river = [](const CornerTile &around) { return IsRiverWater(around.tx, around.ty); };
+		bool on_river = std::ranges::any_of(TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y)), touches_river);
+		if (on_river && WallRisesAt(tx, ty, side, corner)) return true;
+	}
+	return false;
+}
+
+static std::optional<BankedStep> BankOn(int tx, int ty, DiagDirection side)
+{
+	std::optional<BankedStep> site = BankOnPlain(tx, ty, side);
+	return site.has_value() && !ShutOutByRiver(tx, ty, side, site->stepped.step) ? site : std::nullopt;
+}
+
 static std::array<BankEdge, 2> BankEdgesOf(const Landform &land, const BankedStep &site)
 {
 	const StepFace &step = site.stepped.step;
 	LaidGround low(land, site.stepped.low_x, site.stepped.low_y);
 	auto ground_under = [&](double x, double y, double out) { return GroundBeyond(land, low, x, y, out); };
-	auto end_of = [&](size_t end) { return BankEnd(land, ground_under, step.ring[STEP_ENDS[end][0]], step.ring[STEP_ENDS[end][1]], step.outward, site.runs[end]); };
+	auto end_of = [&](size_t end) {
+		const WorldPoint &top = step.ring[STEP_ENDS[end][0]];
+		const WorldPoint &foot = step.ring[STEP_ENDS[end][1]];
+		return BankEnd(land, ground_under, top, foot, step.outward, EarthReach(top, foot, EARTH_BANK_RUN_PER_RISE, site.runs[end]), EASED_PROFILE);
+	};
 	return {end_of(0), end_of(1)};
 }
 
@@ -631,7 +772,7 @@ static bool CoversWall(const BankEdge &edge, const StepFace &step, const StepFac
 {
 	const WorldPoint &corner = edge.points[0];
 	MapVector line = Unit(Flat(step.ring[STEP_ENDS[1][0]]) - Flat(step.ring[STEP_ENDS[0][0]]));
-	if (std::abs(Dot(wall.outward, line)) < 1.0 || std::abs(Dot(Flat(wall.ring[0]) - Flat(corner), wall.outward)) > SAME_POINT) return false;
+	if (std::abs(Dot(wall.outward, line)) < PARALLEL_LEAST || std::abs(Dot(Flat(wall.ring[0]) - Flat(corner), wall.outward)) > SAME_POINT) return false;
 	auto reach = [&](const WorldPoint &at) { return Dot(Flat(at) - Flat(corner), step.outward); };
 	double wall_from = reach(wall.ring[0]);
 	double wall_to = reach(wall.ring[3]);
@@ -647,32 +788,31 @@ static bool CoversWall(const BankEdge &edge, const StepFace &step, const StepFac
 	return false;
 }
 
-static bool Walled(int tx, int ty, DiagDirection side)
-{
-	return StepFaceOf(tx, ty, side).has_value() && !BankOn(tx, ty, side).has_value();
-}
+struct PlacedBank {
+	BankedStep site;
+	std::array<BankEdge, 2> edges;
+};
 
-static bool Converted(const Landform &land, const BankedStep &site)
+static bool Converted(const BankedStep &site, const std::array<BankEdge, 2> &edges)
 {
-	std::array<BankEdge, 2> edges = BankEdgesOf(land, site);
 	for (size_t end = 0; end < edges.size(); end++) {
 		const WorldPoint &corner = edges[end].points[0];
 		if (!AtCorner(corner)) continue;
-		for (const CornerTile &around : TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y))) {
-			if (!OnMap(around.tx, around.ty)) continue;
-			for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
-				std::optional<StepFace> wall = StepFaceOf(around.tx, around.ty, side);
-				if (wall.has_value() && Walled(around.tx, around.ty, side) && CoversWall(edges[end], site.stepped.step, *wall)) return true;
-			}
-		}
+		auto covers = [&](int around_x, int around_y, DiagDirection side, const StepFace &wall) {
+			return Walled(around_x, around_y, side, BankOn) && CoversWall(edges[end], site.stepped.step, wall);
+		};
+		if (AnyStepAtCorner(corner, covers)) return true;
 	}
 	return false;
 }
 
-static std::optional<BankedStep> BankAt(const Landform &land, int tx, int ty, DiagDirection side)
+static std::optional<PlacedBank> BankAt(const Landform &land, int tx, int ty, DiagDirection side)
 {
 	std::optional<BankedStep> site = BankOn(tx, ty, side);
-	return site.has_value() && !Converted(land, *site) ? site : std::nullopt;
+	if (!site.has_value()) return std::nullopt;
+	std::array<BankEdge, 2> edges = BankEdgesOf(land, *site);
+	if (Converted(*site, edges)) return std::nullopt;
+	return PlacedBank{*site, edges};
 }
 
 static void AddWall(TerrainMesh &mesh, const StepFace &step)
@@ -683,14 +823,9 @@ static void AddWall(TerrainMesh &mesh, const StepFace &step)
 	mesh.Quad(ring[0], ring[1], ring[2], ring[3]);
 }
 
-struct PlacedBank {
-	BankedStep site;
-	std::array<BankEdge, 2> edges;
-};
-
 static bool MeetAtCorner(const BankEdge &first, const BankEdge &second)
 {
-	return first.points[0].x == second.points[0].x && first.points[0].y == second.points[0].y && AtCorner(first.points[0]);
+	return SameSpot(first.points[0], second.points[0]) && AtCorner(first.points[0]);
 }
 
 /* Two banks grading out from the sides of a corner leave a wedge open between their ends, which a strip closes. */
@@ -718,24 +853,19 @@ static bool ClosedAtCorner(std::span<const PlacedBank> banks, size_t own, size_t
 
 static bool SameEnd(const BankEdge &first, const BankEdge &second)
 {
-	for (size_t row : {size_t{0}, static_cast<size_t>(EARTH_BANK_ROWS)}) {
-		const WorldPoint &a = first.points[row];
-		const WorldPoint &b = second.points[row];
-		if (std::abs(a.x - b.x) > SAME_POINT || std::abs(a.y - b.y) > SAME_POINT || std::abs(a.level - b.level) > SAME_POINT) return false;
-	}
-	return true;
+	return SamePlace(first.points[0], second.points[0]) && SamePlace(first.points[EARTH_BANK_ROWS], second.points[EARTH_BANK_ROWS]);
 }
 
 static bool RunsOn(const Landform &land, int tx, int ty, DiagDirection side, const PlacedBank &bank, size_t end)
 {
 	TileStep beyond = BeyondEnd(bank.site.stepped.step, end);
-	std::optional<BankedStep> next = BankAt(land, tx + beyond.x, ty + beyond.y, side);
-	return next.has_value() && SameEnd(bank.edges[end], BankEdgesOf(land, *next)[1 - end]);
+	std::optional<PlacedBank> next = BankAt(land, tx + beyond.x, ty + beyond.y, side);
+	return next.has_value() && SameEnd(bank.edges[end], next->edges[1 - end]);
 }
 
 static bool Reaches(const BankEdge &edge)
 {
-	return std::abs(edge.points[EARTH_BANK_ROWS].x - edge.points[0].x) > SAME_POINT || std::abs(edge.points[EARTH_BANK_ROWS].y - edge.points[0].y) > SAME_POINT;
+	return !SameSpot(edge.points[0], edge.points[EARTH_BANK_ROWS]);
 }
 
 static void AddBankEnd(TerrainMesh &mesh, const BankEdge &edge, const MapVector &facing)
@@ -752,14 +882,14 @@ static void AddWalls(TerrainMesh &mesh, const Landform &land, int tx, int ty)
 	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
 		std::optional<StepFace> step = StepFaceOf(tx, ty, side);
 		if (!step.has_value()) continue;
-		std::optional<BankedStep> site = BankAt(land, tx, ty, side);
-		if (!site.has_value()) {
+		std::optional<PlacedBank> placed = BankAt(land, tx, ty, side);
+		if (!placed.has_value()) {
 			AddWall(mesh, *step);
 			continue;
 		}
-		banks.push_back({*site, BankEdgesOf(land, *site)});
+		banks.push_back(*placed);
 		sides.push_back(side);
-		AddBankStrip(mesh, banks.back().edges[0], banks.back().edges[1], MarkOf(site->stepped.bank));
+		AddBankStrip(mesh, placed->edges[0], placed->edges[1], MarkOf(placed->site.stepped.bank));
 	}
 	CloseBankCorners(mesh, banks);
 	for (size_t own = 0; own < banks.size(); own++) {
@@ -806,8 +936,16 @@ static std::vector<WorldPoint> ShiftedLine(std::span<const WorldPoint> line, con
 	return shifted;
 }
 
-/* A wing wall is a slab of stone as thick as its coping, its face and back running down to the ground and its outer end closed, under a coping along its top and round its end. */
-static void AddWingWall(TerrainMesh &mesh, const Landform &land, std::span<const WorldPoint> line, const MapVector &facing, const MapVector &onward)
+static void CloseWallEnd(TerrainMesh &mesh, const Landform &land, const WorldPoint &front, const WorldPoint &back, const MapVector &facing, const MapVector &end_facing)
+{
+	Vec3 end_normal = Upright(end_facing);
+	AddStoneQuad(mesh, {front, back, Grounded(land, back), Grounded(land, front)}, end_normal);
+	CopingEnd end = CopingAt(front, facing);
+	AddStoneQuad(mesh, {end.front_foot, end.front_top, end.back_top, end.back_foot}, end_normal);
+}
+
+/* A wing wall is a slab of stone as thick as its coping, its face and back running down to the ground and its ends closed, under a coping along its top and round its end. */
+static void AddWingWall(TerrainMesh &mesh, const Landform &land, std::span<const WorldPoint> front, const MapVector &facing, const MapVector &onward, bool closed_both)
 {
 	std::vector<WorldPoint> front = WingTop(land, line);
 	std::vector<WorldPoint> back = ShiftedLine(front, facing * -WING_THICKNESS);
@@ -875,71 +1013,581 @@ static double Unfolded(const Bend &line, double share, double lateral)
 	return lateral * curvature > 1.0 ? 1.0 / curvature : lateral;
 }
 
-/* Where a formation's side, falling from its crest toward its foot, first meets the ground, if it does before its foot. */
-static std::optional<WorldPoint> Swallowed(const Landform &land, const WorldPoint &crest, const WorldPoint &foot)
+template <class Test>
+static std::optional<double> FirstHolding(const Test &holds)
 {
-	auto buried = [&](double share) {
-		WorldPoint at = Between(crest, foot, share);
-		return at.level <= land.LevelAt(at.x, at.y);
-	};
 	double step = 1.0 / FORMATION_TOE_STEPS;
 	double high = step;
-	while (high <= 1.0 && !buried(high)) high += step;
+	while (high <= 1.0 && !holds(high)) high += step;
 	if (high > 1.0) return std::nullopt;
 	double low = high - step;
 	for (int refine = 0; refine < FORMATION_TOE_REFINES; refine++) {
 		double middle = (low + high) / 2.0;
-		(buried(middle) ? high : low) = middle;
+		(holds(middle) ? high : low) = middle;
 	}
-	return Between(crest, foot, high);
+	return Crossing{low, high};
 }
 
-/* An eased way's bank of the ground's own earth, its sides leaning out and down until the ground swallows them. */
-static void AddFormation(TerrainMesh &mesh, const Landform &land, const WayCourse &course, double half)
+static bool StopsEarth(int tx, int ty)
 {
-	int rows = std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE)));
-	const Bend &line = course.Line();
-	double rise = LevelRise();
-	double spread = half + FORMATION_DEPTH * rise * FORMATION_RUN;
+	return OnMap(tx, ty) && (StandsBlocked(tx, ty) || GroundworkAt(tx, ty) == Groundwork::Way || WaterFormOf(tx, ty) != WaterForm::Dry);
+}
 
-	struct Rim {
-		double lateral;
-		double drop;
+class RampBank {
+public:
+	RampBank(TerrainMesh &mesh, const Landform &land, int tx, int ty, const RampTexel &ramp) :
+		mesh(mesh), land(land), tx(tx), ty(ty), ramp(ramp), onto(static_cast<DiagDirection>(ramp.onto)),
+		footing(RampFooting(TileXY(tx, ty), this->onto, ramp.deck)), run(RampRun(TileXY(tx, ty), this->onto)), facing(Outward(this->onto))
+	{
+	}
+
+	void Lay() const
+	{
+		this->LayCrestBand();
+		for (double side : {-1.0, 1.0}) this->LayFlank(side);
+		std::array<WorldPoint, 2> abutment = {this->Crest(1.0, -1.0), this->Crest(1.0, 1.0)};
+		AddMasonry(this->mesh, abutment, GroundedLine(this->land, abutment), this->facing);
+	}
+
+private:
+	enum class Flank : uint8_t {
+		Parallel,
+		Bank,
+		Wall,
 	};
-	auto strip = [&](Rim inner, Rim outer) {
-		uint32_t previous = 0;
-		for (int row = 0; row <= rows; row++) {
-			double share = static_cast<double>(row) / rows;
-			double top = course.Level(share) + WAY_FOOT / rise;
-			MapVector at = line.At(share, Unfolded(line, share, inner.lateral));
-			MapVector out = line.At(share, Unfolded(line, share, outer.lateral));
-			MapVector side = Unit(out - at);
-			bool flat = inner.drop == outer.drop;
-			Vec3 normal = flat ? UP : Normalised(Vec3{side.x, side.y, FORMATION_RUN});
-			WorldPoint crest = {at.x, at.y, top - inner.drop};
-			WorldPoint foot = {out.x, out.y, top - outer.drop};
-			std::optional<WorldPoint> toe = flat ? std::nullopt : Swallowed(land, crest, foot);
-			uint32_t near = mesh.Add(crest, normal, FILL_MARK);
-			if (toe.has_value()) {
-				mesh.Add(Grounded(land, *toe), ClimbNormal(land.Climb(toe->x, toe->y)), FILL_MARK);
-			} else {
-				mesh.Add(foot, normal, FILL_MARK);
+
+	struct FlankPlan {
+		Flank kind;
+		double run;
+	};
+
+	static double ShareOfRow(int row) { return static_cast<double>(row) / RAMP_BANK_ROWS; }
+
+	WorldPoint Crest(double share, double side) const
+	{
+		MapVector at = this->run.At(share, side * DECK_HALF);
+		return {at.x, at.y, this->footing(at.x, at.y) + WAY_FOOT / LevelRise()};
+	}
+
+	StripVertex CrestVertex(double share, double side) const
+	{
+		return CrestVertexOn(this->footing, this->Crest(share, side));
+	}
+
+	void LayCrestBand() const
+	{
+		std::vector<StripRow> rows;
+		for (int row = 0; row <= RAMP_BANK_ROWS; row++) rows.push_back({this->CrestVertex(ShareOfRow(row), -1.0), this->CrestVertex(ShareOfRow(row), 1.0)});
+		AddStrip(this->mesh, rows);
+	}
+
+	double HeadFall(double side) const
+	{
+		double fall = 0.0;
+		for (int row = 0; row <= RAMP_BANK_ROWS; row++) {
+			WorldPoint top = this->Crest(ShareOfRow(row), side);
+			fall = std::max(fall, top.level - this->land.LevelAt(top.x, top.y));
+		}
+		return fall;
+	}
+
+	bool BesideParallelRamp(int sx, int sy) const
+	{
+		if (!OnMap(sx, sy)) return false;
+		RampTexel beside = _world_tiles.RampAt(TileXY(sx, sy));
+		return beside.Present() && beside.onto == this->ramp.onto;
+	}
+
+	FlankPlan PlanOf(double side) const
+	{
+		MapVector right = this->run.Right() * side;
+		int sx = this->tx + static_cast<int>(std::lround(right.x));
+		int sy = this->ty + static_cast<int>(std::lround(right.y));
+		if (this->BesideParallelRamp(sx, sy)) return {Flank::Parallel, HALF_TILE - DECK_HALF};
+		if (StopsEarth(sx, sy) || StopsEarth(sx + static_cast<int>(this->facing.x), sy + static_cast<int>(this->facing.y))) return {Flank::Wall, 0.0};
+		std::optional<EarthBank> bank = EarthBankOf(this->tx, this->ty, sx, sy);
+		if (!bank.has_value()) return {Flank::Wall, 0.0};
+		double reach = std::min(RAMP_BANK_RUN, HALF_TILE - DECK_HALF + bank->run);
+		return bank->HoldsFall(this->HeadFall(side), reach) ? FlankPlan{Flank::Bank, reach} : FlankPlan{Flank::Wall, 0.0};
+	}
+
+	double ReachBefore(const WorldPoint &top, const MapVector &outward, double reach) const
+	{
+		auto stopped = [&](double share) {
+			double x = top.x + outward.x * reach * share;
+			double y = top.y + outward.y * reach * share;
+			return WaterFormOf(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y))) != WaterForm::Dry || this->land.LevelAt(x, y) >= top.level;
+		};
+		std::optional<Crossing> cut = FirstHolding(stopped);
+		return cut.has_value() ? reach * cut->before : reach;
+	}
+
+	BankEdge EdgeAt(int row, double side, double run_limit) const
+	{
+		WorldPoint top = this->Crest(ShareOfRow(row), side);
+		WorldPoint foot = Grounded(this->land, top);
+		MapVector outward = this->run.Right() * side;
+		double natural = EarthReach(top, foot, RAMP_BANK_RUN_PER_RISE, run_limit);
+		auto ground_under = [this](double x, double y, double) { return this->land.LevelAt(x, y); };
+		return BankEnd(this->land, ground_under, top, foot, outward, this->ReachBefore(top, outward, natural), STRAIGHT_PROFILE, ClimbOf(this->footing, top.x, top.y));
+	}
+
+	void LayFlank(double side) const
+	{
+		FlankPlan plan = this->PlanOf(side);
+		MapVector right = this->run.Right() * side;
+		if (plan.kind == Flank::Wall) {
+			std::vector<WorldPoint> line;
+			for (int row = RAMP_BANK_ROWS; row >= 0; row--) line.push_back(this->Crest(ShareOfRow(row), side));
+			AddWingWall(this->mesh, this->land, line, right, this->facing * -1.0, true);
+			return;
+		}
+		std::vector<BankEdge> edges;
+		for (int row = 0; row <= RAMP_BANK_ROWS; row++) edges.push_back(this->EdgeAt(row, side, plan.run));
+		for (size_t i = 0; i + 1 < edges.size(); i++) AddBankStrip(this->mesh, edges[i], edges[i + 1], FILL_MARK);
+		if (plan.kind == Flank::Bank) AddWingWall(this->mesh, this->land, edges.back().points, this->facing, right, false);
+	}
+
+	TerrainMesh &mesh;
+	const Landform &land;
+	int tx;
+	int ty;
+	RampTexel ramp;
+	DiagDirection onto;
+	Footing footing;
+	Stretch run;
+	MapVector facing;
+};
+
+static bool CoversTile(int tx, int ty, int x, int y)
+{
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		std::optional<BankedStep> site = BankOn(x, y, side);
+		if (!site.has_value()) continue;
+		int reach = static_cast<int>(std::ceil(std::max(site->runs[0], site->runs[1])));
+		const StepBank &stepped = site->stepped;
+		for (int beyond = 0; beyond < reach; beyond++) {
+			if (tx == stepped.low_x + beyond * (stepped.low_x - x) && ty == stepped.low_y + beyond * (stepped.low_y - y)) return true;
+		}
+	}
+	return false;
+}
+
+static bool BesideWay(int x, int y)
+{
+	if (_world_tiles.RampAt(TileXY(x, y)).Present()) return true;
+	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(x, y)).track))) {
+		if (std::optional<WayCourse> course = WayCourse::OfTrack(x, y, track); course.has_value() && course->Raised()) return true;
+	}
+	std::optional<WayCourse> road = WayCourse::OfRoad(x, y);
+	return road.has_value() && road->Raised();
+}
+
+template <class Meets>
+static bool AnyAround(int tx, int ty, int reach, const Meets &meets)
+{
+	for (int y = ty - reach; y <= ty + reach; y++) {
+		for (int x = tx - reach; x <= tx + reach; x++) {
+			if (OnMap(x, y) && meets(x, y)) return true;
+		}
+	}
+	return false;
+}
+
+bool IsEarthBanked(int tx, int ty)
+{
+	return AnyAround(tx, ty, NEIGHBOUR_WAY_REACH, BesideWay) || AnyAround(tx, ty, BANK_SOURCE_REACH, [&](int x, int y) { return CoversTile(tx, ty, x, y); });
+}
+
+static void AddRampBank(TerrainMesh &mesh, const Landform &land, int tx, int ty)
+{
+	RampTexel ramp = _world_tiles.RampAt(TileXY(tx, ty));
+	if (ramp.Present()) RampBank(mesh, land, tx, ty, ramp).Lay();
+}
+
+static double Unfolded(const Bend &line, double share, double lateral)
+{
+	double curvature = line.Curvature(share);
+	return lateral * curvature > 1.0 ? 1.0 / curvature : lateral;
+}
+
+static double CrestLevel(const WayCourse &course, double share)
+{
+	return course.Level(share) + WAY_FOOT / LevelRise();
+}
+
+static double LevelOn(const WayCourse &course, const MapVector &at)
+{
+	return course.Level(course.ShareAt(at));
+}
+
+static int TileOf(double coordinate, int own)
+{
+	int tile = static_cast<int>(std::floor(coordinate));
+	return coordinate == tile && own < tile ? tile - 1 : tile;
+}
+
+struct WayId {
+	int tx;
+	int ty;
+	std::optional<Track> track;
+};
+
+struct WayReach {
+	double distance;
+	double half;
+	double level;
+};
+
+class NeighbouringWays {
+public:
+	NeighbouringWays(const Landform &land, const WayId &own) : land(land)
+	{
+		for (int ty = own.ty - NEIGHBOUR_WAY_REACH; ty <= own.ty + NEIGHBOUR_WAY_REACH; ty++) {
+			for (int tx = own.tx - NEIGHBOUR_WAY_REACH; tx <= own.tx + NEIGHBOUR_WAY_REACH; tx++) {
+				if (IsMapTile(tx, ty)) this->Collect(tx, ty, own);
 			}
-			if (row > 0) mesh.Quad(previous, previous + 1, near + 1, near);
+		}
+	}
+
+	std::optional<WayReach> Nearest(const MapVector &at) const
+	{
+		std::optional<WayReach> nearest;
+		for (const DrawnWay &way : this->ways) {
+			MapVector centre = way.line.Centre(way.line.ShareOf(at));
+			double distance = Length(at - centre);
+			if (nearest.has_value() && nearest->distance <= distance) continue;
+			nearest = WayReach{distance, way.half, this->FaceLevel(way, at)};
+		}
+		return nearest;
+	}
+
+private:
+	struct DrawnWay {
+		Bend line;
+		std::optional<WayCourse> course;
+		double half;
+	};
+
+	void Collect(int tx, int ty, const WayId &own)
+	{
+		bool own_tile = tx == own.tx && ty == own.ty;
+		for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(tx, ty)).track))) {
+			if (own_tile && own.track == track) continue;
+			const DrawnTrack &drawn = DrawnTrack::Of(tx, ty, track);
+			this->ways.push_back({drawn.line, drawn.course, BALLAST_HALF});
+		}
+		if (own_tile && !own.track.has_value()) return;
+		if (std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty); course.has_value()) this->ways.push_back({course->Line(), course, ROAD_HALF});
+	}
+
+	double FaceLevel(const DrawnWay &way, const MapVector &at) const
+	{
+		if (!way.course.has_value()) return this->land.LevelAt(at.x, at.y);
+		return CrestLevel(*way.course, way.course->ShareAt(at));
+	}
+
+	const Landform &land;
+	std::vector<DrawnWay> ways;
+};
+
+struct RaisedWay {
+	WayCourse course;
+	WayId id;
+	double half;
+	bool middle;
+};
+
+static std::vector<RaisedWay> RaisedWaysOf(int tx, int ty)
+{
+	std::vector<RaisedWay> ways;
+	if (!OnMap(tx, ty)) return ways;
+	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(tx, ty)).track))) {
+		if (std::optional<WayCourse> course = WayCourse::OfTrack(tx, ty, track); course.has_value() && course->Raised()) ways.push_back({*course, {tx, ty, track}, BALLAST_HALF + WAY_CESS, true});
+	}
+	if (std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty); course.has_value() && course->Raised()) ways.push_back({*course, {tx, ty, std::nullopt}, ROAD_HALF, false});
+	return ways;
+}
+
+struct FormationSide {
+	WorldPoint crest;
+	Vec3 crest_normal;
+	WorldPoint toe;
+	Vec3 toe_normal;
+};
+
+using FormationRow = std::array<FormationSide, 2>;
+
+static Vec3 SlopeNormal(const WorldPoint &crest, const WorldPoint &toe)
+{
+	MapVector across = Flat(toe) - Flat(crest);
+	double run = Length(across);
+	if (run == 0.0) return UP;
+	double fall = (crest.level - toe.level) * LevelRise();
+	return Normalised({across.x / run * fall, across.y / run * fall, run});
+}
+
+using CrestPair = std::array<WorldPoint, 2>;
+
+static WorldPoint CrestAt(const WayCourse &course, double half, double share, double sign)
+{
+	const Bend &line = course.Line();
+	MapVector at = line.At(share, Unfolded(line, share, sign * half));
+	return {at.x, at.y, CrestLevel(course, share)};
+}
+
+static CrestPair CrestsOf(const WayCourse &course, double half, double share)
+{
+	return {CrestAt(course, half, share, -1.0), CrestAt(course, half, share, 1.0)};
+}
+
+static bool Adjoins(const WorldPoint &first, const WorldPoint &second)
+{
+	return Length(Flat(first) - Flat(second)) <= JOINT_REACH && std::abs(first.level - second.level) <= SAME_POINT;
+}
+
+static bool Joins(const CrestPair &first, const CrestPair &second)
+{
+	return (Adjoins(first[0], second[0]) && Adjoins(first[1], second[1])) || (Adjoins(first[0], second[1]) && Adjoins(first[1], second[0]));
+}
+
+static int TrackKey(const WayId &id)
+{
+	return id.track.has_value() ? static_cast<int>(*id.track) : -1;
+}
+
+static bool Precedes(const WayId &first, const WayId &second)
+{
+	return std::make_tuple(first.tx, first.ty, TrackKey(first)) < std::make_tuple(second.tx, second.ty, TrackKey(second));
+}
+
+class FormationProfile {
+public:
+	FormationProfile(const Landform &land, const WayCourse &course, const WayId &id, double half) :
+		land(land), course(course), line(course.Line()), id(id), own(id.tx, id.ty), half(half), ways(land, id)
+	{
+	}
+
+	FormationRow RowAt(double share) const
+	{
+		return {this->SideAt(share, -1.0), this->SideAt(share, 1.0)};
+	}
+
+private:
+	struct Toe {
+		WorldPoint at;
+		Vec3 normal;
+	};
+
+	enum class Seat {
+		Wall,
+		Way,
+		Ground,
+	};
+
+	struct Stop {
+		Seat seat;
+		Crossing crossing;
+	};
+
+	FormationSide SideAt(double share, double sign) const
+	{
+		WorldPoint crest = CrestAt(this->course, this->half, share, sign);
+		MapVector inside = this->WithinOwn(crest.x, crest.y);
+		double depth = std::max(crest.level - this->own.Level(inside.x, inside.y) + BANK_FOOT_DIP, 0.0);
+		double spread = this->half + depth * LevelRise() * FORMATION_RUN;
+		MapVector out = this->line.At(share, Unfolded(this->line, share, sign * spread));
+		WorldPoint foot = {out.x, out.y, crest.level - depth};
+		Toe toe = this->ToeOf(crest, foot);
+		return {crest, Normalised(Lerp(SlopeNormal(crest, toe.at), UP, CREST_ROUNDING)), toe.at, toe.normal};
+	}
+
+	Toe ToeOf(const WorldPoint &crest, const WorldPoint &foot) const
+	{
+		auto at = [&](double share) { return Between(crest, foot, share); };
+		std::optional<Stop> earliest;
+		auto consider = [&](Seat seat, const auto &holds) {
+			std::optional<Crossing> crossing = FirstHolding(holds);
+			if (crossing.has_value() && (!earliest.has_value() || crossing->after < earliest->crossing.after)) earliest = Stop{seat, *crossing};
+		};
+		consider(Seat::Wall, [&](double share) { return this->Blocked(Flat(at(share))); });
+		consider(Seat::Way, [&](double share) { return this->Crossed(at(share), crest); });
+		consider(Seat::Ground, [&](double share) { return this->Buried(at(share)); });
+		if (earliest.has_value()) return this->ToeAt(earliest->seat, crest, at(earliest->crossing.after));
+		WorldPoint seated = Grounded(this->land, foot);
+		return {seated, ClimbNormal(this->land.Climb(seated.x, seated.y))};
+	}
+
+	Toe ToeAt(Seat seat, const WorldPoint &crest, const WorldPoint &where) const
+	{
+		switch (seat) {
+			case Seat::Wall: return this->ToeAtWall(where);
+			case Seat::Way: return this->ToeAtWay(crest, where);
+			case Seat::Ground: return this->ToeOnGround(crest, where);
+		}
+		NOT_REACHED();
+	}
+
+	bool Blocked(const MapVector &at) const
+	{
+		int tx = TileOf(at.x, this->id.tx);
+		int ty = TileOf(at.y, this->id.ty);
+		if ((tx == this->id.tx && ty == this->id.ty) || !OnMap(tx, ty)) return false;
+		if (StandsBlocked(tx, ty)) return true;
+		return GroundworkAt(tx, ty) == Groundwork::Way && TileGround(tx, ty).Level(at.x, at.y) < this->own.Level(at.x, at.y);
+	}
+
+	bool Crossed(const WorldPoint &at, const WorldPoint &crest) const
+	{
+		std::optional<WayReach> other = this->ways.Nearest(Flat(at));
+		return other.has_value() && other->distance + WAY_MIDLINE_MARGIN < Length(Flat(at) - Flat(crest));
+	}
+
+	bool Buried(const WorldPoint &at) const
+	{
+		double surface = this->land.LevelAt(at.x, at.y);
+		if (std::optional<WayReach> other = this->ways.Nearest(Flat(at)); other.has_value() && other->distance <= other->half) surface = std::max(surface, other->level);
+		return at.level <= surface;
+	}
+
+	MapVector WithinOwn(double x, double y) const
+	{
+		return {std::clamp(x, static_cast<double>(this->id.tx), this->id.tx + 1.0), std::clamp(y, static_cast<double>(this->id.ty), this->id.ty + 1.0)};
+	}
+
+	Toe ToeAtWall(const WorldPoint &at) const
+	{
+		auto [x, y] = this->WithinOwn(at.x, at.y);
+		WorldPoint seated = {x, y, this->own.Level(x, y) - BANK_FOOT_DIP};
+		return {seated, ClimbNormal(ClimbOf([this](double px, double py) { return this->own.Level(px, py); }, x, y))};
+	}
+
+	Toe ToeAtWay(const WorldPoint &crest, const WorldPoint &at) const
+	{
+		double face = this->ways.Nearest(Flat(at)).value_or(WayReach{0.0, 0.0, crest.level}).level;
+		WorldPoint toe = {at.x, at.y, std::min(crest.level, std::max(this->land.LevelAt(at.x, at.y), face))};
+		return {toe, SlopeNormal(crest, toe)};
+	}
+
+	Toe ToeOnGround(const WorldPoint &crest, const WorldPoint &at) const
+	{
+		WorldPoint grounded = Grounded(this->land, at);
+		if (grounded.level - at.level > SEAT_STEP_LEAST) return {at, SlopeNormal(crest, at)};
+		return {grounded, ClimbNormal(this->land.Climb(at.x, at.y))};
+	}
+
+	const Landform &land;
+	const WayCourse &course;
+	const Bend &line;
+	WayId id;
+	TileGround own;
+	double half;
+	NeighbouringWays ways;
+};
+
+class Formation {
+public:
+	Formation(TerrainMesh &mesh, const Landform &land, const WayCourse &course, const WayId &id, double half) :
+		mesh(mesh), land(land), course(course), id(id), half(half), profile(land, course, id, half),
+		rows(std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE))))
+	{
+	}
+
+	void Lay(bool middle)
+	{
+		std::vector<FormationRow> table;
+		for (int row = 0; row <= this->rows; row++) table.push_back(this->profile.RowAt(static_cast<double>(row) / this->rows));
+		Joint start = this->JointAt(0.0, this->course.Before() * -1.0);
+		Joint finish = this->JointAt(1.0, this->course.After());
+		table.front() = start.row;
+		table.back() = finish.row;
+		for (size_t side = 0; side < table.front().size(); side++) this->LaySide(table, side);
+		if (middle) this->LayMiddle(table);
+		if (!start.continued) this->Close(start.row, this->course.Before() * -1.0);
+		if (!finish.continued) this->Close(finish.row, this->course.After());
+	}
+
+private:
+	void LaySide(std::span<const FormationRow> table, size_t side) const
+	{
+		uint32_t previous = 0;
+		for (size_t row = 0; row < table.size(); row++) {
+			const FormationSide &at = table[row][side];
+			uint32_t near = this->mesh.Add(at.crest, at.crest_normal, FILL_MARK);
+			this->mesh.Add(at.toe, at.toe_normal, FILL_MARK);
+			if (row > 0) this->mesh.Quad(previous, previous + 1, near + 1, near);
 			previous = near;
 		}
+	}
+
+	void LayMiddle(std::span<const FormationRow> table) const
+	{
+		auto footing = [this](double x, double y) { return LevelOn(this->course, {x, y}); };
+		std::vector<StripRow> rows;
+		for (const FormationRow &row : table) rows.push_back({CrestVertexOn(footing, row[0].crest), CrestVertexOn(footing, row[1].crest)});
+		AddStrip(this->mesh, rows);
+	}
+
+	WorldPoint Seated(const WorldPoint &at) const
+	{
+		double x = std::clamp(at.x, this->id.tx + OWN_TILE_INSET, this->id.tx + 1.0 - OWN_TILE_INSET);
+		double y = std::clamp(at.y, this->id.ty + OWN_TILE_INSET, this->id.ty + 1.0 - OWN_TILE_INSET);
+		return {at.x, at.y, std::min(at.level, this->land.LevelAt(x, y) - BANK_FOOT_DIP)};
+	}
+
+	struct Joint {
+		FormationRow row;
+		bool continued;
 	};
-	strip({-half, 0.0}, {-spread, FORMATION_DEPTH});
-	strip({-half, 0.0}, {half, 0.0});
-	strip({half, 0.0}, {spread, FORMATION_DEPTH});
-}
+
+	static FormationRow Aligned(FormationRow row, const FormationRow &to)
+	{
+		if (Length(Flat(row[0].crest) - Flat(to[0].crest)) > Length(Flat(row[1].crest) - Flat(to[0].crest))) std::swap(row[0], row[1]);
+		return row;
+	}
+
+	Joint JointAt(double end, const MapVector &facing) const
+	{
+		FormationRow own = this->profile.RowAt(end);
+		CrestPair crests = {own[0].crest, own[1].crest};
+		MapVector middle = Flat(Between(crests[0], crests[1], MIDWAY)) + facing * END_PROBE;
+		Joint joint = {own, false};
+		WayId owner = this->id;
+		for (const RaisedWay &way : RaisedWaysOf(static_cast<int>(std::floor(middle.x)), static_cast<int>(std::floor(middle.y)))) {
+			if (way.half != this->half) continue;
+			for (double at : {0.0, 1.0}) {
+				if (!Joins(crests, CrestsOf(way.course, way.half, at))) continue;
+				joint.continued = true;
+				if (!Precedes(way.id, owner)) continue;
+				owner = way.id;
+				joint.row = Aligned(FormationProfile(this->land, way.course, way.id, way.half).RowAt(at), own);
+			}
+		}
+		return joint;
+	}
+
+	void Close(const FormationRow &row, const MapVector &facing) const
+	{
+		for (const FormationSide &side : row) {
+			std::array<WorldPoint, 2> line = {side.crest, side.toe};
+			AddMasonry(this->mesh, line, std::array<WorldPoint, 2>{this->Seated(side.crest), side.toe}, facing);
+		}
+		std::array<WorldPoint, 2> line = {row[0].crest, row[1].crest};
+		AddMasonry(this->mesh, line, std::array<WorldPoint, 2>{this->Seated(row[0].crest), this->Seated(row[1].crest)}, facing);
+	}
+
+	TerrainMesh &mesh;
+	const Landform &land;
+	const WayCourse &course;
+	WayId id;
+	double half;
+	FormationProfile profile;
+	int rows;
+};
 
 static void AddFormations(TerrainMesh &mesh, const Landform &land, int tx, int ty)
 {
-	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(tx, ty)).track))) {
-		if (std::optional<WayCourse> course = WayCourse::OfTrack(tx, ty, track); course.has_value() && course->Raised()) AddFormation(mesh, land, *course, BALLAST_HALF);
-	}
-	if (std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty); course.has_value() && course->Raised()) AddFormation(mesh, land, *course, ROAD_HALF);
+	for (const RaisedWay &way : RaisedWaysOf(tx, ty)) Formation(mesh, land, way.course, way.id, way.half).Lay(way.middle);
 }
 
 /* Every step-th corner from the block's first to past its last tile, the last one always included. */
