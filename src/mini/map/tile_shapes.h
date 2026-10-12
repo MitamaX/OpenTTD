@@ -85,6 +85,7 @@ public:
 	}
 
 	void Fill(int tx, int ty, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA) const;
+	DrawnTile Tile(int tx, int ty) const { return this->ground.Tile(tx, ty); }
 
 private:
 	explicit ShownTiles(const TileSpan &tiles) : tiles(tiles), ground(tiles) {}
@@ -162,7 +163,9 @@ std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to);
 
 /* A band of a tile's ground between two of its points, kept a pixel across like FillAxisLine. */
 void FillGroundStroke(const DrawnTile &tile, TilePoint from, TilePoint to, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
+void DrawTrackPiece(const DrawnTile &tile, Track track, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawTrackPiece(Track track, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
+void DrawAxisBand(const DrawnTile &tile, Axis axis, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawAxisBand(Axis axis, int tx, int ty, double half_width, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void DrawFacing(int tx, int ty, DiagDirection direction, double half_width, uint32_t c);
 

@@ -130,10 +130,8 @@ struct Lens {
 	double near_plane;
 
 	double TilePixelsAt(double distance) const { return this->focal / std::max(distance, this->near_plane); }
-	/* Where a box comes nearest the eye, and where it lies farthest from it. */
 	Vec3 NearestPoint(const Vec3 &low, const Vec3 &high) const;
 	Vec3 FarthestPoint(const Vec3 &low, const Vec3 &high) const;
-	/* Tile pixels at each of them. */
 	double NearestTilePixels(const Vec3 &low, const Vec3 &high) const;
 	double FarthestTilePixels(const Vec3 &low, const Vec3 &high) const;
 };

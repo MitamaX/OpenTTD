@@ -166,7 +166,7 @@ static void PaintArea(MiniTool kind, const AreaPlan &area, int ppt)
 
 	if (kind != MiniTool::Station || _tool.Removing()) return;
 	Axis axis = _choices.StationAxis();
-	if (shown.has_value()) shown->ForEach([&](int tx, int ty) { DrawAxisBand(axis, tx, ty, PlatformRailHalfWidth(ppt), c); });
+	if (shown.has_value()) shown->ForEach([&](int tx, int ty) { DrawAxisBand(shown->Tile(tx, ty), axis, tx, ty, PlatformRailHalfWidth(ppt), c); });
 }
 
 static void PaintDrag(MiniTool kind, int ppt)

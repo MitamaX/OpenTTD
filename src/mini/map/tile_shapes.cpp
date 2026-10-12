@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <utility>
 #include <vector>
@@ -232,11 +233,12 @@ static VisibleStroke Widened(MapVector along, double half_width, uint alpha)
 static void FillOn(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha)
 {
 	int divisions = tile.Divisions();
+	assert(divisions <= MAX_SURFACE_DIVISIONS);
 	std::array<WorldPoint, LATTICE_ROW * LATTICE_ROW> lattice;
+	auto at = [&](int across, int down) -> WorldPoint & { return lattice[down * LATTICE_ROW + across]; };
 	for (int down = 0; down <= divisions; down++) {
-		for (int across = 0; across <= divisions; across++) lattice[down * LATTICE_ROW + across] = tile.At(tx + static_cast<double>(across) / divisions, ty + static_cast<double>(down) / divisions);
+		for (int across = 0; across <= divisions; across++) at(across, down) = tile.At(tx + static_cast<double>(across) / divisions, ty + static_cast<double>(down) / divisions);
 	}
-	auto at = [&](int across, int down) { return lattice[down * LATTICE_ROW + across]; };
 	for (int j = 0; j < divisions; j++) {
 		for (int i = 0; i < divisions; i++) _canvas.FillWorldQuad({at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)}, c, alpha);
 	}
@@ -368,10 +370,20 @@ void FillGroundStroke(const DrawnTile &tile, TilePoint from, TilePoint to, doubl
 	}
 }
 
-void DrawTrackPiece(Track track, int tx, int ty, double half_width, uint32_t c, uint alpha)
+void DrawTrackPiece(const DrawnTile &tile, Track track, int tx, int ty, double half_width, uint32_t c, uint alpha)
 {
 	Trackdir td = TrackToTrackdir(track);
-	FillGroundStroke(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), EdgeMidpoint(tx, ty, EntrySide(td)), EdgeMidpoint(tx, ty, TrackdirToExitdir(td)), half_width, c, alpha);
+	FillGroundStroke(tile, EdgeMidpoint(tx, ty, EntrySide(td)), EdgeMidpoint(tx, ty, TrackdirToExitdir(td)), half_width, c, alpha);
+}
+
+void DrawTrackPiece(Track track, int tx, int ty, double half_width, uint32_t c, uint alpha)
+{
+	DrawTrackPiece(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), track, tx, ty, half_width, c, alpha);
+}
+
+void DrawAxisBand(const DrawnTile &tile, Axis axis, int tx, int ty, double half_width, uint32_t c, uint alpha)
+{
+	DrawTrackPiece(tile, AxisToTrack(axis), tx, ty, half_width, c, alpha);
 }
 
 void DrawAxisBand(Axis axis, int tx, int ty, double half_width, uint32_t c, uint alpha)

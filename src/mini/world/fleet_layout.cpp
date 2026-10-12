@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 
 #include "../../aircraft.h"
 #include "../../ground_vehicle.hpp"
