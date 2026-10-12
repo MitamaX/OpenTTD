@@ -1,4 +1,10 @@
 const float TAU = 6.2831853;
+const vec2 BRICK_UNITS = vec2(64.0, 128.0);
+const vec2 STONE_UNITS = vec2(26.0, 52.0);
+const vec2 FOUNDATION_UNITS = vec2(12.0, 24.0);
+const vec2 CLAY_TILE_UNITS = vec2(48.0, 59.0);
+const vec2 SLATE_UNITS = vec2(40.0, 84.0);
+const vec2 SHINGLE_UNITS = vec2(31.0, 70.0);
 const float PLINTH_HEIGHT = 0.016;
 const float UPRIGHT_WALL = 0.7;
 const float COURSE_TILT = 0.2;
@@ -449,8 +455,8 @@ vec3 Mortar(vec3 tint)
 Clad WallCladOf(uint material, vec2 p, vec3 tint)
 {
 	switch (material) {
-		case CLAD_BRICK: return Coursed(p, tint, vec2(40.0, 80.0), 0.18, 0.18, Mortar(tint));
-		case CLAD_STONE: return Coursed(p, tint, vec2(16.0, 32.0), 0.1, 0.12, Mortar(tint));
+		case CLAD_BRICK: return Coursed(p, tint, BRICK_UNITS, 0.18, 0.18, Mortar(tint));
+		case CLAD_STONE: return Coursed(p, tint, STONE_UNITS, 0.1, 0.12, Mortar(tint));
 		case CLAD_RENDER: return Mottled(p, tint, 14.0, 0.07, 0.9);
 		case CLAD_CONCRETE: return Precast(p, tint);
 		case CLAD_TIMBER: return Boarded(p, tint, 56.0, 0.85);
@@ -464,13 +470,13 @@ Clad CladOf(uint material, vec2 p, vec3 tint)
 {
 	vec3 aged = Aged(material, p, tint);
 	switch (material) {
-		case CLAD_FOUNDATION: return Coursed(p, tint * 0.9, vec2(12.0, 24.0), 0.1, 0.25, Mortar(tint) * 0.8);
+		case CLAD_FOUNDATION: return Coursed(p, tint * 0.9, FOUNDATION_UNITS, 0.1, 0.25, Mortar(tint) * 0.8);
 		case CLAD_PLANKS: return Planked(p, tint, 36.0);
 		case CLAD_GLASS: return Glazed(p, tint, vec2(12.0, 10.0), 0.08);
 		case CLAD_LATTICE: return Matte(tint, 0.5);
-		case CLAD_CLAY_TILE: return Tiled(p, aged, vec2(34.0, 42.0), CLAY_TILE_VARIETY, 0.7, 0.3);
-		case CLAD_SLATE: return Tiled(p, aged, vec2(28.0, 60.0), SLATE_VARIETY, 0.4, 0.0);
-		case CLAD_SHINGLE: return Tiled(p, aged, vec2(22.0, 50.0), SHINGLE_VARIETY, 0.8, 0.0);
+		case CLAD_CLAY_TILE: return Tiled(p, aged, CLAY_TILE_UNITS, CLAY_TILE_VARIETY, 0.7, 0.3);
+		case CLAD_SLATE: return Tiled(p, aged, SLATE_UNITS, SLATE_VARIETY, 0.4, 0.0);
+		case CLAD_SHINGLE: return Tiled(p, aged, SHINGLE_UNITS, SHINGLE_VARIETY, 0.8, 0.0);
 		case CLAD_THATCH: return Mottled(vec2(p.x * 8.0, p.y), tint, 9.0, 0.3, 0.95);
 		case CLAD_METAL_SEAM: return Ribbed(vec2(p.x * 0.25, p.y), tint, 80.0, 0.12, 0.28);
 		case CLAD_GRAVEL: return Gravelled(p, aged);
