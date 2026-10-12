@@ -163,10 +163,15 @@ const float BED_THICKNESS_PER_LEVEL = 0.7;
 const float BED_THICKNESS_SEED = 3.1;
 const float BED_SLIP = 0.7;
 const int BED_SLIP_SEED = 31;
-const vec2 SHELF_EDGES = vec2(0.7, 0.95);
-const float LEDGE_SHADE = 0.8;
+const vec2 SHELF_EDGES = vec2(0.55, 0.8);
+const vec2 SHELF_FALL = vec2(SHELF_EDGES.y, 1.0);
+const float SHELF_MEAN = 0.5 * (SHELF_FALL.y - SHELF_EDGES.x);
+const float LEDGE_SHADE = 0.9;
 const float LEDGE_LIT = 1.08;
 const float LEDGE_RISE = 0.2;
+const float LEDGE_MEAN = mix(LEDGE_SHADE, LEDGE_LIT, 1.0 - LEDGE_RISE);
+const float BED_BLEND = 0.2;
+const vec2 BED_FOLD_EDGES = vec2(LEDGE_RISE * 0.5, LEDGE_RISE);
 const float LEDGE_RUNS_PER_TILE = 1.6;
 const vec2 LEDGE_RUN_EDGES = vec2(0.4, 0.6);
 const float LEDGE_RUN_SHIFT = 40.0;
@@ -624,10 +629,15 @@ float BeddingAt(vec2 p)
 	return Staggered(levelled + dot(p, STRATA_DIP) + thickness + warp + bow);
 }
 
-Relief ReliefAt(vec3 normal, float levels_per_pixel)
+float BeddingPerPixel()
+{
+	return StrataPerLevel() / (tile_pixels * LevelRise());
+}
+
+Relief ReliefAt(vec3 normal)
 {
 	float slope = SlopeOf(normal);
-	float layer_pixels = 1.0 / (levels_per_pixel * StrataPerLevel());
+	float layer_pixels = 1.0 / BeddingPerPixel();
 	return Relief(slope, smoothstep(STANDARD_SLOPE, STEEPEST_SLOPE, slope), smoothstep(UNRESOLVED_REPEAT_PIXELS, RESOLVED_REPEAT_PIXELS * 2.0, layer_pixels), normal.xy);
 }
 
@@ -826,16 +836,48 @@ float Cracks(vec2 p)
 	return (1.0 - smoothstep(0.0, CRACK_WIDTH, vein)) * smoothstep(0.4, 0.62, Noise(p * 1.9 + 8.1)) * shown;
 }
 
+float BedHandover(float bedding)
+{
+	float width = min(max(BED_BLEND, BeddingPerPixel()), 1.0);
+	return smoothstep(1.0 - width, 1.0, fract(bedding));
+}
+
 float LedgeRun(vec2 p, float bedding)
 {
-	vec2 shift = Hash2(ivec2(int(floor(bedding)), LEDGE_RUN_SEED)) * LEDGE_RUN_SHIFT;
+	int layer = int(floor(bedding));
+	vec2 shift = mix(Hash2(ivec2(layer, LEDGE_RUN_SEED)), Hash2(ivec2(layer + 1, LEDGE_RUN_SEED)), BedHandover(bedding)) * LEDGE_RUN_SHIFT;
 	return smoothstep(LEDGE_RUN_EDGES.x, LEDGE_RUN_EDGES.y, Noise(p * LEDGE_RUNS_PER_TILE + shift));
+}
+
+float BedFolded()
+{
+	return smoothstep(BED_FOLD_EDGES.x, BED_FOLD_EDGES.y, BeddingPerPixel());
+}
+
+float Shelf(float bedding)
+{
+	float shelf = smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * (1.0 - smoothstep(SHELF_FALL.x, SHELF_FALL.y, fract(bedding)));
+	return mix(shelf, SHELF_MEAN, BedFolded());
+}
+
+float Ledge(float bedding)
+{
+	float lower = smoothstep(0.0, LEDGE_RISE, fract(bedding));
+	float upper = 1.0 - smoothstep(1.0 - LEDGE_RISE, 1.0, fract(bedding));
+	float groove = mix(LEDGE_SHADE, LEDGE_LIT, lower * upper);
+	return mix(groove, LEDGE_MEAN, BedFolded());
+}
+
+vec3 BedAt(float bedding)
+{
+	int layer = int(floor(bedding));
+	return mix(Stratum(layer), Stratum(layer + 1), BedHandover(bedding));
 }
 
 vec3 Rock(vec2 p, float bedding, float ledges, Relief relief, Grain grain)
 {
-	vec3 bed = Stratum(int(floor(bedding)));
-	float ledge = mix(LEDGE_SHADE, LEDGE_LIT, smoothstep(0.0, LEDGE_RISE, fract(bedding)));
+	vec3 bed = BedAt(bedding);
+	float ledge = Ledge(bedding);
 	if (Landscape() == LANDSCAPE_TOYLAND) return mix(ToyStrataMean(), bed * ledge, ledges);
 	float slab = Varied(Octave(p + SLAB_SEED, SLABS_PER_TILE), SLAB_VARIETY);
 	vec3 slabs = mix(ROCK, ROCK_WARM, SLAB_WARMTH) * slab;
@@ -852,7 +894,7 @@ Bare BareAt(vec2 p, Relief relief, Grain grain, bool rocky)
 	float ledges = standing * runs;
 	float gullied = Gullied(p, relief);
 	vec3 rock = rocky ? Rock(p, bedding, ledges, relief, grain) * gullied : vec3(0.0);
-	return Bare(Scree(grain, p) * gullied, rock, smoothstep(SHELF_EDGES.x, SHELF_EDGES.y, fract(bedding)) * ledges);
+	return Bare(Scree(grain, p) * gullied, rock, Shelf(bedding) * ledges);
 }
 
 float BareShare(float steep, float altitude, float blanket)
@@ -1759,9 +1801,9 @@ bool Sunken(Water water)
 	return Drowned(water) >= 1.0 && water.cover >= 1.0;
 }
 
-Footing EdgeFooting(float levels_per_pixel)
+Footing EdgeFooting()
 {
-	return Footing(ReliefAt(UP, levels_per_pixel), 0.0, LIE_DRY);
+	return Footing(ReliefAt(UP), 0.0, LIE_DRY);
 }
 
 Footing FootingAt(vec2 p, Water water, Relief relief)
@@ -1828,7 +1870,7 @@ void main()
 	float levels_per_pixel = max(fwidth(v_world.z), LEAST_DIVISOR);
 	Water water = WaterAt(p);
 	vec3 normal = normalize(v_normal);
-	Relief relief = ReliefAt(normal, levels_per_pixel);
+	Relief relief = ReliefAt(normal);
 	Detail detail = DetailAt(RenderPoint(v_world), normal);
 	relief.steep *= 1.0 - clamp(v_mark / FILL_MARK, 0.0, 1.0);
 	relief.steep *= 1.0 - smoothstep(CHANNEL_WALL_LEVELS.x, CHANNEL_WALL_LEVELS.y, water.level) * (1.0 - water.sea);
@@ -1843,7 +1885,7 @@ void main()
 	} else if (v_mark > WALL_THRESHOLD) {
 		shade = Plain(WallFace(normal), normal);
 	} else {
-		Underfoot underfoot = UnderfootAt(p, grain, edge ? EdgeFooting(levels_per_pixel) : FootingAt(p, water, relief));
+		Underfoot underfoot = UnderfootAt(p, grain, edge ? EdgeFooting() : FootingAt(p, water, relief));
 		if (edge) shade = Plain(EdgeFace(normal, face_pixels, EdgeTurf(underfoot)), normal);
 		else shade = GroundShade(p, pixel, water, detail, levels_per_pixel, normal, underfoot);
 	}
