@@ -29,7 +29,7 @@ const float SPRAY_SEED = 2.3;
 const float LEAF_POCKETS = 0.55;
 const float MEAN_DOME = 0.5;
 const vec2 LEAF_DOME_EDGES = vec2(0.25, 0.75);
-const float LEAF_RELIEF = 0.018;
+const float LEAF_BUMP = 0.6;
 const float LEAST_FACING = 0.1;
 const float LEAF_ROUGHNESS = 0.6;
 const float BARK_ROUGHNESS = 0.9;
@@ -89,14 +89,9 @@ float LeafDome(float clumps)
 	return smoothstep(LEAF_DOME_EDGES.x, LEAF_DOME_EDGES.y, clumps);
 }
 
-float LeafResolvedClumps()
-{
-	return LeafResolved(LEAF_FRAYING.clumps_per_tile);
-}
-
 float PocketShade(float dome)
 {
-	float resolved = mix(1.0 - LEAF_POCKETS * (1.0 - MEAN_DOME), mix(1.0 - LEAF_POCKETS, 1.0, dome), LeafResolvedClumps());
+	float resolved = mix(1.0 - LEAF_POCKETS * (1.0 - MEAN_DOME), mix(1.0 - LEAF_POCKETS, 1.0, dome), LeafResolved(LEAF_COARSE_CLUMPS));
 	return mix(1.0, resolved, LeafShare());
 }
 
@@ -108,14 +103,9 @@ vec3 FacetNormal(vec3 across, vec3 down, vec3 normal)
 	return dot(facet, normal) < 0.0 ? -facet : facet;
 }
 
-vec3 Bumped(vec3 normal, float relief, vec3 view, vec3 across, vec3 down)
+vec3 Bumped(vec3 normal, vec3 view, vec3 slope)
 {
-	vec3 r1 = cross(down, normal);
-	vec3 r2 = cross(normal, across);
-	float det = dot(across, r1);
-	vec3 bent = abs(det) * normal - sign(det) * (dFdx(relief) * r1 + dFdy(relief) * r2);
-	if (dot(bent, bent) <= 0.0) return normal;
-	bent = normalize(bent);
+	vec3 bent = normalize(normal - (slope - dot(slope, normal) * normal));
 	return normalize(bent + view * max(0.0, LEAST_FACING - dot(bent, view)));
 }
 
@@ -126,12 +116,15 @@ void main()
 	vec3 across = dFdx(v_position);
 	vec3 down = dFdy(v_position);
 	float foliage = Foliage(LEAF_FRAYING);
-	float clumps = Clumps(foliage, LEAF_FRAYING);
+	vec4 fine = FineClumps(foliage, LEAF_FRAYING);
+	float clumps = fine.x;
 	vec3 view = ToEye(v_position);
-	float dome = LeafDome(clumps);
-	vec3 leaves = Bumped(normal, (dome - 0.5) * LEAF_RELIEF * foliage, view, across, down);
 	DropOutOfWindow();
 	DropFrayed(FrayingReach(normal, view, foliage, LEAF_FRAYING), clumps);
+	vec4 coarse = CoarseClumps();
+	vec4 field = mix(coarse, fine, LeafResolved(LEAF_FRAYING.clumps_per_tile));
+	float dome = LeafDome(field.x);
+	vec3 leaves = Bumped(normal, view, field.yzw * (LEAF_BUMP * CoarseClumpsShown()));
 
 	float clouds = CloudLight(v_position);
 	float sunlit = SunVisibility(v_position, leaves, clouds);
