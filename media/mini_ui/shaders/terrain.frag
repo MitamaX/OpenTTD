@@ -278,6 +278,7 @@ const float TOY_COBBLES_PER_TILE = 3.5;
 const ivec2 TOY_COBBLE_SEED = ivec2(4219, 1733);
 const float TOY_COBBLE_JOINT = 0.18;
 const float TOY_COBBLE_JOINT_SHADE = 0.8;
+const ivec2 TOY_COBBLE_COLOUR_SEED = ivec2(2713, 6151);
 
 const vec3 TOY_STRATA[TOY_STRATA_COUNT] = TOY_STRATA_TONES;
 
@@ -993,7 +994,7 @@ vec3 ToyRiprapStone(vec2 p)
 			}
 		}
 	}
-	vec3 candy = ToyStratum(int(Pick(Hash(owner + TOY_COBBLE_SEED), TOY_STRATA_COUNT)));
+	vec3 candy = ToyStratum(int(Pick(Hash(owner + TOY_COBBLE_COLOUR_SEED), TOY_STRATA_COUNT)));
 	float joint = 1.0 - smoothstep(0.0, TOY_COBBLE_JOINT, next - nearest);
 	return mix(ToyStrataMean(), candy * mix(1.0, TOY_COBBLE_JOINT_SHADE, joint), Resolved(TOY_COBBLES_PER_TILE));
 }
