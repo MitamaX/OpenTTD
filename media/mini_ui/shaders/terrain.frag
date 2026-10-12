@@ -41,6 +41,7 @@ const float SUBMERGED_MARK = 0.08;
 const float RIVERBED_DEEP_MARK = 0.2;
 const float DROWNED_LEVELS = 0.6;
 const vec2 DROWNED_SHEER = vec2(1.6, 2.4);
+const float DROWNED_FLATNESS = 0.85;
 const float SCATTERED_SHADOW = 0.7;
 const float SCATTERING_LEVELS = 0.8;
 
@@ -1718,7 +1719,7 @@ Shade GroundShade(vec2 p, mat2 pixel, Water water, Detail detail, float levels_p
 	float drowned = Drowned(water);
 	vec3 bed = Seabed(water, grain, smoothstep(0.0, RIVERBED_DEEP_MARK, -v_mark));
 	vec3 land = underfoot.lie == LIE_SUNKEN ? bed : mix(Ashore(p, water, underfoot, surface.tone), bed, drowned);
-	normal = normalize(mix(normal, UP, drowned * water.sea * smoothstep(DROWNED_SHEER.x, DROWNED_SHEER.y, underfoot.site.relief.slope)));
+	normal = normalize(mix(normal, UP, drowned * water.sea * max(smoothstep(DROWNED_SHEER.x, DROWNED_SHEER.y, underfoot.site.relief.slope), DROWNED_FLATNESS)));
 	land *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);
 
 	vec3 colour = Composite(land, network.paint);
