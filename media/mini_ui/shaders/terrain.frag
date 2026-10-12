@@ -188,7 +188,9 @@ const float OUTCROPS_PER_TILE = 0.9;
 const float STONE_PATCHES_PER_TILE = 1.7;
 const float STONE_GAPS = 0.3;
 const float PALE_STONE = 1.15;
-const float STONE_BED_SHADE = 0.45;
+const float STONE_BED_SHADE = 0.7;
+const vec2 STONE_BED_GRAIN = vec2(0.5, 1.1);
+const float STONE_GRAIN_GAIN = 1.6;
 const float BOULDERS_PER_TILE = 5.5;
 const float GULLIES_PER_TILE = 2.8;
 const float GULLY_WANDER = 1.5;
@@ -665,6 +667,11 @@ vec3 GrassTone(float shade, Climate climate)
 	return mix(green, mix(PARCHED_DARK, PARCHED_LIGHT, tone), climate.parched);
 }
 
+float StoneGrains(Grain grain)
+{
+	return clamp(grain.stones * STONE_GRAIN_GAIN, 0.0, 1.0);
+}
+
 float Hollowed(Grain grain, float depth)
 {
 	return clamp(1.0 - depth * grain.hollow, 0.55, 1.15);
@@ -890,7 +897,8 @@ Patch Rough(Site site)
 	float tussocks = smoothstep(0.4, 0.75, 0.6 * grain.micro + 0.4 * grain.fine);
 	vec3 scrub = mix(green, dry, clumps) * mix(1.08, 0.84, tussocks) * Varied(grain.micro, 0.3);
 	float open = smoothstep(0.58, 0.8, 0.65 * Octave(p + 3.3, 1.2) + 0.35 * grain.fine);
-	vec3 stony = mix(Soil(), LooseStone(p), 0.65) * mix(0.92, 1.15, clamp(grain.stones * 1.6, 0.0, 1.0)) * Varied(grain.micro, 0.3);
+	float grains = StoneGrains(grain);
+	vec3 stony = mix(Soil(), LooseStone(p), 0.65) * mix(0.92, 1.15, grains) * Varied(grain.micro, 0.3);
 	return Patch(mix(scrub, stony, open * (Landscape() == LANDSCAPE_TOYLAND ? TOY_ROUGH_BARE : ROUGH_BARE)), ROUGH_RUGGED);
 }
 
@@ -907,10 +915,12 @@ Patch Rocks(Site site)
 	vec2 p = site.p;
 	Bare bare = Bare(Capped(site.bare.scree, site), Capped(site.bare.rock, site), site.bare.shelf);
 	float patches = smoothstep(0.48, 0.72, 0.7 * Noise(p * STONE_PATCHES_PER_TILE + 6.2) + 0.3 * grain.fine);
-	float stones = patches * mix(STONE_GAPS, 1.0, clamp(grain.stones * 1.6, 0.0, 1.0));
+	float grains = StoneGrains(grain);
+	float stones = patches * mix(STONE_GAPS, 1.0, grains);
 	float outcrop = smoothstep(0.64, 0.74, 0.7 * Noise(p * OUTCROPS_PER_TILE + 2.9) + 0.3 * grain.fine);
 	float paleness = mix(PALE_STONE, STONE_BED_SHADE, SolidStonesShare());
-	vec3 strewn = mix(Meadow(site), bare.scree * paleness, stones);
+	vec3 bed = bare.scree * paleness * mix(STONE_BED_GRAIN.x, STONE_BED_GRAIN.y, grains);
+	vec3 strewn = mix(Meadow(site), bed, stones);
 	return Patch(mix(strewn, bare.rock * paleness, outcrop), mix(mix(GRASS_RUGGED, StoneRugged(SCREE_RUGGED), patches), StoneRugged(ROCK_RUGGED), outcrop));
 }
 
