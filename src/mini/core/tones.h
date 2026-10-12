@@ -61,7 +61,7 @@ inline constexpr uint32_t COL_DISTANT_BALLAST = Mix(COL_BALLAST, COL_RAIL, 96);
 inline constexpr uint32_t COL_CONCRETE = 0xFFA3A199U;
 inline constexpr uint32_t COL_STEEL = 0xFFB4B8BCU;
 inline constexpr uint32_t COL_ASPHALT = 0xFF4F4C48U;
-inline constexpr uint32_t COL_PAVEMENT = 0xFFB7B2A8U;
+inline constexpr uint32_t COL_PAVEMENT = 0xFF97938BU;
 inline constexpr uint32_t COL_RAIL_ACCENT = COL_PAPER;
 inline constexpr uint32_t COL_ROAD_ACCENT = COL_CATENARY;
 
