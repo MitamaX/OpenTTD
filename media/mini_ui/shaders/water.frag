@@ -540,6 +540,27 @@ float DepthPast(vec3 ray)
 	return ray.z - AheadOf(texture(u_scene_depth, ray.xy).r);
 }
 
+struct Crossing {
+	vec3 ray;
+	float gap;
+	float along;
+};
+
+Crossing Refined(vec4 start, vec4 run, float before, Crossing past)
+{
+	for (int refine = 0; refine < MIRROR_REFINES; refine++) {
+		float middle = 0.5 * (before + past.along);
+		vec3 probe = RayOnScreen(start, run, middle);
+		float probe_gap = DepthPast(probe);
+		if (probe_gap > 0.0) {
+			past = Crossing(probe, probe_gap, middle);
+		} else {
+			before = middle;
+		}
+	}
+	return past;
+}
+
 vec4 MirroredWorld(vec3 from, vec3 way)
 {
 	vec4 start = u_view_projection * vec4(from, 1.0);
@@ -557,22 +578,10 @@ vec4 MirroredWorld(vec3 from, vec3 way)
 			continue;
 		}
 		if (in_front) {
-			float after = along;
-			for (int refine = 0; refine < MIRROR_REFINES; refine++) {
-				float middle = 0.5 * (before + after);
-				vec3 probe = RayOnScreen(start, run, middle);
-				float probe_gap = DepthPast(probe);
-				if (probe_gap > 0.0) {
-					after = middle;
-					ray = probe;
-					gap = probe_gap;
-				} else {
-					before = middle;
-				}
-			}
-			if (gap < MIRROR_THICKNESS) {
-				vec2 edge = min(ray.xy, 1.0 - ray.xy);
-				return vec4(texture(u_scene_colour, ray.xy).rgb, smoothstep(0.0, MIRROR_EDGE, min(edge.x, edge.y)) * (1.0 - after));
+			Crossing hit = Refined(start, run, before, Crossing(ray, gap, along));
+			if (hit.gap < MIRROR_THICKNESS) {
+				vec2 edge = min(hit.ray.xy, 1.0 - hit.ray.xy);
+				return vec4(texture(u_scene_colour, hit.ray.xy).rgb, smoothstep(0.0, MIRROR_EDGE, min(edge.x, edge.y)) * (1.0 - hit.along));
 			}
 		}
 		in_front = false;
