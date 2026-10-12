@@ -141,7 +141,6 @@ static constexpr float PATH_WIDTH = 0.06f;
 static constexpr uint32_t PATH_TINT = 0xFFBFAF8AU;
 static constexpr float HEDGE_DEPTH = 0.035f;
 static constexpr float HEDGE_HEIGHT = 0.04f;
-static constexpr uint32_t HEDGE_TINT = 0xFF4E7A3AU;
 static constexpr float FENCE_DEPTH = 0.008f;
 static constexpr float FENCE_HEIGHT = 0.026f;
 static constexpr uint32_t FENCE_TINT = 0xFFEDEBE4U;
@@ -758,7 +757,7 @@ static Plot Spanning(Plot plot, Axis along, float from, float to)
 static Part GardenBoundary(const Plot &edge, const HouseSite &site)
 {
 	Part boundary = Part::Box(edge).Detailed().Height(HEDGE_HEIGHT);
-	return site.climate == LandscapeType::Tropic ? boundary.Clad(Material::Render, WHITEWASH) : boundary.Clad(Material::Hedge, HEDGE_TINT);
+	return site.climate == LandscapeType::Tropic ? boundary.Clad(Material::Render, WHITEWASH) : boundary.Clad(Material::Hedge, LEAF_TINT);
 }
 
 /* A hedge rings the garden behind and beside the house; in front a picket fence opens on a gate, and a path runs from it to the door. */

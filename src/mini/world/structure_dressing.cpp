@@ -18,6 +18,7 @@
 #include "../../settings_type.h"
 #include "../core/seed.h"
 #include "../core/tones.h"
+#include "../map/material_palette.h"
 #include "../map/site_shapes.h"
 #include "../map/tile_shapes.h"
 #include "../model/model_shapes.h"
@@ -79,6 +80,7 @@ static constexpr double BOX_DEPTH = 0.01;
 static constexpr double BOX_HEIGHT = 0.008;
 static constexpr double BOX_SHARE = 0.45;
 static constexpr std::array<uint32_t, 4> BLOOM_TINTS = {0xFFC8423AU, 0xFFE8B23AU, 0xFF5E9A48U, 0xFFD86FA0U};
+static constexpr uint BLOOM_SHARE = 77;
 static constexpr double WINDOW_SILL = 2.0 / TEXELS_PER_TILE;
 static constexpr uint BALCONY_BIT = 9;
 
@@ -433,9 +435,9 @@ private:
 	void AddWindowBox(const FacadeWall &wall, MapVector centre, double column_width, double floor)
 	{
 		double half = column_width * BOX_WIDTH_SHARE / 2.0;
-		Coat bloom = {Material::Plain, WindowGrid::None, {}, BLOOM_TINTS[this->dice.Below(static_cast<uint32_t>(BLOOM_TINTS.size()))]};
+		Coat planting = {Material::Hedge, WindowGrid::None, {}, Mix(LEAF_TINT, BLOOM_TINTS[this->dice.Below(static_cast<uint32_t>(BLOOM_TINTS.size()))], BLOOM_SHARE)};
 		double sill = floor + WINDOW_SILL;
-		this->AddBox(this->OffWall(wall, centre, -half, 0.0, sill - BOX_HEIGHT), this->OffWall(wall, centre, half, BOX_DEPTH, sill), bloom);
+		this->AddBox(this->OffWall(wall, centre, -half, 0.0, sill - BOX_HEIGHT), this->OffWall(wall, centre, half, BOX_DEPTH, sill), planting);
 	}
 
 	/* Some tall flat roofs carry a radio mast at one corner. */
