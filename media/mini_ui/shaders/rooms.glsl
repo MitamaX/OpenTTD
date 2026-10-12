@@ -54,7 +54,6 @@ const float HOME_FIXTURE_RADIUS = 0.8;
 const float DRAPE_GLOW = 0.4;
 const float DRAPE_SUNLIT = 0.6;
 const float ROOM_MEAN_DAYLIGHT = 0.5 * (ROOM_DAYLIGHTS.x + ROOM_DAYLIGHTS.y);
-const float DIM_ROOM_DAYLIGHT = 0.33;
 const float ROOM_MEAN_LAMP = 0.5;
 const float ROOM_MEAN_FLAT_SHARE = 0.5;
 const vec3 TYPICAL_LAMP = mix(HOME_LAMPS[0], OFFICE_LAMPS[0], 0.5) * LAMP_LIGHT * ROOM_MEAN_LAMP;

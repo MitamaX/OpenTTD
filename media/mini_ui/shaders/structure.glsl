@@ -326,6 +326,7 @@ Clad Glazed(vec2 p, vec3 frame, vec2 panes, float bar)
 	float bars = max(Lines(p.x * panes.x, bar), Lines(p.y * panes.y, bar));
 	Clad clad = Matte(mix(DIM_ROOM, frame, bars), mix(0.08, 0.5, bars));
 	clad.glass = 1.0 - bars;
+	clad.daylight = DIM_ROOM_DAYLIGHT;
 	return clad;
 }
 

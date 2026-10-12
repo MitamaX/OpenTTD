@@ -1,5 +1,6 @@
 const float TEXELS = float(TEXELS_PER_TILE);
 const vec3 DIM_ROOM = vec3(0.3, 0.29, 0.27);
+const float DIM_ROOM_DAYLIGHT = 0.33;
 
 const uint OPEN_NONE = 0u;
 const uint OPEN_WINDOW = 1u;
