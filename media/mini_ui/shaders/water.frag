@@ -79,9 +79,10 @@ const float INLAND_REFLECTANCE = 0.035;
 const float REFLECTANCE_CEILING = 0.62;
 const float REFLECTED_LIFT = 0.04;
 const float REFLECTED_SKY = 0.9;
-const int MIRROR_STEPS = 16;
+const int MIRROR_STEPS = 10;
 const float MIRROR_REACH = 6.0;
-const float MIRROR_THICKNESS = 1.0;
+const int MIRROR_REFINES = 3;
+const float MIRROR_THICKNESS = 0.2;
 const float MIRROR_EDGE = 0.08;
 const float REFRACTION = 0.012;
 const float INLAND_REFRACTION = 0.024;
@@ -520,20 +521,58 @@ vec3 SkyOnWater(vec3 way, Surface surface, vec3 view, float reflectance, out flo
 	return MirroredSky(way + UP * surface.ruffled * RUFFLED_SPREAD, REFLECTED_LIFT) * REFLECTED_SKY;
 }
 
+vec3 RayOnScreen(vec4 start, vec4 run, float along)
+{
+	vec4 clip = start + run * (along * along);
+	return vec3(clip.xy / clip.w * 0.5 + 0.5, clip.w);
+}
+
+bool Shown(vec3 ray)
+{
+	return ray.z > 0.0 && all(greaterThanEqual(ray.xy, vec2(0.0))) && all(lessThanEqual(ray.xy, vec2(1.0)));
+}
+
+float DepthPast(vec3 ray)
+{
+	return ray.z - AheadOf(texture(u_scene_depth, ray.xy).r);
+}
+
 vec4 MirroredWorld(vec3 from, vec3 way)
 {
 	vec4 start = u_view_projection * vec4(from, 1.0);
 	vec4 run = u_view_projection * vec4(way * MIRROR_REACH, 0.0);
+	float before = 0.0;
+	bool in_front = true;
 	for (int tap = 1; tap <= MIRROR_STEPS; tap++) {
-		float share = float(tap) / float(MIRROR_STEPS);
-		vec4 clip = start + run * (share * share);
-		vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
-		if (clip.w <= 0.0 || any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) break;
-		float scene = AheadOf(texture(u_scene_depth, uv).r);
-		if (clip.w > scene && clip.w < scene + MIRROR_THICKNESS) {
-			vec2 edge = min(uv, 1.0 - uv);
-			return vec4(texture(u_scene_colour, uv).rgb, smoothstep(0.0, MIRROR_EDGE, min(edge.x, edge.y)) * (1.0 - share));
+		float along = float(tap) / float(MIRROR_STEPS);
+		vec3 ray = RayOnScreen(start, run, along);
+		if (!Shown(ray)) break;
+		float gap = DepthPast(ray);
+		if (gap <= 0.0) {
+			before = along;
+			in_front = true;
+			continue;
 		}
+		if (in_front) {
+			float after = along;
+			for (int refine = 0; refine < MIRROR_REFINES; refine++) {
+				float middle = 0.5 * (before + after);
+				vec3 probe = RayOnScreen(start, run, middle);
+				float probe_gap = DepthPast(probe);
+				if (probe_gap > 0.0) {
+					after = middle;
+					ray = probe;
+					gap = probe_gap;
+				} else {
+					before = middle;
+				}
+			}
+			if (gap < MIRROR_THICKNESS) {
+				vec2 edge = min(ray.xy, 1.0 - ray.xy);
+				return vec4(texture(u_scene_colour, ray.xy).rgb, smoothstep(0.0, MIRROR_EDGE, min(edge.x, edge.y)) * (1.0 - after));
+			}
+		}
+		in_front = false;
 	}
 	return vec4(0.0);
 }
