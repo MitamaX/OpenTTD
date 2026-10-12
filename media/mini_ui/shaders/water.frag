@@ -62,7 +62,7 @@ const float RAPIDS_SCALE = 1.6;
 const vec2 RAPIDS_STRETCH = vec2(0.55, 9.0);
 const float RAPIDS_RUSH = 2.0;
 const vec2 RAPIDS_EDGES = vec2(0.3, 0.75);
-const vec2 RAPIDS_FOAM_COVER = vec2(0.55, 1.0);
+const vec2 RAPIDS_FOAM_COVER = vec2(0.55, 1.0 / RAPIDS_FOAM);
 const float RAPIDS_AERATION = 0.5;
 const float APRON_REACH = 1.2;
 const float APRON_BLUR = 0.5;
@@ -734,15 +734,18 @@ float Apron(Water water)
 
 /* Where a river drops it breaks white: glassy over the lip, in fine streaks drawn out down the current as it races down the slope, churned thick where it plunges into the pool at the foot,
  * and spreading from the foot down the current in lace that thins out as the water below settles. */
-float Whitewater(Water water)
+float Whitewater(Water water, out float lace)
 {
 	float plunge = smoothstep(0.0, PLUNGE_BEND, water.drop.bend);
 	float broken = max(water.aerated, plunge);
 	float white = 0.0;
+	lace = 1.0;
 	if (broken > 0.0) {
 		float churn = StreamLace(water.p, water.flow * RAPIDS_RUSH, RAPIDS_SCALE, RAPIDS_STRETCH);
 		vec2 edges = (Landscape() == LANDSCAPE_TOYLAND ? TOY_WHITEWATER_EDGES : RAPIDS_EDGES) - PLUNGE_FROTH * plunge;
-		white = broken * smoothstep(edges.x, edges.y, churn) * mix(RAPIDS_FOAM_COVER.x, RAPIDS_FOAM_COVER.y, churn);
+		float streak = smoothstep(edges.x, edges.y, churn);
+		lace = mix(1.0, streak, broken);
+		white = broken * streak * mix(RAPIDS_FOAM_COVER.x, RAPIDS_FOAM_COVER.y, churn);
 	}
 	return max(white, Apron(water)) * RAPIDS_FOAM;
 }
@@ -813,13 +816,15 @@ vec3 Frothed(vec3 colour, Water water, float flecks, float behind, vec3 light, v
 {
 	float running = 1.0 - water.body.canal;
 	float river = water.body.calm * running;
-	colour = mix(colour, Linear(AERATED_WATER) * light, water.aerated * running * RAPIDS_AERATION);
+	float lace;
+	float rapids = Whitewater(water, lace) * running;
+	colour = mix(colour, Linear(AERATED_WATER) * light, water.aerated * running * RAPIDS_AERATION * lace);
 	float contact = (1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, behind)) * water.body.sea;
 	float shore = Foam(water.p, max(ShoreBand(water.field.r), contact), water.body);
 	float breakers = Breakers(water.p, water.field.r, water.body) * (1.0 - water.enclosed);
 	float floes;
 	float ice = ShoreIce(water.p, water.field.r, floes);
-	float foam = max(max(shore, breakers), max(max(Whitewater(water) * running, flecks * river), Wake(water.p))) * (1.0 - ice);
+	float foam = max(max(shore, breakers), max(max(rapids, flecks * river), Wake(water.p))) * (1.0 - ice);
 	colour = mix(colour, Linear(Landscape() == LANDSCAPE_TOYLAND ? TOY_FOAM : FOAM) * light, foam);
 	if (ice > 0.0) colour = mix(colour, Linear(SHORE_ICE) * light * Varied(floes, 0.15) + glitter * 0.3, ice);
 	return colour;
