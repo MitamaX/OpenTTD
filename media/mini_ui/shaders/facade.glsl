@@ -182,18 +182,33 @@ float RecessOpenness(float sunk)
 	return mix(1.0, RECESS_OPENNESS, sunk / RECESS_DEPTH);
 }
 
+float ExitRun(Opening opening, vec2 at, vec2 shift)
+{
+	vec2 reach = ReachOut(at, Heading(shift), vec2(-opening.width * 0.5, 0.0), vec2(opening.width * 0.5, opening.height));
+	return min(reach.x, reach.y);
+}
+
 Clad Reveal(Clad wall, Opening opening, vec2 at, float depth, Outlook outlook)
 {
 	vec2 shift = SightShift(outlook);
-	vec2 heading = Heading(shift);
-	vec2 reach = ReachOut(at, heading, vec2(-opening.width * 0.5, 0.0), vec2(opening.width * 0.5, opening.height));
-	float sunk = clamp(min(reach.x, reach.y), 0.0, depth);
+	float sunk = clamp(ExitRun(opening, at, shift), 0.0, depth);
 	vec2 hit = at + shift * sunk;
 	Clad reveal = Matte(wall.albedo, wall.roughness);
 	reveal.facing = vec3(-NearestEdge(opening, hit).xy, 0.0);
 	reveal.occlusion = RecessOpenness(sunk);
 	reveal.sunlit = SunThrough(opening, hit, sunk, outlook.sun);
 	return reveal;
+}
+
+Clad Mirroring(Clad filling, vec3 rim_paint, Opening opening, vec2 at, float depth, Outlook outlook)
+{
+	vec2 shift = SightShift(outlook);
+	float round_trip = 2.0 * depth;
+	float run = clamp(ExitRun(opening, at, shift), depth, round_trip);
+	filling.vista = 1.0 - smoothstep(-SHADOW_SOFTNESS, SHADOW_SOFTNESS, OutsideOpening(opening, at + shift * round_trip));
+	filling.rim = rim_paint;
+	filling.rim_sunlit = SunThrough(opening, at + shift * run, round_trip - run, outlook.sun);
+	return filling;
 }
 
 Clad Recessed(Clad wall, Bay bay, Elevation elevation)
@@ -206,6 +221,7 @@ Clad Recessed(Clad wall, Bay bay, Elevation elevation)
 	Clad filling = Filling(sunk, elevation);
 	filling.occlusion = RecessOpenness(depth);
 	filling.sunlit = SunThrough(opening, sunk.at, depth, outlook.sun);
+	filling = Mirroring(filling, mullioned ? FramePaint(elevation) : wall.albedo, opening, bay.at, depth, outlook);
 	float behind = InsideShare(OutsideOpening(opening, sunk.at), elevation.pixel);
 	if (behind >= 1.0) return filling;
 	Clad jamb = mullioned ? FrameOf(elevation) : Reveal(wall, opening, bay.at, depth, outlook);

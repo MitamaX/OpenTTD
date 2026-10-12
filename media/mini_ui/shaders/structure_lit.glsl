@@ -56,9 +56,9 @@ float PaneReflectance(uint material)
 	}
 }
 
-Pane PaneOf(vec3 room, Clad clad, vec3 sun)
+Pane PaneOf(vec3 room, Clad clad, vec3 sun, vec3 rim)
 {
-	return Pane(room * v_transmission, v_film, PaneReflectance(v_surface.x), clad.daylight, clad.sunbeam, clad.lamp, sun, clad.interior);
+	return Pane(room * v_transmission, v_film, PaneReflectance(v_surface.x), clad.daylight, clad.sunbeam, clad.lamp, sun, clad.interior, rim, clad.vista, clad.occlusion);
 }
 
 /* A face's axes: across it, to the right as seen from outside, up it, and out of it. */
@@ -158,8 +158,10 @@ vec4 CladRadiance(Clad clad, vec3 normal, mat3 frame)
 	if (clad.glass > 0.0) {
 		ivec2 own = AnchorAt(ivec2(floor(v_position.xy - frame[2].xy * FACE_INSET)));
 		vec3 reflection = Mirrored(v_position, frame[2], mirror_way, own, roughness, clouds);
-		vec3 room_sun = mix(lighting.sun, Sunlight(normal, visibility), clad.interior);
-		light = mix(light, PaneLight(PaneOf(albedo, clad, room_sun), reflection, normal, view, roughness, occlusion, lighting), clad.glass);
+		vec3 unshaded_sun = Sunlight(normal, visibility);
+		vec3 room_sun = mix(lighting.sun, unshaded_sun, clad.interior);
+		vec3 rim = Linear(clad.rim) * (lighting.ambient * clad.occlusion + unshaded_sun * clad.rim_sunlit);
+		light = mix(light, PaneLight(PaneOf(albedo, clad, room_sun, rim), reflection, normal, view, roughness, v_colour.a, lighting), clad.glass);
 	}
 	return vec4(light + albedo * clad.glow, AmbientShare(lighting.ambient, lighting.sun));
 }

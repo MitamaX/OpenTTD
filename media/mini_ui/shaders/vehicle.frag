@@ -12,10 +12,13 @@ const float DAYLIT_CABIN = 1.0;
 const float SHADED_CABIN = 0.0;
 const vec3 UNLIT_CABIN = vec3(0.0);
 const float SEALED_CABIN = 0.0;
+const vec3 NO_RIM = vec3(0.0);
+const float CLEAR_VISTA = 1.0;
+const float OPEN_CABIN = 1.0;
 
 Pane CabinBehind(vec3 cabin, vec3 sun)
 {
-	return Pane(cabin, CLEAR_FILM, PANE_REFLECTANCE, DAYLIT_CABIN, SHADED_CABIN, UNLIT_CABIN, sun, SEALED_CABIN);
+	return Pane(cabin, CLEAR_FILM, PANE_REFLECTANCE, DAYLIT_CABIN, SHADED_CABIN, UNLIT_CABIN, sun, SEALED_CABIN, NO_RIM, CLEAR_VISTA, OPEN_CABIN);
 }
 
 void main()

@@ -134,20 +134,23 @@ struct Clad {
 	float interior;
 	vec3 lamp;
 	float glow;
+	float vista;
+	vec3 rim;
+	float rim_sunlit;
 };
 
 const vec3 FACING_OUT = vec3(0.0, 0.0, 1.0);
 
 Clad Matte(vec3 colour, float roughness)
 {
-	return Clad(colour, FACING_OUT, roughness, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, vec3(0.0), 0.0);
+	return Clad(colour, FACING_OUT, roughness, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, vec3(0.0), 0.0, 1.0, vec3(0.0), 0.0);
 }
 
 Clad Mixed(Clad a, Clad b, float share)
 {
 	return Clad(mix(a.albedo, b.albedo, share), mix(a.facing, b.facing, share), mix(a.roughness, b.roughness, share), mix(a.glass, b.glass, share),
 		mix(a.occlusion, b.occlusion, share), mix(a.sunlit, b.sunlit, share), mix(a.daylight, b.daylight, share), mix(a.sunbeam, b.sunbeam, share), mix(a.interior, b.interior, share), mix(a.lamp, b.lamp, share),
-		mix(a.glow, b.glow, share));
+		mix(a.glow, b.glow, share), mix(a.vista, b.vista, share), mix(a.rim, b.rim, share), mix(a.rim_sunlit, b.rim_sunlit, share));
 }
 
 /* The variance of the slopes a surface leans through when tilted along a sine wave of this amplitude, and evenly across this span. */
