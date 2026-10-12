@@ -272,9 +272,14 @@ const float TOY_GRAIN = 0.45;
 const float TOY_PEBBLE_DRIFTS_PER_TILE = 0.9;
 const vec2 TOY_PEBBLE_SEED = vec2(8.3, 4.1);
 const float TOY_PEBBLE_SWAY = 0.6;
-const vec2 TOY_PEBBLE_BLEND = vec2(0.88, 1.0);
+const vec2 TOY_STRATA_BLEND = vec2(0.88, 1.0);
 const float TOY_PEBBLE_VARIETY = 0.12;
-const float TOY_COBBLES_PER_TILE = 3.5;
+const float TOY_COBBLES_PER_TILE = 8.0;
+const float TOY_COBBLE_FADE = 2.0;
+const vec2 TOY_RIPRAP_SHADES = vec2(0.8, 1.1);
+const float TOY_BANK_DRIFTS_PER_TILE = 0.25;
+const vec2 TOY_BANK_SEED = vec2(2.9, 6.7);
+const float TOY_COBBLE_VARIETY = 0.25;
 const ivec2 TOY_COBBLE_SEED = ivec2(4219, 1733);
 const float TOY_COBBLE_DOME = 0.6;
 const float AVERAGE_DOME = 0.5;
@@ -749,12 +754,16 @@ vec3 Stratum(int layer)
 	return mix(ROCK, ROCK_WARM, Hash(ivec2(layer, 7))) * Varied(Hash(ivec2(layer, 19)), LAYER_VARIETY);
 }
 
+vec3 ToyStrataAt(float band)
+{
+	int layer = int(floor(band));
+	return mix(ToyStratum(layer), ToyStratum(layer + 1), smoothstep(TOY_STRATA_BLEND.x, TOY_STRATA_BLEND.y, fract(band)));
+}
+
 vec3 ToyPebbles(vec2 p)
 {
 	float band = v_world.z * TOY_STRATA_PER_LEVEL + (Octave(p + TOY_PEBBLE_SEED, TOY_PEBBLE_DRIFTS_PER_TILE) - 0.5) * TOY_PEBBLE_SWAY;
-	int layer = int(floor(band));
-	vec3 pebbles = mix(ToyStratum(layer), ToyStratum(layer + 1), smoothstep(TOY_PEBBLE_BLEND.x, TOY_PEBBLE_BLEND.y, fract(band)));
-	return mix(ToyStrataMean(), pebbles, Resolved(TOY_STRATA_PER_LEVEL));
+	return mix(ToyStrataMean(), ToyStrataAt(band), Resolved(TOY_STRATA_PER_LEVEL));
 }
 
 vec2 StoneRugged(vec2 natural)
@@ -980,6 +989,11 @@ struct Heap {
 	float shade;
 };
 
+vec3 ToyBankTone(vec2 p)
+{
+	return ToyStrataAt(Octave(p + TOY_BANK_SEED, TOY_BANK_DRIFTS_PER_TILE) * float(TOY_STRATA_COUNT));
+}
+
 Heap ToyRiprapHeap(vec2 p)
 {
 	vec2 q = p * TOY_COBBLES_PER_TILE;
@@ -1001,11 +1015,12 @@ Heap ToyRiprapHeap(vec2 p)
 			}
 		}
 	}
-	float resolved = Resolved(TOY_COBBLES_PER_TILE);
+	float resolved = Resolved(TOY_COBBLES_PER_TILE * TOY_COBBLE_FADE);
 	float depth = next - nearest;
-	vec3 candy = ToyStratum(int(Pick(Hash(owner + TOY_COBBLE_COLOUR_SEED), TOY_STRATA_COUNT)));
+	vec3 bank = ToyBankTone(p);
+	vec3 candy = mix(bank, bank * Varied(Hash(owner + TOY_COBBLE_COLOUR_SEED), TOY_COBBLE_VARIETY), resolved);
 	float dome = mix(AVERAGE_DOME, smoothstep(0.0, TOY_COBBLE_DOME, depth), resolved);
-	return Heap(mix(ToyStrataMean(), candy, resolved), mix(RIPRAP_SHADES.x, RIPRAP_SHADES.y, dome));
+	return Heap(candy, mix(TOY_RIPRAP_SHADES.x, TOY_RIPRAP_SHADES.y, dome));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
