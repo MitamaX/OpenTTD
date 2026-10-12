@@ -45,6 +45,8 @@ static constexpr std::array<StoneLayout, 3> STONE_LAYOUTS = {{
 	{84, 0.55f, {0.2, 0.45}, 0.4f, 0.4f, 303},
 }};
 
+static_assert((DETAIL_SIZE & (DETAIL_SIZE - 1)) == 0, "the planes wrap by masking");
+
 /* The detail's planes, a texel at a time and wrapping at their edges so the textures tile. */
 class DetailPlane {
 public:
@@ -75,11 +77,16 @@ public:
 		for (float &value : this->values) value = static_cast<float>(0.5 + (value - mean) / deviation * NOISE_DEVIATION);
 	}
 
-	static int Wrapped(int i) { return ((i % DETAIL_SIZE) + DETAIL_SIZE) % DETAIL_SIZE; }
+	static int Wrapped(int i) { return i & (DETAIL_SIZE - 1); }
 
 private:
 	std::vector<float> values;
 };
+
+static int WrappedBy(int i, int period)
+{
+	return ((i % period) + period) % period;
+}
 
 /* One octave of noise: a lattice of this many cells across the texture, read along a turn given as a whole number vector, so it still wraps with the texture but lines up with neither of its edges. */
 struct Lattice {
@@ -97,24 +104,39 @@ static float Quintic(float f)
 	return f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
 }
 
-/* The gradient at a lattice point, wrapping with the lattice. */
-static std::pair<float, float> LatticeGradient(int x, int y, int period, uint32_t salt)
-{
-	uint32_t wx = static_cast<uint32_t>(((x % period) + period) % period);
-	uint32_t wy = static_cast<uint32_t>(((y % period) + period) % period);
-	float angle = Hash32(wx * 0x8DA6B343U ^ Hash32(wy * 0xD8163841U + salt)) / 4294967296.0f * static_cast<float>(FULL_TURN);
-	return {std::cos(angle), std::sin(angle)};
-}
+/* The gradient at each point of a lattice, wrapping with it. */
+class GradientTable {
+public:
+	GradientTable(int cells, uint32_t salt) : cells(cells)
+	{
+		this->gradients.reserve(cells * cells);
+		for (int y = 0; y < cells; y++) {
+			for (int x = 0; x < cells; x++) {
+				float angle = Hash32(static_cast<uint32_t>(x) * 0x8DA6B343U ^ Hash32(static_cast<uint32_t>(y) * 0xD8163841U + salt)) / 4294967296.0f * static_cast<float>(FULL_TURN);
+				this->gradients.emplace_back(std::cos(angle), std::sin(angle));
+			}
+		}
+	}
+
+	std::pair<float, float> At(int x, int y) const
+	{
+		return this->gradients[WrappedBy(y, this->cells) * this->cells + WrappedBy(x, this->cells)];
+	}
+
+private:
+	int cells;
+	std::vector<std::pair<float, float>> gradients;
+};
 
 /* Gradient noise, which unlike value noise shows no ridges along its lattice. */
-static float GradientNoise(float u, float v, int period, uint32_t salt)
+static float GradientNoise(float u, float v, const GradientTable &table)
 {
 	int cx = static_cast<int>(std::floor(u));
 	int cy = static_cast<int>(std::floor(v));
 	float fx = u - cx;
 	float fy = v - cy;
 	auto corner = [&](int dx, int dy) {
-		auto [gx, gy] = LatticeGradient(cx + dx, cy + dy, period, salt);
+		auto [gx, gy] = table.At(cx + dx, cy + dy);
 		return gx * (fx - dx) + gy * (fy - dy);
 	};
 	float sx = Quintic(fx);
@@ -123,14 +145,19 @@ static float GradientNoise(float u, float v, int period, uint32_t salt)
 }
 
 template <size_t N>
-static float Octaves(int x, int y, const std::array<Lattice, N> &lattices, uint32_t salt)
+static DetailPlane Octaves(const std::array<Lattice, N> &lattices, uint32_t salt)
 {
-	float sum = 0.0f;
+	DetailPlane sum;
 	for (const Lattice &lattice : lattices) {
+		GradientTable table(lattice.cells, salt++);
 		float scale = static_cast<float>(lattice.cells) / DETAIL_SIZE;
-		float u = (lattice.turn_x * x - lattice.turn_y * y) * scale;
-		float v = (lattice.turn_y * x + lattice.turn_x * y) * scale;
-		sum += GradientNoise(u, v, lattice.cells, salt++) * lattice.weight;
+		for (int y = 0; y < DETAIL_SIZE; y++) {
+			for (int x = 0; x < DETAIL_SIZE; x++) {
+				float u = (lattice.turn_x * x - lattice.turn_y * y) * scale;
+				float v = (lattice.turn_y * x + lattice.turn_x * y) * scale;
+				sum.At(x, y) += GradientNoise(u, v, table) * lattice.weight;
+			}
+		}
 	}
 	return sum;
 }
@@ -144,44 +171,44 @@ static float StoneProfile(float reach)
 
 static uint32_t CellSeed(int x, int y, int cells, uint32_t salt)
 {
-	uint32_t wx = static_cast<uint32_t>(((x % cells) + cells) % cells);
-	uint32_t wy = static_cast<uint32_t>(((y % cells) + cells) % cells);
+	uint32_t wx = static_cast<uint32_t>(WrappedBy(x, cells));
+	uint32_t wy = static_cast<uint32_t>(WrappedBy(y, cells));
 	return Hash32(wx * 0x9E3779B1U ^ Hash32(wy + salt));
 }
 
-/* Stones lie one at most to a cell, rounded and half sunk into the ground, the highest wherever two meet. */
-static float StoneHeight(int x, int y, const StoneLayout &layout)
+/* Stones lie one at most to a cell, rounded and half sunk into the ground; each is stamped over the texels it covers, the highest standing wherever two meet. The cells just past the edges stamp the wrapped stones from outside, so they cross it. */
+static void StampStones(DetailPlane &stones, const StoneLayout &layout)
 {
 	float cell_texels = static_cast<float>(DETAIL_SIZE) / layout.cells;
-	int cx = static_cast<int>(std::floor(x / cell_texels));
-	int cy = static_cast<int>(std::floor(y / cell_texels));
-	float height = 0.0f;
-	for (int dy = -1; dy <= 1; dy++) {
-		for (int dx = -1; dx <= 1; dx++) {
-			SeedDice dice(CellSeed(cx + dx, cy + dy, layout.cells, layout.salt));
+	for (int cy = -1; cy <= layout.cells; cy++) {
+		for (int cx = -1; cx <= layout.cells; cx++) {
+			SeedDice dice(CellSeed(cx, cy, layout.cells, layout.salt));
 			if (dice.Share() > layout.presence) continue;
-			float px = (cx + dx + static_cast<float>(dice.Between(0.25, 0.75))) * cell_texels;
-			float py = (cy + dy + static_cast<float>(dice.Between(0.25, 0.75))) * cell_texels;
+			float px = (cx + static_cast<float>(dice.Between(0.25, 0.75))) * cell_texels;
+			float py = (cy + static_cast<float>(dice.Between(0.25, 0.75))) * cell_texels;
 			float radius = static_cast<float>(dice.Between(layout.radius)) * cell_texels;
 			float stretch = static_cast<float>(dice.Between(0.6, 1.0));
 			float sink = static_cast<float>(dice.Between(0.0, layout.deepest_sink));
 			float turn = static_cast<float>(dice.Between(0.0, FULL_TURN));
 			float lobes = static_cast<float>(dice.Between(0.0, FULL_TURN));
-			float along = (x - px) * std::cos(turn) + (y - py) * std::sin(turn);
-			float across = ((y - py) * std::cos(turn) - (x - px) * std::sin(turn)) / stretch;
-			float lumpy = radius * (1.0f + STONE_LUMPINESS * std::sin(3.0f * std::atan2(across, along) + lobes));
-			float reach = std::hypot(along, across) / lumpy;
-			if (reach < 1.0f) height = std::max(height, StoneProfile(reach) * (1.0f - sink) * layout.rise);
+			float cos_turn = std::cos(turn);
+			float sin_turn = std::sin(turn);
+			float reach_texels = radius * (1.0f + STONE_LUMPINESS);
+			int first_x = std::max(0, static_cast<int>(std::floor(px - reach_texels)));
+			int last_x = std::min(DETAIL_SIZE - 1, static_cast<int>(std::ceil(px + reach_texels)));
+			int first_y = std::max(0, static_cast<int>(std::floor(py - reach_texels)));
+			int last_y = std::min(DETAIL_SIZE - 1, static_cast<int>(std::ceil(py + reach_texels)));
+			for (int y = first_y; y <= last_y; y++) {
+				for (int x = first_x; x <= last_x; x++) {
+					float along = (x - px) * cos_turn + (y - py) * sin_turn;
+					float across = ((y - py) * cos_turn - (x - px) * sin_turn) / stretch;
+					float lumpy = radius * (1.0f + STONE_LUMPINESS * std::sin(3.0f * std::atan2(across, along) + lobes));
+					float reach = std::hypot(along, across) / lumpy;
+					if (reach < 1.0f) stones.At(x, y) = std::max(stones.At(x, y), StoneProfile(reach) * (1.0f - sink) * layout.rise);
+				}
+			}
 		}
 	}
-	return height;
-}
-
-static float StonesAt(int x, int y)
-{
-	float height = 0.0f;
-	for (const StoneLayout &layout : STONE_LAYOUTS) height = std::max(height, StoneHeight(x, y, layout));
-	return height;
 }
 
 static uint8_t Byte(float share)
@@ -194,15 +221,28 @@ static uint32_t Texel(float r, float g, float b, float a)
 	return Byte(r) | Byte(g) << 8 | Byte(b) << 16 | static_cast<uint32_t>(Byte(a)) << 24;
 }
 
-/* How far a point sinks below the ground about it, which shades the hollows between stones. */
-static float Hollow(const DetailPlane &height, int x, int y)
+/* The plane averaged over a square about each texel, wrapping at the edges, in one pass along each axis. */
+static DetailPlane BoxAverage(const DetailPlane &plane, int reach)
 {
-	float sum = 0.0f;
-	for (int dy = -HOLLOW_REACH; dy <= HOLLOW_REACH; dy++) {
-		for (int dx = -HOLLOW_REACH; dx <= HOLLOW_REACH; dx++) sum += height.At(x + dx, y + dy);
+	const int side = 2 * reach + 1;
+	DetailPlane along, average;
+	for (int y = 0; y < DETAIL_SIZE; y++) {
+		double window = 0.0;
+		for (int d = -reach; d <= reach; d++) window += plane.At(d, y);
+		for (int x = 0; x < DETAIL_SIZE; x++) {
+			along.At(x, y) = static_cast<float>(window / side);
+			window += plane.At(x + reach + 1, y) - plane.At(x - reach, y);
+		}
 	}
-	constexpr int side = 2 * HOLLOW_REACH + 1;
-	return sum / (side * side) - height.At(x, y);
+	for (int x = 0; x < DETAIL_SIZE; x++) {
+		double window = 0.0;
+		for (int d = -reach; d <= reach; d++) window += along.At(x, d);
+		for (int y = 0; y < DETAIL_SIZE; y++) {
+			average.At(x, y) = static_cast<float>(window / side);
+			window += along.At(x, y + reach + 1) - along.At(x, y - reach);
+		}
+	}
+	return average;
 }
 
 static std::pair<float, float> EncodedSlope(const DetailPlane &height, int x, int y)
@@ -220,12 +260,13 @@ struct DetailTexels {
 /* The grain holds the fine and the finest ground noise, the stones' cover and the hollows between them; the relief the slopes of the fine bumps and of the stones apart. */
 static DetailTexels BuildDetail()
 {
-	DetailPlane fine, micro, stones, bumps;
-	fine.Fill([](int x, int y) { return Octaves(x, y, FINE_LATTICES, 11); });
-	micro.Fill([](int x, int y) { return Octaves(x, y, MICRO_LATTICES, 23); });
+	DetailPlane fine = Octaves(FINE_LATTICES, 11);
+	DetailPlane micro = Octaves(MICRO_LATTICES, 23);
+	DetailPlane stones, bumps;
 	fine.Normalise();
 	micro.Normalise();
-	stones.Fill(StonesAt);
+	for (const StoneLayout &layout : STONE_LAYOUTS) StampStones(stones, layout);
+	DetailPlane stone_average = BoxAverage(stones, HOLLOW_REACH);
 	bumps.Fill([&](int x, int y) { return 0.4f * fine.At(x, y) + 0.6f * micro.At(x, y); });
 
 	DetailTexels texels;
@@ -235,7 +276,7 @@ static DetailTexels BuildDetail()
 		for (int x = 0; x < DETAIL_SIZE; x++) {
 			auto [bump_x, bump_y] = EncodedSlope(bumps, x, y);
 			auto [stone_x, stone_y] = EncodedSlope(stones, x, y);
-			float hollow = Hollow(stones, x, y) * HOLLOW_ENCODING;
+			float hollow = (stone_average.At(x, y) - stones.At(x, y)) * HOLLOW_ENCODING;
 			texels.grain.push_back(Texel(fine.At(x, y), micro.At(x, y), stones.At(x, y) * STONE_COVER_GAIN, 0.5f + hollow));
 			texels.relief.push_back(Texel(bump_x, bump_y, stone_x, stone_y));
 		}
