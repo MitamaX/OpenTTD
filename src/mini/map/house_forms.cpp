@@ -143,7 +143,7 @@ static constexpr float HEDGE_DEPTH = 0.035f;
 static constexpr float HEDGE_HEIGHT = 0.04f;
 static constexpr float FENCE_DEPTH = 0.008f;
 static constexpr float FENCE_HEIGHT = 0.026f;
-static constexpr uint32_t FENCE_TINT = 0xFFEDEBE4U;
+static constexpr uint32_t FENCE_TINT = WHITE_PAINT;
 static constexpr float GATE_WIDTH = 0.12f;
 
 static constexpr float YARD_EDGE = 0.05f;
