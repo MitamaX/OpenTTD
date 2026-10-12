@@ -21,6 +21,7 @@
 #include "../../safeguards.h"
 
 static constexpr double WELD_GRID = 1.0e4;
+static constexpr double COPLANAR_DOT = 0.9995;
 static constexpr std::array<uint32_t, 3> AXIS_SALTS = {0x9E3779B9U, 0x85EBCA6BU, 0xC2B2AE35U};
 
 Vec3 ModelVertex::Normal() const
@@ -168,6 +169,39 @@ ModelMesh &ModelMesh::Smooth()
 		for (size_t corner = 0; corner < 3; corner++) sums[this->indices[first + corner]] = sums[this->indices[first + corner]] + normal;
 	}
 	for (size_t index = 0; index < this->vertices.size(); index++) this->vertices[index].Face(sums[index]);
+	return *this;
+}
+
+ModelMesh &ModelMesh::FacetPlanes()
+{
+	this->Smooth();
+	std::map<std::pair<uint32_t, uint32_t>, std::vector<size_t>> sharing;
+	for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
+		for (size_t corner = 0; corner < 3; corner++) {
+			uint32_t from = this->indices[first + corner];
+			uint32_t to = this->indices[first + (corner + 1) % 3];
+			sharing[{std::min(from, to), std::max(from, to)}].push_back(first);
+		}
+	}
+	std::vector<bool> plane(this->indices.size() / 3, false);
+	for (const auto &[edge, triangles] : sharing) {
+		for (size_t first : triangles) {
+			for (size_t other : triangles) {
+				if (first != other && Dot(Normalised(this->FacetNormal(first)), Normalised(this->FacetNormal(other))) > COPLANAR_DOT) plane[first / 3] = true;
+			}
+		}
+	}
+	std::vector<ModelVertex> corners;
+	corners.reserve(this->indices.size());
+	for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
+		for (size_t corner = 0; corner < 3; corner++) {
+			ModelVertex vertex = this->vertices[this->indices[first + corner]];
+			if (plane[first / 3]) vertex.Face(this->FacetNormal(first));
+			corners.push_back(vertex);
+		}
+	}
+	this->vertices = std::move(corners);
+	for (size_t index = 0; index < this->indices.size(); index++) this->indices[index] = static_cast<uint32_t>(index);
 	return *this;
 }
 

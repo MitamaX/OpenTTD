@@ -66,6 +66,7 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Move(const Vec3 &offset);
 	ModelMesh &Displace(double reach, uint32_t seed);
 	ModelMesh &Facet();
+	ModelMesh &FacetPlanes();
 	ModelMesh &Smooth();
 	ModelMesh &Round(const Vec3 &centre, double share);
 	ModelMesh &Paint(uint32_t rgb);

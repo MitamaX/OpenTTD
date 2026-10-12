@@ -17,6 +17,7 @@
 #include <numeric>
 #include <ranges>
 
+#include "../core/lattice_noise.h"
 #include "../model/model_shapes.h"
 #include "vehicle_models.h"
 
@@ -27,9 +28,12 @@ static constexpr int LUMP_SUBDIVISIONS = 0;
 static constexpr SeedRange CUT_RISE = {-0.3, 1.1};
 static constexpr double CAP_FACING = 0.6;
 static constexpr double SKIRT_SHARE = 0.08;
-static constexpr double ROCK_FOOT_SHADE = 0.75;
+static constexpr double ROCK_FOOT_SHADE = 0.55;
 static constexpr double ROCK_TOP_SHADE = 1.0;
-static constexpr double FACET_SPREAD = 0.12;
+static constexpr double FACET_SPREAD = 0.04;
+static constexpr double MOTTLE_SPREAD = 0.16;
+static constexpr double MOTTLES_PER_UNIT = 1.6;
+static constexpr MapVector MOTTLE_SHEAR = {0.6, -0.4};
 static constexpr double ROCK_FOOT_OPENNESS = 0.55;
 static constexpr double SPLIT_GAP = 0.08;
 static constexpr int RUBBLE_LUMPS = 6;
@@ -172,16 +176,22 @@ static ModelMesh &Settled(ModelMesh &stone, double bury)
 	return stone.Move({0.0, 0.0, -std::lerp(low, high, bury)});
 }
 
+static double Spread(double share, double spread)
+{
+	return 1.0 + spread * (2.0 * share - 1.0);
+}
+
 static ModelMesh &Chiselled(ModelMesh &stone, const StoneRecipe &recipe)
 {
 	auto [foot, top] = HeightsOf(stone);
-	stone.Facet();
+	stone.FacetPlanes();
 	if (recipe.rounding > 0.0) stone.Round({0.0, 0.0, std::midpoint(foot, top)}, recipe.rounding);
 	stone.PaintFacetsBy([&](const Vec3 &centre, const Vec3 &normal, size_t first) {
 		double rise = std::clamp(centre.z / top, 0.0, 1.0);
-		double facet = 1.0 + FACET_SPREAD * (2.0 * SeedShare(SubSeed(recipe.seed, static_cast<uint32_t>(first)), 0, SeedDice::SHARE_BITS) - 1.0);
+		double facet = Spread(SeedShare(SubSeed(recipe.seed, static_cast<uint32_t>(first)), 0, SeedDice::SHARE_BITS), FACET_SPREAD);
+		double mottle = Spread(LatticeNoise(centre.x + centre.z * MOTTLE_SHEAR.x, centre.y + centre.z * MOTTLE_SHEAR.y, MOTTLES_PER_UNIT, recipe.seed), MOTTLE_SPREAD);
 		bool capped = normal.z > CAP_FACING || centre.z < SKIRT_SHARE * top;
-		return PaintworkTone(capped ? Paintwork::Secondary : Paintwork::Primary, std::lerp(ROCK_FOOT_SHADE, ROCK_TOP_SHADE, rise) * facet);
+		return PaintworkTone(capped ? Paintwork::Secondary : Paintwork::Primary, std::lerp(ROCK_FOOT_SHADE, ROCK_TOP_SHADE, rise) * facet * mottle);
 	});
 	return stone.Occlude(UpwardOpenness{0.0, top, ROCK_FOOT_OPENNESS, 1.0});
 }
