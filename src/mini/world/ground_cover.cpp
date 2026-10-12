@@ -47,14 +47,14 @@ struct GrassGreens {
 	uint32_t light;
 };
 
-static constexpr std::array<GrassGreens, 4> CLIMATE_GREENS = {{
-	{0x546E36, 0x808F4D},
-	{0x61785A, 0x879970},
-	{0x858C47, 0xADA85C},
-	{0x6BB861, 0x94D97A},
-}};
 static constexpr GrassGreens LUSH_GREENS = {0x33592B, 0x4F783B};
 static constexpr uint32_t ROUGH_STRAW = 0x8C804C;
+
+static GrassGreens ClimateGreens()
+{
+	size_t landscape = to_underlying(_settings_game.game_creation.landscape) % NUM_LANDSCAPE;
+	return {GRASS_DARK_TONES[landscape], GRASS_LIGHT_TONES[landscape]};
+}
 
 static std::array<uint8_t, 4> TuftGreen(const GrassGreens &greens, double share, double straw)
 {
@@ -102,7 +102,7 @@ GroundCover::GroundCover() : BlockScatter(TUFT_SHAPES, std::max(CLEAR_REACH, LAN
  * Meadow at full growth bears a scatter of tufts, rough land many more and some of them dry; each tuft stands on the ground where it falls, turned and sized its own way. */
 void GroundCover::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 {
-	const GrassGreens &climate = CLIMATE_GREENS[to_underlying(_settings_game.game_creation.landscape) % CLIMATE_GREENS.size()];
+	const GrassGreens climate = ClimateGreens();
 	Landform land(tiles);
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
