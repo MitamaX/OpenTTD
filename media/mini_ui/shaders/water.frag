@@ -43,6 +43,7 @@ const float FLOW_STEEPNESS = 0.02;
 const float FLOW_STILLING = 0.6;
 const float PAST_EDGE_FLOW_TILES = 5.0;
 const float MIN_PACE = 0.01;
+const float HEADING_FULL_PACE = 0.1;
 const float FLECK_FOAM = 0.45;
 const float FLECK_SCALE = 4.0;
 const float FLECK_SHARE = 0.5;
@@ -540,7 +541,7 @@ float DepthPast(vec3 ray)
 	return ray.z - AheadOf(texture(u_scene_depth, ray.xy).r);
 }
 
-void RefineCrossing(vec4 start, vec4 run, inout float before, inout float after, inout vec3 ray, inout float gap)
+void RefineCrossing(vec4 start, vec4 run, float before, inout float after, inout vec3 ray, inout float gap)
 {
 	for (int refine = 0; refine < MIRROR_REFINES; refine++) {
 		float middle = 0.5 * (before + after);
@@ -696,7 +697,7 @@ float Churned(vec2 at, Drop drop)
 	for (int step = 0; step < APRON_STEPS; step++) {
 		vec2 flow = FlowAt(from);
 		if (length(flow) <= MIN_PACE) break;
-		heading = normalize(flow);
+		heading = normalize(flow) * smoothstep(MIN_PACE, HEADING_FULL_PACE, length(flow));
 		from -= heading * (APRON_REACH / float(APRON_STEPS));
 	}
 	if (heading == vec2(0.0)) return 0.0;
