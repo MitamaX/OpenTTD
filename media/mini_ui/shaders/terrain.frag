@@ -76,7 +76,6 @@ const float TOY_DAMP_SHARE = 0.4;
 const float BANK_SWAY = 0.3;
 const vec2 BANK_GRAVEL_LEVELS = vec2(0.42, 0.54);
 const float BANK_GRAVEL_RAGGED = 0.3;
-const float TROPIC_GRAVEL_GRASS = 0.5;
 const float WET_GRAVEL_SHADE = 0.8;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
@@ -277,11 +276,8 @@ const vec2 TOY_PEBBLE_BLEND = vec2(0.88, 1.0);
 const float TOY_PEBBLE_VARIETY = 0.12;
 const float TOY_COBBLES_PER_TILE = 3.5;
 const ivec2 TOY_COBBLE_SEED = ivec2(4219, 1733);
-const float TOY_COBBLE_JOINT = 0.18;
-const float TOY_COBBLE_JOINT_SHADE = 0.8;
 const float TOY_COBBLE_DOME = 0.6;
 const float AVERAGE_DOME = 0.5;
-const vec2 TOY_COBBLE_SHADES = vec2(0.5, 1.12);
 const ivec2 TOY_COBBLE_COLOUR_SEED = ivec2(2713, 6151);
 const vec2 RIPRAP_LUMP_EDGES = vec2(0.3, 0.7);
 const vec2 RIPRAP_SHADES = vec2(0.62, 1.12);
@@ -1008,9 +1004,8 @@ Heap ToyRiprapHeap(vec2 p)
 	float resolved = Resolved(TOY_COBBLES_PER_TILE);
 	float depth = next - nearest;
 	vec3 candy = ToyStratum(int(Pick(Hash(owner + TOY_COBBLE_COLOUR_SEED), TOY_STRATA_COUNT)));
-	float joint = 1.0 - smoothstep(0.0, TOY_COBBLE_JOINT, depth);
 	float dome = mix(AVERAGE_DOME, smoothstep(0.0, TOY_COBBLE_DOME, depth), resolved);
-	return Heap(mix(ToyStrataMean(), candy * mix(1.0, TOY_COBBLE_JOINT_SHADE, joint), resolved), mix(TOY_COBBLE_SHADES.x, TOY_COBBLE_SHADES.y, dome));
+	return Heap(mix(ToyStrataMean(), candy, resolved), mix(RIPRAP_SHADES.x, RIPRAP_SHADES.y, dome));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
@@ -1318,8 +1313,7 @@ vec3 Banks(vec3 land, Water water, vec3 beach, Grain grain)
 	vec3 damp = land * (1.0 - dampness * smoothstep(soaking.y, DAMP_LEVEL, level));
 	float gravelled = ToyOr(0.0, inland);
 	float strewn = smoothstep(BANK_GRAVEL_LEVELS.x, BANK_GRAVEL_LEVELS.y, level + (grain.clump - 0.5) * BANK_GRAVEL_RAGGED) * gravelled;
-	vec3 wet_gravel = mix(RIVER_GRAVEL * WET_GRAVEL_SHADE, damp, Landscape() == LANDSCAPE_TROPIC ? TROPIC_GRAVEL_GRASS : 0.0);
-	damp = mix(damp, wet_gravel, strewn);
+	damp = mix(damp, RIVER_GRAVEL * WET_GRAVEL_SHADE, strewn);
 	vec3 walled = mix(damp, BANK, smoothstep(0.3, 0.46, water.canal));
 	return mix(walled, beach, smoothstep(SANDED_SEA, 0.44, water.sea));
 }
