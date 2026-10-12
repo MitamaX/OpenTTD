@@ -30,9 +30,7 @@ struct BridgeSite {
 	static BridgeSite Above(TileIndex tile);
 };
 
-/* How far out from a deck's centre line its edges stand, and how far below the ramp's way its crown lies, in tiles. */
 inline constexpr double DECK_HALF = 0.36;
-inline constexpr double EMBANKMENT_CROWN_DEPTH = 0.015;
 
 /* What a bridge's way is laid on: the deck over its middle tiles, and on a head the ramp climbing from the ground at its outer edge to the deck. */
 Footing DeckFooting(const BridgeSite &bridge);

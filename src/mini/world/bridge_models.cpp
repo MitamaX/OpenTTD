@@ -111,8 +111,6 @@ static constexpr double CAISSON_RISE = 0.05;
 static constexpr double CAISSON_SINK = 0.01;
 static constexpr double WATER_GLOSS = 0.9;
 static constexpr double STEEL_GLOSS = 0.45;
-static constexpr int EMBANKMENT_ROWS = 4;
-static constexpr uint32_t EMBANKMENT_CROWN = 0x7D7466;
 
 BridgeSite BridgeSite::OfHead(TileIndex head)
 {
@@ -433,27 +431,6 @@ void LayBridgeSpan(SpanMesh &mesh, const BridgeSite &bridge, int tx, int ty, Way
 	mesh.Append(SpanBuilder(bridge, tx, ty, detail).Build().Raise(bridge.deck * LevelRise()));
 }
 
-/* A ramp climbs over its head on the ground's own earth, which the terrain banks up under it; only the crown its way is laid on is the bridge's.
- * Points are in render space. */
-static ModelMesh EmbankmentCrown(const BridgeSite &bridge, TileIndex head)
-{
-	Footing footing = RampFooting(bridge, head);
-	Stretch run = RampRun(head, GetTunnelBridgeDirection(head));
-	auto top = [&](double share, double side) {
-		MapVector at = run.At(share, side * DECK_HALF);
-		return Vec3{at.x, at.y, footing(at.x, at.y) * LevelRise() - EMBANKMENT_CROWN_DEPTH};
-	};
-	ModelMesh crown;
-	std::array<uint32_t, 2> previous{};
-	for (int row = 0; row <= EMBANKMENT_ROWS; row++) {
-		double share = static_cast<double>(row) / EMBANKMENT_ROWS;
-		std::array<uint32_t, 2> edge = {crown.Point(top(share, -1.0), UP), crown.Point(top(share, 1.0), UP)};
-		if (row > 0) crown.Quad(previous[0], previous[1], edge[1], edge[0]);
-		previous = edge;
-	}
-	return crown.Paint(EMBANKMENT_CROWN);
-}
-
 /* An aqueduct's ramp is its trough climbing over the head, walled down to the ground beneath it and facing the span with an abutment. */
 static void LayAqueductRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex head)
 {
@@ -484,9 +461,5 @@ static void LayAqueductRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex
 
 void LayBridgeRamp(ModelMesh &mesh, const BridgeSite &bridge, TileIndex head)
 {
-	if (bridge.transport == TRANSPORT_WATER) {
-		LayAqueductRamp(mesh, bridge, head);
-		return;
-	}
-	mesh.Append(EmbankmentCrown(bridge, head));
+	if (bridge.transport == TRANSPORT_WATER) LayAqueductRamp(mesh, bridge, head);
 }
