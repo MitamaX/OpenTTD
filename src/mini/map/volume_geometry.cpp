@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <optional>
 #include <ranges>
 
 #include "tile_shapes.h"
@@ -467,13 +468,14 @@ private:
 			this->Emit(slope, {Cladding::Roof, UvMapping::Slope});
 			this->BuildBoard(from, pitch.eave_height, to, pitch.eave_height);
 			if (this->shape.roof != RoofShape::Gable) continue;
-			this->BuildBoard(pitch.RidgeNear(from), this->Crest(), from, pitch.eave_height);
-			this->BuildBoard(to, pitch.eave_height, pitch.RidgeNear(to), this->Crest());
+			Vec3 roof_normal = Normalised(AreaVector(slope.polygon.Points()));
+			this->BuildBoard(pitch.RidgeNear(from), this->Crest(), from, pitch.eave_height, roof_normal);
+			this->BuildBoard(to, pitch.eave_height, pitch.RidgeNear(to), this->Crest(), roof_normal);
 		}
 	}
 
 	/* A board hangs under a roof's edge where it overhangs the walls: a fascia along the eaves, a verge up a gable. */
-	void BuildBoard(const PlanPoint &from, double from_height, const PlanPoint &to, double to_height)
+	void BuildBoard(const PlanPoint &from, double from_height, const PlanPoint &to, double to_height, std::optional<Vec3> roof_normal = std::nullopt)
 	{
 		Face board;
 		board.polygon.Add(this->At(from, from_height - FASCIA_DEPTH));
@@ -481,7 +483,13 @@ private:
 		board.polygon.Add(this->At(to, to_height));
 		board.polygon.Add(this->At(from, from_height));
 		ClipToPlan(board.polygon, this->placement.footprint);
-		this->Emit(board, {Cladding::Fascia, UvMapping::Wall});
+		this->Emit(board, {BoardCladding(board, roof_normal), UvMapping::Wall});
+	}
+
+	static Cladding BoardCladding(const Face &board, const std::optional<Vec3> &roof_normal)
+	{
+		if (!roof_normal) return Cladding::Fascia;
+		return Dot(Across(Normalised(AreaVector(board.polygon.Points()))), *roof_normal) > 0.0 ? Cladding::LeftVerge : Cladding::Verge;
 	}
 
 	void BuildShed()

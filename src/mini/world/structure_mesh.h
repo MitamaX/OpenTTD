@@ -28,7 +28,7 @@ inline constexpr double FORM_HEIGHT_SCALE = 1.3;
 enum class StructureDetail : uint8_t { Simple, Full };
 
 /* A facade carries its window grid and a front its entrance; roofs and the boards along their eaves take snow, and decals lie on whatever they cover. */
-enum class SurfaceFlag : uint8_t { Facade, Front, Roof, Decal, Eave };
+enum class SurfaceFlag : uint8_t { Facade, Front, Roof, Decal, Eave, Verge, Leftward };
 using SurfaceFlags = EnumBitSet<SurfaceFlag, uint8_t>;
 
 /* What a face is clad in: its material and window grid, how the shader treats it, and its colour before light. */

@@ -6,6 +6,6 @@ void main()
 	mat3 frame = FaceFrame();
 	Clad clad = Worn(CladOf(v_surface.x, v_pattern, v_colour.rgb), frame);
 	bool board = Has(SURFACE_EAVE);
-	if (board || Has(SURFACE_ROOF)) clad = Snowed(clad, board ? RoofOverBoard(frame[2]) : frame[2]);
+	if (board || Has(SURFACE_ROOF)) clad = Snowed(clad, board ? RoofOverBoard(normalize(v_normal)) : frame[2]);
 	frag_colour = CladRadiance(clad, Facing(clad, frame), frame);
 }

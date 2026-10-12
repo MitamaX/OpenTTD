@@ -133,10 +133,17 @@ private:
 			case Cladding::Facade: return {this->solid.wall_material, WindowGrid::None, {}, this->solid.wall_tint};
 			case Cladding::Roof: return {this->solid.roof_material, WindowGrid::None, SurfaceFlag::Roof, this->solid.roof_tint};
 			case Cladding::Skylight: return {Material::GlassRoof, WindowGrid::None, SurfaceFlag::Roof, this->solid.glass_tint};
-			case Cladding::Fascia: return {Material::Plain, WindowGrid::None, SurfaceFlag::Eave, ScaledRgb(this->solid.roof_tint, FASCIA_SHADE)};
+			case Cladding::Fascia: return BoardCoat({SurfaceFlag::Eave});
+			case Cladding::Verge: return BoardCoat({SurfaceFlag::Eave, SurfaceFlag::Verge});
+			case Cladding::LeftVerge: return BoardCoat({SurfaceFlag::Eave, SurfaceFlag::Verge, SurfaceFlag::Leftward});
 			case Cladding::Coping: return {Material::Concrete, WindowGrid::None, {}, Mix(this->solid.wall_tint, COPING_STONE, COPING_SHARE)};
 			default: return {this->solid.roof_material, WindowGrid::None, SurfaceFlag::Decal, OpaqueDecalTint(this->solid.roof_tint, this->decal_layer)};
 		}
+	}
+
+	Coat BoardCoat(SurfaceFlags flags) const
+	{
+		return {Material::Plain, WindowGrid::None, flags, ScaledRgb(this->solid.roof_tint, FASCIA_SHADE)};
 	}
 
 	/* Windows run from the ground band up to the eaves; below and above them the wall is plain. */

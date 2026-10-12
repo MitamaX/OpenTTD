@@ -108,9 +108,15 @@ float SnowDepth(vec2 drift, float lying, float drifted)
 	return lying + patchy + ragged - swept - SNOW_SETTLES;
 }
 
+vec2 RoofFallOver(vec2 board)
+{
+	vec2 across = vec2(-board.y, board.x);
+	return Has(SURFACE_LEFTWARD) ? across : -across;
+}
+
 vec3 RoofOverBoard(vec3 board)
 {
-	return normalize(vec3(board.xy, ROOF_OVER_BOARD_RUN));
+	return normalize(vec3(Has(SURFACE_VERGE) ? RoofFallOver(board.xy) : board.xy, ROOF_OVER_BOARD_RUN));
 }
 
 Clad Snowed(Clad clad, vec3 normal)

@@ -122,7 +122,7 @@ struct UvMap {
 
 UvMap WallUv(const Vec3 &normal);
 
-enum class Cladding : uint8_t { Wall, Facade, Roof, Skylight, Decal, Fascia, Coping };
+enum class Cladding : uint8_t { Wall, Facade, Roof, Skylight, Decal, Fascia, Verge, LeftVerge, Coping };
 
 /* The normal is the model space unit normal pointing out of the solid; a smooth face lights each corner by its own normal, and a footed face stands in the ground. */
 struct Face {
