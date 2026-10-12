@@ -24,6 +24,7 @@
 #include "../../safeguards.h"
 
 static constexpr int STONE_SUBDIVISIONS = 1;
+static constexpr int BOULDER_SUBDIVISIONS = 2;
 static constexpr int LUMP_SUBDIVISIONS = 0;
 static constexpr SeedRange CUT_RISE = {-0.3, 1.1};
 static constexpr double CAP_FACING = 0.6;
@@ -31,7 +32,7 @@ static constexpr double SKIRT_SHARE = 0.08;
 static constexpr double ROCK_FOOT_SHADE = 0.5;
 static constexpr double ROCK_TOP_SHADE = 1.0;
 static constexpr SeedRange MOTTLE_SHADE = {0.84, 1.16};
-static constexpr double MOTTLES_PER_UNIT = 1.6;
+static constexpr double MOTTLES_PER_UNIT = 2.0;
 static constexpr MapVector MOTTLE_SHEAR = {0.6, -0.4};
 static constexpr double ROCK_FOOT_OPENNESS = 0.55;
 static constexpr double SPLIT_GAP = 0.08;
@@ -41,6 +42,7 @@ static constexpr int RUBBLE_LUMP_CUTS = 2;
 
 struct StoneRecipe {
 	Vec3 span;
+	int subdivisions;
 	int cuts;
 	SeedRange cut_reach;
 	double top;
@@ -53,12 +55,12 @@ struct StoneRecipe {
 	uint32_t seed;
 };
 
-static constexpr StoneRecipe BOULDER = {{1.0, 0.85, 0.72}, 5, {0.6, 0.85}, 1.0, 0.0, 0.25, 0.06, 0.38, 0.6, {0.05, 0.15}, 0xB0A1D3E5U};
-static constexpr StoneRecipe SLAB = {{1.25, 0.9, 0.4}, 4, {0.7, 0.9}, 0.55, 0.0, 0.15, 0.04, 0.2, 0.9, {0.07, 0.16}, 0x51AB0F27U};
-static constexpr StoneRecipe BLOCK = {{0.85, 0.8, 0.8}, 6, {0.55, 0.7}, 0.75, 0.0, 0.0, 0.05, 0.3, 0.6, {0.04, 0.1}, 0xB10C4A93U};
-static constexpr StoneRecipe WEDGE = {{1.1, 0.75, 0.7}, 5, {0.55, 0.8}, 0.7, 0.45, 0.0, 0.05, 0.3, 0.5, {0.05, 0.12}, 0x3ED6E5C1U};
-static constexpr StoneRecipe LEDGE = {{1.7, 0.8, 0.8}, 8, {0.45, 0.65}, 0.55, 0.2, 0.0, 0.07, 0.25, 0.5, {0.1, 0.17}, 0x1EDC3A57U};
-static constexpr StoneRecipe BUTTRESS = {{1.1, 0.9, 1.1}, 7, {0.45, 0.65}, 0.65, 0.3, 0.0, 0.07, 0.25, 0.4, {0.1, 0.17}, 0xB077E55DU};
+static constexpr StoneRecipe BOULDER = {{1.0, 0.85, 0.72}, BOULDER_SUBDIVISIONS, 7, {0.6, 0.85}, 1.0, 0.0, 0.1, 0.14, 0.38, 0.6, {0.05, 0.15}, 0xB0A1D3E5U};
+static constexpr StoneRecipe SLAB = {{1.25, 0.9, 0.4}, STONE_SUBDIVISIONS, 4, {0.7, 0.9}, 0.55, 0.0, 0.15, 0.04, 0.2, 0.9, {0.07, 0.16}, 0x51AB0F27U};
+static constexpr StoneRecipe BLOCK = {{0.85, 0.8, 0.8}, STONE_SUBDIVISIONS, 6, {0.55, 0.7}, 0.75, 0.0, 0.0, 0.05, 0.3, 0.6, {0.04, 0.1}, 0xB10C4A93U};
+static constexpr StoneRecipe WEDGE = {{1.1, 0.75, 0.7}, STONE_SUBDIVISIONS, 5, {0.55, 0.8}, 0.7, 0.45, 0.0, 0.05, 0.3, 0.5, {0.05, 0.12}, 0x3ED6E5C1U};
+static constexpr StoneRecipe LEDGE = {{1.7, 0.8, 0.8}, STONE_SUBDIVISIONS, 8, {0.45, 0.65}, 0.55, 0.2, 0.0, 0.07, 0.25, 0.5, {0.1, 0.17}, 0x1EDC3A57U};
+static constexpr StoneRecipe BUTTRESS = {{1.1, 0.9, 1.1}, STONE_SUBDIVISIONS, 7, {0.45, 0.65}, 0.65, 0.3, 0.0, 0.07, 0.25, 0.4, {0.1, 0.17}, 0xB077E55DU};
 
 static constexpr StoneRecipe Recast(StoneRecipe recipe, SeedRange radius, double follow, uint32_t seed)
 {
@@ -120,7 +122,7 @@ static ModelMesh Lump(int subdivisions, const Vec3 &span, const StoneRecipe &rec
 
 static ModelMesh Hewn(const StoneRecipe &recipe, SeedDice &dice)
 {
-	ModelMesh stone = Lump(STONE_SUBDIVISIONS, recipe.span, recipe, recipe.cuts, dice);
+	ModelMesh stone = Lump(recipe.subdivisions, recipe.span, recipe, recipe.cuts, dice);
 	if (recipe.top < 1.0) {
 		Vec3 up = Heading(dice.Bearing(), std::numbers::pi / 2.0 - recipe.tilt);
 		Cut(stone, up, recipe.top * ReachAlong(recipe.span, up));
