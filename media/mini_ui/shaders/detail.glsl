@@ -4,11 +4,6 @@ uniform sampler2D u_relief;
 const float FACING_SHARPNESS = 4.0;
 const mat2 DETAIL_TURN = mat2(0.8, 0.6, -0.6, 0.8);
 const float UNSEEN_FACING = 0.02;
-const float CLOSE_SCALE = 4.0;
-const float CLOSE_FROM_PIXELS = 120.0;
-const float CLOSE_TO_PIXELS = 260.0;
-const float CLOSE_GRAIN = 0.7;
-const float CLOSE_RELIEF = 0.6;
 
 /* The ground's finest grain and relief at a point, read from the tiling detail onto whichever ways the surface faces, so steep ground keeps it as true as flat. */
 struct Detail {
@@ -73,17 +68,6 @@ vec3 FacingSlope(DetailTap top, DetailTap east, DetailTap north, vec3 facing, bo
 	return vec3(t, 0.0) * facing.z + vec3(0.0, e) * facing.x + vec3(n.x, 0.0, n.y) * facing.y;
 }
 
-/* Where the eye comes so close that the detail's texels would show, a finer copy of its grain and bumps is read from above over the ground that faces up. */
-Detail Closer(Detail detail, vec3 q)
-{
-	float close = smoothstep(CLOSE_FROM_PIXELS, CLOSE_TO_PIXELS, tile_pixels) * detail.facing.z;
-	if (close <= 0.0) return detail;
-	DetailTap finer = DetailTapAt(DETAIL_TURN * q.xy * CLOSE_SCALE + 0.53);
-	detail.micro += (finer.grain.g - 0.5) * CLOSE_GRAIN * close;
-	detail.slope.xy += DecodedSlope(finer.relief.xy) * CLOSE_RELIEF * close;
-	return detail;
-}
-
 /* The detail is read from above and from both sides in render space, each turned off the map's lattice, and weighed by how squarely the surface faces each way. */
 Detail DetailAt(vec3 render_point, vec3 normal)
 {
@@ -93,6 +77,5 @@ Detail DetailAt(vec3 render_point, vec3 normal)
 	DetailTap east = FacingTapAt(transpose(DETAIL_TURN) * q.yz + 0.37, facing.x);
 	DetailTap north = FacingTapAt(transpose(DETAIL_TURN) * q.xz + 0.71, facing.y);
 	vec4 grain = top.grain * facing.z + east.grain * facing.x + north.grain * facing.y;
-	Detail detail = Detail(grain.r, grain.g, grain.b, grain.a - 0.5, FacingSlope(top, east, north, facing, false), FacingSlope(top, east, north, facing, true), facing, render_point);
-	return Closer(detail, q);
+	return Detail(grain.r, grain.g, grain.b, grain.a - 0.5, FacingSlope(top, east, north, facing, false), FacingSlope(top, east, north, facing, true), facing, render_point);
 }

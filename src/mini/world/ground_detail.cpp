@@ -22,12 +22,15 @@
 
 #include "../../safeguards.h"
 
-static constexpr int HOLLOW_REACH = 4;
+static constexpr int HOLLOW_REACH = 8;
 static constexpr float HOLLOW_ENCODING = 4.0f;
 static constexpr float STONE_COVER_GAIN = 4.0f;
 static constexpr float STONE_RIM = 0.4f;
 static constexpr float STONE_LUMPINESS = 0.15f;
 static constexpr double NOISE_DEVIATION = 0.2;
+static constexpr double BUMP_SLOPE_ENERGY = 103.0;
+static constexpr double MIN_SLOPE_ENERGY = 1e-9;
+static constexpr std::pair<float, float> BUMP_SHARES = {0.2f, 0.8f};
 
 /* One size of stone: how many cells it is scattered over across the texture, how often a cell holds one, its radius in cells, how high it stands and how deep it may sink. */
 struct StoneLayout {
@@ -39,10 +42,11 @@ struct StoneLayout {
 	uint32_t salt;
 };
 
-static constexpr std::array<StoneLayout, 3> STONE_LAYOUTS = {{
+static constexpr std::array<StoneLayout, 4> STONE_LAYOUTS = {{
 	{12, 0.3f, {0.25, 0.45}, 1.0f, 0.5f, 101},
 	{28, 0.4f, {0.15, 0.42}, 0.7f, 0.5f, 202},
 	{84, 0.55f, {0.2, 0.45}, 0.4f, 0.4f, 303},
+	{200, 0.6f, {0.2, 0.45}, 0.2f, 0.4f, 404},
 }};
 
 static_assert((DETAIL_SIZE & (DETAIL_SIZE - 1)) == 0, "the planes wrap by masking");
@@ -77,6 +81,11 @@ public:
 		for (float &value : this->values) value = static_cast<float>(0.5 + (value - mean) / deviation * NOISE_DEVIATION);
 	}
 
+	void Scale(float factor)
+	{
+		for (float &value : this->values) value *= factor;
+	}
+
 	static int Wrapped(int i) { return i & (DETAIL_SIZE - 1); }
 
 private:
@@ -96,8 +105,21 @@ struct Lattice {
 	float weight;
 };
 
+template <typename Layouts>
+static constexpr bool AllCellsPositive(const Layouts &layouts)
+{
+	for (const auto &layout : layouts) {
+		if (layout.cells <= 0) return false;
+	}
+	return true;
+}
+
+static_assert(AllCellsPositive(STONE_LAYOUTS), "every stone layout needs cells to wrap its seeds by");
+
 static constexpr std::array<Lattice, 2> FINE_LATTICES = {{{12, 1, 2, 1.0f}, {25, 2, -1, 0.55f}}};
-static constexpr std::array<Lattice, 3> MICRO_LATTICES = {{{30, 2, 1, 1.0f}, {60, 1, -2, 0.55f}, {90, 1, 1, 0.3f}}};
+static constexpr std::array<Lattice, 4> MICRO_LATTICES = {{{30, 2, 1, 1.0f}, {60, 1, -2, 0.85f}, {90, 1, 1, 0.75f}, {81, 3, 1, 0.65f}}};
+
+static_assert(AllCellsPositive(FINE_LATTICES) && AllCellsPositive(MICRO_LATTICES), "every lattice needs cells to wrap its gradients by");
 
 static float Quintic(float f)
 {
@@ -245,11 +267,30 @@ static DetailPlane BoxAverage(const DetailPlane &plane, int reach)
 	return average;
 }
 
+/* The height's change per texel along each axis, centred on the texel. */
+static std::pair<float, float> CentralSlope(const DetailPlane &height, int x, int y)
+{
+	return {(height.At(x + 1, y) - height.At(x - 1, y)) * 0.5f, (height.At(x, y + 1) - height.At(x, y - 1)) * 0.5f};
+}
+
 static std::pair<float, float> EncodedSlope(const DetailPlane &height, int x, int y)
 {
-	float sx = (height.At(x + 1, y) - height.At(x - 1, y)) * 0.5f * SLOPE_ENCODING;
-	float sy = (height.At(x, y + 1) - height.At(x, y - 1)) * 0.5f * SLOPE_ENCODING;
-	return {0.5f + 0.5f * sx, 0.5f + 0.5f * sy};
+	auto [slope_x, slope_y] = CentralSlope(height, x, y);
+	return {0.5f + 0.5f * slope_x * SLOPE_ENCODING, 0.5f + 0.5f * slope_y * SLOPE_ENCODING};
+}
+
+/* The mean squared slope of a plane across the ground, taken over a tile, however finely the texture is sampled. */
+static double SlopeEnergy(const DetailPlane &height)
+{
+	constexpr double texels_per_tile = DETAIL_SIZE / DETAIL_REPEAT_TILES;
+	double sum = 0.0;
+	for (int y = 0; y < DETAIL_SIZE; y++) {
+		for (int x = 0; x < DETAIL_SIZE; x++) {
+			auto [slope_x, slope_y] = CentralSlope(height, x, y);
+			sum += (slope_x * slope_x + slope_y * slope_y) * texels_per_tile * texels_per_tile;
+		}
+	}
+	return std::max(sum / (DETAIL_SIZE * DETAIL_SIZE), MIN_SLOPE_ENERGY);
 }
 
 struct DetailTexels {
@@ -267,7 +308,8 @@ static DetailTexels BuildDetail()
 	micro.Normalise();
 	for (const StoneLayout &layout : STONE_LAYOUTS) StampStones(stones, layout);
 	DetailPlane stone_average = BoxAverage(stones, HOLLOW_REACH);
-	bumps.Fill([&](int x, int y) { return 0.4f * fine.At(x, y) + 0.6f * micro.At(x, y); });
+	bumps.Fill([&](int x, int y) { return BUMP_SHARES.first * fine.At(x, y) + BUMP_SHARES.second * micro.At(x, y); });
+	bumps.Scale(static_cast<float>(std::sqrt(BUMP_SLOPE_ENERGY / SlopeEnergy(bumps))));
 
 	DetailTexels texels;
 	texels.grain.reserve(DETAIL_SIZE * DETAIL_SIZE);

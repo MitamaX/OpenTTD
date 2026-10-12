@@ -13,7 +13,7 @@
 #include "../gpu/data_texture.h"
 #include "shader_program.h"
 
-inline constexpr int DETAIL_SIZE = 512;
+inline constexpr int DETAIL_SIZE = 1024;
 inline constexpr float DETAIL_REPEAT_TILES = 4.0f;
 inline constexpr float SLOPE_ENCODING = 6.0f;
 
