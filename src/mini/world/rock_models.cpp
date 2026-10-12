@@ -29,10 +29,10 @@ static constexpr int LUMP_SUBDIVISIONS = 0;
 static constexpr SeedRange CUT_RISE = {-0.3, 1.1};
 static constexpr double CAP_FACING = 0.6;
 static constexpr double SKIRT_SHARE = 0.08;
-static constexpr double ROCK_FOOT_SHADE = 0.5;
+static constexpr double ROCK_FOOT_SHADE = 0.75;
 static constexpr double ROCK_TOP_SHADE = 1.0;
-static constexpr SeedRange MOTTLE_SHADE = {0.84, 1.16};
-static constexpr double MOTTLES_PER_UNIT = 2.0;
+static constexpr SeedRange MOTTLE_SHADE = {0.75, 1.2};
+static constexpr double MOTTLES_PER_UNIT = 4.0;
 static constexpr MapVector MOTTLE_SHEAR = {0.6, -0.4};
 static constexpr double ROCK_FOOT_OPENNESS = 0.55;
 static constexpr double SPLIT_GAP = 0.08;
@@ -55,7 +55,7 @@ struct StoneRecipe {
 	uint32_t seed;
 };
 
-static constexpr StoneRecipe BOULDER = {{1.0, 0.85, 0.72}, BOULDER_SUBDIVISIONS, 7, {0.6, 0.85}, 1.0, 0.0, 0.1, 0.14, 0.38, 0.6, {0.05, 0.15}, 0xB0A1D3E5U};
+static constexpr StoneRecipe BOULDER = {{1.0, 0.85, 0.72}, BOULDER_SUBDIVISIONS, 7, {0.6, 0.85}, 1.0, 0.0, 0.05, 0.14, 0.38, 0.6, {0.05, 0.15}, 0xB0A1D3E5U};
 static constexpr StoneRecipe SLAB = {{1.25, 0.9, 0.4}, STONE_SUBDIVISIONS, 4, {0.7, 0.9}, 0.55, 0.0, 0.15, 0.04, 0.2, 0.9, {0.07, 0.16}, 0x51AB0F27U};
 static constexpr StoneRecipe BLOCK = {{0.85, 0.8, 0.8}, STONE_SUBDIVISIONS, 6, {0.55, 0.7}, 0.75, 0.0, 0.0, 0.05, 0.3, 0.6, {0.04, 0.1}, 0xB10C4A93U};
 static constexpr StoneRecipe WEDGE = {{1.1, 0.75, 0.7}, STONE_SUBDIVISIONS, 5, {0.55, 0.8}, 0.7, 0.45, 0.0, 0.05, 0.3, 0.5, {0.05, 0.12}, 0x3ED6E5C1U};

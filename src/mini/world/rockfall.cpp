@@ -43,6 +43,8 @@ static constexpr double GATHER_FLOOR = 0.15;
 static constexpr SeedRange GATHER_EDGES = {0.3, 0.7};
 static constexpr double ROCK_GATHERS_PER_TILE = 0.6;
 static constexpr double MOST_CELL_SHARE = 0.45;
+static constexpr double STONE_SHADE = 0.85;
+static constexpr double STONE_CHROMA_KEPT = 0.75;
 static constexpr double SNOWLINE_CAP = 0.8;
 static constexpr double SNOW_LINE_REACH = 1.0;
 static constexpr double BLANKET_BURY = 0.35;
@@ -231,7 +233,7 @@ static RockLook LookOf(uint32_t family, const BareTile &tile, SeedDice &dice)
 	const RockClimate &climate = CLIMATE_ROCKS[to_underlying(_settings_game.game_creation.landscape) % CLIMATE_ROCKS.size()];
 	SeedDice kin(Hash32(FAMILY_SALT ^ family));
 	uint32_t rock = Mix(ROCK_TONE, ROCK_WARM_TONE, UnsignedByte(kin.Between(climate.warmth)));
-	uint32_t body = ScaledRgb(rock, 1.0 + LAYER_VARIETY * (kin.Share() - 0.5));
+	uint32_t body = ScaledRgb(Muted(rock, STONE_CHROMA_KEPT), STONE_SHADE * (1.0 + LAYER_VARIETY * (kin.Share() - 0.5)));
 	uint32_t cap = Mix(body, climate.cap, UnsignedByte(dice.Between(climate.cap_share) * (1.0 - AltitudeShare(tile.level))));
 	return {body, Mix(cap, CAP_SNOW_TONE, UnsignedByte(SnowShare(tile)))};
 }
