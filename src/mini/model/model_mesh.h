@@ -76,7 +76,6 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	ModelMesh &Weld();
 
 	Vec3 FacetNormal(size_t first) const;
-	Vec3 FacetCentre(size_t first) const;
 
 	/* The trait is how much light foliage lets through, how glossy a solid is, or how brightly a lamp glows, which reads as a negative share;
 	 * a matte solid may hold a small whole code in its place instead. */

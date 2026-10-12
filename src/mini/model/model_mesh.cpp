@@ -138,12 +138,6 @@ Vec3 ModelMesh::FacetNormal(size_t first) const
 	return Cross(this->vertices[this->indices[first + 1]].Position() - a, this->vertices[this->indices[first + 2]].Position() - a);
 }
 
-Vec3 ModelMesh::FacetCentre(size_t first) const
-{
-	Vec3 sum = this->vertices[this->indices[first]].Position() + this->vertices[this->indices[first + 1]].Position() + this->vertices[this->indices[first + 2]].Position();
-	return sum * (1.0 / 3.0);
-}
-
 template <class Flat>
 ModelMesh &ModelMesh::Unweld(Flat flat)
 {
