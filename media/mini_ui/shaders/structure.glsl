@@ -29,9 +29,8 @@ const float LICHEN_SPOT_SEED = 6.1;
 const float LICHEN_COVER = 0.45;
 const vec3 LICHEN = vec3(0.62, 0.61, 0.49);
 const float WALL_BLOTCHES = 2.2;
-const float WALL_VARIETY = 0.18;
-const float WALL_STREAK_DEPTH = 0.3;
-const float CONCRETE_STREAK_DEPTH = 0.8;
+const vec2 WALL_STAINING = vec2(0.18, 0.3);
+const vec2 CONCRETE_STAINING = vec2(0.06, 0.25);
 const float GRIME_HEIGHT = 0.18;
 const float GRIME_SHADE = 0.75;
 const float GRIME_RAGS = 9.0;
@@ -208,12 +207,12 @@ vec3 PondStains(vec2 p)
 	return mix(vec3(1.0), POND_STAIN, ponds);
 }
 
-vec3 Grimed(vec2 p, vec3 tint, float streak_depth)
+vec3 Grimed(vec2 p, vec3 tint, vec2 staining)
 {
 	if (!Weathers()) return tint;
 	float ragged = (Faded(vec2(p.x * GRIME_RAGS, 0.0), GRIME_SEED, vec2(0.0, 1.0), 0.5) - 0.5) * GRIME_RAGGED;
 	float splashed = 1.0 - smoothstep(0.0, GRIME_HEIGHT, p.y + ragged);
-	return Stained(p, tint, WALL_BLOTCHES, WALL_VARIETY, streak_depth) * mix(1.0, GRIME_SHADE, splashed);
+	return Stained(p, tint, WALL_BLOTCHES, staining.x, staining.y) * mix(1.0, GRIME_SHADE, splashed);
 }
 
 /* Overlapping courses, each shaded under the one above it and lit along its own lower edge. */
@@ -410,7 +409,7 @@ bool Grimes(uint material)
 vec3 Walled(uint material, vec2 p, vec3 albedo, float upright)
 {
 	vec3 walled = albedo * Plinth(material, p);
-	if (Grimes(material)) walled = Grimed(p, walled, material == CLAD_CONCRETE ? CONCRETE_STREAK_DEPTH : WALL_STREAK_DEPTH);
+	if (Grimes(material)) walled = Grimed(p, walled, material == CLAD_CONCRETE ? CONCRETE_STAINING : WALL_STAINING);
 	return mix(albedo, walled, step(UPRIGHT_WALL, upright));
 }
 
