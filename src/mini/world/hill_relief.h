@@ -110,7 +110,7 @@ public:
 
 	double Level(double x, double y) const override { return this->relief->Level(x, y); }
 	bool Curves() const override { return true; }
-	int Divisions(double tile_pixels) const override { return tile_pixels >= FINE_RELIEF_MOVING_KEPT_PIXELS ? FINE_RELIEF_DIVISIONS : 1; }
+	int Divisions(double tile_pixels) const override { return tile_pixels >= FINE_RELIEF_CHOSEN_PIXELS ? FINE_RELIEF_DIVISIONS : 1; }
 
 private:
 	std::shared_ptr<const Landform> land;
