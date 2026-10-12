@@ -61,7 +61,8 @@ const float RAPIDS_PATH = 0.4;
 const float RAPIDS_SCALE = 1.6;
 const vec2 RAPIDS_STRETCH = vec2(0.55, 9.0);
 const float RAPIDS_RUSH = 2.0;
-const vec2 RAPIDS_EDGES = vec2(0.42, 0.6);
+const vec2 RAPIDS_EDGES = vec2(0.3, 0.75);
+const vec2 RAPIDS_FOAM_COVER = vec2(0.55, 1.0);
 const float RAPIDS_AERATION = 0.5;
 const float APRON_REACH = 1.2;
 const float APRON_BLUR = 0.5;
@@ -741,7 +742,7 @@ float Whitewater(Water water)
 	if (broken > 0.0) {
 		float churn = StreamLace(water.p, water.flow * RAPIDS_RUSH, RAPIDS_SCALE, RAPIDS_STRETCH);
 		vec2 edges = (Landscape() == LANDSCAPE_TOYLAND ? TOY_WHITEWATER_EDGES : RAPIDS_EDGES) - PLUNGE_FROTH * plunge;
-		white = broken * smoothstep(edges.x, edges.y, churn);
+		white = broken * smoothstep(edges.x, edges.y, churn) * mix(RAPIDS_FOAM_COVER.x, RAPIDS_FOAM_COVER.y, churn);
 	}
 	return max(white, Apron(water)) * RAPIDS_FOAM;
 }
