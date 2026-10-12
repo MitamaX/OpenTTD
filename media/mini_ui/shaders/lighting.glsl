@@ -161,8 +161,8 @@ vec3 CanopyScatter(float translucency, float depth, float crown_sunlit)
 }
 
 /* Leaves let light through as well as reflecting it off their coat. */
-vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 view, float translucency, Coat coat, float occlusion, float sunlit, float crown_sunlit)
+vec4 FoliageRadiance(vec3 albedo, vec3 normal, vec3 view, float translucency, Coat coat, float occlusion, float canopy_depth, float sunlit, float crown_sunlit)
 {
-	vec3 through = SunlightThrough(normal, view, translucency, sunlit) + CanopyScatter(translucency, 1.0 - occlusion, crown_sunlit);
+	vec3 through = SunlightThrough(normal, view, translucency, sunlit) + CanopyScatter(translucency, canopy_depth, crown_sunlit);
 	return SurfaceRadiance(albedo, normal, view, coat, occlusion, Sunlight(normal, sunlit), through);
 }
