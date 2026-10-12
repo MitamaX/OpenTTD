@@ -274,9 +274,9 @@ const int CROP_COUNT = 6;
 const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
 	vec3(0.52, 0.40, 0.27),
 	vec3(0.47, 0.60, 0.27),
-	vec3(0.79, 0.68, 0.33),
-	vec3(0.85, 0.79, 0.32),
-	vec3(0.64, 0.56, 0.30),
+	vec3(0.60, 0.51, 0.25),
+	vec3(0.64, 0.59, 0.24),
+	vec3(0.48, 0.42, 0.22),
 	vec3(0.40, 0.53, 0.30)
 );
 const float FURROWS_PER_TILE = 7.0;
