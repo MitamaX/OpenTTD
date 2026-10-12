@@ -1315,7 +1315,7 @@ vec3 Banks(vec3 land, Water water, vec3 beach, Grain grain)
 	vec2 soaking = mix(SHORE_DAMP, BANK_DAMP, inland);
 	float dampness = soaking.x * ToyOr(TOY_DAMP_SHARE, 1.0);
 	vec3 damp = land * (1.0 - dampness * smoothstep(soaking.y, DAMP_LEVEL, level));
-	float gravelled = Landscape() == LANDSCAPE_TOYLAND ? 0.0 : inland;
+	float gravelled = ToyOr(0.0, inland);
 	float strewn = smoothstep(BANK_GRAVEL_LEVELS.x, BANK_GRAVEL_LEVELS.y, level + (grain.stones - 0.5) * BANK_GRAVEL_RAGGED) * gravelled;
 	damp = mix(damp, RIVER_GRAVEL * WET_GRAVEL_SHADE, strewn);
 	vec3 walled = mix(damp, BANK, smoothstep(0.3, 0.46, water.canal));
