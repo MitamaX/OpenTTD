@@ -265,7 +265,19 @@ vec3 BackWall(Room room, vec2 hit, Shell shell)
 
 Clad PaneOver(vec3 room, float daylight, float sunbeam, vec3 lamp)
 {
-	return Clad(room, FACING_OUT, PANE_ROUGHNESS, 1.0, 1.0, 1.0, daylight, sunbeam, lamp, 0.0);
+	Clad clad = Matte(room, PANE_ROUGHNESS);
+	clad.glass = 1.0;
+	clad.daylight = daylight;
+	clad.sunbeam = sunbeam;
+	clad.lamp = lamp;
+	return clad;
+}
+
+Clad RoomOver(vec3 room, float daylight, float sunbeam, vec3 lamp)
+{
+	Clad clad = PaneOver(room, daylight, sunbeam, lamp);
+	clad.interior = 1.0;
+	return clad;
 }
 
 Opening Unscreened(Opening opening, Room room)
@@ -345,13 +357,13 @@ Clad RoomSeen(Room room, Bay bay, Elevation elevation, Opening unscreened)
 	bool glowing = sight.overhead && UnderCeilingLamp(room, vec2(sight.hit.x, sight.sunk), shell.span, lamp_depth);
 	vec3 lamp = glowing ? room.lamp * CEILING_LAMP_GLOW : LampLightAt(room, vec3(sight.hit, sight.sunk), vec3(0.0, shell.high.y, lamp_depth));
 	float sunbeam = SUNBEAM_LIGHT * SunThrough(unscreened, sight.hit, sight.sunk, elevation.outlook.sun);
-	return PaneOver(sight.surface * room.tone, mix(ROOM_DAYLIGHTS.x, ROOM_DAYLIGHTS.y, sight.sunk / DEEPEST_ROOM), sunbeam, lamp);
+	return RoomOver(sight.surface * room.tone, mix(ROOM_DAYLIGHTS.x, ROOM_DAYLIGHTS.y, sight.sunk / DEEPEST_ROOM), sunbeam, lamp);
 }
 
 Clad RoomMean(Room room)
 {
 	vec3 surfaces = mix(RoomWall(room) * ROOM_SIDE_SHADE, RoomFloor(room), ROOM_MEAN_FLAT_SHARE);
-	return PaneOver(surfaces * room.tone, ROOM_MEAN_DAYLIGHT, MEAN_SUNBEAM, room.lamp * ROOM_MEAN_LAMP);
+	return RoomOver(surfaces * room.tone, ROOM_MEAN_DAYLIGHT, MEAN_SUNBEAM, room.lamp * ROOM_MEAN_LAMP);
 }
 
 Clad Drape(vec3 paint, Room room)

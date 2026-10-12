@@ -134,7 +134,7 @@ Clad Bulged(Clad pane, Opening opening, vec2 at)
 
 Clad MeanGlazing()
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane(TOY_GLASS, TOY_LAMP * LIT_ROOM_SHARE) : PaneOver(DIM_ROOM, DIM_ROOM_DAYLIGHT, MEAN_SUNBEAM, TYPICAL_LAMP * LampShare(LIT_ROOM_SHARE));
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyPane(TOY_GLASS, TOY_LAMP * LIT_ROOM_SHARE) : RoomOver(DIM_ROOM, DIM_ROOM_DAYLIGHT, MEAN_SUNBEAM, TYPICAL_LAMP * LampShare(LIT_ROOM_SHARE));
 }
 
 /* Neighbouring panes lean alike, the lean turning slowly over a few windows across and up the facade, so what they mirror bends instead of breaking up. */
