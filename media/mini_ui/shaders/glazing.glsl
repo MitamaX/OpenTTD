@@ -81,7 +81,7 @@ Seen WallSeen(Sighting sighting, Massing massing, float blur)
 Seen RoofSeen(Sighting sighting, Massing massing)
 {
 	bool snowed = Landscape() == LANDSCAPE_ARCTIC && sighting.point.z / LevelRise() > SnowLine();
-	return Seen(Linear(snowed ? SNOW : massing.roof), UP, 1.0, vec3(0.0), 1.0);
+	return Seen(Saturated(Linear(snowed ? SNOW : massing.roof), MIRRORED_SATURATION), UP, 1.0, vec3(0.0), 1.0);
 }
 
 bool Along(uint ends, uint way, float across)
@@ -115,7 +115,7 @@ Seen GroundSeen(Sighting sighting, vec3 way)
 		albedo = Linear(DISTANT_WATER);
 		sheen = Surroundings(reflect(way, UP)) * MIRRORED_WATER_SHEEN;
 	}
-	return Seen(albedo, UP, MIRRORED_STREET_OPENNESS, sheen, 1.0);
+	return Seen(Saturated(albedo, MIRRORED_SATURATION), UP, MIRRORED_STREET_OPENNESS, sheen, 1.0);
 }
 
 Seen SeenAt(Sighting sighting, vec3 way, float blur)
