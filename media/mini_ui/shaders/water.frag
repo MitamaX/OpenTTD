@@ -101,7 +101,7 @@ const float GLINT_CEILING = 3.0;
 const float INLAND_SPARKLE = 2.2;
 
 const vec3 SEA_ABSORPTION = vec3(1.6, 0.55, 0.35);
-const vec3 SEA_SCATTER = vec3(0.004, 0.022, 0.060);
+const vec3 SEA_SCATTER = vec3(0.006, 0.020, 0.034);
 const vec3 RIVER_ABSORPTION = vec3(3.8, 1.3, 1.5);
 const vec3 RIVER_SCATTER = vec3(0.012, 0.055, 0.078);
 const vec3 CANAL_ABSORPTION = vec3(2.6, 1.6, 1.4);
