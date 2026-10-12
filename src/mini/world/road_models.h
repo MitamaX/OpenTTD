@@ -11,10 +11,9 @@
 #define MINI_WORLD_ROAD_MODELS_H
 
 #include "../../road_type.h"
+#include "../map/network_style.h"
 #include "way_shapes.h"
 
-/* The top of the asphalt above whatever the road is laid on, in tiles. */
-inline constexpr double ASPHALT_TOP = 0.012;
 inline constexpr double PAVEMENT_TOP = 0.036;
 
 /* A tile's road and tram ends and how they are laid; a road over a rail crossing carries no markings across the rails, and only a street of its own has room for cars at its kerbs. */

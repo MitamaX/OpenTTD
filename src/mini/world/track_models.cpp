@@ -94,10 +94,7 @@ static constexpr std::array<SectionPoint, 6> BallastSection(uint32_t tone)
 static constexpr std::array<SectionPoint, 6> BALLAST_SECTION = BallastSection(BALLAST);
 static constexpr std::array<SectionPoint, 6> DISTANT_BALLAST_SECTION = BallastSection(DISTANT_BALLAST);
 static constexpr std::array<SectionPoint, 4> RAIL_SECTION = {{
-	{-0.011, 0.046, RAIL_WEB}, {-0.011, RAIL_TOP, RAIL_HEAD, STEEL_GLOSS}, {0.011, RAIL_TOP, RAIL_WEB}, {0.011, 0.046, RAIL_WEB},
-}};
-static constexpr std::array<SectionPoint, 4> SET_RAIL_SECTION = {{
-	{-0.011, 0.006, RAIL_WEB}, {-0.011, 0.017, RAIL_HEAD, STEEL_GLOSS}, {0.011, 0.017, RAIL_WEB}, {0.011, 0.006, RAIL_WEB},
+	{-RAIL_HALF, 0.046, RAIL_WEB}, {-RAIL_HALF, RAIL_TOP, RAIL_HEAD, STEEL_GLOSS}, {RAIL_HALF, RAIL_TOP, RAIL_WEB}, {RAIL_HALF, 0.046, RAIL_WEB},
 }};
 static constexpr std::array<SectionPoint, 6> MONORAIL_SECTION = {{
 	{-0.075, WAY_FOOT, GUIDEWAY}, {-0.075, 0.088, GUIDEWAY}, {-0.06, 0.104, GUIDEWAY}, {0.06, 0.104, GUIDEWAY}, {0.075, 0.088, GUIDEWAY}, {0.075, WAY_FOOT, GUIDEWAY},
@@ -209,15 +206,6 @@ void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing)
 	for (size_t rank = 0; rank < pieces.size(); rank++) {
 		const TrackPiece &piece = pieces[rank];
 		Lay(mesh, PieceModel(track, rank, sleepers[rank]), track.Lift(piece), piece.FootingOn(footing));
-	}
-}
-
-void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &footing)
-{
-	if (site.detail == WayDetail::Simple) return;
-	for (Track track : SetTrackBitIterator(site.bits)) {
-		TrackPiece piece(site.tx, site.ty, track, false);
-		Lay(mesh, piece.Pair(SET_RAIL_SECTION, GAUGE_HALF), 0.0, footing);
 	}
 }
 

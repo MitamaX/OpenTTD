@@ -135,4 +135,7 @@ WorldPoint TrackPoint(double x, double y);
 WorldPoint TrainPoint(double x, double y);
 WorldPoint RoadPoint(double x, double y);
 
+std::optional<MapVector> CrossingRails(int tx, int ty);
+double CrossingRise(int tx, int ty, double x, double y, const MapVector &rails);
+
 #endif /* MINI_MAP_WAY_COURSE_H */

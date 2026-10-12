@@ -22,6 +22,8 @@
 #include "../map/car_look.h"
 #include "../map/network_style.h"
 #include "street_furniture.h"
+#include "tile_track.h"
+#include "track_models.h"
 
 #include "../../safeguards.h"
 
@@ -34,7 +36,8 @@ static constexpr int BEND_STEPS = 10;
 static constexpr int END_STEPS = 4;
 static constexpr double KERB_FOOT = ASPHALT_TOP - 0.002;
 
-static constexpr double MARK_TOP = ASPHALT_TOP + 0.0015;
+static constexpr double INLAY_TOP = ASPHALT_TOP + 0.0015;
+static constexpr double MARK_TOP = INLAY_TOP;
 static constexpr double MARK_HALF = 0.011;
 static constexpr double EDGE_INSET = 0.035;
 static constexpr int DASHES = 2;
@@ -65,6 +68,15 @@ static constexpr double KERBSIDE_LATERAL = ROAD_HALF;
 static constexpr uint32_t KERBSIDE_SALT = 0x6A7C11E5U;
 static constexpr double BARRIER_ALONG = 0.4;
 static constexpr double BARRIER_LATERAL = ROAD_HALF + 0.06;
+static constexpr double PANEL_HALF = ROAD_HALF - EDGE_INSET;
+static constexpr double FLANGEWAY_WIDTH = 0.02;
+static constexpr double GROOVE_HALF = GAUGE_HALF - RAIL_HALF;
+static constexpr double FLANGEWAY_HALF = GROOVE_HALF - FLANGEWAY_WIDTH;
+static constexpr double PANEL_NEAR = GAUGE_HALF + RAIL_HALF;
+static constexpr std::array<double, 4> DECK_CUTS = {-EDGE, -ROAD_HALF, ROAD_HALF, EDGE};
+
+static_assert(BALLAST_HALF <= ROAD_HALF);
+static_assert(SLEEPER_TOP < ASPHALT_TOP + CROSSING_DECK);
 
 static constexpr double TRAM_GAUGE_HALF = 0.105;
 static constexpr double TRAM_RAIL_HALF = 0.011;
@@ -79,6 +91,8 @@ static constexpr uint32_t KERB = 0xA19E97;
 static constexpr uint32_t MARKING = 0xE8E6DE;
 static constexpr uint32_t NO_ENTRY = 0xC8463C;
 static constexpr uint32_t TRAM_BED = 0x9C998F;
+static constexpr uint32_t CROSSING_PANEL = 0x8F8D86;
+static constexpr uint32_t FLANGEWAY = 0x2E2C29;
 static constexpr uint32_t TRAM_RAIL = 0xBFC3C7;
 static constexpr double STEEL_GLOSS = 0.85;
 static constexpr double PAVEMENT_VARIETY = 0.06;
@@ -179,6 +193,16 @@ static std::vector<MapVector> Outline(RoadBits bits, RoadBits stray)
 	return outline;
 }
 
+static std::vector<MapVector> CrossingOutline(const MapVector &along)
+{
+	MapVector across = RightOf(along);
+	std::vector<MapVector> outline;
+	for (double side : {-1.0, 1.0}) {
+		for (double reach : DECK_CUTS) outline.push_back(along * (side * reach) + across * (side * ROAD_HALF));
+	}
+	return outline;
+}
+
 static bool OnTileEdge(const MapVector &a, const MapVector &b)
 {
 	auto edge = [](double u, double v) { return std::abs(std::abs(u) - EDGE) < ON_EDGE && std::abs(u - v) < ON_EDGE; };
@@ -261,19 +285,21 @@ private:
 
 	void Asphalt()
 	{
-		std::vector<MapVector> outline = Outline(this->site.road, this->site.stray & ~this->site.tram);
+		std::vector<MapVector> outline = this->Crossed() ? CrossingOutline(Along(this->site.road)) : Outline(this->site.road, this->site.stray & ~this->site.tram);
 		std::vector<std::vector<MapVector>> borders = Borders(outline);
-		this->Lay(Plate(outline, {0.0, 0.0}, ASPHALT_TOP), ASPHALT, WayBed::Asphalt);
+		this->LayAsphalt(outline);
+		double sunk = this->Crossed() ? CROSSING_DECK : 0.0;
 		if (this->site.kerbed) {
 			this->Pavement(outline);
-			for (const auto &border : borders) this->Lay(Wall(border, KERB_FOOT, PAVEMENT_TOP), KERB);
+			for (const auto &border : borders) this->Lay(Wall(border, KERB_FOOT - sunk, PAVEMENT_TOP), KERB);
 		} else {
 			for (auto border : borders) {
 				std::ranges::reverse(border);
-				this->Lay(Wall(border, WAY_FOOT, ASPHALT_TOP), SHOULDER);
+				this->Lay(Wall(border, WAY_FOOT - sunk, ASPHALT_TOP), SHOULDER);
 			}
 		}
 		if (!this->Full()) return;
+		this->CrossingInlays();
 		if (!this->site.kerbed && !this->site.crossing) {
 			for (const auto &border : borders) this->Lay(Ribbon(Offset(border, EDGE_INSET), MARK_HALF, MARK_TOP), MARKING, WayBed::Marking);
 		}
@@ -283,6 +309,42 @@ private:
 		this->StreetLight();
 		this->KerbsideParking();
 		this->Barriers();
+	}
+
+	bool Crossed() const { return this->site.crossing && Plain(this->site.road); }
+
+	void LayAsphalt(const std::vector<MapVector> &outline)
+	{
+		if (!this->Crossed()) {
+			this->Lay(Plate(outline, {0.0, 0.0}, ASPHALT_TOP), ASPHALT, WayBed::Asphalt);
+			return;
+		}
+		MapVector along = Along(this->site.road);
+		MapVector across = RightOf(along);
+		for (size_t cut = 1; cut < DECK_CUTS.size(); cut++) {
+			this->Lay(Slab(along, across, DECK_CUTS[cut - 1], DECK_CUTS[cut], ROAD_HALF, ASPHALT_TOP), ASPHALT, WayBed::Asphalt);
+		}
+	}
+
+	static ModelMesh Slab(const MapVector &along, const MapVector &across, double from, double to, double half, double height)
+	{
+		std::array<MapVector, 4> corners = {along * from - across * half, along * to - across * half, along * to + across * half, along * from + across * half};
+		return Plate(corners, along * ((from + to) * 0.5), height);
+	}
+
+	void CrossingInlays()
+	{
+		if (!this->Crossed()) return;
+		MapVector along = Along(this->site.road);
+		MapVector across = RightOf(along);
+		auto inlay = [&](double from, double to, uint32_t tone) {
+			this->Lay(Slab(along, across, from, to, PANEL_HALF, INLAY_TOP), tone);
+		};
+		for (double side : {-1.0, 1.0}) {
+			inlay(side * PANEL_NEAR, side * PANEL_HALF, CROSSING_PANEL);
+			inlay(side * FLANGEWAY_HALF, side * GROOVE_HALF, FLANGEWAY);
+		}
+		inlay(-FLANGEWAY_HALF, FLANGEWAY_HALF, CROSSING_PANEL);
 	}
 
 	/* Where town streets meet, each arm is crossed by a zebra just short of the junction. */

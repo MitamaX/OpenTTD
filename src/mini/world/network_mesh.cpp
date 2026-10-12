@@ -78,8 +78,10 @@ static RoadBits StrayArms(int tx, int ty, RoadBits road)
 static Footing RoadFooting(int tx, int ty)
 {
 	std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty);
-	if (!course.has_value()) return GroundFooting(tx, ty);
-	return [course = *course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
+	if (course.has_value()) return [course = *course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
+	std::optional<MapVector> rails = CrossingRails(tx, ty);
+	if (!rails.has_value()) return GroundFooting(tx, ty);
+	return [ground = GroundFooting(tx, ty), tx, ty, rails = *rails](double x, double y) { return ground(x, y) + CrossingRise(tx, ty, x, y, rails); };
 }
 
 /* Where a point of the game's track is drawn, on the eased line of its course. */
@@ -172,10 +174,7 @@ private:
 		site.kerbside = !crossing;
 		site.stray = StrayArms(tx, ty, site.road);
 		LayRoad(this->meshes.Layer(MiniLayer::Road), site, footing);
-		if (!crossing) return;
-		TrackSite rails = this->TrackOf(tile, tx, ty);
-		LayCrossingRails(this->meshes.Layer(MiniLayer::Rail), rails, footing);
-		LayCatenary(this->meshes.Layer(MiniLayer::Rail), TileTrack(rails), footing, {});
+		if (crossing) this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
 	}
 
 	void Station(TileIndex tile, int tx, int ty)

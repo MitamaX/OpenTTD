@@ -12,6 +12,7 @@
 
 #include <functional>
 
+#include "../map/network_style.h"
 #include "tile_track.h"
 #include "way_shapes.h"
 
@@ -20,7 +21,6 @@ inline constexpr double ARM_LOW = 0.41;
 
 double RideHeight(RailLook look);
 void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing);
-void LayCrossingRails(ModelMesh &mesh, const TrackSite &site, const Footing &footing);
 using MastBan = std::function<bool(const MapVector &foot)>;
 
 /* No mast stands with its foot where the ban holds, as by a tunnel's mouth, into which the wires run on into the dark. */

@@ -24,9 +24,11 @@
 
 #include "../../core/bitmath_func.hpp"
 #include "../../map_func.h"
+#include "../../road_map.h"
 #include "../../road_type.h"
 #include "../../track_func.h"
 #include "../gpu/frame_profile.h"
+#include "network_style.h"
 #include "tile_shapes.h"
 #include "track_pieces.h"
 #include "world_tiles.h"
@@ -781,9 +783,12 @@ double CrossingRise(int tx, int ty, double x, double y, const MapVector &rails)
 
 WorldPoint RoadPoint(double x, double y)
 {
-	std::optional<WayCourse> course = WayCourse::OfRoad(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)));
-	if (!course.has_value()) return {x, y, GroundLevel(x, y)};
-	return {x, y, course->Level(course->ShareAt({x, y}))};
+	int tx = static_cast<int>(std::floor(x));
+	int ty = static_cast<int>(std::floor(y));
+	std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty);
+	if (course.has_value()) return {x, y, course->Level(course->ShareAt({x, y}))};
+	std::optional<MapVector> rails = CrossingRails(tx, ty);
+	return {x, y, GroundLevel(x, y) + (rails.has_value() ? CrossingRise(tx, ty, x, y, *rails) : 0.0)};
 }
 
 static double SlideAt(const MapVector &middle)
