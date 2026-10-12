@@ -398,11 +398,11 @@ void TerrainBuild::AddTile(int tx, int ty)
 		Vec3 normal = sink > 0.0 ? bed.Normal(2 * cx, 2 * cy, 1) : this->normals.At(this->land, cx, cy, tile.Level(corner));
 		corners[corner] = mesh.Add({at.x, at.y, settled[corner]}, normal, SunkMark(sink));
 	}
+	LaidGround laid(this->land, tx, ty);
 	if (IsRiverside(tx, ty)) {
-		AddRelief(mesh, ChannelRelief(bed, tx, ty, settled), corners, tx, ty, CHANNEL_DIVISIONS);
+		AddRelief(mesh, *laid.Relief(), corners, tx, ty, CHANNEL_DIVISIONS);
 		return;
 	}
-	LaidGround laid(this->land, tx, ty);
 	if (const TileRelief *relief = laid.Relief(); relief != nullptr) {
 		ShoreSeams seams = SeamsOf(this->tiles, tx, ty, [this](int x, int y) { return this->ShoreCutAt(x, y); });
 		std::vector<uint32_t> grid = AddRelief(mesh, *relief, corners, tx, ty, seams.divisions);
@@ -573,26 +573,12 @@ static double BankMark(const WorldPoint &at, double dry_mark)
 	return at.level < water ? SunkMark(water - at.level) : dry_mark;
 }
 
-struct StripVertex {
-	WorldPoint at;
-	Vec3 normal;
-	double mark;
-};
-
-using StripRow = std::array<StripVertex, 2>;
-
-template <class Footing>
-static StripVertex CrestVertexOn(const Footing &footing, const WorldPoint &at)
-{
-	return {at, ClimbNormal(ClimbOf(footing, at.x, at.y)), FILL_MARK};
-}
-
-static void AddStrip(TerrainMesh &mesh, std::span<const StripRow> rows)
+static void AddBankStrip(TerrainMesh &mesh, const BankEdge &first, const BankEdge &second, double mark)
 {
 	uint32_t previous = 0;
 	for (int row = 0; row <= EARTH_BANK_ROWS; row++) {
-		uint32_t near = mesh.Add(first.points[row], first.normals[row], mark);
-		mesh.Add(second.points[row], second.normals[row], mark);
+		uint32_t near = mesh.Add(first.points[row], first.normals[row], BankMark(first.points[row], mark));
+		mesh.Add(second.points[row], second.normals[row], BankMark(second.points[row], mark));
 		if (row > 0) mesh.Quad(previous, previous + 1, near + 1, near);
 		previous = near;
 	}
@@ -685,7 +671,7 @@ struct BankedStep {
 	std::array<double, 2> runs;
 };
 
-static std::optional<BankedStep> BankOn(int tx, int ty, DiagDirection side)
+static std::optional<BankedStep> BankOnPlain(int tx, int ty, DiagDirection side)
 {
 	std::optional<StepBank> stepped = StepBankOn(tx, ty, side);
 	if (!stepped.has_value()) return std::nullopt;
@@ -699,44 +685,34 @@ static bool IsRiverWater(int tx, int ty)
 	return OnMap(tx, ty) && (IsChannel(tx, ty) || IsRapids(tx, ty));
 }
 
-template <class BankOnSide>
-static bool Walled(int tx, int ty, DiagDirection side, BankOnSide bank_on)
+static bool WalledPlain(int tx, int ty, DiagDirection side)
 {
-	return StepFaceOf(tx, ty, side).has_value() && !bank_on(tx, ty, side).has_value();
+	return StepFaceOf(tx, ty, side).has_value() && !BankOnPlain(tx, ty, side).has_value();
 }
 
 static bool StepEndsAt(const StepFace &step, const WorldPoint &corner)
 {
-	return std::ranges::any_of(STEP_ENDS, [&](const std::array<size_t, 2> &end) { return SameSpot(step.ring[end[0]], corner); });
+	return std::ranges::any_of(STEP_ENDS, [&](const std::array<size_t, 2> &end) { return step.ring[end[0]].x == corner.x && step.ring[end[0]].y == corner.y; });
 }
 
-template <class Meets>
-static bool AnyStepAtCorner(const WorldPoint &corner, const Meets &meets)
+static bool WallRisesAt(int tx, int ty, DiagDirection own_side, const WorldPoint &corner)
 {
 	for (const CornerTile &around : TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y))) {
 		if (!OnMap(around.tx, around.ty)) continue;
 		for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+			if (around.tx == tx && around.ty == ty && side == own_side) continue;
 			std::optional<StepFace> step = StepFaceOf(around.tx, around.ty, side);
-			if (step.has_value() && meets(around.tx, around.ty, side, *step)) return true;
+			if (step.has_value() && StepEndsAt(*step, corner) && WalledPlain(around.tx, around.ty, side)) return true;
 		}
 	}
 	return false;
 }
 
-static bool WallRisesAt(int tx, int ty, DiagDirection own_side, const WorldPoint &corner)
-{
-	return AnyStepAtCorner(corner, [&](int around_x, int around_y, DiagDirection side, const StepFace &step) {
-		bool own = around_x == tx && around_y == ty && side == own_side;
-		return !own && StepEndsAt(step, corner) && Walled(around_x, around_y, side, BankOnPlain);
-	});
-}
-
 static bool ShutOutByRiver(int tx, int ty, DiagDirection side, const StepFace &step)
 {
-	double lowest_rise = std::min(step.ring[STEP_ENDS[0][0]].level - step.ring[STEP_ENDS[0][1]].level, step.ring[STEP_ENDS[1][0]].level - step.ring[STEP_ENDS[1][1]].level);
 	for (const std::array<size_t, 2> &end : STEP_ENDS) {
 		const WorldPoint &corner = step.ring[end[0]];
-		if (corner.level - step.ring[end[1]].level > lowest_rise || !AtCorner(corner)) continue;
+		if (!AtCorner(corner)) continue;
 		auto touches_river = [](const CornerTile &around) { return IsRiverWater(around.tx, around.ty); };
 		bool on_river = std::ranges::any_of(TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y)), touches_river);
 		if (on_river && WallRisesAt(tx, ty, side, corner)) return true;

@@ -39,11 +39,12 @@ Landform::Landform(const TileSpan &tiles) :
 	corners(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 2 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 2 + 2 * LANDFORM_MARGIN),
 	bed(tiles),
 	banks(tiles),
-	reliefs(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * LANDFORM_MARGIN)
+	reliefs(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * LANDFORM_MARGIN),
+	channels(tiles.tx0 - LANDFORM_MARGIN, tiles.ty0 - LANDFORM_MARGIN, tiles.tx1 - tiles.tx0 + 1 + 2 * LANDFORM_MARGIN, tiles.ty1 - tiles.ty0 + 1 + 2 * LANDFORM_MARGIN)
 {
 }
 
-Landform::Landform(Landform &&other) noexcept : rolling(std::move(other.rolling)), corners(std::move(other.corners)), bed(std::move(other.bed)), banks(std::move(other.banks)), reliefs(other.reliefs.Emptied())
+Landform::Landform(Landform &&other) noexcept : rolling(std::move(other.rolling)), corners(std::move(other.corners)), bed(std::move(other.bed)), banks(std::move(other.banks)), reliefs(other.reliefs.Emptied()), channels(other.channels.Emptied())
 {
 }
 
@@ -77,6 +78,11 @@ bool Landform::Bends(int tx, int ty) const
 HillReliefPtr Landform::ReliefAt(int tx, int ty) const
 {
 	return this->reliefs.At(tx, ty, [this](int x, int y) -> HillReliefPtr { return this->Bends(x, y) ? std::make_shared<const HillRelief>(*this, x, y) : nullptr; });
+}
+
+ChannelReliefPtr Landform::ChannelAt(int tx, int ty) const
+{
+	return this->channels.At(tx, ty, [this](int x, int y) { return std::make_shared<const ChannelRelief>(this->bed, x, y, this->bed.SettledCorners(x, y)); });
 }
 
 std::array<double, 4> Landform::Corners(int tx, int ty) const
@@ -142,6 +148,7 @@ Vec3 HillRelief::Normal(double x, double y, const Vec3 &faceted) const
 }
 
 enum class GroundKind : uint8_t {
+	Channel,
 	Flat,
 	Shore,
 	Hill,
@@ -149,6 +156,7 @@ enum class GroundKind : uint8_t {
 
 static GroundKind GroundKindAt(const Landform &land, int tx, int ty)
 {
+	if (IsRiverside(tx, ty)) return GroundKind::Channel;
 	if (LiesAlongShore(land.Bed(), tx, ty)) return GroundKind::Shore;
 	return land.ReliefAt(tx, ty) != nullptr ? GroundKind::Hill : GroundKind::Flat;
 }
@@ -161,6 +169,9 @@ bool LaidGround::RollsAt(const Landform &land, int tx, int ty)
 LaidGround::LaidGround(const Landform &land, int tx, int ty) : tx(tx), ty(ty)
 {
 	switch (GroundKindAt(land, tx, ty)) {
+		case GroundKind::Channel:
+			this->relief.emplace<ChannelReliefPtr>(land.ChannelAt(tx, ty));
+			break;
 		case GroundKind::Shore:
 			this->relief.emplace<ShoreRelief>(land.Bed(), tx, ty, land.Bed().SettledCorners(tx, ty), land.BanksAround(tx, ty));
 			break;
@@ -187,6 +198,7 @@ bool LaidGround::Banked() const
 const TileRelief *LaidGround::Relief() const
 {
 	if (const HillReliefPtr *hill = std::get_if<HillReliefPtr>(&this->relief); hill != nullptr) return hill->get();
+	if (const ChannelReliefPtr *channel = std::get_if<ChannelReliefPtr>(&this->relief); channel != nullptr) return channel->get();
 	return std::get_if<ShoreRelief>(&this->relief);
 }
 

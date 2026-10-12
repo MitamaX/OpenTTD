@@ -38,6 +38,7 @@ bool IsRollingLand(int tx, int ty);
 
 class HillRelief;
 using HillReliefPtr = std::shared_ptr<const HillRelief>;
+using ChannelReliefPtr = std::shared_ptr<const ChannelRelief>;
 
 class Landform {
 public:
@@ -53,6 +54,7 @@ public:
 	bool RollsRound(int cx, int cy) const;
 	bool Bends(int tx, int ty) const;
 	HillReliefPtr ReliefAt(int tx, int ty) const;
+	ChannelReliefPtr ChannelAt(int tx, int ty) const;
 	std::array<double, 4> Corners(int tx, int ty) const;
 	double Rolled(double x, double y) const;
 	Vec3 RolledNormal(double x, double y) const;
@@ -69,6 +71,7 @@ private:
 	Seabed bed;
 	SeaBanks banks;
 	LazyLattice<HillReliefPtr> reliefs;
+	LazyLattice<ChannelReliefPtr> channels;
 };
 
 class HillRelief : public TileRelief {
@@ -101,7 +104,7 @@ public:
 private:
 	int tx;
 	int ty;
-	std::variant<std::monostate, HillReliefPtr, ShoreRelief> relief;
+	std::variant<std::monostate, HillReliefPtr, ChannelReliefPtr, ShoreRelief> relief;
 };
 
 class RolledSurface : public DrawnSurface {
