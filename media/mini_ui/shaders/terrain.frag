@@ -1015,9 +1015,9 @@ Heap ToyRiprapHeap(vec2 p)
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
 Heap RiprapHeap(Site site)
 {
-	if (Landscape() == LANDSCAPE_TOYLAND) return ToyRiprapHeap(site.p);
 	float lumps = smoothstep(RIPRAP_LUMP_EDGES.x, RIPRAP_LUMP_EDGES.y, Octave(site.p, BOULDERS_PER_TILE));
-	return Heap(mix(site.bare.scree, ROCK, 0.5), mix(RIPRAP_SHADES.x, RIPRAP_SHADES.y, lumps));
+	Heap boulders = Heap(mix(site.bare.scree, ROCK, 0.5), mix(RIPRAP_SHADES.x, RIPRAP_SHADES.y, lumps));
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyRiprapHeap(site.p) : boulders;
 }
 
 vec3 Riprap(Site site)
