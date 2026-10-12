@@ -275,13 +275,14 @@ const vec2 TOY_STRATA_BLEND = vec2(0.88, 1.0);
 const float TOY_PEBBLE_VARIETY = 0.12;
 const float TOY_COBBLES_PER_TILE = 8.0;
 const float TOY_COBBLE_FADE = 2.0;
-const vec2 TOY_RIPRAP_SHADES = vec2(0.8, 1.1);
+const vec2 TOY_RIPRAP_SHADES = vec2(0.88, 1.06);
 const float TOY_BANK_DRIFTS_PER_TILE = 0.25;
 const vec2 TOY_BANK_SEED = vec2(2.9, 6.7);
 const float TOY_COBBLE_VARIETY = 0.25;
 const ivec2 TOY_COBBLE_SEED = ivec2(4219, 1733);
 const float TOY_COBBLE_DOME = 0.6;
 const float AVERAGE_DOME = 0.5;
+const float AVERAGE_FACING = 0.5;
 const ivec2 TOY_COBBLE_COLOUR_SEED = ivec2(2713, 6151);
 const vec2 RIPRAP_LUMP_EDGES = vec2(0.3, 0.7);
 const vec2 RIPRAP_SHADES = vec2(0.62, 1.12);
@@ -1015,14 +1016,17 @@ Heap ToyRiprapHeap(vec2 p)
 	float nearest = PAST_EVERY_SPECK;
 	float next = PAST_EVERY_SPECK;
 	ivec2 owner = cell;
+	vec2 centre = at;
 	for (int dy = -1; dy <= 1; dy++) {
 		for (int dx = -1; dx <= 1; dx++) {
 			ivec2 other = cell + ivec2(dx, dy);
-			float gap = distance(at, vec2(dx, dy) + Hash2(other + TOY_COBBLE_SEED));
+			vec2 heart = vec2(dx, dy) + Hash2(other + TOY_COBBLE_SEED);
+			float gap = distance(at, heart);
 			if (gap < nearest) {
 				next = nearest;
 				nearest = gap;
 				owner = other;
+				centre = heart;
 			} else {
 				next = min(next, gap);
 			}
@@ -1033,7 +1037,11 @@ Heap ToyRiprapHeap(vec2 p)
 	vec3 bank = ToyBankTone(p);
 	vec3 candy = mix(bank, bank * Varied(Hash(owner + TOY_COBBLE_COLOUR_SEED), TOY_COBBLE_VARIETY), resolved);
 	float dome = mix(AVERAGE_DOME, smoothstep(0.0, TOY_COBBLE_DOME, depth), resolved);
-	return Heap(candy, mix(TOY_RIPRAP_SHADES.x, TOY_RIPRAP_SHADES.y, dome));
+	vec2 outward = at - centre;
+	vec2 toward_sun = SunDirection().xy;
+	float sunward = dot(outward / max(length(outward), LEAST_DIVISOR), toward_sun / max(length(toward_sun), LEAST_DIVISOR));
+	float facing = mix(AVERAGE_FACING, sunward * 0.5 + 0.5, resolved);
+	return Heap(candy, mix(TOY_RIPRAP_SHADES.x, TOY_RIPRAP_SHADES.y, mix(facing, 1.0, dome)));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
