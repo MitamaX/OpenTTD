@@ -117,8 +117,8 @@ const vec3 LONG_SWARD = vec3(0.94, 0.92, 0.9);
 const vec3 GRAZED_SWARD = vec3(1.06, 1.08, 1.02);
 const float GRAZED_RANK = 0.4;
 const float SWARD_BLADES = 0.6;
-const float STEEP_SWARD_BLADES = 0.2;
-const vec2 STEEP_SWARD_SLOPES = vec2(0.4, 0.9);
+const vec2 BLADE_GAP_EDGES = vec2(0.1, 0.3);
+const float BLADE_GAPS = 0.25;
 const float SEED_HEADS = 0.35;
 const float HERB_DRIFTS_PER_TILE = 0.6;
 const vec2 HERB_DRIFT_EDGES = vec2(0.6, 0.74);
@@ -713,6 +713,12 @@ vec3 Bloomed(vec3 blades, vec2 p)
 	return mix(blades * mix(vec3(1.0), HERBAGE, drift), HerbBloom(Octave(p + HERB_KIND_SEED, HERB_KINDS_PER_TILE)), flowers);
 }
 
+/* The blades' fine grain, deepened below only, so the shade between blades shows as dark flecks among bright tips. */
+float Gapped(float micro, float variety)
+{
+	return Varied(micro, variety) * (1.0 - BLADE_GAPS * (1.0 - smoothstep(BLADE_GAP_EDGES.x, BLADE_GAP_EDGES.y, micro)));
+}
+
 /* Grass in long and grazed patches, turned to straw here and there and flecked by its blades and seed heads. */
 vec3 Blades(Site site)
 {
@@ -721,7 +727,7 @@ vec3 Blades(Site site)
 	vec3 straw = green * STRAW_TINT;
 	float grown = PatchShare(site.p + LONG_SWARD_SEED, SWARD_PATCHES_PER_TILE, LONG_SWARD_EDGES, LONG_SWARD_MEAN);
 	float rank = mix(GRAZED_RANK, 1.0, grown);
-	float shade = Varied(grain.local, 0.3) * Varied(grain.clump, 0.35 * rank) * Varied(grain.fine, 0.25) * Varied(grain.micro, mix(SWARD_BLADES, STEEP_SWARD_BLADES, smoothstep(STEEP_SWARD_SLOPES.x, STEEP_SWARD_SLOPES.y, site.relief.slope)) * rank);
+	float shade = Varied(grain.local, 0.3) * Varied(grain.clump, 0.35 * rank) * Varied(grain.fine, 0.15) * Gapped(grain.micro, SWARD_BLADES * rank);
 	float dried = smoothstep(0.5, 0.85, grain.local) + SEED_HEADS * smoothstep(0.6, 0.85, grain.micro);
 	float strawed = mix(STRAW_MEAN, dried * rank, Resolved(STRAW_PATCHES_PER_TILE));
 	vec3 undergrowth = green * mix(vec3(1.0), DEEP_SWARD, rank);
