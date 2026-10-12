@@ -209,10 +209,10 @@ const vec2 BUMP_HEIGHT_SHARES = vec2(0.65, 0.35);
 const float BUMP_MEAN_HEIGHT = dot(BUMP_HEIGHT_SHARES, vec2(GRAIN_MEAN));
 const vec2 CAVITY_OCCLUSION = vec2(1.6, 0.9);
 
-const vec2 GRASS_RUGGED = vec2(0.45, 0.0);
-const vec2 ROUGH_RUGGED = vec2(0.7, 0.25);
-const vec2 SCREE_RUGGED = vec2(0.6, 1.0);
-const vec2 ROCK_RUGGED = vec2(1.0, 0.55);
+const vec2 GRASS_RUGGED = vec2(0.2, 0.0);
+const vec2 ROUGH_RUGGED = vec2(0.4, 0.25);
+const vec2 SCREE_RUGGED = vec2(0.3, 1.0);
+const vec2 ROCK_RUGGED = vec2(0.5, 0.55);
 const vec2 TOY_STONE_RUGGED = vec2(0.3, 0.1);
 const vec2 FIELD_RUGGED = vec2(0.35, 0.05);
 const vec2 SAND_RUGGED = vec2(0.2, 0.05);
