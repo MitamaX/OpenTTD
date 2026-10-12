@@ -52,6 +52,8 @@ const vec2 FLECK_PACES = vec2(0.3, 0.8);
 const float LOWEST_PITCH_SINE = 0.3;
 const float RAPIDS_TILT = 0.12;
 const float RAPIDS_REACH = 0.35;
+const float RAPIDS_REACH_SPREAD = 0.7;
+const float RAPIDS_WOBBLES_PER_TILE = 4.0;
 const float RAPIDS_STEEPNESS = 0.045;
 const float RAPIDS_FOAM = 0.8;
 const float RAPIDS_PATH = 0.4;
@@ -61,6 +63,9 @@ const float RAPIDS_RUSH = 2.0;
 const vec2 RAPIDS_EDGES = vec2(0.42, 0.6);
 const float RAPIDS_AERATION = 0.5;
 const float APRON_REACH = 1.2;
+const float APRON_BLUR = 0.5;
+const vec2 APRON_WOBBLE_SEED = vec2(41.0, 17.0);
+const float APRON_WOBBLES_PER_TILE = 3.0;
 const int APRON_STEPS = 3;
 const float APRON_LEAST_FALL = 0.1;
 const float APRON_FULL_FALL = 0.8;
@@ -614,13 +619,14 @@ Drop Descent(vec2 p)
 {
 	ivec2 home = ivec2(floor(p));
 	if (OpenSeaAbout(home)) return Drop(vec2(0.0), 0.0, 0.0, 0.0, OPEN_SEA_LEVEL);
-	vec2 dx = vec2(RAPIDS_REACH, 0.0);
-	vec2 dy = vec2(0.0, RAPIDS_REACH);
+	float reach = RAPIDS_REACH * mix(1.0 - RAPIDS_REACH_SPREAD, 1.0 + RAPIDS_REACH_SPREAD, Noise(p * RAPIDS_WOBBLES_PER_TILE));
+	vec2 dx = vec2(reach, 0.0);
+	vec2 dy = vec2(0.0, reach);
 	vec4 around = vec4(WaterLevelNear(p - dx, home), WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home), WaterLevelNear(p + dy, home));
-	vec2 fall = vec2(around.x - around.y, around.z - around.w) * LevelRise() / (2.0 * RAPIDS_REACH);
+	vec2 fall = vec2(around.x - around.y, around.z - around.w) * LevelRise() / (2.0 * reach);
 	float slope = length(fall);
 	float level = WaterLevelNear(p, home);
-	float bend = (dot(around, vec4(1.0)) - 4.0 * level) * LevelRise() / RAPIDS_REACH;
+	float bend = (dot(around, vec4(1.0)) - 4.0 * level) * LevelRise() / reach;
 	return Drop(slope > 0.0 ? fall / slope : vec2(0.0), slope, smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, slope), bend, level);
 }
 
@@ -681,11 +687,14 @@ struct Water {
 float Churned(vec2 at, Drop drop)
 {
 	vec2 from = at;
+	vec2 heading = vec2(0.0);
 	for (int step = 0; step < APRON_STEPS; step++) {
 		vec2 flow = FlowAt(from);
 		if (length(flow) <= MIN_PACE) break;
-		from -= normalize(flow) * (APRON_REACH / float(APRON_STEPS));
+		heading = normalize(flow);
+		from -= heading * (APRON_REACH / float(APRON_STEPS));
 	}
+	from -= heading * APRON_BLUR * Noise(at * APRON_WOBBLES_PER_TILE + APRON_WOBBLE_SEED);
 	return smoothstep(APRON_LEAST_FALL, APRON_FULL_FALL, WaterLevelNear(from, ivec2(floor(at))) - drop.level);
 }
 
