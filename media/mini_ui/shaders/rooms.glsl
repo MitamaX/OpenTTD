@@ -167,7 +167,7 @@ Room RoomBehind(Bay bay, Elevation elevation)
 	ivec2 storey = ivec2(STOREY_COLUMN, bay.window.y);
 	bool hall = HoldsHalls(elevation.grid);
 	bool by_storey = PlannedByStorey(elevation.grid);
-	bool lit_storey = by_storey && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
+	bool lit_storey = by_storey && Roll(storey, seed, ROLL_STOREY_LAMP) < LIT_STOREY_SHARE;
 	bool blinded_storey = by_storey && Roll(storey, seed, ROLL_BLIND) < BLINDED_STOREY_SHARE;
 	float lit = LampShare(bay.opening.kind == OPEN_SHOP ? LIT_SHOP_SHARE : lit_storey ? LIT_IN_LIT_STOREY : LIT_ROOM_SHARE);
 	Room room;

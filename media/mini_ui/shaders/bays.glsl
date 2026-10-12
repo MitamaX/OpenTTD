@@ -26,6 +26,7 @@ const int ROLL_PIECE_CHOICE = 15;
 const int ROLL_FITTING_KIND = 17;
 const int ROLL_PARTITION = 18;
 const int ROLL_TOY_SHAPE = 19;
+const int ROLL_STOREY_LAMP = 20;
 
 /* Where a point of a facade lies: the opening of its bay, the point measured from that opening's foot at its middle, and which window it is. */
 struct Bay {
