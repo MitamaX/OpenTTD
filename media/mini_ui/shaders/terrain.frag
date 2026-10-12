@@ -156,6 +156,8 @@ const float STRATA_BOWS_PER_TILE = 1.1;
 const float STRATA_BOW_SEED = 5.3;
 const float BED_THICKNESS_PER_LEVEL = 0.7;
 const float BED_THICKNESS_SEED = 3.1;
+const float BED_SLIP = 0.7;
+const int BED_SLIP_SEED = 31;
 const vec2 SHELF_EDGES = vec2(0.7, 0.95);
 const float LEDGE_SHADE = 0.8;
 const float LEDGE_LIT = 1.08;
@@ -577,6 +579,17 @@ float StrataPerLevel()
 	return Landscape() == LANDSCAPE_TOYLAND ? TOY_STRATA_PER_LEVEL : STRATA_PER_LEVEL;
 }
 
+float BedSlip(int layer)
+{
+	return (Hash(ivec2(layer, BED_SLIP_SEED)) - HALF_TILE) * BED_SLIP;
+}
+
+float Staggered(float bedding)
+{
+	int layer = int(floor(bedding));
+	return bedding - mix(BedSlip(layer), BedSlip(layer + 1), fract(bedding));
+}
+
 float BeddingAt(vec2 p)
 {
 	float levelled = v_world.z * StrataPerLevel();
@@ -584,7 +597,7 @@ float BeddingAt(vec2 p)
 	float thickness = Noise(vec2(v_world.z * BED_THICKNESS_PER_LEVEL, BED_THICKNESS_SEED)) * StrataPerLevel();
 	float warp = (Noise(p * STRATA_WARP_PER_TILE) - 0.5) * STRATA_WARP;
 	float bow = (Octave(p + STRATA_BOW_SEED, STRATA_BOWS_PER_TILE) - 0.5) * STRATA_BOW;
-	return levelled + dot(p, STRATA_DIP) + thickness + warp + bow;
+	return Staggered(levelled + dot(p, STRATA_DIP) + thickness + warp + bow);
 }
 
 Relief ReliefAt(vec3 normal, float levels_per_pixel)
