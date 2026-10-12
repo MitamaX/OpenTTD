@@ -124,7 +124,6 @@ struct TileSpan {
 	}
 };
 
-/* The eye and the lens it looks through, which size a tile by how far off it stands. */
 struct Lens {
 	Vec3 eye;
 	double focal;

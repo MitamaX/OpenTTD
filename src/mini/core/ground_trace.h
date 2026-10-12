@@ -31,13 +31,11 @@ struct GroundHit {
 	double level;
 };
 
-/* One tile's ground as it is drawn, read at any point over the tile. */
 class DrawnSurface {
 public:
 	virtual ~DrawnSurface() = default;
 	virtual double Level(double x, double y) const = 0;
 	virtual bool Curves() const = 0;
-	/* How many pieces the tile is cut into each way where it spans so many pixels. */
 	virtual int Divisions(double tile_pixels) const = 0;
 };
 

@@ -74,7 +74,6 @@ private:
 	std::unique_ptr<GroundSpan> span;
 };
 
-/* The tiles of an area that can show, with the ground they share. */
 class ShownTiles {
 public:
 	static std::optional<ShownTiles> Of(const TileSpan &area);
