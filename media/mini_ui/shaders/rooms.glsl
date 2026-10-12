@@ -35,9 +35,9 @@ const float OPEN_PLAN_WIDTH = 2.0 * OPEN_PLAN_REACH;
 const float PLAN_STRIDE = 0.618034;
 const float FLOOR_SLAB = 1.0;
 const float ROOM_SIDE_SHADE = 0.8;
-const float ROOM_FAR_LIGHT = 0.22;
+const vec2 ROOM_DAYLIGHTS = vec2(0.35, 0.04);
 const float PIECE_TOP_LIGHT = 1.2;
-const float SUNBEAM_LIGHT = 0.6;
+const float SUNBEAM_LIGHT = 0.25;
 const float SUNLIT_ROOM_SHARE = 0.2;
 const float MEAN_SUNBEAM = SUNBEAM_LIGHT * SUNLIT_ROOM_SHARE;
 const vec2 ROOM_RESOLVED_PIXELS = vec2(0.5, 1.2);
@@ -52,7 +52,9 @@ const float PANEL_HALF_LENGTH = 0.6;
 const float PANEL_SPREAD = 0.6;
 const float HOME_FIXTURE_RADIUS = 0.8;
 const float DRAPE_GLOW = 0.4;
-const float ROOM_MEAN_DAYLIGHT = 0.6;
+const float DRAPE_SUNLIT = 0.6;
+const float ROOM_MEAN_DAYLIGHT = 0.5 * (ROOM_DAYLIGHTS.x + ROOM_DAYLIGHTS.y);
+const float DIM_ROOM_DAYLIGHT = 0.33;
 const float ROOM_MEAN_LAMP = 0.5;
 const float ROOM_MEAN_FLAT_SHARE = 0.5;
 const vec3 TYPICAL_LAMP = mix(HOME_LAMPS[0], OFFICE_LAMPS[0], 0.5) * LAMP_LIGHT * ROOM_MEAN_LAMP;
@@ -344,7 +346,7 @@ Clad RoomSeen(Room room, Bay bay, Elevation elevation, Opening unscreened)
 	bool glowing = sight.overhead && UnderCeilingLamp(room, vec2(sight.hit.x, sight.sunk), shell.span, lamp_depth);
 	vec3 lamp = glowing ? room.lamp * CEILING_LAMP_GLOW : LampLightAt(room, vec3(sight.hit, sight.sunk), vec3(0.0, shell.high.y, lamp_depth));
 	float sunbeam = SUNBEAM_LIGHT * SunThrough(unscreened, sight.hit, sight.sunk, elevation.outlook.sun);
-	return PaneOver(sight.surface * room.tone, mix(1.0, ROOM_FAR_LIGHT, sight.sunk / DEEPEST_ROOM), sunbeam, lamp);
+	return PaneOver(sight.surface * room.tone, mix(ROOM_DAYLIGHTS.x, ROOM_DAYLIGHTS.y, sight.sunk / DEEPEST_ROOM), sunbeam, lamp);
 }
 
 Clad RoomMean(Room room)
@@ -355,7 +357,7 @@ Clad RoomMean(Room room)
 
 Clad Drape(vec3 paint, Room room)
 {
-	return PaneOver(paint, 1.0, SUNBEAM_LIGHT, room.lamp * DRAPE_GLOW);
+	return PaneOver(paint, 1.0, DRAPE_SUNLIT, room.lamp * DRAPE_GLOW);
 }
 
 Clad SeenThrough(Room room, Bay bay, Elevation elevation)
