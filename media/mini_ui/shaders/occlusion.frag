@@ -14,6 +14,10 @@ const float LARGEST_PIXELS = 40.0;
 const float SMALLEST_PIXELS = 1.0;
 const float NORMAL_LENGTH_FLOOR = 0.05;
 const float GOLDEN_STEP = 0.618034;
+const float SKY_SPREAD_TILES = 0.5;
+const float SAME_SURFACE_TOLERANCE = 0.1;
+const float NEAREST_VISIBLE = 1e-3;
+const ivec2 SPREAD_GRID = ivec2(4);
 
 /* A 4 by 4 spread of offsets, so the blur that reads back four texels square takes every one of them in. */
 float Interleaved(ivec2 texel)
@@ -96,11 +100,31 @@ float Openness(vec3 centre, vec3 normal, vec2 uv, vec2 half_size, float radius, 
 	return clamp(openness / float(SLICES), 0.0, 1.0);
 }
 
-float OpenSky(vec3 centre, vec3 normal, float seen)
+vec2 SkyShift(ivec2 half_texel, vec3 normal)
+{
+	vec2 cell = (vec2(half_texel & (SPREAD_GRID - 1)) + 0.5) / vec2(SPREAD_GRID);
+	vec2 spread = (fract(cell + GOLDEN_STEP * u_screen.w) - 0.5) * SKY_SPREAD_TILES;
+	return spread - normal.xy * dot(spread, normal.xy);
+}
+
+bool Unhidden(vec3 point)
+{
+	float ahead = -point.z;
+	vec2 clip = vec2(point.x * u_projection[0][0], point.y * u_projection[1][1]) / max(ahead, NEAREST_VISIBLE);
+	if (ahead < NEAREST_VISIBLE || any(greaterThan(abs(clip), vec2(1.0)))) return false;
+	ivec2 size = textureSize(u_depth, 0);
+	ivec2 texel = min(ivec2((clip * 0.5 + 0.5) * vec2(size)), size - 1);
+	return -FetchViewPoint(u_depth, texel).z > ahead - SAME_SURFACE_TOLERANCE;
+}
+
+float OpenSky(vec3 centre, vec3 normal, float seen, ivec2 half_texel)
 {
 	mat3 to_render = transpose(mat3(u_view));
 	vec3 at = Eye() + to_render * centre;
-	return SkyOpenAt(Clamped(ivec2(floor(at.xy))), at, to_render * normal, seen);
+	vec3 render_normal = to_render * normal;
+	vec3 shift = vec3(SkyShift(half_texel, render_normal), 0.0);
+	vec3 chosen = Unhidden(centre + mat3(u_view) * shift) ? at + shift : at;
+	return SkyOpenAt(Clamped(ivec2(floor(chosen.xy))), at, render_normal, seen);
 }
 
 /* Each texel stands for the full size texel at its corner, and keeps how far ahead that lies for the blur to tell surfaces apart. */
@@ -118,5 +142,5 @@ void main()
 	vec3 normal = ViewNormal(u_depth, full_texel);
 	float tile_pixels = TilePixels(centre, half_size);
 	float seen = SeenRadius(tile_pixels);
-	frag_occlusion = vec4(Openness(centre, normal, uv, half_size, RADIUS, tile_pixels), Openness(centre, normal, uv, half_size, CONTACT_RADIUS, tile_pixels), AheadOf(depth), OpenSky(centre, normal, seen));
+	frag_occlusion = vec4(Openness(centre, normal, uv, half_size, RADIUS, tile_pixels), Openness(centre, normal, uv, half_size, CONTACT_RADIUS, tile_pixels), AheadOf(depth), OpenSky(centre, normal, seen, ivec2(gl_FragCoord.xy)));
 }
