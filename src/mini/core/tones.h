@@ -52,6 +52,20 @@ inline constexpr uint32_t COL_TREE = 0xFF2F4A2AU;
 inline constexpr std::array<uint32_t, NUM_LANDSCAPE> GRASS_DARK_TONES = {0xFF546E36U, 0xFF617857U, 0xFF858C47U, 0xFF6BD199U};
 inline constexpr std::array<uint32_t, NUM_LANDSCAPE> GRASS_LIGHT_TONES = {0xFF5F7E3CU, 0xFF879970U, 0xFFADA85CU, 0xFFB3E66BU};
 
+inline constexpr uint LUSH_SHADE_ALPHA = 33;
+inline constexpr uint32_t RAINFOREST_DARK = 0xFF39592AU;
+inline constexpr uint32_t RAINFOREST_LIGHT = 0xFF55783AU;
+
+constexpr std::array<uint32_t, NUM_LANDSCAPE> LushTones(std::array<uint32_t, NUM_LANDSCAPE> tones, uint32_t rainforest)
+{
+	for (uint32_t &tone : tones) tone = Mix(tone, COL_SHADOW, LUSH_SHADE_ALPHA);
+	tones[static_cast<size_t>(LandscapeType::Tropic)] = rainforest;
+	return tones;
+}
+
+inline constexpr std::array<uint32_t, NUM_LANDSCAPE> LUSH_GRASS_DARK_TONES = LushTones(GRASS_DARK_TONES, RAINFOREST_DARK);
+inline constexpr std::array<uint32_t, NUM_LANDSCAPE> LUSH_GRASS_LIGHT_TONES = LushTones(GRASS_LIGHT_TONES, RAINFOREST_LIGHT);
+
 inline constexpr uint32_t COL_RAIL = 0xFF33383DU;
 inline constexpr uint32_t COL_ROAD = 0xFF61686EU;
 inline constexpr uint32_t COL_BRIDGE = 0xFF9AA0A6U;

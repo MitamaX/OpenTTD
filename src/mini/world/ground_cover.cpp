@@ -47,13 +47,12 @@ struct GrassGreens {
 	uint32_t light;
 };
 
-static constexpr GrassGreens LUSH_GREENS = {0x33592B, 0x4F783B};
 static constexpr uint32_t ROUGH_STRAW = 0x8C804C;
 
-static GrassGreens ClimateGreens()
+static GrassGreens GreensOf(const std::array<uint32_t, NUM_LANDSCAPE> &dark, const std::array<uint32_t, NUM_LANDSCAPE> &light)
 {
 	size_t landscape = to_underlying(_settings_game.game_creation.landscape) % NUM_LANDSCAPE;
-	return {GRASS_DARK_TONES[landscape], GRASS_LIGHT_TONES[landscape]};
+	return {dark[landscape], light[landscape]};
 }
 
 static std::array<uint8_t, 4> TuftGreen(const GrassGreens &greens, double share, double straw)
@@ -102,7 +101,8 @@ GroundCover::GroundCover() : BlockScatter(TUFT_SHAPES, std::max(CLEAR_REACH, LAN
  * Meadow at full growth bears a scatter of tufts, rough land many more and some of them dry; each tuft stands on the ground where it falls, turned and sized its own way. */
 void GroundCover::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 {
-	const GrassGreens climate = ClimateGreens();
+	const GrassGreens climate = GreensOf(GRASS_DARK_TONES, GRASS_LIGHT_TONES);
+	const GrassGreens lush = GreensOf(LUSH_GRASS_DARK_TONES, LUSH_GRASS_LIGHT_TONES);
 	Landform land(tiles);
 	for (int ty = tiles.ty0; ty <= tiles.ty1; ty++) {
 		for (int tx = tiles.tx0; tx <= tiles.tx1; tx++) {
@@ -116,7 +116,7 @@ void GroundCover::Strew(const TileSpan &tiles, ScatterCopies &copies) const
 				StrewScrub(laid, tx, ty, climate, copies);
 				continue;
 			}
-			const GrassGreens &greens = (ground.detail & GROUND_LUSH_BIT) != 0 ? LUSH_GREENS : climate;
+			const GrassGreens &greens = (ground.detail & GROUND_LUSH_BIT) != 0 ? lush : climate;
 			SeedDice dice(Hash32(TUFT_SALT ^ TileXY(tx, ty).base()));
 			int count = rough ? ROUGH_TUFTS : MEADOW_TUFTS;
 			for (int tuft = 0; tuft < count; tuft++) {

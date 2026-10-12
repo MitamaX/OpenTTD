@@ -206,6 +206,8 @@ static std::string ShaderHeader()
 	const auto landscape = to_underlying(_settings_game.game_creation.landscape);
 	DefineTone(header, "GRASS_DARK", GRASS_DARK_TONES[landscape]);
 	DefineTone(header, "GRASS_LIGHT", GRASS_LIGHT_TONES[landscape]);
+	DefineTone(header, "LUSH_DARK", LUSH_GRASS_DARK_TONES[landscape]);
+	DefineTone(header, "LUSH_LIGHT", LUSH_GRASS_LIGHT_TONES[landscape]);
 	DefineTone(header, "VOID_TONE", COL_VOID);
 	DefineTone(header, "DISTANT_RAIL", COL_RAIL);
 	DefineTone(header, "DISTANT_BALLAST", COL_DISTANT_BALLAST);
