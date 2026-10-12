@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
@@ -39,7 +40,7 @@ static constexpr uint32_t RAIL_WEB = 0x6F6055;
 static constexpr uint32_t GUIDEWAY = 0xA9A69E;
 static constexpr uint32_t GUIDE_STRIP = 0x7D838A;
 static constexpr uint32_t MAST = 0x8A9096;
-static constexpr uint32_t WIRE = 0x3B3632;
+static constexpr uint32_t WIRE = 0x5C5148;
 static constexpr double STEEL_GLOSS = 0.85;
 static constexpr double STRIP_GLOSS = 0.6;
 static constexpr double MAST_GLOSS = 0.4;
@@ -64,19 +65,20 @@ static constexpr double CHECK_LATERAL = GAUGE_HALF - CHECK_INSET;
 
 static constexpr double WIRE_HEIGHT = 0.36;
 static constexpr double MAST_OFFSET = 0.31;
-static constexpr std::array<double, 2> MAST_SIDES = {-1.0, 1.0};
 static constexpr double MAST_HALF = 0.016;
 static constexpr double MAST_CLEARANCE = BALLAST_HALF + MAST_HALF;
 static constexpr double MAST_HEIGHT = 0.46;
-static constexpr double ARM_REACH = 0.05;
-static constexpr double ARM_LOW = 0.41;
 static constexpr double ARM_HIGH = 0.432;
 static constexpr double MESSENGER_SAG = 0.025;
-static constexpr double MESSENGER_HALF = 0.0035;
+static constexpr double WIRE_HALF = 0.0045;
 static constexpr double MESSENGER_STEPS_PER_TILE = 6.0;
 static constexpr double DROPPER_HALF = 0.002;
 static constexpr std::array<double, 3> DROPPER_SHARES = {0.25, 0.5, 0.75};
 static constexpr double MAST_SPACING = 1.6;
+static constexpr double MAST_SAGITTA = 0.08;
+static constexpr int MOST_SPACING_HALVINGS = 1;
+static constexpr double MAST_APART = MAST_OFFSET;
+static constexpr double SUPPORT_MERGE = 1.0e-6;
 
 static constexpr double CROWN_HALF = 0.19;
 static constexpr double CROWN_TOP = 0.034;
@@ -105,9 +107,6 @@ static constexpr std::array<SectionPoint, 8> MAGLEV_SECTION = {{
 }};
 static constexpr std::array<SectionPoint, 4> STRIP_SECTION = {{
 	{-0.03, 0.036, GUIDE_STRIP}, {-0.03, 0.046, GUIDE_STRIP, STRIP_GLOSS}, {0.03, 0.046, GUIDE_STRIP}, {0.03, 0.036, GUIDE_STRIP},
-}};
-static constexpr std::array<SectionPoint, 4> WIRE_SECTION = {{
-	{-0.006, WIRE_HEIGHT - 0.006, WIRE}, {-0.006, WIRE_HEIGHT, WIRE}, {0.006, WIRE_HEIGHT, WIRE}, {0.006, WIRE_HEIGHT - 0.006, WIRE},
 }};
 static constexpr std::array<SectionPoint, 4> ARM_SECTION = {{
 	{-0.008, ARM_LOW, MAST, MAST_GLOSS}, {-0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_HIGH, MAST, MAST_GLOSS}, {0.008, ARM_LOW, MAST, MAST_GLOSS},
@@ -209,59 +208,142 @@ void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing)
 	}
 }
 
-/* Where along a run a piece's wires hang, and how far apart its masts stand. */
-struct WireRun {
-	double from;
-	double to;
-	double spacing;
+static RunStretch LoneStretch(const Bend &line)
+{
+	double outer = OuterSide(line.MeanCurvature());
+	return {{0.0, outer}, {line.Span(), outer}};
+}
 
-	/* How far through the span between two masts a share of the piece lies. */
-	double SpanShare(double share) const
-	{
-		double spans = std::lerp(this->from, this->to, share) / this->spacing;
-		return spans - std::floor(spans);
-	}
+static int Halvings(const Bend &line, double base)
+{
+	double curvature = line.MeanSharpness();
+	if (curvature <= 0.0) return 0;
+	double chord = std::sqrt(8.0 * MAST_SAGITTA / curvature);
+	return std::clamp(static_cast<int>(std::ceil(std::log2(base / chord))), 0, MOST_SPACING_HALVINGS);
+}
 
-	/* The shares of the piece passing a given share of every span, its first end counted and its last left to the piece beyond. */
-	std::vector<double> SharesAt(double span_share) const
+class WireRun {
+public:
+	WireRun(const Bend &line, const std::optional<RunStretch> &run) :
+		stretch(run.value_or(LoneStretch(line))), base(run.has_value() ? MAST_SPACING : line.Span()), halvings(Halvings(line, this->base)) {}
+
+	std::vector<double> Stations() const
 	{
+		const auto &[first, last] = this->stretch;
+		double finest = std::ldexp(this->base, -MOST_SPACING_HALVINGS);
+		int64_t every = int64_t{1} << (MOST_SPACING_HALVINGS - this->halvings);
+		double low = std::min(first.distance, last.distance);
+		double high = std::max(first.distance, last.distance);
 		std::vector<double> shares;
-		double low = std::min(this->from, this->to);
-		double high = std::max(this->from, this->to);
-		for (double span = std::ceil(low / this->spacing - span_share); (span + span_share) * this->spacing < high; span++) {
-			shares.push_back(((span + span_share) * this->spacing - this->from) / (this->to - this->from));
+		for (int64_t grid = static_cast<int64_t>(std::ceil(low / finest)); grid * finest < high; grid++) {
+			if (grid % every == 0) shares.push_back((grid * finest - first.distance) / (last.distance - first.distance));
 		}
 		return shares;
 	}
+
+	double OuterAt(double share) const
+	{
+		return share < 0.5 ? this->stretch.first.outer : this->stretch.second.outer;
+	}
+
+	double Slack(double low, double high) const
+	{
+		double reach = std::abs(this->DistanceAt(high) - this->DistanceAt(low)) / this->Spacing();
+		return std::min(1.0, reach * reach);
+	}
+
+	std::vector<double> SpanPoints(double span_share) const
+	{
+		const auto &[first, last] = this->stretch;
+		double low = std::min(first.distance, last.distance);
+		double high = std::max(first.distance, last.distance);
+		std::vector<double> shares;
+		for (double span = std::floor(low / this->Spacing()); (span + span_share) * this->Spacing() < high; span++) {
+			double distance = (span + span_share) * this->Spacing();
+			if (distance > low) shares.push_back((distance - first.distance) / (last.distance - first.distance));
+		}
+		return shares;
+	}
+
+private:
+	double Spacing() const { return std::ldexp(this->base, -this->halvings); }
+
+	double DistanceAt(double share) const { return std::lerp(this->stretch.first.distance, this->stretch.second.distance, share); }
+
+	RunStretch stretch;
+	double base;
+	int halvings;
 };
 
-static WireRun WiresOf(const TrackPiece &piece)
-{
-	if (const auto &distances = piece.Distances(); distances.has_value()) return {distances->first, distances->second, MAST_SPACING};
-	double span = piece.Line().Span();
-	return {0.0, span, span};
-}
-
-/* The messenger wire sags from mast to mast, holding the contact wire level on droppers. */
-static ModelMesh Messenger(const WayLine &line, const WireRun &wires)
-{
-	auto at = [&](double share) {
-		MapVector point = line.At(share, 0.0);
-		double span = wires.SpanShare(share);
-		return Vec3{point.x, point.y, ARM_LOW - 4.0 * span * (1.0 - span) * MESSENGER_SAG};
-	};
-	std::vector<double> shares = wires.SharesAt(0.0);
-	int steps = std::max(2, static_cast<int>(std::lround(line.Span() * MESSENGER_STEPS_PER_TILE)));
-	for (int step = 0; step <= steps; step++) shares.push_back(static_cast<double>(step) / steps);
-	std::ranges::sort(shares);
-
-	ModelMesh messenger;
-	for (size_t index = 1; index < shares.size(); index++) messenger.Append(Strut(at(shares[index - 1]), at(shares[index]), MESSENGER_HALF));
-	for (double span_share : DROPPER_SHARES) {
-		for (double share : wires.SharesAt(span_share)) {
-			Vec3 top = at(share);
-			messenger.Append(Strut({top.x, top.y, WIRE_HEIGHT}, top, DROPPER_HALF));
+class WireSpans {
+public:
+	WireSpans(const WayLine &line, std::vector<double> supports)
+	{
+		supports.push_back(0.0);
+		supports.push_back(1.0);
+		std::ranges::sort(supports);
+		for (double share : supports) {
+			if (!this->shares.empty() && share - this->shares.back() < SUPPORT_MERGE) continue;
+			this->shares.push_back(share);
+			this->points.push_back(line.At(share, 0.0));
 		}
+	}
+
+	Vec3 At(double share, double height) const
+	{
+		auto [span, along] = this->SpanOf(share);
+		MapVector point = this->points[span] + (this->points[span + 1] - this->points[span]) * along;
+		return {point.x, point.y, height};
+	}
+
+	std::pair<double, double> Around(double share) const
+	{
+		size_t span = this->SpanOf(share).first;
+		return {this->shares[span], this->shares[span + 1]};
+	}
+
+	template <typename Height>
+	ModelMesh Strung(double steps_per_tile, Height height) const
+	{
+		ModelMesh wire;
+		for (size_t span = 0; span + 1 < this->shares.size(); span++) {
+			int steps = std::max(1, static_cast<int>(std::lround(Length(this->points[span + 1] - this->points[span]) * steps_per_tile)));
+			for (int step = 0; step < steps; step++) {
+				double from = std::lerp(this->shares[span], this->shares[span + 1], static_cast<double>(step) / steps);
+				double to = std::lerp(this->shares[span], this->shares[span + 1], static_cast<double>(step + 1) / steps);
+				wire.Append(Strut(this->At(from, height(from)), this->At(to, height(to)), WIRE_HALF));
+			}
+		}
+		return wire;
+	}
+
+	ModelMesh Taut(double height) const
+	{
+		return this->Strung(0.0, [height](double) { return height; });
+	}
+
+private:
+	std::pair<size_t, double> SpanOf(double share) const
+	{
+		size_t span = std::clamp<size_t>(std::upper_bound(this->shares.begin(), this->shares.end(), share) - this->shares.begin(), 1, this->shares.size() - 1) - 1;
+		return {span, (share - this->shares[span]) / (this->shares[span + 1] - this->shares[span])};
+	}
+
+	std::vector<double> shares;
+	std::vector<MapVector> points;
+};
+
+/* The messenger wire sags between its real neighbouring supports, holding the contact wire level on droppers. */
+static ModelMesh Messenger(const WireSpans &spans, const WireRun &wires)
+{
+	auto sagging = [&](double share) {
+		auto [low, high] = spans.Around(share);
+		double along = (share - low) / (high - low);
+		return ARM_LOW - 4.0 * along * (1.0 - along) * MESSENGER_SAG * wires.Slack(low, high);
+	};
+	ModelMesh messenger = spans.Strung(MESSENGER_STEPS_PER_TILE, sagging);
+	for (double span_share : DROPPER_SHARES) {
+		for (double share : wires.SpanPoints(span_share)) messenger.Append(Strut(spans.At(share, WIRE_HEIGHT), spans.At(share, sagging(share)), DROPPER_HALF));
 	}
 	return messenger.Paint(WIRE);
 }
@@ -276,7 +358,7 @@ static ModelMesh Mast(const WayLine &line, double share, double side)
 {
 	MapVector foot = MastFoot(line, share, side);
 	ModelMesh mast = Block(foot, line.Along(share), {-MAST_HALF, -MAST_HALF, -0.02}, {MAST_HALF, MAST_HALF, MAST_HEIGHT}).Paint(MAST).Gloss(MAST_GLOSS);
-	return mast.Append(Laid(Stretch{foot, line.At(share, -side * ARM_REACH)}, ARM_SECTION, 1));
+	return mast.Append(Laid(Stretch{foot, line.At(share, 0.0)}, ARM_SECTION, 1));
 }
 
 static double TrackGap(const MapVector &foot)
@@ -295,12 +377,15 @@ static double TrackGap(const MapVector &foot)
 	return gap;
 }
 
-static std::optional<double> MastSide(const WayLine &line, double share, bool clearing, const MastBan &banned)
+static std::optional<double> MastSide(const Bend &line, double outer, double share, bool clearing, const MastBan &banned, std::span<const MapVector> standing)
 {
-	std::span<const double> sides = clearing ? std::span(MAST_SIDES) : std::span(MAST_SIDES).first(1);
-	for (double side : sides) {
+	std::array<double, 2> order = {outer, -outer};
+	for (double side : std::span(order).first(clearing ? order.size() : 1)) {
 		MapVector foot = MastFoot(line, share, side);
-		if ((!clearing || TrackGap(foot) >= MAST_CLEARANCE) && !(banned && banned(foot))) return side;
+		if (clearing && TrackGap(foot) < MAST_CLEARANCE) continue;
+		if (banned && banned(foot)) continue;
+		if (std::ranges::any_of(standing, [&](const MapVector &other) { return Length(other - foot) < MAST_APART; })) continue;
+		return side;
 	}
 	return std::nullopt;
 }
@@ -310,17 +395,21 @@ void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing
 	const TrackSite &site = track.Site();
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
 	const std::vector<TrackPiece> &pieces = track.Pieces();
-	bool run = std::ranges::any_of(pieces, [](const TrackPiece &piece) { return piece.Distances().has_value(); });
+	std::vector<MapVector> standing;
 	for (size_t rank = 0; rank < pieces.size(); rank++) {
 		const TrackPiece &piece = pieces[rank];
-		const WayLine &line = piece.Line();
-		WireRun wires = WiresOf(piece);
-		ModelMesh parts = piece.Body(WIRE_SECTION, false);
-		if (!track.Branch(rank)) parts.Append(Messenger(line, wires));
-		if (piece.Distances().has_value() || rank == MAIN_LINE) {
-			for (double share : wires.SharesAt(0.0)) {
-				std::optional<double> side = MastSide(line, share, site.grounded && !run, banned);
-				if (side.has_value()) parts.Append(Mast(line, share, *side));
+		const Bend &line = piece.Line();
+		WireRun wires(line, piece.Stretch());
+		std::vector<double> stations = wires.Stations();
+		WireSpans spans(line, stations);
+		ModelMesh parts = spans.Taut(WIRE_HEIGHT).Paint(WIRE);
+		if (!track.Branch(rank)) parts.Append(Messenger(spans, wires));
+		if (piece.Stretch().has_value() || rank == MAIN_LINE) {
+			for (double share : stations) {
+				std::optional<double> side = MastSide(line, wires.OuterAt(share), share, site.grounded, banned, standing);
+				if (!side.has_value()) continue;
+				standing.push_back(MastFoot(line, share, *side));
+				parts.Append(Mast(line, share, *side));
 			}
 		}
 		Lay(mesh, std::move(parts), track.Lift(piece), piece.FootingOn(footing));

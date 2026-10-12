@@ -46,7 +46,7 @@ public:
 
 	Track Id() const { return this->track; }
 	bool Eased() const { return this->drawn.course.has_value(); }
-	const WayLine &Line() const { return this->drawn.line; }
+	const Bend &Line() const { return this->drawn.line; }
 	ModelMesh Body(Section section, bool capped) const;
 
 	template <size_t N>

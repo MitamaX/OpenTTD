@@ -15,7 +15,6 @@
 #include <array>
 #include <bit>
 #include <cmath>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <ranges>
@@ -385,6 +384,8 @@ std::vector<size_t> Run::Folded(const RunLine &line) const
 		if (line.Between(segment, this->After(segment)).PeakSharpness() <= FOLD_CURVATURE) continue;
 		folded.insert(folded.end(), {segment, this->After(segment)});
 	}
+	std::ranges::sort(folded);
+	folded.erase(std::ranges::unique(folded).begin(), folded.end());
 	return folded;
 }
 
