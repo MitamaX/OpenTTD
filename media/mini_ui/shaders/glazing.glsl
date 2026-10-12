@@ -73,7 +73,7 @@ Seen WallSeen(Sighting sighting, Massing massing, float blur)
 	float columns = LinesAt(along / pitch - 0.5, opening.width / pitch, pixel / pitch);
 	float windows = walled && opening.kind != OPEN_NONE ? columns * Band(row, opening.sill, opening.sill + opening.height, pixel) : 0.0;
 	vec3 face = Saturated(Linear(walled ? massing.wall : massing.roof), MIRRORED_SATURATION);
-	vec3 pane = grid == WINDOWS_CURTAIN ? Linear(massing.wall) * MIRRORED_GLAZED_BODY : Linear(DIM_ROOM);
+	vec3 pane = grid == WINDOWS_CURTAIN ? Linear(massing.wall) * MIRRORED_GLAZED_BODY : Linear(DIM_ROOM) * DIM_ROOM_DAYLIGHT;
 	float cover = 1.0 - smoothstep(-0.5 * blur, 0.5 * blur, point.z - massing.box.top);
 	return Seen(mix(face, pane, windows * MIRRORED_WINDOW_CONTRAST), normal, CanyonOpenness(point.z - massing.box.foot), SKY_LIGHT * MIRRORED_WINDOW_SHEEN * windows, cover);
 }
