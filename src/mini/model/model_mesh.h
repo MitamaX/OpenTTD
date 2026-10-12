@@ -93,12 +93,9 @@ struct ModelMesh : TriangleList<ModelVertex> {
 	}
 
 	template <class Tone>
-	ModelMesh &PaintFacetsBy(Tone tone)
+	ModelMesh &PaintCornersBy(Tone tone)
 	{
-		for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
-			uint32_t rgb = tone(this->FacetCentre(first), Normalised(this->FacetNormal(first)), first);
-			for (size_t corner = 0; corner < 3; corner++) this->vertices[this->indices[first + corner]].Paint(rgb);
-		}
+		for (ModelVertex &vertex : this->vertices) vertex.Paint(tone(vertex.Position(), vertex.Normal()));
 		return *this;
 	}
 
