@@ -274,6 +274,10 @@ const vec2 TOY_PEBBLE_SEED = vec2(8.3, 4.1);
 const float TOY_PEBBLE_SWAY = 0.6;
 const vec2 TOY_PEBBLE_BLEND = vec2(0.88, 1.0);
 const float TOY_PEBBLE_VARIETY = 0.12;
+const float TOY_COBBLES_PER_TILE = 3.5;
+const ivec2 TOY_COBBLE_SEED = ivec2(4219, 1733);
+const float TOY_COBBLE_JOINT = 0.18;
+const float TOY_COBBLE_JOINT_SHADE = 0.8;
 
 const vec3 TOY_STRATA[TOY_STRATA_COUNT] = TOY_STRATA_TONES;
 
@@ -964,16 +968,42 @@ Patch Beach(Site site)
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
-vec3 RiprapStone(Bare bare)
+vec3 ToyRiprapStone(vec2 p)
 {
-	return ToyOr(bare.scree, mix(bare.scree, ROCK, 0.5));
+	vec2 q = p * TOY_COBBLES_PER_TILE;
+	ivec2 cell = ivec2(floor(q));
+	vec2 at = fract(q);
+	float nearest = PAST_EVERY_SPECK;
+	float next = PAST_EVERY_SPECK;
+	ivec2 owner = cell;
+	for (int dy = -1; dy <= 1; dy++) {
+		for (int dx = -1; dx <= 1; dx++) {
+			ivec2 other = cell + ivec2(dx, dy);
+			float gap = distance(at, vec2(dx, dy) + Hash2(other + TOY_COBBLE_SEED));
+			if (gap < nearest) {
+				next = nearest;
+				nearest = gap;
+				owner = other;
+			} else {
+				next = min(next, gap);
+			}
+		}
+	}
+	vec3 candy = ToyStratum(int(Pick(Hash(owner + TOY_COBBLE_SEED), TOY_STRATA_COUNT)));
+	float joint = 1.0 - smoothstep(0.0, TOY_COBBLE_JOINT, next - nearest);
+	return mix(ToyStrataMean(), candy * mix(1.0, TOY_COBBLE_JOINT_SHADE, joint), Resolved(TOY_COBBLES_PER_TILE));
+}
+
+vec3 RiprapStone(Site site)
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? ToyRiprapStone(site.p) : mix(site.bare.scree, ROCK, 0.5);
 }
 
 vec3 Riprap(Site site)
 {
 	vec2 p = site.p;
 	float lumps = smoothstep(0.3, 0.7, Octave(p, BOULDERS_PER_TILE));
-	vec3 stone = RiprapStone(site.bare) * Varied(Octave(p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
+	vec3 stone = RiprapStone(site) * Varied(Octave(p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
 	return stone * mix(0.62, 1.12, lumps) * mix(SPLASH_SHADE, 1.0, Dried(ShoreLift(site)));
 }
 
