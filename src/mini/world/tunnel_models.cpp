@@ -21,6 +21,7 @@
 #include "../core/seed.h"
 #include "../core/tones.h"
 #include "../map/tile_shapes.h"
+#include "track_models.h"
 #include "way_shapes.h"
 
 #include "../../safeguards.h"
@@ -29,9 +30,10 @@ static constexpr double FACE_HALF = 0.42;
 static constexpr double RAIL_MOUTH_HALF = 0.22;
 static constexpr double ROAD_MOUTH_HALF = 0.31;
 /* The mouth stands as high as what runs through it reaches, a train's wires among them, however high the ground's levels are drawn. */
-static constexpr double SPRING_HEIGHT = 0.26;
-static constexpr double CROWN_HEIGHT = 0.45;
+static constexpr double SPRING_HEIGHT = 0.24;
+static constexpr double CROWN_HEIGHT = 0.43;
 static constexpr double ARCH_RISE = CROWN_HEIGHT - SPRING_HEIGHT;
+static_assert(CROWN_HEIGHT > ARM_LOW);
 static constexpr double FACE_PROUD = 0.08;
 static constexpr double MOUTH_PROUD = 0.006;
 static constexpr double CORNICE_HEIGHT = 0.03;
@@ -48,6 +50,7 @@ static constexpr double RING_WIDTH = 0.055;
 static constexpr int VOUSSOIRS = 9;
 static constexpr double KEYSTONE_RISE = 0.025;
 static constexpr double STONE_OVER_CROWN = RING_WIDTH + KEYSTONE_RISE;
+static constexpr double LEAST_FACE_HEIGHT = CROWN_HEIGHT + STONE_OVER_CROWN + CORNICE_HEIGHT;
 static constexpr double STONE_VARIETY = 0.08;
 static constexpr uint32_t MASONRY_SALT = 0x7A11E5C3U;
 static constexpr uint32_t PORTAL_STONE = 0x8E887C;
@@ -272,7 +275,7 @@ static ModelMesh MouthOpening(const PortalFrame &frame, const std::vector<MapVec
 static ModelMesh PortalCornice(const MapVector &edge, const MapVector &inward, double height)
 {
 	MapVector middle = edge - inward * (CORNICE_PROUD * 0.5);
-	return Block(middle, RightOf(inward), {-FACE_HALF - CORNICE_OVERHANG, -CORNICE_PROUD * 0.5, height}, {FACE_HALF + CORNICE_OVERHANG, CORNICE_PROUD * 0.5, height + CORNICE_HEIGHT});
+	return Block(middle, RightOf(inward), {-FACE_HALF - CORNICE_OVERHANG, -CORNICE_PROUD * 0.5, height - CORNICE_HEIGHT}, {FACE_HALF + CORNICE_OVERHANG, CORNICE_PROUD * 0.5, height});
 }
 
 /* The face stands proud of the cut's wall as high as the hill over it and never lower than its mouth needs, its arch's reveal darkening into the mouth. */
@@ -286,7 +289,7 @@ void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 	PortalFrame frame(edge, inward);
 	double floor = TileGround(tx, ty).Level(centre.x, centre.y);
 	double hill = HillOver(frame, tx + static_cast<int>(inward.x), ty + static_cast<int>(inward.y), floor);
-	double height = std::max((hill - floor) * LevelRise(), CROWN_HEIGHT + STONE_OVER_CROWN);
+	double height = std::max((hill - floor) * LevelRise(), LEAST_FACE_HEIGHT);
 	double mouth = GetTunnelBridgeTransportType(entrance) == TRANSPORT_RAIL ? RAIL_MOUTH_HALF : ROAD_MOUTH_HALF;
 	std::vector<MapVector> outline = MouthOutline(mouth);
 
