@@ -36,8 +36,7 @@ const float PLAN_STRIDE = 0.618034;
 const float FLOOR_SLAB = 1.0;
 const float ROOM_SIDE_SHADE = 0.8;
 const vec2 ROOM_DAYLIGHTS = vec2(0.35, 0.04);
-const float PIECE_TOP_LIGHT = 1.2;
-const float SUNBEAM_LIGHT = 0.25;
+const float SUNBEAM_LIGHT = 0.15;
 const float SUNLIT_ROOM_SHARE = 0.2;
 const float MEAN_SUNBEAM = SUNBEAM_LIGHT * SUNLIT_ROOM_SHARE;
 const vec2 ROOM_RESOLVED_PIXELS = vec2(0.5, 1.2);
@@ -330,7 +329,7 @@ Sight PieceSeen(Sight sight, Room room, Shell shell, Sightline line, int slot)
 	float sunk = max(front, max(enter.x, enter.y));
 	if (sunk >= sight.sunk || sunk > min(front + piece.size.z, min(leave.x, leave.y))) return sight;
 	vec3 paint = piece.dyed ? CurtainPaint(room) : piece.paint;
-	float shade = sunk == front ? 1.0 : sunk == enter.y ? PIECE_TOP_LIGHT : ROOM_SIDE_SHADE;
+	float shade = sunk == front || sunk == enter.y ? 1.0 : ROOM_SIDE_SHADE;
 	return Sight(paint * shade, line.from + line.shift * sunk, sunk, false);
 }
 
