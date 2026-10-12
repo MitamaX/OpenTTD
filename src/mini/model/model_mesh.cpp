@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <numeric>
 #include <utility>
 
 #include "../core/seed.h"
@@ -143,21 +144,26 @@ Vec3 ModelMesh::FacetCentre(size_t first) const
 	return sum * (1.0 / 3.0);
 }
 
-ModelMesh &ModelMesh::Facet()
+template <class Flat>
+ModelMesh &ModelMesh::Unweld(Flat flat)
 {
 	std::vector<ModelVertex> corners;
 	corners.reserve(this->indices.size());
 	for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
-		std::array<ModelVertex, 3> triangle = {this->vertices[this->indices[first]], this->vertices[this->indices[first + 1]], this->vertices[this->indices[first + 2]]};
 		Vec3 normal = this->FacetNormal(first);
-		for (ModelVertex &corner : triangle) {
-			corner.Face(normal);
-			corners.push_back(corner);
+		for (size_t corner = 0; corner < 3; corner++) {
+			ModelVertex &vertex = corners.emplace_back(this->vertices[this->indices[first + corner]]);
+			if (flat(first / 3)) vertex.Face(normal);
 		}
 	}
 	this->vertices = std::move(corners);
-	for (size_t index = 0; index < this->indices.size(); index++) this->indices[index] = static_cast<uint32_t>(index);
+	std::iota(this->indices.begin(), this->indices.end(), uint32_t{0});
 	return *this;
+}
+
+ModelMesh &ModelMesh::Facet()
+{
+	return this->Unweld([](size_t) { return true; });
 }
 
 /* Each corner takes the normals of the triangles sharing it, weighed by their areas. */
@@ -172,37 +178,44 @@ ModelMesh &ModelMesh::Smooth()
 	return *this;
 }
 
-ModelMesh &ModelMesh::FacetPlanes()
+static std::map<std::pair<uint32_t, uint32_t>, std::vector<size_t>> TrianglesByEdge(const ModelMesh &mesh)
 {
-	this->Smooth();
 	std::map<std::pair<uint32_t, uint32_t>, std::vector<size_t>> sharing;
-	for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
+	for (size_t first = 0; first + 2 < mesh.indices.size(); first += 3) {
 		for (size_t corner = 0; corner < 3; corner++) {
-			uint32_t from = this->indices[first + corner];
-			uint32_t to = this->indices[first + (corner + 1) % 3];
-			sharing[{std::min(from, to), std::max(from, to)}].push_back(first);
+			uint32_t from = mesh.indices[first + corner];
+			uint32_t to = mesh.indices[first + (corner + 1) % 3];
+			sharing[{std::min(from, to), std::max(from, to)}].push_back(first / 3);
 		}
 	}
-	std::vector<bool> plane(this->indices.size() / 3, false);
-	for (const auto &[edge, triangles] : sharing) {
-		for (size_t first : triangles) {
-			for (size_t other : triangles) {
-				if (first != other && Dot(Normalised(this->FacetNormal(first)), Normalised(this->FacetNormal(other))) > COPLANAR_DOT) plane[first / 3] = true;
+	return sharing;
+}
+
+static bool Coplanar(const Vec3 &unit, const Vec3 &other)
+{
+	return Dot(unit, other) > COPLANAR_DOT;
+}
+
+static std::vector<bool> TrianglesWithCoplanarNeighbour(const ModelMesh &mesh)
+{
+	std::vector<Vec3> units;
+	for (size_t first = 0; first + 2 < mesh.indices.size(); first += 3) units.push_back(Normalised(mesh.FacetNormal(first)));
+	std::vector<bool> coplanar(units.size(), false);
+	for (const auto &[edge, triangles] : TrianglesByEdge(mesh)) {
+		for (size_t at = 0; at < triangles.size(); at++) {
+			for (size_t beyond = at + 1; beyond < triangles.size(); beyond++) {
+				if (Coplanar(units[triangles[at]], units[triangles[beyond]])) coplanar[triangles[at]] = coplanar[triangles[beyond]] = true;
 			}
 		}
 	}
-	std::vector<ModelVertex> corners;
-	corners.reserve(this->indices.size());
-	for (size_t first = 0; first + 2 < this->indices.size(); first += 3) {
-		for (size_t corner = 0; corner < 3; corner++) {
-			ModelVertex vertex = this->vertices[this->indices[first + corner]];
-			if (plane[first / 3]) vertex.Face(this->FacetNormal(first));
-			corners.push_back(vertex);
-		}
-	}
-	this->vertices = std::move(corners);
-	for (size_t index = 0; index < this->indices.size(); index++) this->indices[index] = static_cast<uint32_t>(index);
-	return *this;
+	return coplanar;
+}
+
+ModelMesh &ModelMesh::FacetPlanes()
+{
+	this->Smooth();
+	std::vector<bool> coplanar = TrianglesWithCoplanarNeighbour(*this);
+	return this->Unweld([&](size_t triangle) { return coplanar[triangle]; });
 }
 
 /* Normals lean outward from a centre, so a cluster of facets shades like the one round mass it stands for. */

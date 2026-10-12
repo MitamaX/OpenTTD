@@ -118,6 +118,9 @@ struct ModelMesh : TriangleList<ModelVertex> {
 
 private:
 	ModelMesh &Trait(double share);
+
+	template <class Flat>
+	ModelMesh &Unweld(Flat flat);
 };
 
 #endif /* MINI_MODEL_MODEL_MESH_H */
