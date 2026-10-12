@@ -278,7 +278,12 @@ const float TOY_COBBLES_PER_TILE = 3.5;
 const ivec2 TOY_COBBLE_SEED = ivec2(4219, 1733);
 const float TOY_COBBLE_JOINT = 0.18;
 const float TOY_COBBLE_JOINT_SHADE = 0.8;
+const float TOY_COBBLE_DOME = 0.6;
+const float AVERAGE_DOME = 0.5;
+const vec2 TOY_COBBLE_SHADES = vec2(0.5, 1.12);
 const ivec2 TOY_COBBLE_COLOUR_SEED = ivec2(2713, 6151);
+const vec2 RIPRAP_LUMP_EDGES = vec2(0.3, 0.7);
+const vec2 RIPRAP_SHADES = vec2(0.62, 1.12);
 
 const vec3 TOY_STRATA[TOY_STRATA_COUNT] = TOY_STRATA_TONES;
 
@@ -973,7 +978,12 @@ Patch Beach(Site site)
 	return Patch(mix(sand, Meadow(site), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
 }
 
-vec3 ToyRiprapStone(vec2 p)
+struct Heap {
+	vec3 tone;
+	float shade;
+};
+
+Heap ToyRiprapHeap(vec2 p)
 {
 	vec2 q = p * TOY_COBBLES_PER_TILE;
 	ivec2 cell = ivec2(floor(q));
@@ -994,23 +1004,27 @@ vec3 ToyRiprapStone(vec2 p)
 			}
 		}
 	}
+	float resolved = Resolved(TOY_COBBLES_PER_TILE);
+	float depth = next - nearest;
 	vec3 candy = ToyStratum(int(Pick(Hash(owner + TOY_COBBLE_COLOUR_SEED), TOY_STRATA_COUNT)));
-	float joint = 1.0 - smoothstep(0.0, TOY_COBBLE_JOINT, next - nearest);
-	return mix(ToyStrataMean(), candy * mix(1.0, TOY_COBBLE_JOINT_SHADE, joint), Resolved(TOY_COBBLES_PER_TILE));
+	float joint = 1.0 - smoothstep(0.0, TOY_COBBLE_JOINT, depth);
+	float dome = mix(AVERAGE_DOME, smoothstep(0.0, TOY_COBBLE_DOME, depth), resolved);
+	return Heap(mix(ToyStrataMean(), candy * mix(1.0, TOY_COBBLE_JOINT_SHADE, joint), resolved), mix(TOY_COBBLE_SHADES.x, TOY_COBBLE_SHADES.y, dome));
 }
 
 /* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
-vec3 RiprapStone(Site site)
+Heap RiprapHeap(Site site)
 {
-	return Landscape() == LANDSCAPE_TOYLAND ? ToyRiprapStone(site.p) : mix(site.bare.scree, ROCK, 0.5);
+	if (Landscape() == LANDSCAPE_TOYLAND) return ToyRiprapHeap(site.p);
+	float lumps = smoothstep(RIPRAP_LUMP_EDGES.x, RIPRAP_LUMP_EDGES.y, Octave(site.p, BOULDERS_PER_TILE));
+	return Heap(mix(site.bare.scree, ROCK, 0.5), mix(RIPRAP_SHADES.x, RIPRAP_SHADES.y, lumps));
 }
 
 vec3 Riprap(Site site)
 {
-	vec2 p = site.p;
-	float lumps = smoothstep(0.3, 0.7, Octave(p, BOULDERS_PER_TILE));
-	vec3 stone = RiprapStone(site) * Varied(Octave(p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
-	return stone * mix(0.62, 1.12, lumps) * mix(SPLASH_SHADE, 1.0, Dried(ShoreLift(site)));
+	Heap heap = RiprapHeap(site);
+	vec3 stone = heap.tone * Varied(Octave(site.p + 7.7, BOULDERS_PER_TILE * 0.45), 0.3);
+	return stone * heap.shade * mix(SPLASH_SHADE, 1.0, Dried(ShoreLift(site)));
 }
 
 /* Beside a railway or a road the shore is armoured with heaped stone. */
