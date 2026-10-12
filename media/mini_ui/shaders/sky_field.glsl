@@ -2,8 +2,8 @@ uniform usampler2D u_sky_field;
 
 const float WALL_FACING = 2.0;
 const float BLOCKED_SKY_RETURN = 0.3;
-const uint SKY_SECTOR_MASK = 65535u;
-const uint SKY_BYTE_MASK = 255u;
+const uint SKY_SECTOR_MASK = (1u << SKY_SECTOR_BITS) - 1u;
+const uint SKY_BYTE_MASK = (1u << SKY_REACH_SHIFT) - 1u;
 const float LEAST_SKY_WEIGHT = 1e-3;
 
 float SkyOpenness(uvec4 horizons, float above, vec2 within, vec3 normal)

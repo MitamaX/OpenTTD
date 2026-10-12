@@ -52,6 +52,7 @@ add_files(
     post_target.cpp
     post_target.h
     rail_vehicle_models.cpp
+    rect_spans.h
     road_models.cpp
     road_models.h
     road_vehicle_models.cpp

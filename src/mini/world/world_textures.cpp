@@ -17,25 +17,15 @@
 #include "../map/tile_shapes.h"
 #include "../map/way_bends.h"
 #include "frame_units.h"
+#include "rect_spans.h"
 
 #include "../../safeguards.h"
 
 static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_flow", "u_massing", "u_sky_field"};
-/* Two spans go up as one where the area bounding both is at most this many times what they cover, or at most this many texels. */
-static constexpr int64_t MOST_JOINED_SPREAD = 2;
+/* Two spans go up as one where the area bounding both is at most this many texels, or MOST_JOINED_SPREAD times what they cover. */
 static constexpr int64_t FREELY_JOINED_TEXELS = 128 * 128;
 /* The kinds of change that move where water lies. */
 static constexpr ChangeKinds WATER_MOVES = {ChangeKind::Water, ChangeKind::Shape};
-
-static int64_t Area(const Rect &span)
-{
-	return static_cast<int64_t>(span.Width()) * span.Height();
-}
-
-static Rect Joined(const Rect &a, const Rect &b)
-{
-	return TakingIn(TakingIn(a, b.left, b.top), b.right, b.bottom);
-}
 
 WorldTextures::Source WorldTextures::SourceOf(uint unit) const
 {
@@ -112,7 +102,7 @@ void WorldTextures::ResurveySky(std::span<const Rect> massing_moves, std::span<c
 
 void WorldTextures::Take(const Rect &changed)
 {
-	this->spans.push_back({changed, Area(changed)});
+	this->spans.push_back({changed, AreaOf(changed)});
 }
 
 /* Spans lying over or close by one another are joined, so a texture is sent each area once a frame and in as few pieces as it takes. */
@@ -120,9 +110,9 @@ void WorldTextures::Coalesce()
 {
 	for (size_t kept = 0; kept < this->spans.size(); kept++) {
 		for (size_t other = kept + 1; other < this->spans.size();) {
-			Rect joined = Joined(this->spans[kept].area, this->spans[other].area);
+			Rect joined = Enclosing(this->spans[kept].area, this->spans[other].area);
 			int64_t changed = this->spans[kept].changed + this->spans[other].changed;
-			if (Area(joined) > std::max(FREELY_JOINED_TEXELS, MOST_JOINED_SPREAD * changed)) {
+			if (AreaOf(joined) > std::max(FREELY_JOINED_TEXELS, MOST_JOINED_SPREAD * changed)) {
 				other++;
 				continue;
 			}

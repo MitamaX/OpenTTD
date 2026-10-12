@@ -22,15 +22,14 @@
 #include "../core/camera.h"
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
+#include "rect_spans.h"
 
 #include "../../safeguards.h"
 
 static constexpr std::pair<float, float> NO_RUN = {1.0f, 0.0f};
 static constexpr std::pair<float, float> UNBOUNDED_RUN = {0.0f, std::numeric_limits<float>::infinity()};
-static constexpr int64_t MOST_JOINED_SPREAD = 2;
 static constexpr float MOST_STEPS = 255.0f;
 static constexpr float STRAIGHT_RAY = 1e-6f;
-static constexpr float TILE_HALF = 0.5f;
 
 struct SkyWay {
 	float x;
@@ -135,8 +134,8 @@ private:
 	{
 		float per_x = PerCell(way.x);
 		float per_y = PerCell(way.y);
-		float next_x = per_x * TILE_HALF;
-		float next_y = per_y * TILE_HALF;
+		float next_x = per_x * HALF_TILE;
+		float next_y = per_y * HALF_TILE;
 		int x = this->tx;
 		int y = this->ty;
 		float tallest_height = this->around.Tallest() - this->floor;
@@ -164,7 +163,7 @@ private:
 		if (!standing.has_value() || (this->own.has_value() && standing->anchor == *this->own)) return;
 		float height = standing->box.top - this->floor;
 		if (height <= 0.0f) return;
-		std::optional<float> run = RunInto(standing->box, this->tx + TILE_HALF, this->ty + TILE_HALF, way);
+		std::optional<float> run = RunInto(standing->box, this->tx + HALF_TILE, this->ty + HALF_TILE, way);
 		if (!run.has_value()) return;
 		float tangent = height / std::max(*run, NEAREST_HORIZON);
 		if (tangent > best.tangent) best = {tangent, height, *run};
@@ -183,16 +182,6 @@ void SkyField::Clear(Dimension map)
 	this->generation = 0;
 	this->texels.assign(static_cast<size_t>(map.width) * map.height, {});
 	this->surveyed.assign(this->texels.size(), 0);
-}
-
-static int64_t AreaOf(const Rect &span)
-{
-	return static_cast<int64_t>(span.Width()) * span.Height();
-}
-
-static Rect Enclosing(const Rect &a, const Rect &b)
-{
-	return TakingIn(TakingIn(a, b.left, b.top), b.right, b.bottom);
 }
 
 static bool Precedes(const Rect &a, const Rect &b)
