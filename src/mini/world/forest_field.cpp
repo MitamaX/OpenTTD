@@ -224,6 +224,7 @@ public:
 private:
 	TilePoint Spot(uint tree);
 	TreeRolls Roll();
+	bool ClosesCanopy() const;
 	double Scale(double spread, double fringe, bool spare) const;
 	ShapedTree Grown(const TilePoint &spot, double fringe, bool spare);
 
@@ -301,13 +302,20 @@ TreeRolls Grove::Roll()
 	return rolls;
 }
 
+bool Grove::ClosesCanopy() const
+{
+	bool canopied = this->kind == TreeKind::Broadleaf || this->kind == TreeKind::Conifer || this->kind == TreeKind::Jungle;
+	return canopied && this->count >= THICK_WOOD;
+}
+
 double Grove::Scale(double spread, double fringe, bool spare) const
 {
 	double aged = TREE_AGE_SCALES[to_underlying(this->age)] * spread;
 	double fringed = std::lerp(FRINGE_SCALE, 1.0, fringe);
 	double spared = spare ? SPARE_TREE_SCALE : 1.0;
 	double sweet = this->kind == TreeKind::Toy ? TOY_TREE_SCALE : 1.0;
-	return aged * fringed * spared * sweet;
+	double woodland = this->ClosesCanopy() ? TREE_WOODLAND_GROWTH : 1.0;
+	return aged * fringed * spared * sweet * woodland;
 }
 
 ShapedTree Grove::Grown(const TilePoint &spot, double fringe, bool spare)

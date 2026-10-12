@@ -41,9 +41,12 @@ inline constexpr std::array<VertexAttribute, 2> TREE_INSTANCE_LAYOUT = {{
 inline constexpr SeedRange TREE_SPREAD = {0.7, 1.25};
 inline constexpr double TOY_TREE_SCALE = 1.4;
 
-inline constexpr double TREE_LARGEST_NATURAL_SCALE = std::ranges::max(TREE_AGE_SCALES) * TREE_SPREAD.high;
+inline constexpr double TREE_WOODLAND_GROWTH = 1.35;
+
+inline constexpr double TREE_LARGEST_SPREAD_SCALE = std::ranges::max(TREE_AGE_SCALES) * TREE_SPREAD.high;
+inline constexpr double TREE_LARGEST_NATURAL_SCALE = TREE_LARGEST_SPREAD_SCALE * TREE_WOODLAND_GROWTH;
 /* A tree's size byte spans its scale from nothing to the largest any tree is planted at. */
-inline constexpr double TREE_LARGEST_SCALE = TREE_LARGEST_NATURAL_SCALE * TOY_TREE_SCALE;
+inline constexpr double TREE_LARGEST_SCALE = std::max(TREE_LARGEST_NATURAL_SCALE, TREE_LARGEST_SPREAD_SCALE * TOY_TREE_SCALE);
 
 inline constexpr std::array<double, 2> TREE_THICKET_SCALES = {0.8, 1.2};
 inline constexpr std::array<double, 2> TREE_STRETCHES = {0.85, 1.2};
