@@ -345,7 +345,7 @@ std::vector<ForestField::StandingTree> ForestField::Kept(const Cell &cell)
 	std::vector<StandingTree> kept;
 	for (const Run &run : cell.runs) {
 		for (size_t index = run.first; index < run.first + run.count; index++) {
-			if (!cell.stale_tiles[cell.tiles[index]]) kept.push_back({run.shape, cell.tiles[index], cell.trees[index]});
+			if (!cell.stale_tiles[cell.tree_tiles[index]]) kept.push_back({run.shape, cell.tree_tiles[index], cell.trees[index]});
 		}
 	}
 	return kept;
@@ -373,7 +373,7 @@ void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 	std::ranges::stable_sort(standing, {}, [](const StandingTree &entry) { return std::make_pair(entry.shape, entry.tile); });
 
 	cell.trees.clear();
-	cell.tiles.clear();
+	cell.tree_tiles.clear();
 	cell.runs.clear();
 	cell.low = 0.0;
 	cell.high = 0.0;
@@ -383,7 +383,7 @@ void ForestField::Plant(Cell &cell, const TileSpan &tiles) const
 		cell.low = cell.trees.empty() ? tree.level : std::min<double>(cell.low, tree.level);
 		cell.high = cell.trees.empty() ? tree.level : std::max<double>(cell.high, tree.level);
 		cell.trees.push_back(tree);
-		cell.tiles.push_back(tile);
+		cell.tree_tiles.push_back(tile);
 	}
 	cell.stale_tiles.reset();
 	cell.planted = true;
@@ -507,7 +507,7 @@ void ForestField::Gather(const Sight &sight, TreeDetail coarsest, TreeBatch &bat
 /* Past what the field may keep, the blocks longest out of every view let their trees go, so a big map only holds the forests about the view. */
 void ForestField::Evict()
 {
-	auto bytes = [](const Cell &cell) { return cell.trees.size() * sizeof(TreeInstance) + cell.tiles.size() * sizeof(TileNumber) + cell.runs.size() * sizeof(Run); };
+	auto bytes = [](const Cell &cell) { return cell.trees.size() * sizeof(TreeInstance) + cell.tree_tiles.size() * sizeof(TileNumber) + cell.runs.size() * sizeof(Run); };
 	this->keep.Trim(this->cells, this->frame, bytes, &Cell::drawn, [](Cell &cell) { cell = Cell{}; });
 }
 

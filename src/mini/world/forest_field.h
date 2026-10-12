@@ -57,6 +57,7 @@ using TreeBatch = InstanceBatch<TreeInstance>;
 class ForestField {
 public:
 	static constexpr int CELL_TILES = 16;
+	static constexpr int CELL_AREA = CELL_TILES * CELL_TILES;
 
 	void Sync(const WorldChanges &changes);
 	void Refresh(const SceneView &camera, TreeDetail coarsest_shown, TreeDetail coarsest_cast, double cast_reach);
@@ -68,7 +69,7 @@ private:
 	class DetailReach;
 
 	using TileNumber = uint8_t;
-	static_assert(CELL_TILES * CELL_TILES - 1 <= std::numeric_limits<TileNumber>::max());
+	static_assert(CELL_AREA - 1 <= std::numeric_limits<TileNumber>::max());
 
 	/* A shape's trees within a block, lying together. */
 	struct Run {
@@ -80,9 +81,9 @@ private:
 	/* A block's trees, sorted by shape, the height levels its ground spans under them, and whether the flora or the ground changed under them since they were planted. */
 	struct Cell {
 		std::vector<TreeInstance> trees;
-		std::vector<TileNumber> tiles;
+		std::vector<TileNumber> tree_tiles;
 		std::vector<Run> runs;
-		std::bitset<CELL_TILES * CELL_TILES> stale_tiles;
+		std::bitset<CELL_AREA> stale_tiles;
 		double low = 0.0;
 		double high = 0.0;
 		bool planted = false;
