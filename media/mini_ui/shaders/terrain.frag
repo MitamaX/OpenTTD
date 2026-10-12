@@ -331,8 +331,8 @@ const float FAR_FLOOR_SHADE = 0.7;
 const float GRID_DEPTH = 0.6;
 const float HIDDEN_BAND_MARGIN = 1.1;
 
-const float COURSES_PER_TILE = 36.0;
-const float BLOCKS_PER_TILE = 24.0;
+const float COURSES_PER_TILE = 48.0;
+const float BLOCKS_PER_TILE = 34.0;
 const float MORTAR_SHARE = 0.08;
 const vec3 MASONRY = vec3(0.56, 0.53, 0.49);
 const float COPING_BAND = 0.035;
