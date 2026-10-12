@@ -56,11 +56,6 @@ float PaneReflectance(uint material)
 	}
 }
 
-bool Coated()
-{
-	return v_surface.x == CLAD_GLASS;
-}
-
 Pane PaneOf(vec3 room, Clad clad)
 {
 	return Pane(room * v_transmission, v_film, PaneReflectance(v_surface.x), clad.daylight, clad.sunbeam, clad.lamp);
@@ -154,7 +149,7 @@ vec4 CladRadiance(Clad clad, vec3 normal, mat3 frame)
 	vec3 mirror_way = reflect(-view, normal);
 	vec3 light = clad.glass < 1.0 ? SurfaceLight(albedo, Surroundings(mirror_way), normal, view, Coat(roughness, DIELECTRIC_REFLECTANCE), occlusion, lighting, lighting.sun) : vec3(0.0);
 	if (clad.glass > 0.0) {
-		ivec2 own = Coated() ? AnchorAt(ivec2(floor(v_position.xy - frame[2].xy * FACE_INSET))) : NO_ANCHOR;
+		ivec2 own = AnchorAt(ivec2(floor(v_position.xy - frame[2].xy * FACE_INSET)));
 		vec3 reflection = Mirrored(v_position, frame[2], mirror_way, own, roughness, clouds);
 		light = mix(light, PaneLight(PaneOf(albedo, clad), reflection, normal, view, roughness, occlusion, lighting), clad.glass);
 	}

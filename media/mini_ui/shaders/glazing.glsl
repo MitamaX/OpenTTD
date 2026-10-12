@@ -6,6 +6,7 @@ const float MIRRORED_SATURATION = 0.2;
 const float MIRRORED_STREET_OPENNESS = 0.45;
 const float MIRRORED_CANYON_DEPTH = 0.8;
 const vec2 MIRRORED_TRACED_PIXELS = vec2(12.0, 24.0);
+const float MIRRORED_UPWARD_FACE = 0.7;
 const float MIRRORED_LIFT = 0.01;
 const float MIRRORED_SHADOW_LIFT = 0.1;
 const float MIRRORED_GLAZED_BODY = 0.35;
@@ -37,14 +38,6 @@ vec3 Beyond(vec3 from, vec3 way)
 	if (way.z >= 0.0) return CloudedSky(way, MIRRORED_CLOUD_OCTAVES);
 	vec3 town = DISTANT_TOWN * (Sunlight(UP, 1.0) + AmbientLight(UP));
 	return Hazed(town, way, from, from + way * RunToGround(from, way));
-}
-
-Sighting Landed(vec3 from, vec3 way)
-{
-	if (way.z >= 0.0) return Unsighted(from, ivec2(floor(from.xy)));
-	float run = RunToGround(from, way);
-	vec3 point = from + way * run;
-	return Sighting(SEEN_GROUND, point, UP, run, Clamped(ivec2(floor(point.xy))));
 }
 
 float WithinReach(vec3 way, float run)
@@ -135,10 +128,10 @@ vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float
 {
 	vec3 from = point + face * MIRRORED_LIFT;
 	float far = distance(Eye(), from);
-	float traced = smoothstep(MIRRORED_TRACED_PIXELS.x, MIRRORED_TRACED_PIXELS.y, TilePixelsAt(far));
+	float traced = smoothstep(MIRRORED_TRACED_PIXELS.x, MIRRORED_TRACED_PIXELS.y, TilePixelsAt(far)) * (1.0 - step(MIRRORED_UPWARD_FACE, face.z));
 	vec4 near = vec4(0.0);
 	if (traced > 0.0) {
-		Sighting sighting = own != NO_ANCHOR ? Traced(from, way, own) : Landed(from, way);
+		Sighting sighting = Traced(from, way, own);
 		float reach = WithinReach(way, sighting.run);
 		if (sighting.seen != SEEN_NOTHING && reach > 0.0) {
 			float blur = 1.0 / TilePixelsAt(far + sighting.run) + roughness * roughness * sighting.run;

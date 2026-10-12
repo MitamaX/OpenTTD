@@ -56,7 +56,6 @@ const uint SEEN_NOTHING = 0u;
 const uint SEEN_WALL = 1u;
 const uint SEEN_ROOF = 2u;
 const uint SEEN_GROUND = 3u;
-const ivec2 NO_ANCHOR = ivec2(-1);
 const int MASSING_CELLS = 6;
 const float GROUND_TOUCH = 1e-3;
 
@@ -72,11 +71,6 @@ Massing MassingAt(ivec2 tile)
 {
 	uvec4 texel = texelFetch(u_massing, tile, 0);
 	return MassingOf(BoxOf(tile, texel, LowestCorner(SurfaceOf(tile))), texel);
-}
-
-Sighting Unsighted(vec3 from, ivec2 tile)
-{
-	return Sighting(SEEN_NOTHING, from, UP, 0.0, tile);
 }
 
 struct Strike {
