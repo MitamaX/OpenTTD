@@ -198,9 +198,8 @@ const float GULLY_WANDER_PER_TILE = 0.8;
 const float GULLY_RUNS_PER_TILE = 0.9;
 const vec2 GULLY_RUN_EDGES = vec2(0.45, 0.7);
 const vec2 GULLY_SLOPES = vec2(0.45, 0.95);
-const vec2 GULLY_WIDTHS = vec2(0.1, 0.6);
-const vec2 GULLY_DEPTHS = vec2(0.15, 0.4);
-const float GULLY_RIB = 0.1;
+const vec2 GULLY_WIDTHS = vec2(0.3, 0.6);
+const vec2 GULLY_DEPTHS = vec2(0.08, 0.2);
 const float GULLY_SEED = 13.7;
 const float SCREE_DRIFTS_PER_TILE = 1.3;
 const vec2 SCREE_DRIFT_SEED = vec2(2.6, 19.4);
@@ -798,7 +797,7 @@ float Channels(float down, float across)
 	float vein = abs(fract(wandering) - 0.5);
 	float runs = smoothstep(GULLY_RUN_EDGES.x, GULLY_RUN_EDGES.y, Noise(vec2(down * GULLY_RUNS_PER_TILE, channel + GULLY_SEED)));
 	float cut = 1.0 - smoothstep(0.0, mix(GULLY_WIDTHS.x, GULLY_WIDTHS.y, dice.x), 0.5 - vein);
-	return (GULLY_RIB * (1.0 - cut) - mix(GULLY_DEPTHS.x, GULLY_DEPTHS.y, dice.y) * cut) * runs;
+	return -mix(GULLY_DEPTHS.x, GULLY_DEPTHS.y, dice.y) * cut * runs;
 }
 
 float Gullied(vec2 p, Relief relief)
