@@ -15,7 +15,8 @@ const vec3 FRESH_TIPS = vec3(1.12, 1.1, 0.95);
 const vec2 TIP_REACH = vec2(0.75, 1.0);
 const vec3 AUTUMN_GOLD = vec3(0.80, 0.58, 0.16);
 const vec3 AUTUMN_RUST = vec3(0.74, 0.40, 0.15);
-const float AUTUMN_GAIN = 1.0;
+const float AUTUMN_BRIGHTNESS = 0.95;
+const float AUTUMN_LEAF_KEPT = 0.4;
 const float TURN_EDGE = 0.25;
 const float TURN_OUTER_LEAD = 0.3;
 const float SNOW_SETTLES = 0.2;
@@ -65,14 +66,20 @@ float Turning()
 	return mix(v_wither, smoothstep(-TURN_EDGE, TURN_EDGE, v_wither + outer_lead - SprayNoise()), shown);
 }
 
+vec3 Withered(vec3 leaves, float rust)
+{
+	vec3 hue = mix(AUTUMN_GOLD, AUTUMN_RUST, rust);
+	vec3 dry = hue * (dot(leaves, LUMA_WEIGHTS) * AUTUMN_BRIGHTNESS / dot(hue, LUMA_WEIGHTS));
+	return mix(dry, leaves, AUTUMN_LEAF_KEPT);
+}
+
 vec3 Albedo(float upward)
 {
 	float unwooded = Unwooded();
 	vec3 albedo = v_colour * Varied(v_tint, TINT_VARIETY * unwooded) * Varied(v_hue, HUE_VARIETY * unwooded) * Sprays();
 	albedo *= mix(vec3(1.0), FRESH_TIPS, smoothstep(TIP_REACH.x, TIP_REACH.y, v_reach) * unwooded);
 	float turned = Turning() * unwooded;
-	vec3 autumn = mix(AUTUMN_GOLD, AUTUMN_RUST, v_hue * turned) * dot(albedo, LUMA_WEIGHTS) * AUTUMN_GAIN;
-	albedo = mix(albedo, autumn, turned);
+	albedo = mix(albedo, Withered(albedo, v_hue * turned), turned);
 	return mix(albedo, SNOW, v_snow * unwooded * smoothstep(SNOW_SETTLES, SNOW_COVERS, upward));
 }
 
