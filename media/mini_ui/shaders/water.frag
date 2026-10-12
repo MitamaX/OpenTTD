@@ -128,6 +128,7 @@ const float FOAM_DRIFT = 0.12;
 const float CONTACT_DEPTH = 0.025;
 const float INLAND_CONTACT_DEPTH = 0.08;
 const float INLAND_FOAM = 0.45;
+const float INLAND_FOAM_FILL = 0.3;
 const float FOAM_EDGE_THRESHOLD = 0.3;
 const float FOAM_OPACITY = 0.85;
 const float OUTLINE_FOAM_WIDTH = 0.12;
@@ -422,7 +423,9 @@ float Laced(vec2 p, float scale, float thickness)
 float Foam(vec2 p, float band, Body body)
 {
 	if (band <= 0.0) return 0.0;
-	return band * Laced(p, FOAM_SCALE, band) * FOAM_OPACITY * mix(INLAND_FOAM, 1.0, body.sea);
+	float fill = mix(INLAND_FOAM_FILL, 1.0, body.sea);
+	float opacity = mix(INLAND_FOAM, 1.0, body.sea);
+	return band * Laced(p, FOAM_SCALE, band * fill) * FOAM_OPACITY * opacity;
 }
 
 /* Near the shore: close inside the water's outline, which curves where the ground's own edge runs in steps. */
@@ -810,7 +813,7 @@ vec3 Frothed(vec3 colour, Water water, float flecks, float behind, vec3 light, v
 	float running = 1.0 - water.body.canal;
 	float river = water.body.calm * running;
 	colour = mix(colour, Linear(AERATED_WATER) * light, water.aerated * running * RAPIDS_AERATION);
-	float contact = 1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, behind);
+	float contact = (1.0 - smoothstep(0.0, CONTACT_FOAM_REACH, behind)) * water.body.sea;
 	float shore = Foam(water.p, max(ShoreBand(water.field.r), contact), water.body);
 	float breakers = Breakers(water.p, water.field.r, water.body) * (1.0 - water.enclosed);
 	float floes;
