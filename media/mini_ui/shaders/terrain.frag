@@ -555,6 +555,11 @@ vec3 ToyOr(vec3 toy, vec3 real)
 	return Landscape() == LANDSCAPE_TOYLAND ? toy : real;
 }
 
+float ToyOr(float toy, float real)
+{
+	return Landscape() == LANDSCAPE_TOYLAND ? toy : real;
+}
+
 vec3 Soil()
 {
 	return ToyOr(TOY_SOIL, SOIL);
@@ -967,7 +972,6 @@ Patch Beach(Site site)
 	return Patch(mix(sand, Meadow(site), grassed), mix(SAND_RUGGED, GRASS_RUGGED, grassed));
 }
 
-/* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
 vec3 ToyRiprapStone(vec2 p)
 {
 	vec2 q = p * TOY_COBBLES_PER_TILE;
@@ -994,6 +998,7 @@ vec3 ToyRiprapStone(vec2 p)
 	return mix(ToyStrataMean(), candy * mix(1.0, TOY_COBBLE_JOINT_SHADE, joint), Resolved(TOY_COBBLES_PER_TILE));
 }
 
+/* Heaped stone armouring a shore: grey boulders, lit on top and dark in the gaps between. */
 vec3 RiprapStone(Site site)
 {
 	return Landscape() == LANDSCAPE_TOYLAND ? ToyRiprapStone(site.p) : mix(site.bare.scree, ROCK, 0.5);
@@ -1293,7 +1298,7 @@ vec3 Banks(vec3 land, Water water, vec3 beach, Grain grain)
 	float inland = 1.0 - clamp(water.share.x, 0.0, 1.0);
 	float level = water.level + (grain.local - 0.5) * BANK_SWAY * inland;
 	vec2 soaking = mix(SHORE_DAMP, BANK_DAMP, inland);
-	float dampness = soaking.x * (Landscape() == LANDSCAPE_TOYLAND ? TOY_DAMP_SHARE : 1.0);
+	float dampness = soaking.x * ToyOr(TOY_DAMP_SHARE, 1.0);
 	vec3 damp = land * (1.0 - dampness * smoothstep(soaking.y, DAMP_LEVEL, level));
 	float gravelled = Landscape() == LANDSCAPE_TOYLAND ? 0.0 : inland;
 	float strewn = smoothstep(BANK_GRAVEL_LEVELS.x, BANK_GRAVEL_LEVELS.y, level + (grain.stones - 0.5) * BANK_GRAVEL_RAGGED) * gravelled;
