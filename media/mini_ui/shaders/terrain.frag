@@ -73,10 +73,10 @@ const vec2 SHORE_DAMP = vec2(0.18, 0.28);
 const vec2 BANK_DAMP = vec2(0.34, 0.14);
 const float DAMP_LEVEL = 0.5;
 const float TOY_DAMP_SHARE = 0.4;
-const float BANK_SWAY = 0.6;
+const float BANK_SWAY = 0.3;
 const vec2 BANK_GRAVEL_LEVELS = vec2(0.42, 0.54);
-const float BANK_GRAVEL_RAGGED = 0.3;
-const float WET_GRAVEL_SHADE = 0.9;
+const float BANK_GRAVEL_RAGGED = 0.12;
+const float WET_GRAVEL_SHADE = 0.8;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
 const vec3 TOY_SOIL = vec3(0.86, 0.66, 0.55);
