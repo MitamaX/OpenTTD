@@ -213,3 +213,8 @@ bool HoldsHalls(uint grid)
 {
 	return grid == WINDOWS_ARCHED || grid == WINDOWS_INDUSTRIAL || grid == WINDOWS_DOORS;
 }
+
+bool PlannedByStorey(uint grid)
+{
+	return HoldsOffices(grid) || HoldsHalls(grid);
+}

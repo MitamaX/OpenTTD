@@ -132,7 +132,7 @@ const Fitting BACK_FITTINGS[ROOM_KINDS * FITTING_CHOICES] = Fitting[ROOM_KINDS *
 struct Room {
 	ivec2 window;
 	uint seed;
-	bool offices;
+	bool by_storey;
 	uint kind;
 	float tone;
 	vec3 lamp;
@@ -145,18 +145,18 @@ float LampShare(float share)
 	return Landscape() == LANDSCAPE_ARCTIC ? min(share * ARCTIC_LAMPS, 1.0) : share;
 }
 
-vec3 LampPaint(ivec2 window, uint seed, bool offices)
+vec3 LampPaint(ivec2 window, uint seed, bool by_storey)
 {
 	float roll = Roll(window, seed, ROLL_LAMP_PAINT);
-	return offices ? OFFICE_LAMPS[Pick(roll, OFFICE_LAMPS.length())] : HOME_LAMPS[Pick(roll, HOME_LAMPS.length())];
+	return by_storey ? OFFICE_LAMPS[Pick(roll, OFFICE_LAMPS.length())] : HOME_LAMPS[Pick(roll, HOME_LAMPS.length())];
 }
 
-uint RoomKind(Bay bay, uint grid, uint seed, bool offices)
+uint RoomKind(Bay bay, uint seed, bool hall, bool by_storey)
 {
 	if (bay.opening.kind == OPEN_SHOP) return ROOM_SHOP;
-	if (HoldsHalls(grid)) return ROOM_HALL;
+	if (hall) return ROOM_HALL;
 	float roll = Roll(bay.window, seed, ROLL_KIND);
-	if (offices) return roll < MEETING_ROOM_SHARE ? ROOM_MEETING : ROOM_OFFICE;
+	if (by_storey) return roll < MEETING_ROOM_SHARE ? ROOM_MEETING : ROOM_OFFICE;
 	return roll < BEDROOM_SHARE ? ROOM_BEDROOM : ROOM_LIVING;
 }
 
@@ -165,46 +165,46 @@ Room RoomBehind(Bay bay, Elevation elevation)
 	uint seed = elevation.seed;
 	ivec2 storey = ivec2(STOREY_COLUMN, bay.window.y);
 	bool hall = HoldsHalls(elevation.grid);
-	bool offices = HoldsOffices(elevation.grid) || hall;
-	bool lit_storey = offices && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
-	bool blinded_storey = offices && Roll(storey, seed, ROLL_BLIND) < BLINDED_STOREY_SHARE;
+	bool by_storey = PlannedByStorey(elevation.grid);
+	bool lit_storey = by_storey && Roll(storey, seed, ROLL_LAMP) < LIT_STOREY_SHARE;
+	bool blinded_storey = by_storey && Roll(storey, seed, ROLL_BLIND) < BLINDED_STOREY_SHARE;
 	float lit = LampShare(bay.opening.kind == OPEN_SHOP ? LIT_SHOP_SHARE : lit_storey ? LIT_IN_LIT_STOREY : LIT_ROOM_SHARE);
 	Room room;
 	room.window = hall ? storey : bay.window;
 	room.seed = seed;
-	room.offices = offices;
-	room.kind = RoomKind(bay, elevation.grid, seed, offices);
+	room.by_storey = by_storey;
+	room.kind = RoomKind(bay, seed, hall, by_storey);
 	room.tone = mix(ROOM_TONES.x, ROOM_TONES.y, Roll(room.window, seed, ROLL_TONE)) * (Landscape() == LANDSCAPE_TROPIC ? TROPIC_ROOM_SHADE : 1.0);
-	room.lamp = Roll(room.window, seed, ROLL_LAMP) < lit ? LampPaint(room.window, seed, offices) * LAMP_LIGHT : vec3(0.0);
+	room.lamp = Roll(room.window, seed, ROLL_LAMP) < lit ? LampPaint(room.window, seed, by_storey) * LAMP_LIGHT : vec3(0.0);
 	room.drop = hall ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_BLIND), blinded_storey ? BLINDED_IN_STOREY : BLINDED_ROOM_SHARE, BLIND_DROPS);
-	room.drawn = offices ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
+	room.drawn = by_storey ? 0.0 : Chosen(Roll(bay.window, seed, ROLL_CURTAIN), CURTAINED_ROOM_SHARE, CURTAIN_REACHES);
 	return room;
 }
 
 ivec2 PlanOf(Room room)
 {
-	return room.offices ? ivec2(STOREY_COLUMN, room.window.y) : room.window;
+	return room.by_storey ? ivec2(STOREY_COLUMN, room.window.y) : room.window;
 }
 
 float RoomDepth(Room room)
 {
-	vec2 depths = room.offices ? OFFICE_DEPTHS : HOME_DEPTHS;
+	vec2 depths = room.by_storey ? OFFICE_DEPTHS : HOME_DEPTHS;
 	return mix(depths.x, depths.y, Roll(PlanOf(room), room.seed, ROLL_DEPTH));
 }
 
 vec3 RoomWall(Room room)
 {
-	return room.offices ? OFFICE_WALL : ROOM_WALLS[Picked(room.window, room.seed, ROLL_WALL_PAINT, ROOM_WALLS.length())];
+	return room.by_storey ? OFFICE_WALL : ROOM_WALLS[Picked(room.window, room.seed, ROLL_WALL_PAINT, ROOM_WALLS.length())];
 }
 
 vec3 RoomFloor(Room room)
 {
-	return room.offices ? OFFICE_FLOOR : ROOM_FLOORS[Picked(room.window, room.seed, ROLL_FLOOR_PAINT, ROOM_FLOORS.length())];
+	return room.by_storey ? OFFICE_FLOOR : ROOM_FLOORS[Picked(room.window, room.seed, ROLL_FLOOR_PAINT, ROOM_FLOORS.length())];
 }
 
 vec3 BlindPaint(Room room)
 {
-	return BLINDS[room.offices ? room.seed % OFFICE_BLINDS : Picked(room.window, room.seed, ROLL_BLIND_PAINT, BLINDS.length())];
+	return BLINDS[room.by_storey ? room.seed % OFFICE_BLINDS : Picked(room.window, room.seed, ROLL_BLIND_PAINT, BLINDS.length())];
 }
 
 vec3 CurtainPaint(Room room)
@@ -230,7 +230,7 @@ struct Shell {
 
 vec2 PartitionsBeyond(Room room, uint grid)
 {
-	if (room.offices) return vec2(OPEN_PLAN_REACH);
+	if (room.by_storey) return vec2(OPEN_PLAN_REACH);
 	return Hash2(Die(room.window, room.seed, ROLL_PARTITION)) * FACADE_PITCH[grid] * PARTITION_SHIFT;
 }
 
@@ -282,7 +282,7 @@ vec3 LampLightAt(Room room, vec3 point, vec3 lamp)
 
 bool UnderCeilingLamp(Room room, vec2 spot, float half_width, float lamp_depth)
 {
-	if (room.offices) return abs(spot.x) < half_width * PANEL_SPREAD && abs(fract(spot.y / OFFICE_PANEL_PITCH) - 0.5) * OFFICE_PANEL_PITCH < PANEL_HALF_LENGTH;
+	if (room.by_storey) return abs(spot.x) < half_width * PANEL_SPREAD && abs(fract(spot.y / OFFICE_PANEL_PITCH) - 0.5) * OFFICE_PANEL_PITCH < PANEL_HALF_LENGTH;
 	return length(spot - vec2(0.0, lamp_depth)) < HOME_FIXTURE_RADIUS;
 }
 
