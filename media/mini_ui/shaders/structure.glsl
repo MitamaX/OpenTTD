@@ -264,9 +264,8 @@ float PatchInside(vec2 q, float share)
 	ivec2 cell = ivec2(floor(q));
 	vec2 roll = Hash2(cell + PATCH_SALT);
 	if (roll.x > share) return OUTSIDE_EVERY_PATCH;
-	vec2 centre = mix(vec2(PATCH_MARGIN), vec2(1.0 - PATCH_MARGIN), Hash2(cell));
 	vec2 half_size = mix(PATCH_HALVES.xx, PATCH_HALVES.yy, vec2(roll.y, 1.0 - roll.y));
-	vec2 outside = abs(fract(q) - centre) - half_size;
+	vec2 outside = abs(PatchOffset(q, vec2(PATCH_MARGIN))) - half_size;
 	return -max(outside.x, outside.y);
 }
 
