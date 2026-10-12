@@ -18,6 +18,7 @@
 #include "../../tile_map.h"
 #include "../../water_map.h"
 #include "../core/tones.h"
+#include "material_palette.h"
 #include "site_shapes.h"
 
 #include "../../safeguards.h"
@@ -81,7 +82,6 @@ static constexpr float HQ_GROUNDS_HALF = 0.97f;
 static constexpr float HQ_PLANTER_HALF = 0.14f;
 static constexpr float HQ_PLANTER_INSET = 0.06f;
 static constexpr float HQ_PLANTER_HEIGHT = 0.05f;
-static constexpr uint32_t HQ_PLANTER_TINT = 0xFF4E7A3AU;
 static constexpr float HQ_FLAG_INSET = 0.08f;
 static constexpr std::array<float, 2> HQ_FLAG_OFFSETS = {-0.18f, 0.18f};
 static constexpr float HQ_FLAG_POLE_HEIGHT = 0.45f;
@@ -183,7 +183,7 @@ static void AddHqGrounds(BuildingForm &form, const SiteLot &lot, uint32_t trim)
 	for (float side : {-1.0f, 1.0f}) {
 		float mid = HQ_CENTRE + side * (HQ_GROUNDS_HALF - HQ_PLANTER_INSET - HQ_PLANTER_HALF);
 		Plot bed = along == AXIS_X ? Plot{mid - HQ_PLANTER_HALF, back.y0, mid + HQ_PLANTER_HALF, back.y1} : Plot{back.x0, mid - HQ_PLANTER_HALF, back.x1, mid + HQ_PLANTER_HALF};
-		form.Add(Part::Box(bed).Detailed().Height(HQ_PLANTER_HEIGHT).Clad(Material::Hedge, HQ_PLANTER_TINT));
+		form.Add(Part::Box(bed).Detailed().Height(HQ_PLANTER_HEIGHT).Clad(Material::Hedge, LEAF_TINT));
 	}
 	Plot kerb = grounds.Edge(front, HQ_FLAG_INSET);
 	for (float offset : HQ_FLAG_OFFSETS) {
