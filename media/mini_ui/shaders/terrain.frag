@@ -310,11 +310,11 @@ const float TRAMLINE_GAUGE = 0.045;
 const float TRAMLINE_HALF_WIDTH = 0.012;
 const float TRAMLINE_DEPTH = 0.6;
 const float HEDGE_WIDTH = 0.05;
-const float HEDGE_FRINGE = 2.5;
-const float HEDGE_FRINGE_SHADE = 0.25;
+const float HEDGE_HEIGHT = 0.1;
+const float HEDGE_FEATHER = 0.015;
+const float HEDGE_SHADOW_SHADE = 0.25;
 const float HEDGE_GAPS_PER_TILE = 1.9;
 const float HEDGE_OPACITY = 0.85;
-const vec3 VERGE = vec3(0.40, 0.44, 0.22);
 const float VERGE_WIDTH = 0.08;
 const float VERGE_OPACITY = 0.8;
 const float CROP_FLOW = 0.32;
@@ -1305,27 +1305,42 @@ bool SameField(ivec2 tile, Ground field)
 	return ground.material == MAT_FIELDS && ground.variant == field.variant;
 }
 
+struct FieldEdges {
+	float nearest;
+	float shadow;
+};
+
+void FieldEdge(ivec2 tile, Ground home, ivec2 side, vec2 f, vec2 cast, float soft, inout FieldEdges edges)
+{
+	if (SameField(tile + side, home)) return;
+	float gap = HALF_TILE - dot(vec2(side), f - HALF_TILE);
+	float reach = max(dot(cast, -vec2(side)), 0.0);
+	edges.nearest = min(edges.nearest, gap);
+	edges.shadow = max(edges.shadow, Stroke(gap - HEDGE_WIDTH, reach, soft));
+}
+
 /* A hedge with gaps here and there runs along every side of a field where the next tile is not the same field, on a ragged verge of rough grass left unploughed. */
-vec4 Hedgerow(vec2 p, Grain grain)
+vec4 Hedgerow(vec2 p, Grain grain, Climate climate)
 {
 	ivec2 tile = ivec2(floor(p));
 	Ground home = GroundAt(tile);
 	if (home.material != MAT_FIELDS) return vec4(0.0);
 	vec2 f = fract(p);
-	float near = 1.0;
-	if (!SameField(tile - ivec2(1, 0), home)) near = min(near, f.x);
-	if (!SameField(tile + ivec2(1, 0), home)) near = min(near, 1.0 - f.x);
-	if (!SameField(tile - ivec2(0, 1), home)) near = min(near, f.y);
-	if (!SameField(tile + ivec2(0, 1), home)) near = min(near, 1.0 - f.y);
+	float soft = max(1.0 / tile_pixels, HEDGE_FEATHER);
+	vec2 cast = -SunSlant() * HEDGE_HEIGHT;
+	FieldEdges edges = FieldEdges(1.0, 0.0);
+	FieldEdge(tile, home, ivec2(-1, 0), f, cast, soft, edges);
+	FieldEdge(tile, home, ivec2(1, 0), f, cast, soft, edges);
+	FieldEdge(tile, home, ivec2(0, -1), f, cast, soft, edges);
+	FieldEdge(tile, home, ivec2(0, 1), f, cast, soft, edges);
 	float width = HEDGE_WIDTH * (0.6 + 0.8 * grain.fine);
 	float gaps = smoothstep(0.25, 0.4, Noise(p * HEDGE_GAPS_PER_TILE + 4.4));
-	float pixel = 1.0 / tile_pixels;
-	float hedge = Stroke(near, width, pixel) * gaps;
-	float fringe = Stroke(near, width * HEDGE_FRINGE, pixel) * gaps * (1.0 - hedge);
-	float verge = Stroke(near, VERGE_WIDTH * Varied(grain.local, 0.8), pixel);
-	vec4 grass = vec4(VERGE * Varied(grain.micro, 0.5) * Varied(grain.clump, 0.3), 1.0) * verge * VERGE_OPACITY;
+	float hedge = Stroke(edges.nearest, width, soft) * gaps;
+	float shadow = edges.shadow * gaps * (1.0 - hedge);
+	float verge = Stroke(edges.nearest, VERGE_WIDTH * Varied(grain.local, 0.8), soft);
+	vec4 grass = vec4(GrassTone(grain.broad, climate) * Varied(grain.micro, 0.5) * Varied(grain.clump, 0.3), 1.0) * verge * VERGE_OPACITY;
 	vec4 leaves = vec4(HEDGE * Varied(grain.micro, 0.6) * Varied(grain.clump, 0.4), 1.0) * hedge * HEDGE_OPACITY;
-	return Over(Over(grass, vec4(0.0, 0.0, 0.0, fringe * HEDGE_FRINGE_SHADE)), leaves);
+	return Over(Over(grass, vec4(0.0, 0.0, 0.0, shadow * HEDGE_SHADOW_SHADE)), leaves);
 }
 
 /* Fine bumps and stones catch the light up close: soft on grass and fields, sharp on scree and rock. */
@@ -1815,7 +1830,7 @@ Network BandsAt(vec2 p, mat2 pixel)
 vec3 Ashore(vec2 p, Water water, Underfoot underfoot, vec3 surface)
 {
 	vec3 beach = underfoot.lie == LIE_BEACH ? Shore(underfoot.site).tone : vec3(0.0);
-	vec3 ground = Altitude(Composite(Composite(surface, Hedgerow(p + underfoot.seams.warp, underfoot.grain)), Airfield(p)));
+	vec3 ground = Altitude(Composite(Composite(surface, Hedgerow(p + underfoot.seams.warp, underfoot.grain, underfoot.site.climate)), Airfield(p)));
 	return Banks(mix(ground, underfoot.blanket.tone, underfoot.blanket.cover), water, beach, underfoot.grain);
 }
 
