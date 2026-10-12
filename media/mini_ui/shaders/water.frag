@@ -605,37 +605,60 @@ vec2 DepthBehind(vec2 uv, vec3 sight, float surface)
 	return vec2(behind - surface, v_position.z - bed.z);
 }
 
-/* The level a tile's water stands at a point: down the plane of a river running down a slope or of a bank sloping beside it, and level with its lowest corner elsewhere. */
-float WaterLevelOn(ivec2 tile, vec2 f)
+bool HoldsWater(ivec2 tile)
+{
+	return TileWater(tile).r > HALF_TILE;
+}
+
+vec4 SurfaceKey(ivec2 tile)
 {
 	Corners c = SurfaceOf(tile);
-	vec4 water = TileWater(tile);
-	bool inclined = (water.a > HALF_TILE || water.r <= 0.0) && c.north != c.south;
+	return vec4(c.north, c.west, c.east, c.south);
+}
+
+bool RiverBank(ivec2 tile)
+{
+	if (HoldsWater(tile)) return false;
+	vec4 own = SurfaceKey(tile);
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			ivec2 beside = tile + ivec2(i, j);
+			if (TileWater(beside).a > HALF_TILE && SurfaceKey(beside) == own) return true;
+		}
+	}
+	return false;
+}
+
+/* The level a tile's water stands at a point: down the plane of a river running down a slope or of a bank sloping beside it, and level with its lowest corner elsewhere. */
+float WaterLevelOn(ivec2 tile, vec2 f, bool bank)
+{
+	Corners c = SurfaceOf(tile);
+	bool inclined = (TileWater(tile).a > HALF_TILE || bank) && c.north != c.south;
 	if (!inclined) return LowestCorner(c);
 	return mix(mix(c.north, c.west, f.x), mix(c.east, c.south, f.x), f.y);
 }
 
 /* The water's level near a point, on the tile there where it holds water and on this tile's water carried on where it does not; past the map's edge, the open sea's. */
-float WaterLevelNear(vec2 at, ivec2 home)
+float WaterLevelNear(vec2 at, ivec2 home, bool bank)
 {
 	ivec2 tile = ivec2(floor(at));
 	if (!OnMap(tile)) return OPEN_SEA_LEVEL;
-	ivec2 source = TileWater(tile).r > HALF_TILE ? tile : home;
-	return WaterLevelOn(source, at - vec2(source));
+	bool wet = HoldsWater(tile);
+	ivec2 source = wet ? tile : home;
+	return WaterLevelOn(source, at - vec2(source), bank && !wet);
 }
 
 /* How the water's surface falls about a point, measured across a reach so a drop eases in above its lip and runs out into the pool below; open sea lies level. */
-Drop Descent(vec2 p)
+Drop Descent(vec2 p, ivec2 home, bool bank)
 {
-	ivec2 home = ivec2(floor(p));
 	if (OpenSeaAbout(home)) return Drop(vec2(0.0), 0.0, 0.0, 0.0, OPEN_SEA_LEVEL);
 	float reach = RAPIDS_REACH * mix(1.0 - RAPIDS_REACH_SPREAD, 1.0 + RAPIDS_REACH_SPREAD, Octave(p, RAPIDS_WOBBLES_PER_TILE));
 	vec2 dx = vec2(reach, 0.0);
 	vec2 dy = vec2(0.0, reach);
-	vec4 around = vec4(WaterLevelNear(p - dx, home), WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home), WaterLevelNear(p + dy, home));
+	vec4 around = vec4(WaterLevelNear(p - dx, home, bank), WaterLevelNear(p + dx, home, bank), WaterLevelNear(p - dy, home, bank), WaterLevelNear(p + dy, home, bank));
 	vec2 fall = vec2(around.x - around.y, around.z - around.w) * LevelRise() / (2.0 * reach);
 	float slope = length(fall);
-	float level = WaterLevelNear(p, home);
+	float level = WaterLevelNear(p, home, bank);
 	float bend = (dot(around, vec4(1.0)) - 4.0 * level) * LevelRise() / reach;
 	return Drop(slope > 0.0 ? fall / slope : vec2(0.0), slope, smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, slope), bend, level);
 }
@@ -694,7 +717,7 @@ struct Water {
 	float enclosed;
 };
 
-float Churned(vec2 at, Drop drop)
+float Churned(vec2 at, Drop drop, ivec2 home, bool bank)
 {
 	vec2 from = at;
 	vec2 heading = vec2(0.0);
@@ -706,7 +729,7 @@ float Churned(vec2 at, Drop drop)
 	}
 	if (heading == vec2(0.0)) return 0.0;
 	from -= heading * APRON_BLUR * Octave(at + APRON_WOBBLE_SEED, APRON_WOBBLES_PER_TILE);
-	return smoothstep(APRON_LEAST_FALL, APRON_FULL_FALL, WaterLevelNear(from, ivec2(floor(at))) - drop.level);
+	return smoothstep(APRON_LEAST_FALL, APRON_FULL_FALL, WaterLevelNear(from, home, bank) - drop.level);
 }
 
 Water WaterAt(vec2 p)
@@ -716,11 +739,13 @@ Water WaterAt(vec2 p)
 	water.p = p;
 	water.field = FieldAt(p, warped, v_world.z);
 	water.body = BodyOf(water.field);
-	water.drop = Descent(warped);
+	ivec2 home = ivec2(floor(warped));
+	bool bank = RiverBank(home);
+	water.drop = Descent(warped, home, bank);
 	water.flow = FlowAt(p);
 	water.glassy = smoothstep(0.0, LIP_BEND, -water.drop.bend);
 	water.aerated = water.drop.steep * (1.0 - water.glassy);
-	water.churned = Churned(warped, water.drop);
+	water.churned = Churned(warped, water.drop, home, bank);
 	water.enclosed = Enclosed(p);
 	return water;
 }
