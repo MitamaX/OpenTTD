@@ -21,6 +21,7 @@
 #include "../../town.h"
 #include "../../table/sprites.h"
 #include "../../table/strings.h"
+#include "material_palette.h"
 
 #include "../../safeguards.h"
 
@@ -51,7 +52,7 @@ struct PaletteTint {
 };
 
 static constexpr std::array<PaletteTint, 19> PALETTE_TINTS = {{
-	{PALETTE_TO_STRUCT_WHITE, 0xFFD4D2C9U},
+	{PALETTE_TO_STRUCT_WHITE, WHITE_PAINT},
 	{PALETTE_TO_STRUCT_CONCRETE, 0xFFA9A69EU},
 	{PALETTE_TO_STRUCT_BROWN, 0xFF8A6A50U},
 	{PALETTE_TO_STRUCT_RED, 0xFFA4503CU},
