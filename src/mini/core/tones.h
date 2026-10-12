@@ -50,7 +50,7 @@ inline constexpr uint32_t COL_FIELDS = 0xFFD4B23AU;
 inline constexpr uint32_t COL_TREE = 0xFF2F4A2AU;
 
 inline constexpr std::array<uint32_t, NUM_LANDSCAPE> GRASS_DARK_TONES = {0xFF546E36U, 0xFF617857U, 0xFF858C47U, 0xFF6BD199U};
-inline constexpr std::array<uint32_t, NUM_LANDSCAPE> GRASS_LIGHT_TONES = {0xFF808F4DU, 0xFF879970U, 0xFFADA85CU, 0xFFB3E66BU};
+inline constexpr std::array<uint32_t, NUM_LANDSCAPE> GRASS_LIGHT_TONES = {0xFF5F7E3CU, 0xFF879970U, 0xFFADA85CU, 0xFFB3E66BU};
 
 inline constexpr uint32_t COL_RAIL = 0xFF33383DU;
 inline constexpr uint32_t COL_ROAD = 0xFF61686EU;
