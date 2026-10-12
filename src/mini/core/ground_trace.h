@@ -31,6 +31,8 @@ struct GroundHit {
 	double level;
 };
 
+inline constexpr int MAX_SURFACE_DIVISIONS = 2;
+
 class DrawnSurface {
 public:
 	virtual ~DrawnSurface() = default;

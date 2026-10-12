@@ -24,7 +24,7 @@
 inline constexpr int LANDFORM_REACH = 2;
 inline constexpr int ROLL_SPREAD = 1;
 inline constexpr double CREST_WAVE = 0.15;
-inline constexpr int FINE_RELIEF_DIVISIONS = 2;
+inline constexpr int FINE_RELIEF_DIVISIONS = MAX_SURFACE_DIVISIONS;
 inline constexpr double RELIEF_CELL_PIXELS = 32.0;
 inline constexpr double FINE_RELIEF_PIXELS = RELIEF_CELL_PIXELS * FINE_RELIEF_DIVISIONS;
 inline constexpr double FINE_RELIEF_LEAD = 1.4;

@@ -11,6 +11,7 @@
 #include "tile_shapes.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <utility>
 #include <vector>
@@ -25,6 +26,7 @@
 static constexpr double HALF_PIXEL = 0.5;
 static constexpr double GROUND_PATH_STEP = 0.5;
 static constexpr int GROUND_PATH_REACH = 8;
+static constexpr int LATTICE_ROW = MAX_SURFACE_DIVISIONS + 1;
 
 /* A stroke's half width once it keeps a pixel across, and the alpha it fades to for the width it lacks. */
 struct VisibleStroke {
@@ -230,13 +232,11 @@ static VisibleStroke Widened(MapVector along, double half_width, uint alpha)
 static void FillOn(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha)
 {
 	int divisions = tile.Divisions();
-	int row = divisions + 1;
-	std::vector<WorldPoint> lattice;
-	lattice.reserve(static_cast<size_t>(row) * row);
+	std::array<WorldPoint, LATTICE_ROW * LATTICE_ROW> lattice;
 	for (int down = 0; down <= divisions; down++) {
-		for (int across = 0; across <= divisions; across++) lattice.push_back(tile.At(tx + static_cast<double>(across) / divisions, ty + static_cast<double>(down) / divisions));
+		for (int across = 0; across <= divisions; across++) lattice[down * LATTICE_ROW + across] = tile.At(tx + static_cast<double>(across) / divisions, ty + static_cast<double>(down) / divisions);
 	}
-	auto at = [&](int across, int down) { return lattice[static_cast<size_t>(down) * row + across]; };
+	auto at = [&](int across, int down) { return lattice[down * LATTICE_ROW + across]; };
 	for (int j = 0; j < divisions; j++) {
 		for (int i = 0; i < divisions; i++) _canvas.FillWorldQuad({at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)}, c, alpha);
 	}
