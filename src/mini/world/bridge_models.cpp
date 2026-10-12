@@ -24,6 +24,7 @@
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
 #include "seabed.h"
+#include "terrain_mesh.h"
 
 #include "../../safeguards.h"
 
@@ -83,6 +84,7 @@ static constexpr double THIN_HALF = 0.004;
 static constexpr double TOWER_LATERAL = 0.43;
 static constexpr double TOWER_HALF = 0.03;
 static constexpr double TOWER_SHARE = 1.0 / 6.0;
+static constexpr double TOWER_SEARCH_STEP = 1.0;
 static constexpr double TOWER_LEAST = 0.9;
 static constexpr double TOWER_PER_TILE = 0.06;
 static constexpr double TOWER_MOST = 1.8;
@@ -208,6 +210,17 @@ static ModelMesh Deck(const Stretch &run, const BridgeLook &look, bool aqueduct,
 	return deck;
 }
 
+/* Piers stand only on open ground or water, never on a way or a building beneath the bridge. */
+static bool Clear(int tx, int ty)
+{
+	switch (GetTileType(TileXY(tx, ty))) {
+		case MP_CLEAR:
+		case MP_TREES:
+		case MP_WATER: return true;
+		default: return false;
+	}
+}
+
 /* One tile of a bridge over the middle, its parts placed along the whole span so cables and arches run on from tile to tile. */
 class SpanBuilder {
 public:
@@ -262,21 +275,10 @@ private:
 		return *water + CAISSON_RISE;
 	}
 
-	/* Piers stand only on open ground or water, never on a way or a building beneath the bridge. */
-	bool Clear() const
-	{
-		switch (GetTileType(TileXY(this->tx, this->ty))) {
-			case MP_CLEAR:
-			case MP_TREES:
-			case MP_WATER: return true;
-			default: return false;
-		}
-	}
-
 	bool PierHere(int every) const
 	{
 		int index = static_cast<int>(std::lround(this->first));
-		return this->Clear() && this->frame.Length() > 1.0 && (index + 1) % every == 0 && index + 1 < this->frame.Length();
+		return Clear(this->tx, this->ty) && this->frame.Length() > 1.0 && (index + 1) % every == 0 && index + 1 < this->frame.Length();
 	}
 
 	void Pier(SpanMesh &mesh, double top) const
@@ -296,7 +298,7 @@ private:
 
 	void Trestle(SpanMesh &mesh) const
 	{
-		if (!this->Clear()) return;
+		if (!Clear(this->tx, this->ty)) return;
 		double middle = this->first + HALF_TILE;
 		for (double side : {-1.0, 1.0}) {
 			Vec3 top = this->frame.Point(middle, side * LEG_TOP_LATERAL, -DECK_DEPTH);
@@ -374,7 +376,48 @@ private:
 		}
 	}
 
-	/* Towers stand a sixth of the way in from either head, taller the longer the span; the cables sag between them and fall back to the heads beyond. */
+	bool TowerStandsAt(double span) const
+	{
+		MapVector at = this->frame.At(span, 0.0);
+		int tx = static_cast<int>(std::floor(at.x));
+		int ty = static_cast<int>(std::floor(at.y));
+		return Clear(tx, ty) && !IsEarthBanked(tx, ty);
+	}
+
+	template <class Stands>
+	static std::optional<double> FirstInset(double nominal, double limit, const Stands &stands)
+	{
+		for (double inset = nominal; inset < limit; inset += TOWER_SEARCH_STEP) {
+			if (stands(inset)) return inset;
+		}
+		return std::nullopt;
+	}
+
+	static double MidSpan(double length)
+	{
+		return length / 2.0;
+	}
+
+	std::optional<double> SharedInset(double nominal, double length) const
+	{
+		return FirstInset(nominal, MidSpan(length), [&](double inset) { return this->TowerStandsAt(inset) && this->TowerStandsAt(length - inset); });
+	}
+
+	std::array<double, 2> OwnInsets(double nominal, double length) const
+	{
+		double limit = MidSpan(length);
+		double near = FirstInset(nominal, limit, [this](double inset) { return this->TowerStandsAt(inset); }).value_or(nominal);
+		double far = FirstInset(nominal, limit, [this, length](double inset) { return this->TowerStandsAt(length - inset); }).value_or(nominal);
+		return {near, far};
+	}
+
+	std::array<double, 2> TowerInsets(double nominal, double length) const
+	{
+		std::optional<double> shared = this->SharedInset(nominal, length);
+		return shared.has_value() ? std::array<double, 2>{*shared, *shared} : this->OwnInsets(nominal, length);
+	}
+
+	/* Towers stand a sixth of the way in from either head, moved in to the nearest tiles clear of ways, buildings and banked earth, taller the longer the span; the cables sag between them and fall back to the heads beyond. */
 	void Suspension(SpanMesh &mesh) const
 	{
 		double length = this->frame.Length();
@@ -382,8 +425,9 @@ private:
 			this->Beam(mesh);
 			return;
 		}
-		double near = std::floor(length * TOWER_SHARE) + HALF_TILE;
-		double far = length - near;
+		auto [near_inset, far_inset] = this->TowerInsets(std::floor(length * TOWER_SHARE) + HALF_TILE, length);
+		double near = near_inset;
+		double far = length - far_inset;
 		double top = std::clamp(TOWER_LEAST + TOWER_PER_TILE * length, TOWER_LEAST, TOWER_MOST);
 		double saddle = top - CABLE_BELOW_TOP;
 		auto cable = [=](double span) {

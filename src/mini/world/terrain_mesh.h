@@ -115,6 +115,8 @@ private:
 	TerrainMesh mesh;
 };
 
+bool IsEarthBanked(int tx, int ty);
+
 /* The open sea's floor, flat from the foot of the shelves around the map out to the horizon. */
 TerrainMesh BuildOuterBed(Dimension map, double reach);
 
