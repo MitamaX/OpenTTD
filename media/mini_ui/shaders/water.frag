@@ -619,7 +619,7 @@ Drop Descent(vec2 p)
 {
 	ivec2 home = ivec2(floor(p));
 	if (OpenSeaAbout(home)) return Drop(vec2(0.0), 0.0, 0.0, 0.0, OPEN_SEA_LEVEL);
-	float reach = RAPIDS_REACH * mix(1.0 - RAPIDS_REACH_SPREAD, 1.0 + RAPIDS_REACH_SPREAD, Noise(p * RAPIDS_WOBBLES_PER_TILE));
+	float reach = RAPIDS_REACH * mix(1.0 - RAPIDS_REACH_SPREAD, 1.0 + RAPIDS_REACH_SPREAD, Octave(p, RAPIDS_WOBBLES_PER_TILE));
 	vec2 dx = vec2(reach, 0.0);
 	vec2 dy = vec2(0.0, reach);
 	vec4 around = vec4(WaterLevelNear(p - dx, home), WaterLevelNear(p + dx, home), WaterLevelNear(p - dy, home), WaterLevelNear(p + dy, home));
@@ -694,7 +694,7 @@ float Churned(vec2 at, Drop drop)
 		heading = normalize(flow);
 		from -= heading * (APRON_REACH / float(APRON_STEPS));
 	}
-	from -= heading * APRON_BLUR * Noise(at * APRON_WOBBLES_PER_TILE + APRON_WOBBLE_SEED);
+	from -= heading * APRON_BLUR * Octave(at + APRON_WOBBLE_SEED, APRON_WOBBLES_PER_TILE);
 	return smoothstep(APRON_LEAST_FALL, APRON_FULL_FALL, WaterLevelNear(from, ivec2(floor(at))) - drop.level);
 }
 
