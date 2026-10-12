@@ -344,6 +344,7 @@ const float BLOCKS_PER_TILE = 34.0;
 const float MORTAR_SHARE = 0.08;
 const vec3 MASONRY = vec3(0.56, 0.53, 0.49);
 const float COPING_BAND = 0.035;
+const float COPING_FULL_STEP = 2.0 * COPING_BAND;
 const float COPING_LIFT = 1.15;
 const float DRIP_WIDTH = 0.012;
 const float DRIP_SHADE = 0.45;
@@ -1585,10 +1586,10 @@ vec3 Damp(vec3 stone, float along, float rise)
 	return stone * mix(DAMP_STONE, vec3(1.0), smoothstep(0.0, reach, rise));
 }
 
-vec3 Coped(vec3 stone, float along, float drop)
+vec3 Coped(vec3 stone, float along, float drop, float step_height)
 {
 	float pixel = 1.0 / tile_pixels;
-	float cap = 1.0 - smoothstep(COPING_BAND - pixel, COPING_BAND + pixel, drop);
+	float cap = (1.0 - smoothstep(COPING_BAND - pixel, COPING_BAND + pixel, drop)) * smoothstep(COPING_BAND, COPING_FULL_STEP, step_height);
 	float drip = Stroke(abs(drop - COPING_BAND - DRIP_WIDTH), DRIP_WIDTH, pixel);
 	float reach = mix(STREAK_REACHES.x, STREAK_REACHES.y, Noise(vec2(along * STREAK_LENGTHS_PER_TILE, STREAK_SEEDS.y)));
 	float streaks = smoothstep(STREAK_EDGES.x, STREAK_EDGES.y, Noise(vec2(along * STREAKS_PER_TILE, STREAK_SEEDS.x))) * (1.0 - smoothstep(0.0, reach, drop)) * Resolved(STREAKS_PER_TILE);
@@ -1606,8 +1607,12 @@ vec3 WallFace(vec3 normal)
 	float mortar = smoothstep(0.5 - MORTAR_SHARE, 0.5, max(joint.x, joint.y));
 	float detail = Resolved(COURSES_PER_TILE);
 	vec3 stone = MASONRY * Varied(Hash(ivec2(floor(block), floor(course))), 0.18 * detail) * (1.0 - 0.3 * mortar * detail);
-	stone = Damp(stone, along, (v_world.z - LevelToward(normal.xy * HALF_TILE)) * LevelRise());
-	if (v_mark > RETAINING_THRESHOLD) stone = Coped(stone, along, (LevelToward(-normal.xy * HALF_TILE) - v_world.z) * LevelRise());
+	float front = LevelToward(normal.xy * HALF_TILE);
+	stone = Damp(stone, along, (v_world.z - front) * LevelRise());
+	if (v_mark > RETAINING_THRESHOLD) {
+		float upper = LevelToward(-normal.xy * HALF_TILE);
+		stone = Coped(stone, along, (upper - v_world.z) * LevelRise(), (upper - front) * LevelRise());
+	}
 	return stone;
 }
 
