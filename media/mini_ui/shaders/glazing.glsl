@@ -3,8 +3,6 @@ const vec3 DISTANT_TOWN = vec3(0.16, 0.17, 0.15);
 const float LEAST_RISE = 0.05;
 const float MIRRORED_WINDOW_CONTRAST = 0.6;
 const float MIRRORED_SATURATION = 0.2;
-const float MIRRORED_STREET_OPENNESS = 0.45;
-const float MIRRORED_CANYON_DEPTH = 0.8;
 const vec2 MIRRORED_TRACED_PIXELS = vec2(12.0, 24.0);
 const float MIRRORED_UPWARD_FACE = 0.7;
 const float MIRRORED_LIFT = 0.01;
@@ -18,14 +16,18 @@ const vec2 MIRRORED_REACH_CELLS = float(MASSING_CELLS) * vec2(0.5, 1.0);
 struct Seen {
 	vec3 albedo;
 	vec3 normal;
-	float openness;
 	vec3 sheen;
 	float cover;
 };
 
+float FloorOf(ivec2 tile)
+{
+	return LowestCorner(SurfaceOf(tile)) * LevelRise();
+}
+
 float GroundBelow(vec2 at)
 {
-	return LowestCorner(SurfaceOf(ivec2(floor(at)))) * LevelRise();
+	return FloorOf(ivec2(floor(at)));
 }
 
 float RunToGround(vec3 from, vec3 way)
@@ -43,11 +45,6 @@ vec3 Beyond(vec3 from, vec3 way)
 float WithinReach(vec3 way, float run)
 {
 	return 1.0 - smoothstep(MIRRORED_REACH_CELLS.x, MIRRORED_REACH_CELLS.y, run * (abs(way.x) + abs(way.y)));
-}
-
-float CanyonOpenness(float above_foot)
-{
-	return mix(MIRRORED_STREET_OPENNESS, 1.0, smoothstep(0.0, MIRRORED_CANYON_DEPTH, above_foot));
 }
 
 Seen WallSeen(Sighting sighting, Massing massing, float blur)
@@ -68,13 +65,13 @@ Seen WallSeen(Sighting sighting, Massing massing, float blur)
 	vec3 face = Saturated(Linear(walled ? massing.wall : massing.roof), MIRRORED_SATURATION);
 	vec3 pane = grid == WINDOWS_CURTAIN ? Linear(massing.wall) * MIRRORED_GLAZED_BODY : Linear(DIM_ROOM) * DIM_ROOM_DAYLIGHT;
 	float cover = 1.0 - smoothstep(-0.5 * blur, 0.5 * blur, point.z - massing.box.top);
-	return Seen(mix(face, pane, windows * MIRRORED_WINDOW_CONTRAST), normal, CanyonOpenness(point.z - massing.box.foot), SKY_LIGHT * MIRRORED_WINDOW_SHEEN * windows, cover);
+	return Seen(mix(face, pane, windows * MIRRORED_WINDOW_CONTRAST), normal, SKY_LIGHT * MIRRORED_WINDOW_SHEEN * windows, cover);
 }
 
 Seen RoofSeen(Sighting sighting, Massing massing)
 {
 	bool snowed = Landscape() == LANDSCAPE_ARCTIC && sighting.point.z / LevelRise() > SnowLine();
-	return Seen(Saturated(Linear(snowed ? SNOW : massing.roof), MIRRORED_SATURATION), UP, 1.0, vec3(0.0), 1.0);
+	return Seen(Saturated(Linear(snowed ? SNOW : massing.roof), MIRRORED_SATURATION), UP, vec3(0.0), 1.0);
 }
 
 bool Along(uint ends, uint way, float across)
@@ -108,7 +105,7 @@ Seen GroundSeen(Sighting sighting, vec3 way)
 		albedo = Linear(DISTANT_WATER);
 		sheen = Surroundings(reflect(way, UP)) * MIRRORED_WATER_SHEEN;
 	}
-	return Seen(Saturated(albedo, MIRRORED_SATURATION), UP, MIRRORED_STREET_OPENNESS, sheen, 1.0);
+	return Seen(Saturated(albedo, MIRRORED_SATURATION), UP, sheen, 1.0);
 }
 
 Seen SeenAt(Sighting sighting, vec3 way, float blur)
@@ -118,10 +115,11 @@ Seen SeenAt(Sighting sighting, vec3 way, float blur)
 	return sighting.seen == SEEN_WALL ? WallSeen(sighting, massing, blur) : RoofSeen(sighting, massing);
 }
 
-vec3 LitAt(Seen seen, vec3 point, float clouds)
+vec3 LitAt(Seen seen, Sighting sighting, float clouds)
 {
+	vec3 point = sighting.point;
 	float sunlit = dot(seen.normal, SunDirection()) > 0.0 ? SunReaches(point + seen.normal * MIRRORED_SHADOW_LIFT) * clouds : 0.0;
-	return seen.albedo * (Sunlight(seen.normal, sunlit) + AmbientLight(seen.normal) * seen.openness) + seen.sheen;
+	return seen.albedo * (Sunlight(seen.normal, sunlit) + AmbientLight(seen.normal) * SkyOpenAt(sighting.tile, point, seen.normal)) + seen.sheen;
 }
 
 vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float clouds)
@@ -136,7 +134,7 @@ vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float
 		if (sighting.seen != SEEN_NOTHING && reach > 0.0) {
 			float blur = 1.0 / TilePixelsAt(far + sighting.run) + roughness * roughness * sighting.run;
 			Seen seen = SeenAt(sighting, way, blur);
-			near = vec4(Hazed(LitAt(seen, sighting.point, clouds), way, from, sighting.point), 1.0) * seen.cover * traced * reach;
+			near = vec4(Hazed(LitAt(seen, sighting, clouds), way, from, sighting.point), 1.0) * seen.cover * traced * reach;
 		}
 	}
 	return near.a >= 1.0 ? near.rgb : Composite(Beyond(from, way), near);

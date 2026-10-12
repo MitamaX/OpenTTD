@@ -29,6 +29,7 @@ static constexpr auto CLAD_SOURCES = Joined(LIT_SOURCES, std::array{
 	"mini_ui/shaders/cover.glsl",
 	"mini_ui/shaders/structure.glsl",
 	"mini_ui/shaders/pane.glsl",
+	"mini_ui/shaders/sky_field.glsl",
 	"mini_ui/shaders/massing.glsl",
 	"mini_ui/shaders/glazing.glsl",
 });

@@ -86,11 +86,7 @@ float OpenSky(vec3 centre, vec3 normal)
 {
 	mat3 to_render = transpose(mat3(u_view));
 	vec3 at = Eye() + to_render * centre;
-	ivec2 tile = Clamped(ivec2(floor(at.xy)));
-	uvec4 horizons = texelFetch(u_sky_field, tile, 0);
-	if (horizons == uvec4(0u)) return 1.0;
-	float ground = LowestCorner(SurfaceOf(tile)) * LevelRise();
-	return SkyOpenness(horizons, at.z - ground, at.xy - vec2(tile) - 0.5, to_render * normal);
+	return SkyOpenAt(Clamped(ivec2(floor(at.xy))), at, to_render * normal);
 }
 
 /* Each texel stands for the full size texel at its corner, and keeps how far ahead that lies for the blur to tell surfaces apart. */

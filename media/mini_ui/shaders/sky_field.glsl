@@ -29,3 +29,11 @@ float SkyOpenness(uvec4 horizons, float above, vec2 within, vec3 normal)
 	}
 	return weights > LEAST_SKY_WEIGHT ? mix(BLOCKED_SKY_RETURN, 1.0, open / weights) : 1.0;
 }
+
+float SkyOpenAt(ivec2 tile, vec3 at, vec3 normal)
+{
+	uvec4 horizons = texelFetch(u_sky_field, tile, 0);
+	if (horizons == uvec4(0u)) return 1.0;
+	float ground = LowestCorner(SurfaceOf(tile)) * LevelRise();
+	return SkyOpenness(horizons, at.z - ground, at.xy - vec2(tile) - TILE_CENTRE, normal);
+}
