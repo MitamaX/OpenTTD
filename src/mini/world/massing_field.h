@@ -28,6 +28,7 @@ inline constexpr uint MASSING_INSET_BITS = 2;
 inline constexpr uint MASSING_INSET_STEPS = 8;
 inline constexpr uint MASSING_INSET_MOST = 3;
 inline constexpr uint MASSING_EAVES_SHIFT = 8;
+inline constexpr uint MASSING_LOW_BYTE = 0x00FF;
 inline constexpr float MASSING_LEAST_COVER = 0.25f;
 inline constexpr int MASSING_BLOCK_TILES = 16;
 
@@ -47,14 +48,27 @@ struct MassingTexel {
 
 MassingTexel MassingTexelOf(TileIndex tile, const std::optional<BuildingForm> &form);
 
+struct MassingBox {
+	float low_x;
+	float low_y;
+	float high_x;
+	float high_y;
+	float foot;
+	float top;
+};
+
 class MassingField {
 public:
 	void Clear(Dimension map);
 	void Note(TileIndex tile, const MassingTexel &texel);
 	std::vector<Rect> TakeMoved();
+	std::optional<MassingBox> BoxAt(int x, int y, double rise) const;
+	std::optional<TileIndex> AnchorAt(int x, int y) const;
 	const void *Texels() const { return this->texels.data(); }
 
 private:
+	const MassingTexel *TexelAt(int x, int y) const;
+
 	Dimension map{};
 	std::vector<MassingTexel> texels;
 	std::vector<Rect> moved;

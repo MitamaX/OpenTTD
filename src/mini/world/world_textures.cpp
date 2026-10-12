@@ -20,7 +20,7 @@
 
 #include "../../safeguards.h"
 
-static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_flow", "u_massing"};
+static constexpr std::array<const char *, WorldTextures::UNIT_COUNT> SAMPLERS = {"u_tiles", "u_water", "u_surfaces", "u_network", "u_bends", "u_flow", "u_massing", "u_sky_field"};
 /* Two spans go up as one where the area bounding both is at most this many times what they cover, or at most this many texels. */
 static constexpr int64_t MOST_JOINED_SPREAD = 2;
 static constexpr int64_t FREELY_JOINED_TEXELS = 128 * 128;
@@ -47,6 +47,7 @@ WorldTextures::Source WorldTextures::SourceOf(uint unit) const
 		case BENDS_UNIT: return {TexelFormat::ExactRgba, _way_bends.Texels(), {}};
 		case FLOW_UNIT: return {TexelFormat::FilteredRg, this->flow.Texels(), {}};
 		case MASSING_UNIT: return {TexelFormat::ExactRgba16, this->massing.Texels(), {}};
+		case SKY_UNIT: return {TexelFormat::ExactRgba32, this->sky.Texels(), {}};
 		default: NOT_REACHED();
 	}
 }
@@ -65,6 +66,7 @@ void WorldTextures::Sync(const WorldChanges &changes)
 			this->flow.Survey(_world_tiles.Size());
 		}
 		this->massing.Clear(_world_tiles.Size());
+		this->sky.Clear(_world_tiles.Size());
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) this->Allocate(unit);
 	} else {
 		for (uint unit = 0; unit < UNIT_COUNT; unit++) {
@@ -76,8 +78,10 @@ void WorldTextures::Sync(const WorldChanges &changes)
 			this->SendSpans(unit, source.texels);
 		}
 		this->spans.clear();
-		for (const Rect &moved : this->massing.TakeMoved()) this->Take(moved);
+		std::vector<Rect> massing_moves = this->massing.TakeMoved();
+		for (const Rect &moved : massing_moves) this->Take(moved);
 		this->SendSpans(MASSING_UNIT, this->massing.Texels());
+		this->ResurveySky(massing_moves, changes.Of(ChangeKind::Shape));
 		std::vector<Rect> water_moves;
 		for (ChangeKind kind : WATER_MOVES) std::ranges::copy(changes.Of(kind), std::back_inserter(water_moves));
 		if (!water_moves.empty()) this->ResurveyFlow(water_moves);
@@ -91,6 +95,19 @@ void WorldTextures::ResurveyFlow(std::span<const Rect> water_moves)
 	this->spans.clear();
 	for (const Rect &changed : this->flow.Resurvey(water_moves)) this->Take(changed);
 	this->SendSpans(FLOW_UNIT, this->flow.Texels());
+}
+
+void WorldTextures::ResurveySky(std::span<const Rect> massing_moves, std::span<const Rect> shape_moves)
+{
+	std::vector<Rect> moves;
+	std::ranges::copy(massing_moves, std::back_inserter(moves));
+	std::ranges::copy(shape_moves, std::back_inserter(moves));
+	if (moves.empty()) return;
+
+	ProfileScope profile("build", "sky", ProfileClock::Cpu);
+	this->spans.clear();
+	for (const Rect &changed : this->sky.Resurvey(moves, this->massing)) this->Take(changed);
+	this->SendSpans(SKY_UNIT, this->sky.Texels());
 }
 
 void WorldTextures::Take(const Rect &changed)

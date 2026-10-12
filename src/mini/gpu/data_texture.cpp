@@ -35,6 +35,7 @@ static TexelLayout LayoutOf(TexelFormat format)
 		case TexelFormat::FilteredRg: return {GL_RG8, GL_RG, GL_UNSIGNED_BYTE, 2, true, GL_CLAMP_TO_EDGE};
 		case TexelFormat::TiledRgba: return {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 4, true, GL_REPEAT};
 		case TexelFormat::ExactRgba16: return {GL_RGBA16UI, GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, 8, false, GL_CLAMP_TO_EDGE};
+		case TexelFormat::ExactRgba32: return {GL_RGBA32UI, GL_RGBA_INTEGER, GL_UNSIGNED_INT, 16, false, GL_CLAMP_TO_EDGE};
 		default: return {GL_RGBA8UI, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, 4, false, GL_CLAMP_TO_EDGE};
 	}
 }

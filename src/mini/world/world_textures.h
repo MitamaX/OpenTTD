@@ -19,6 +19,7 @@
 #include "flow_field.h"
 #include "massing_field.h"
 #include "shader_program.h"
+#include "sky_field.h"
 
 class WorldTextures {
 public:
@@ -31,6 +32,7 @@ public:
 		BENDS_UNIT,
 		FLOW_UNIT,
 		MASSING_UNIT,
+		SKY_UNIT,
 		UNIT_COUNT,
 	};
 
@@ -61,10 +63,12 @@ private:
 	void Coalesce();
 	void SendSpans(uint unit, const void *texels);
 	void ResurveyFlow(std::span<const Rect> water_moves);
+	void ResurveySky(std::span<const Rect> massing_moves, std::span<const Rect> shape_moves);
 
 	std::array<DataTexture, UNIT_COUNT> textures;
 	FlowField flow;
 	MassingField massing;
+	SkyField sky;
 	std::vector<ChangedSpan> spans;
 };
 

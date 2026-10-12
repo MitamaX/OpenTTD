@@ -79,6 +79,8 @@ add_files(
     shore_relief.h
     signal_models.cpp
     signal_models.h
+    sky_field.cpp
+    sky_field.h
     smoke_pass.cpp
     smoke_pass.h
     smoke_vent.h

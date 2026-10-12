@@ -47,6 +47,7 @@
 #include "scene_view.h"
 #include "seabed.h"
 #include "shadow_map.h"
+#include "sky_field.h"
 #include "structure_mesh.h"
 #include "terrain_mesh.h"
 #include "track_models.h"
@@ -241,6 +242,14 @@ static std::string ShaderHeader()
 	DefineUnsigned(header, "MASSING_INSET_MOST", MASSING_INSET_MOST);
 	DefineFloat(header, "MASSING_INSET_STEPS", MASSING_INSET_STEPS);
 	DefineUnsigned(header, "MASSING_EAVES_SHIFT", MASSING_EAVES_SHIFT);
+	DefineUnsigned(header, "MASSING_LOW_BYTE", MASSING_LOW_BYTE);
+	DefineInt(header, "SKY_SECTORS", SKY_SECTORS);
+	DefineFloat(header, "SKY_HEIGHT_STEP", SKY_HEIGHT_STEP);
+	DefineFloat(header, "SKY_REACH_STEP", SKY_REACH_STEP);
+	DefineFloat(header, "NEAREST_HORIZON", NEAREST_HORIZON);
+	DefineFloat(header, "SKY_SECTOR_TURN", SKY_SECTOR_TURN);
+	DefineUnsigned(header, "SKY_SECTOR_BITS", SKY_SECTOR_BITS);
+	DefineUnsigned(header, "SKY_REACH_SHIFT", SKY_REACH_SHIFT);
 	DefineFacadeTexels(header, "FACADE_GROUND", &FacadeMetrics::ground_texels);
 	DefineFacadeTexels(header, "FACADE_STOREY", &FacadeMetrics::storey_texels);
 	DefineFacadeTexels(header, "FACADE_BAY", &FacadeMetrics::bay_texels);

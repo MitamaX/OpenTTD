@@ -1,6 +1,5 @@
 uniform usampler2D u_massing;
 
-const uint MASSING_LOW_BYTE = 255u;
 const uvec3 RGB565_SHIFTS = uvec3(11u, 5u, 0u);
 const uvec3 RGB565_MASKS = uvec3(31u, 63u, 31u);
 const uvec4 MASSING_INSET_SHIFTS = MASSING_INSET_SHIFT + uvec4(0u, 1u, 2u, 3u) * MASSING_INSET_BITS;

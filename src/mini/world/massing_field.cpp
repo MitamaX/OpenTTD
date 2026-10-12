@@ -18,6 +18,7 @@
 
 #include "../../map_func.h"
 #include "../map/world_tiles.h"
+#include "structure_mesh.h"
 
 #include "../../safeguards.h"
 
@@ -104,4 +105,34 @@ void MassingField::Note(TileIndex tile, const MassingTexel &texel)
 std::vector<Rect> MassingField::TakeMoved()
 {
 	return std::exchange(this->moved, {});
+}
+
+const MassingTexel *MassingField::TexelAt(int x, int y) const
+{
+	if (x < 0 || y < 0 || static_cast<uint>(x) >= this->map.width || static_cast<uint>(y) >= this->map.height) return nullptr;
+	const MassingTexel &texel = this->texels[static_cast<size_t>(y) * this->map.width + x];
+	return texel.heights == 0 ? nullptr : &texel;
+}
+
+static float FormRise(uint texels)
+{
+	return static_cast<float>(texels) / TEXELS_PER_TILE * FORM_HEIGHT_SCALE;
+}
+
+std::optional<MassingBox> MassingField::BoxAt(int x, int y, double rise) const
+{
+	const MassingTexel *texel = this->TexelAt(x, y);
+	if (texel == nullptr) return std::nullopt;
+	std::array<float, 4> insets{};
+	for (size_t side = 0; side < insets.size(); side++) insets[side] = static_cast<float>((texel->traits >> (MASSING_INSET_SHIFT + side * MASSING_INSET_BITS)) & MASSING_INSET_MOST) / MASSING_INSET_STEPS;
+	float lowest = _world_tiles.SurfaceAt(TileXY(x, y)).Lowest() + static_cast<float>((texel->traits >> MASSING_RAISED_SHIFT) & MASSING_RAISED_MOST);
+	float foot = lowest * static_cast<float>(rise);
+	return MassingBox{x + insets[0], y + insets[2], x + 1.0f - insets[1], y + 1.0f - insets[3], foot, foot + FormRise(texel->heights & MASSING_LOW_BYTE)};
+}
+
+std::optional<TileIndex> MassingField::AnchorAt(int x, int y) const
+{
+	const MassingTexel *texel = this->TexelAt(x, y);
+	if (texel == nullptr) return std::nullopt;
+	return TileXY(x - ((texel->traits & MASSING_FAR_X_BIT) != 0 ? 1 : 0), y - ((texel->traits & MASSING_FAR_Y_BIT) != 0 ? 1 : 0));
 }
