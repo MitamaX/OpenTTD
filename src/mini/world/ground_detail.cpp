@@ -22,8 +22,6 @@
 
 #include "../../safeguards.h"
 
-static constexpr int DETAIL_SIZE = 512;
-static constexpr float SLOPE_ENCODING = 6.0f;
 static constexpr int HOLLOW_REACH = 4;
 static constexpr float HOLLOW_ENCODING = 4.0f;
 static constexpr float STONE_COVER_GAIN = 4.0f;

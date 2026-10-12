@@ -1,9 +1,6 @@
 uniform sampler2D u_grain;
 uniform sampler2D u_relief;
 
-const float DETAIL_REPEAT_TILES = 4.0;
-const float DETAIL_SLOPE_DECODING = 1.0 / 6.0;
-const float DETAIL_TEXELS_PER_REPEAT = 512.0;
 const float FACING_SHARPNESS = 4.0;
 const mat2 DETAIL_TURN = mat2(0.8, 0.6, -0.6, 0.8);
 const float UNSEEN_FACING = 0.02;

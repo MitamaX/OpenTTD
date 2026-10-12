@@ -40,6 +40,7 @@
 #include "bare_ground.h"
 #include "flow_field.h"
 #include "forest_field.h"
+#include "ground_detail.h"
 #include "frame_units.h"
 #include "massing_field.h"
 #include "network_field.h"
@@ -270,6 +271,9 @@ static std::string ShaderHeader()
 	DefineFloat(header, "SHADOW_LEAST_OFFSET_SHARE", ShadowMap::LEAST_OFFSET_SHARE);
 	DefineFloat(header, "SHADOW_GRAZING_OFFSET_SHARE", ShadowMap::GRAZING_OFFSET_SHARE);
 	DefineFloat(header, "SHADOW_CASCADE_BLEND", ShadowMap::CASCADE_BLEND);
+	DefineFloat(header, "DETAIL_TEXELS_PER_REPEAT", DETAIL_SIZE);
+	DefineFloat(header, "DETAIL_REPEAT_TILES", DETAIL_REPEAT_TILES);
+	DefineFloat(header, "DETAIL_SLOPE_DECODING", 1.0 / SLOPE_ENCODING);
 	DefineFloat(header, "ROCK_SHOWN_PIXELS", ROCK_SHOWN_PIXELS);
 	DefineFloat(header, "ROCK_SOLID_PIXELS", ROCK_SOLID_PIXELS);
 	DefineFloat(header, "STANDARD_SLOPE", STANDARD_SLOPE);
