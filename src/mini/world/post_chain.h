@@ -18,6 +18,7 @@
 #include "scene_view.h"
 #include "shader_program.h"
 #include "world_target.h"
+#include "world_textures.h"
 
 /** How the world's edges are smoothed. */
 enum class Antialiasing : uint8_t {
@@ -36,15 +37,15 @@ public:
 
 	/* The view the world is drawn through this frame, nudged by a fraction of a pixel when frames are blended. */
 	SceneView Jitter(const SceneView &view);
-	void FindOcclusion(const WorldTarget &target);
+	void FindOcclusion(const WorldTarget &target, const WorldTextures &textures);
 	void Finish(const WorldTarget &target, const SceneView &view);
-	void Warm(const WorldTarget &target);
+	void Warm(const WorldTarget &target, const WorldTextures &textures);
 	void Present(const ShaderArea &area, Dimension layer, const WorldTarget &target);
 
 private:
 	bool Fit(Dimension size);
 	void BeginSteps() const;
-	void Occlude(const WorldTarget &target);
+	void Occlude(const WorldTarget &target, const WorldTextures &textures);
 	void Shade(const WorldTarget &target);
 	const PostTarget &Resolve(const WorldTarget &target);
 	const PostTarget &SmoothEdges();

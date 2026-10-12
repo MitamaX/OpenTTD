@@ -27,7 +27,7 @@ float[BLUR_SPAN] TentWeights(int first, float centre)
 }
 
 /* The half size openness, over a tile around and where things meet, blurred over four texels square, which takes in its whole noise spread, leaving out texels on other surfaces. */
-vec2 Openness(ivec2 texel, float ahead)
+vec3 Openness(ivec2 texel, float ahead)
 {
 	vec2 at = vec2(texel) * 0.5;
 	ivec2 origin = ivec2(floor(at)) - (BLUR_SPAN / 2 - 1);
@@ -35,25 +35,27 @@ vec2 Openness(ivec2 texel, float ahead)
 	float y_tent[BLUR_SPAN] = TentWeights(origin.y, at.y);
 	ivec2 last = textureSize(u_occlusion, 0) - 1;
 	float tolerance = ahead * BLUR_DEPTH_TOLERANCE;
-	vec2 sum = vec2(0.0);
+	vec3 sum = vec3(0.0);
 	float weights = 0.0;
 	for (int y = 0; y < BLUR_SPAN; y++) {
 		for (int x = 0; x < BLUR_SPAN; x++) {
-			vec3 tap = texelFetch(u_occlusion, clamp(origin + ivec2(x, y), ivec2(0), last), 0).rgb;
+			vec4 tap = texelFetch(u_occlusion, clamp(origin + ivec2(x, y), ivec2(0), last), 0);
 			float weight = max(0.0, 1.0 - abs(tap.z - ahead) / tolerance) * x_tent[x] * y_tent[y];
-			sum += tap.xy * weight;
+			sum += tap.xyw * weight;
 			weights += weight;
 		}
 	}
-	return weights > 1e-3 ? sum / weights : vec2(1.0);
+	return weights > 1e-3 ? sum / weights : vec3(1.0);
 }
 
 /* The ambient share a surface's shader left in the alpha dims by how closed in it lies, and where things meet a little of the sunlight too, which the sun's shadows are too coarse to catch. */
 vec3 Occluded(vec4 surface, ivec2 texel, float ahead)
 {
 	if (u_occlusion_strength <= 0.0) return surface.rgb;
-	vec2 open = mix(vec2(1.0), pow(Openness(texel, ahead), vec2(OCCLUSION_POWER)), u_occlusion_strength);
-	float ambient = open.x * open.y;
+	vec3 blurred = Openness(texel, ahead);
+	vec2 open = mix(vec2(1.0), pow(blurred.xy, vec2(OCCLUSION_POWER)), u_occlusion_strength);
+	float sky = mix(1.0, blurred.z, u_occlusion_strength);
+	float ambient = min(open.x, sky) * open.y;
 	float sun = mix(1.0, open.y, CONTACT_ON_SUN);
 	return surface.rgb * mix(sun, ambient, surface.a);
 }

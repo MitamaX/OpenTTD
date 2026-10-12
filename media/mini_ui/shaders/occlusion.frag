@@ -82,6 +82,17 @@ float Openness(vec3 centre, vec3 normal, vec2 uv, vec2 half_size, float radius)
 	return clamp(openness / float(SLICES), 0.0, 1.0);
 }
 
+float OpenSky(vec3 centre, vec3 normal)
+{
+	mat3 to_render = transpose(mat3(u_view));
+	vec3 at = Eye() + to_render * centre;
+	ivec2 tile = Clamped(ivec2(floor(at.xy)));
+	uvec4 horizons = texelFetch(u_sky_field, tile, 0);
+	if (horizons == uvec4(0u)) return 1.0;
+	float ground = LowestCorner(SurfaceOf(tile)) * LevelRise();
+	return SkyOpenness(horizons, at.z - ground, at.xy - vec2(tile) - 0.5, to_render * normal);
+}
+
 /* Each texel stands for the full size texel at its corner, and keeps how far ahead that lies for the blur to tell surfaces apart. */
 void main()
 {
@@ -89,11 +100,11 @@ void main()
 	ivec2 full_texel = ivec2(gl_FragCoord.xy) * 2;
 	float depth = texelFetch(u_depth, full_texel, 0).r;
 	if (depth >= SKY_DEPTH) {
-		frag_occlusion = vec4(1.0, 1.0, u_lens.y, 0.0);
+		frag_occlusion = vec4(1.0, 1.0, u_lens.y, 1.0);
 		return;
 	}
 	vec2 uv = (vec2(full_texel) + 0.5) / vec2(textureSize(u_depth, 0));
 	vec3 centre = FetchViewPoint(u_depth, full_texel);
 	vec3 normal = ViewNormal(u_depth, full_texel);
-	frag_occlusion = vec4(Openness(centre, normal, uv, half_size, RADIUS), Openness(centre, normal, uv, half_size, CONTACT_RADIUS), AheadOf(depth), 0.0);
+	frag_occlusion = vec4(Openness(centre, normal, uv, half_size, RADIUS), Openness(centre, normal, uv, half_size, CONTACT_RADIUS), AheadOf(depth), OpenSky(centre, normal));
 }

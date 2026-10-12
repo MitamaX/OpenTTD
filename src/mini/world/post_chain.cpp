@@ -21,7 +21,14 @@
 #include "../../safeguards.h"
 
 static constexpr std::array<const char *, 1> POST_VERTEX = {"mini_ui/shaders/post.vert"};
-static constexpr std::array<const char *, 3> OCCLUSION_SOURCES = {"mini_ui/shaders/scene.glsl", "mini_ui/shaders/post.glsl", "mini_ui/shaders/occlusion.frag"};
+static constexpr std::array<const char *, 6> OCCLUSION_SOURCES = {
+	"mini_ui/shaders/scene.glsl",
+	"mini_ui/shaders/noise.glsl",
+	"mini_ui/shaders/common.glsl",
+	"mini_ui/shaders/post.glsl",
+	"mini_ui/shaders/sky_field.glsl",
+	"mini_ui/shaders/occlusion.frag",
+};
 static constexpr std::array<const char *, 8> SHADE_SOURCES = {
 	"mini_ui/shaders/scene.glsl",
 	"mini_ui/shaders/noise.glsl",
@@ -157,11 +164,11 @@ bool PostChain::Fit(Dimension size)
 	return fitted;
 }
 
-void PostChain::FindOcclusion(const WorldTarget &target)
+void PostChain::FindOcclusion(const WorldTarget &target, const WorldTextures &textures)
 {
 	if (_tuning.ambient_occlusion == 0 || !this->Fit(target.Size())) return;
 	this->BeginSteps();
-	this->Occlude(target);
+	this->Occlude(target, textures);
 }
 
 /* Every step after the world is drawn reads the target's depth, and none of them tests or writes depth of its own. */
@@ -180,12 +187,12 @@ void PostChain::Finish(const WorldTarget &target, const SceneView &view)
 }
 
 /* Every step is drawn once, those the tuning leaves out as well, and what this leaves in the history is not blended into the next frame. */
-void PostChain::Warm(const WorldTarget &target)
+void PostChain::Warm(const WorldTarget &target, const WorldTextures &textures)
 {
 	if (!this->Fit(target.Size())) return;
 
 	this->BeginSteps();
-	this->Occlude(target);
+	this->Occlude(target, textures);
 	this->Shade(target);
 	this->SmoothEdges();
 	this->BlendHistory(target);
@@ -201,11 +208,12 @@ void PostChain::BeginSteps() const
 	glBindVertexArray(this->quad);
 }
 
-void PostChain::Occlude(const WorldTarget &target)
+void PostChain::Occlude(const WorldTarget &target, const WorldTextures &textures)
 {
 	ProfileScope profile("post", "occlude");
 	this->ambient.Bind();
-	this->occlusion.Use();
+	textures.Bind();
+	WorldTextures::BindSamplers(this->occlusion);
 	this->occlusion.BindSampler("u_depth", DEPTH_UNIT);
 	BindDepth(target, DEPTH_UNIT);
 	this->DrawQuad();

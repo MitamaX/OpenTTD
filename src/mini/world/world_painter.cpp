@@ -206,7 +206,7 @@ void WorldPainter::Render(const SceneView &view)
 	this->DrawStage(WorldStage::Solid, view);
 	this->target.Snapshot();
 	this->DrawStage(WorldStage::Surface, view);
-	this->post.FindOcclusion(this->target);
+	this->post.FindOcclusion(this->target, this->textures);
 	this->DrawOpen(view);
 	this->DrawStage(WorldStage::Translucent, view);
 	this->post.Finish(this->target, view);
@@ -224,7 +224,7 @@ void WorldPainter::Warm(const SceneView &view, Dimension layer)
 	this->shadows.Warm(this->passes);
 	if (this->target.Bind(view.viewport)) {
 		for (const auto &pass : this->passes) pass->Warm();
-		this->post.Warm(this->target);
+		this->post.Warm(this->target, this->textures);
 	}
 	glDisable(GL_SCISSOR_TEST);
 	this->warmed = _settings_game.game_creation.landscape;
