@@ -71,6 +71,7 @@ const float SPLASH_SHADE = 0.7;
 const vec2 SHORE_DAMP = vec2(0.18, 0.28);
 const vec2 BANK_DAMP = vec2(0.34, 0.14);
 const float DAMP_LEVEL = 0.5;
+const float TOY_DAMP_SHARE = 0.4;
 const float BANK_SWAY = 0.6;
 const vec2 BANK_GRAVEL_LEVELS = vec2(0.42, 0.54);
 const float BANK_GRAVEL_RAGGED = 0.3;
@@ -147,6 +148,9 @@ const vec3 SILT = vec3(0.38, 0.40, 0.33);
 const vec3 MUD = vec3(0.31, 0.29, 0.22);
 const vec3 RIVER_GRAVEL = vec3(0.52, 0.47, 0.37);
 const vec3 PEBBLES = vec3(0.64, 0.60, 0.52);
+const vec3 TOY_RIVER_GRAVEL = vec3(0.80, 0.72, 0.66);
+const vec3 TOY_PEBBLES = vec3(0.86, 0.80, 0.78);
+const vec3 TOY_MUD = vec3(0.60, 0.58, 0.64);
 const vec2 PEBBLE_EDGES = vec2(0.55, 0.8);
 const vec3 CANAL_FLOOR = vec3(0.45, 0.45, 0.42);
 const vec3 HEDGE = vec3(0.24, 0.33, 0.16);
@@ -1248,8 +1252,8 @@ Water WaterAt(vec2 p)
 /* A river runs over pebbled gravel in its shallows and over mud down its deep middle. */
 vec3 Riverbed(Grain grain, float sunk)
 {
-	vec3 gravel = mix(RIVER_GRAVEL, PEBBLES, smoothstep(PEBBLE_EDGES.x, PEBBLE_EDGES.y, grain.stones));
-	return mix(gravel, MUD, sunk);
+	vec3 gravel = mix(ToyOr(TOY_RIVER_GRAVEL, RIVER_GRAVEL), ToyOr(TOY_PEBBLES, PEBBLES), smoothstep(PEBBLE_EDGES.x, PEBBLE_EDGES.y, grain.stones));
+	return mix(gravel, ToyOr(TOY_MUD, MUD), sunk);
 }
 
 /* Ground near water is damp, darkening toward the waterline; a river or a lake soaks its banks darker and further back than the sea's spray does. */
@@ -1258,7 +1262,8 @@ vec3 Banks(vec3 land, Water water, vec3 beach, Grain grain)
 	float inland = 1.0 - clamp(water.share.x, 0.0, 1.0);
 	float level = water.level + (grain.local - 0.5) * BANK_SWAY * inland;
 	vec2 soaking = mix(SHORE_DAMP, BANK_DAMP, inland);
-	vec3 damp = land * (1.0 - soaking.x * smoothstep(soaking.y, DAMP_LEVEL, level));
+	float dampness = soaking.x * (Landscape() == LANDSCAPE_TOYLAND ? TOY_DAMP_SHARE : 1.0);
+	vec3 damp = land * (1.0 - dampness * smoothstep(soaking.y, DAMP_LEVEL, level));
 	float gravelled = Landscape() == LANDSCAPE_TOYLAND ? 0.0 : inland;
 	float strewn = smoothstep(BANK_GRAVEL_LEVELS.x, BANK_GRAVEL_LEVELS.y, level + (grain.stones - 0.5) * BANK_GRAVEL_RAGGED) * gravelled;
 	damp = mix(damp, RIVER_GRAVEL * WET_GRAVEL_SHADE, strewn);
