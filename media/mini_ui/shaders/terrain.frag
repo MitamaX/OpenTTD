@@ -75,7 +75,8 @@ const float DAMP_LEVEL = 0.5;
 const float TOY_DAMP_SHARE = 0.4;
 const float BANK_SWAY = 0.3;
 const vec2 BANK_GRAVEL_LEVELS = vec2(0.42, 0.54);
-const float BANK_GRAVEL_RAGGED = 0.12;
+const float BANK_GRAVEL_RAGGED = 0.3;
+const float TROPIC_GRAVEL_GRASS = 0.5;
 const float WET_GRAVEL_SHADE = 0.8;
 
 const vec3 SOIL = vec3(0.45, 0.37, 0.27);
@@ -1316,8 +1317,9 @@ vec3 Banks(vec3 land, Water water, vec3 beach, Grain grain)
 	float dampness = soaking.x * ToyOr(TOY_DAMP_SHARE, 1.0);
 	vec3 damp = land * (1.0 - dampness * smoothstep(soaking.y, DAMP_LEVEL, level));
 	float gravelled = ToyOr(0.0, inland);
-	float strewn = smoothstep(BANK_GRAVEL_LEVELS.x, BANK_GRAVEL_LEVELS.y, level + (grain.stones - 0.5) * BANK_GRAVEL_RAGGED) * gravelled;
-	damp = mix(damp, RIVER_GRAVEL * WET_GRAVEL_SHADE, strewn);
+	float strewn = smoothstep(BANK_GRAVEL_LEVELS.x, BANK_GRAVEL_LEVELS.y, level + (grain.clump - 0.5) * BANK_GRAVEL_RAGGED) * gravelled;
+	vec3 wet_gravel = mix(RIVER_GRAVEL * WET_GRAVEL_SHADE, damp, Landscape() == LANDSCAPE_TROPIC ? TROPIC_GRAVEL_GRASS : 0.0);
+	damp = mix(damp, wet_gravel, strewn);
 	vec3 walled = mix(damp, BANK, smoothstep(0.3, 0.46, water.canal));
 	return mix(walled, beach, smoothstep(SANDED_SEA, 0.44, water.sea));
 }
