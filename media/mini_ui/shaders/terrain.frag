@@ -581,7 +581,7 @@ float StrataPerLevel()
 
 float BedSlip(int layer)
 {
-	return (Hash(ivec2(layer, BED_SLIP_SEED)) - HALF_TILE) * BED_SLIP;
+	return (Hash(ivec2(layer, BED_SLIP_SEED)) - 0.5) * BED_SLIP;
 }
 
 float Staggered(float bedding)
