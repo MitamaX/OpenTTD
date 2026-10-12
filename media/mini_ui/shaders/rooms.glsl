@@ -52,7 +52,7 @@ const float PANEL_HALF_LENGTH = 0.6;
 const float PANEL_SPREAD = 0.6;
 const float HOME_FIXTURE_RADIUS = 0.8;
 const float DRAPE_GLOW = 0.4;
-const float DRAPE_SUNLIT = 0.6;
+const float DRAPE_SUNLIT = 0.4;
 const float ROOM_MEAN_DAYLIGHT = 0.5 * (ROOM_DAYLIGHTS.x + ROOM_DAYLIGHTS.y);
 const float ROOM_MEAN_LAMP = 0.5;
 const float ROOM_MEAN_FLAT_SHARE = 0.5;
@@ -356,7 +356,7 @@ Clad RoomMean(Room room)
 
 Clad Drape(vec3 paint, Room room)
 {
-	return PaneOver(paint, 1.0, DRAPE_SUNLIT, room.lamp * DRAPE_GLOW);
+	return PaneOver(paint, ROOM_DAYLIGHTS.x, DRAPE_SUNLIT, room.lamp * DRAPE_GLOW);
 }
 
 Clad SeenThrough(Room room, Bay bay, Elevation elevation)
