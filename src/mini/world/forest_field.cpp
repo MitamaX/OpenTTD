@@ -224,6 +224,7 @@ public:
 private:
 	TilePoint Spot(uint tree);
 	TreeRolls Roll();
+	bool Thick() const;
 	bool ClosesCanopy() const;
 	double Scale(double spread, double fringe, bool spare) const;
 	ShapedTree Grown(const TilePoint &spot, double fringe, bool spare);
@@ -267,7 +268,7 @@ Grove::Grove(int tx, int ty, uint8_t flora, const LaidGround &ground) :
 void Grove::Plant(std::vector<ShapedTree> &planted)
 {
 	bool toy = this->kind == TreeKind::Toy;
-	bool thinning = !toy && this->count >= THICK_WOOD;
+	bool thinning = !toy && this->Thick();
 	uint shown = (toy ? SHOWN_TOYS : SHOWN_TREES)[this->count];
 	for (uint tree = 0; tree < shown; tree++) {
 		TilePoint spot = this->Spot(tree);
@@ -302,10 +303,15 @@ TreeRolls Grove::Roll()
 	return rolls;
 }
 
+bool Grove::Thick() const
+{
+	return this->count >= THICK_WOOD;
+}
+
 bool Grove::ClosesCanopy() const
 {
 	bool canopied = this->kind == TreeKind::Broadleaf || this->kind == TreeKind::Conifer || this->kind == TreeKind::Jungle;
-	return canopied && this->count >= THICK_WOOD;
+	return canopied && this->Thick();
 }
 
 double Grove::Scale(double spread, double fringe, bool spare) const
