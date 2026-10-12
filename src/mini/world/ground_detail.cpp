@@ -117,7 +117,7 @@ static constexpr bool AllCellsPositive(const Layouts &layouts)
 static_assert(AllCellsPositive(STONE_LAYOUTS), "every stone layout needs cells to wrap its seeds by");
 
 static constexpr std::array<Lattice, 2> FINE_LATTICES = {{{12, 1, 2, 1.0f}, {25, 2, -1, 0.55f}}};
-static constexpr std::array<Lattice, 4> MICRO_LATTICES = {{{30, 2, 1, 1.0f}, {60, 1, -2, 0.85f}, {90, 1, 1, 0.75f}, {81, 3, 1, 0.65f}}};
+static constexpr std::array<Lattice, 4> MICRO_LATTICES = {{{30, 2, 1, 1.0f}, {60, 1, -2, 0.3f}, {90, 1, 1, 0.2f}, {81, 3, 1, 1.0f}}};
 
 static_assert(AllCellsPositive(FINE_LATTICES) && AllCellsPositive(MICRO_LATTICES), "every lattice needs cells to wrap its gradients by");
 
