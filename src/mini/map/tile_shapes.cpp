@@ -26,7 +26,7 @@
 
 static constexpr double HALF_PIXEL = 0.5;
 static constexpr double GROUND_PATH_STEP = 0.5;
-static constexpr int GROUND_PATH_REACH = 8;
+static constexpr int GROUND_SPAN_REACH = 8;
 static constexpr int LATTICE_ROW = MAX_SURFACE_DIVISIONS + 1;
 
 /* A stroke's half width once it keeps a pixel across, and the alpha it fades to for the width it lacks. */
@@ -230,7 +230,7 @@ static VisibleStroke Widened(MapVector along, double half_width, uint alpha)
 	return {half, FadedAlpha(half_width / half, alpha)};
 }
 
-static void FillOn(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha)
+void FillTile(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha)
 {
 	int divisions = tile.Divisions();
 	assert(divisions <= MAX_SURFACE_DIVISIONS);
@@ -246,7 +246,7 @@ static void FillOn(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha
 
 void FillTile(int tx, int ty, uint32_t c, uint alpha)
 {
-	FillOn(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), tx, ty, c, alpha);
+	FillTile(DrawnGround({tx, ty, tx, ty}).Tile(tx, ty), tx, ty, c, alpha);
 }
 
 std::optional<ShownTiles> ShownTiles::Of(const TileSpan &area)
@@ -259,7 +259,7 @@ std::optional<ShownTiles> ShownTiles::Of(const TileSpan &area)
 
 void ShownTiles::Fill(int tx, int ty, uint32_t c, uint alpha) const
 {
-	FillOn(this->ground.Tile(tx, ty), tx, ty, c, alpha);
+	FillTile(this->ground.Tile(tx, ty), tx, ty, c, alpha);
 }
 
 void FillArea(int tx0, int ty0, int tx1, int ty1, uint32_t c, uint alpha)
@@ -322,23 +322,27 @@ static int ClampedTile(double at, uint last)
 	return std::clamp(static_cast<int>(std::floor(at)), 0, static_cast<int>(last));
 }
 
+const DrawnTile &GroundWalk::Tile(int tx, int ty)
+{
+	if (!this->ground.has_value() || !this->ground->Holds(tx, ty)) this->ground.emplace(TileSpan{tx - GROUND_SPAN_REACH, ty - GROUND_SPAN_REACH, tx + GROUND_SPAN_REACH, ty + GROUND_SPAN_REACH});
+	if (!this->tile.has_value() || !this->tile->Is(tx, ty)) this->tile.emplace(this->ground->Tile(tx, ty));
+	return *this->tile;
+}
+
 std::vector<WorldPoint> GroundPath(TilePoint from, TilePoint to)
 {
 	double span = std::hypot(to.first - from.first, to.second - from.second);
 	int steps = std::max(1, static_cast<int>(std::ceil(span / GROUND_PATH_STEP)));
 	std::vector<WorldPoint> path;
 	path.reserve(steps + 1);
-	std::optional<DrawnGround> ground;
-	std::optional<DrawnTile> tile;
+	GroundWalk cursor;
 	for (int step = 0; step <= steps; step++) {
 		double share = static_cast<double>(step) / steps;
 		double x = from.first + (to.first - from.first) * share;
 		double y = from.second + (to.second - from.second) * share;
 		int tx = ClampedTile(x, Map::MaxX());
 		int ty = ClampedTile(y, Map::MaxY());
-		if (!ground.has_value() || !ground->Holds(tx, ty)) ground.emplace(TileSpan{tx - GROUND_PATH_REACH, ty - GROUND_PATH_REACH, tx + GROUND_PATH_REACH, ty + GROUND_PATH_REACH});
-		if (!tile.has_value() || !tile->Is(tx, ty)) tile.emplace(ground->Tile(tx, ty));
-		path.push_back(tile->At(x, y));
+		path.push_back(cursor.Tile(tx, ty).At(x, y));
 	}
 	return path;
 }

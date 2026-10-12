@@ -94,31 +94,35 @@ static void PaintFootprint(TileIndex tile, int w, int h, uint32_t c)
 static void PaintRail(const RailPlan &plan, int ppt)
 {
 	uint32_t c = DragColour();
+	GroundWalk cursor;
 	for (size_t i = 0; i < plan.pieces.size(); i++) {
 		auto [tile, track] = plan.pieces[i];
-		DrawTrackPiece(track, TileX(tile), TileY(tile), TrackHalfWidth(ppt), _estimate.PlanColour(c, i));
+		DrawTrackPiece(cursor.Tile(TileX(tile), TileY(tile)), track, TileX(tile), TileY(tile), TrackHalfWidth(ppt), _estimate.PlanColour(c, i));
 	}
 }
 
 static void PaintRoad(const LinePlan &plan, int ppt)
 {
 	uint32_t c = DragColour();
+	GroundWalk cursor;
 	for (size_t i = 0; i < plan.tiles.size(); i++) {
 		TileIndex tile = plan.tiles[i];
-		DrawAxisBand(plan.axis, TileX(tile), TileY(tile), BandHalfWidth(ppt), _estimate.PlanColour(c, i));
+		DrawAxisBand(cursor.Tile(TileX(tile), TileY(tile)), plan.axis, TileX(tile), TileY(tile), BandHalfWidth(ppt), _estimate.PlanColour(c, i));
 	}
 }
 
 static void PaintBridge(const LinePlan &plan, int ppt)
 {
 	uint32_t c = plan.BridgeLength() > 0 ? _estimate.PlanColour(COL_BP) : COL_BP_RM;
+	GroundWalk cursor;
 	for (size_t i = 0; i < plan.tiles.size(); i++) {
 		int tx = TileX(plan.tiles[i]);
 		int ty = TileY(plan.tiles[i]);
+		const DrawnTile &ground = cursor.Tile(tx, ty);
 		if (i == 0 || i + 1 == plan.tiles.size()) {
-			FillTile(tx, ty, c, RAMP_ALPHA);
+			FillTile(ground, tx, ty, c, RAMP_ALPHA);
 		} else {
-			DrawAxisBand(plan.axis, tx, ty, SpanHalfWidth(ppt), c);
+			DrawAxisBand(ground, plan.axis, tx, ty, SpanHalfWidth(ppt), c);
 		}
 	}
 }
@@ -126,12 +130,14 @@ static void PaintBridge(const LinePlan &plan, int ppt)
 static void PaintSignals(const SignalPlan &plan, int ppt)
 {
 	uint32_t c = DragColour();
+	GroundWalk cursor;
 	for (size_t i = 0; i < plan.tiles.size(); i++) {
 		int tx = TileX(plan.tiles[i]);
 		int ty = TileY(plan.tiles[i]);
+		const DrawnTile &ground = cursor.Tile(tx, ty);
 		uint32_t tc = _estimate.PlanColour(c, i);
-		FillTile(tx, ty, tc, CUE_ALPHA);
-		DrawTrackPiece(plan.track, tx, ty, TrackHalfWidth(ppt), tc);
+		FillTile(ground, tx, ty, tc, CUE_ALPHA);
+		DrawTrackPiece(ground, plan.track, tx, ty, TrackHalfWidth(ppt), tc);
 	}
 }
 
@@ -189,11 +195,12 @@ static void PaintSites(int ppt)
 {
 	TileIndex hover = SiteTileAt(CursorPoint());
 	int b = FineEdgeWidth(ppt);
+	GroundWalk cursor;
 	for (TileIndex tile : _sites.Tiles()) {
 		if (tile == hover) continue;
 		int tx = TileX(tile);
 		int ty = TileY(tile);
-		FillTile(tx, ty, COL_BP, SITE_ALPHA);
+		FillTile(cursor.Tile(tx, ty), tx, ty, COL_BP, SITE_ALPHA);
 		FrameArea(tx, ty, tx, ty, b, COL_BP, SITE_EDGE_ALPHA);
 	}
 }

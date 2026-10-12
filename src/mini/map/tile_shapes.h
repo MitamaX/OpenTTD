@@ -74,6 +74,15 @@ private:
 	std::unique_ptr<GroundSpan> span;
 };
 
+class GroundWalk {
+public:
+	const DrawnTile &Tile(int tx, int ty);
+
+private:
+	std::optional<DrawnGround> ground;
+	std::optional<DrawnTile> tile;
+};
+
 class ShownTiles {
 public:
 	static std::optional<ShownTiles> Of(const TileSpan &area);
@@ -153,6 +162,7 @@ ArcPlace PlaceAlong(std::span<const Point> path, double arc, Flatten flat = {})
 TilePoint TileCentre(int tx, int ty);
 TilePoint Shifted(TilePoint from, DiagDirection side, double tiles);
 
+void FillTile(const DrawnTile &tile, int tx, int ty, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 void FillTile(int tx, int ty, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
 /* Tile by tile so the fill follows the terrain, over the tiles that can show. */
 void FillArea(int tx0, int ty0, int tx1, int ty1, uint32_t c, uint alpha = Canvas::OPAQUE_ALPHA);
