@@ -12,6 +12,7 @@ const float MIRRORED_WINDOW_SHEEN = 0.15;
 const float MIRRORED_WATER_SHEEN = 0.3;
 const float MIRRORED_GRASS_TONE = 0.5;
 const vec2 MIRRORED_REACH_CELLS = float(MASSING_CELLS) * vec2(0.5, 1.0);
+const float UNGAUGED_RADIUS = 0.0;
 
 struct Seen {
 	vec3 albedo;
@@ -119,7 +120,7 @@ vec3 LitAt(Seen seen, Sighting sighting, float clouds)
 {
 	vec3 point = sighting.point;
 	float sunlit = dot(seen.normal, SunDirection()) > 0.0 ? SunReaches(point + seen.normal * MIRRORED_SHADOW_LIFT) * clouds : 0.0;
-	return seen.albedo * (Sunlight(seen.normal, sunlit) + AmbientLight(seen.normal) * SkyOpenAt(sighting.tile, point, seen.normal)) + seen.sheen;
+	return seen.albedo * (Sunlight(seen.normal, sunlit) + AmbientLight(seen.normal) * SkyOpenAt(sighting.tile, point, seen.normal, UNGAUGED_RADIUS)) + seen.sheen;
 }
 
 vec3 Mirrored(vec3 point, vec3 face, vec3 way, ivec2 own, float roughness, float clouds)

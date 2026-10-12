@@ -55,7 +55,7 @@ vec3 Occluded(vec4 surface, ivec2 texel, float ahead)
 	vec3 blurred = Openness(texel, ahead);
 	vec2 open = mix(vec2(1.0), pow(blurred.xy, vec2(OCCLUSION_POWER)), u_occlusion_strength);
 	float sky = mix(1.0, blurred.z, u_occlusion_strength);
-	float ambient = min(open.x, sky) * open.y;
+	float ambient = open.x * sky * open.y;
 	float sun = mix(1.0, open.y, CONTACT_ON_SUN);
 	return surface.rgb * mix(sun, ambient, surface.a);
 }
