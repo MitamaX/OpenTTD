@@ -15,6 +15,7 @@
 
 #include "../../landscape_type.h"
 #include "../map/world_tiles.h"
+#include "../core/tones.h"
 #include "../model/model_mesh.h"
 
 /** How finely a tree is drawn, from near to far; past the last the ground's forest tint stands in for it. */
@@ -53,9 +54,16 @@ inline constexpr double FOLIAGE_TRANSLUCENCY_FULL = 0.4;
 static_assert(WOOD_TRANSLUCENCY_BOUND < CANDY_TRANSLUCENCY && CANDY_TRANSLUCENCY < FLESH_TRANSLUCENCY);
 static_assert(FLESH_TRANSLUCENCY < FOLIAGE_TRANSLUCENCY_FROM && FOLIAGE_TRANSLUCENCY_FULL < LEAF_TRANSLUCENCY && LEAF_TRANSLUCENCY < FROND_TRANSLUCENCY);
 
+inline constexpr uint DEEP_LEAF_SHADE_ALPHA = 55;
+
+constexpr uint32_t DeepLeaf(uint32_t leaf)
+{
+	return Mix(leaf, COL_SHADOW, DEEP_LEAF_SHADE_ALPHA);
+}
+
 /* The colour a canopy of each kind shows from afar, as the ground's forest tint paints it. */
 inline constexpr std::array<uint32_t, TREE_KINDS> TREE_CANOPY_TONES = {
-	0x5A8139, 0x3D6B3B, 0x3A752E, 0x5E923C, 0x5E8A4A, 0xE07EA8,
+	DeepLeaf(0x5A8139), 0x3D6B3B, DeepLeaf(0x3A752E), 0x5E923C, 0x5E8A4A, 0xE07EA8,
 };
 
 inline constexpr std::array<uint32_t, TREE_KINDS> TREE_LITTER_TONES = {

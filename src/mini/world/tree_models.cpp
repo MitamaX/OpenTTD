@@ -136,10 +136,18 @@ struct TreeTones {
 };
 
 static constexpr size_t TONE_SETS = 3;
-static constexpr std::array<std::array<TreeTones, TONE_SETS>, TREE_KINDS> TONES = {{
-	{{{0x5E8C3A, 0x5E5246}, {0x4E8034, 0x564A3E}, {0x628F3C, 0xB7B2A5}}},
+using ToneRow = std::array<TreeTones, TONE_SETS>;
+
+constexpr ToneRow DeepLeaves(ToneRow row)
+{
+	for (TreeTones &tones : row) tones.leaves = DeepLeaf(tones.leaves);
+	return row;
+}
+
+static constexpr std::array<ToneRow, TREE_KINDS> TONES = {{
+	DeepLeaves({{{0x5E8C3A, 0x5E5246}, {0x4E8034, 0x564A3E}, {0x628F3C, 0xB7B2A5}}}),
 	{{{0x3A6B38, 0x54463A}, {0x2F6046, 0x4E4136}, {0x557F3A, 0x8A5A3C}}},
-	{{{0x3B7A2E, 0x6A604E}, {0x2F6E2A, 0x625846}, {0x4C8A30, 0x72684F}}},
+	DeepLeaves({{{0x3B7A2E, 0x6A604E}, {0x2F6E2A, 0x625846}, {0x4C8A30, 0x72684F}}}),
 	{{{0x5E9A3A, 0x8A7050}, {0x6AA040, 0x7E6649}, {0x548E36, 0x927858}}},
 	{{{0x5E8A4A, 0xE86FA8}, {0x6B9A55, 0xF2C94A}, {0x557F45, 0xF4EEE4}}},
 	{{{0xF07FB0, 0xF4EEE4}, {0x7FC8F0, 0xF4EEE4}, {0xF2B24A, 0xF4EEE4}}},

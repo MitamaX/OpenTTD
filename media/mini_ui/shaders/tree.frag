@@ -28,7 +28,6 @@ const vec2 SPRAY_EDGES = vec2(0.25, 0.75);
 const float SPRAY_SEED = 2.3;
 const float LEAF_POCKETS = 0.55;
 const float MEAN_DOME = 0.5;
-const float DISTANT_CROWN_SHADE = 0.4;
 const vec2 LEAF_DOME_EDGES = vec2(0.25, 0.75);
 const float LEAF_RELIEF = 0.018;
 const float LEAST_FACING = 0.1;
@@ -101,11 +100,6 @@ float PocketShade(float dome)
 	return mix(1.0, resolved, LeafShare());
 }
 
-float DistantCrownShade()
-{
-	return 1.0 - DISTANT_CROWN_SHADE * LeafShare() * (1.0 - LeafResolvedClumps());
-}
-
 vec3 FacetNormal(vec3 across, vec3 down, vec3 normal)
 {
 	vec3 facet = cross(across, down);
@@ -144,7 +138,7 @@ void main()
 	float canopy_openness = gl_FrontFacing ? v_openness : v_openness * INSIDE_OPENNESS;
 	float sky_openness = canopy_openness * PocketShade(dome);
 	float upward = FacetNormal(across, down, normal).z + (clumps - 0.5) * SNOW_CLUMPING * foliage;
-	vec3 albedo = Albedo(upward) * DistantCrownShade();
+	vec3 albedo = Albedo(upward);
 	Coat coat = Coat(mix(BARK_ROUGHNESS, LEAF_ROUGHNESS, Unwooded()), DIELECTRIC_REFLECTANCE);
 	vec4 radiance = FoliageRadiance(Linear(albedo), leaves, view, v_translucency, coat, sky_openness, 1.0 - canopy_openness, sunlit, v_crown_sunlit * clouds);
 	frag_colour = vec4(radiance.rgb, radiance.a * (gl_FrontFacing ? 1.0 : INSIDE_SCREEN_OCCLUSION));
