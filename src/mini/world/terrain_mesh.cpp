@@ -63,8 +63,8 @@ static constexpr double WING_THICKNESS = 0.12;
 static constexpr double COPING_DEPTH = WING_THICKNESS + COPING_OVERHANG;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
-static constexpr double EARTH_BANK_FOOT_DIP = 0.06;
-static constexpr double SHALLOWEST_FACE = 2.0 * BANK_FOOT_DIP;
+/* A way's earth that stands out of the ground less than this, in levels, ends in no face. */
+static constexpr double SHALLOWEST_END_FACE = 2.0 * BANK_FOOT_DIP;
 static constexpr double SAME_POINT = 1e-6;
 static constexpr double PARALLEL_LEAST = 1.0 - SAME_POINT;
 static constexpr double WALL_OVERLAP_LEAST = 0.1;
@@ -1780,14 +1780,16 @@ private:
 		return FormationRow{shape.OuterSide(-1.0), shape.OuterSide(1.0)};
 	}
 
+	void AddEndFace(const std::array<WorldPoint, 2> &line, const std::array<WorldPoint, 2> &feet, const MapVector &facing) const
+	{
+		double depth = std::max(line[0].level - feet[0].level, line[1].level - feet[1].level);
+		if (depth >= SHALLOWEST_END_FACE) AddMasonry(this->mesh, line, feet, facing);
+	}
+
 	void Close(const FormationRow &row, const MapVector &facing) const
 	{
-		for (const FormationSide &side : row) {
-			std::array<WorldPoint, 2> line = {side.crest, side.toe};
-			AddMasonry(this->mesh, line, std::array<WorldPoint, 2>{this->Seated(side.crest), side.toe}, facing);
-		}
-		std::array<WorldPoint, 2> line = {row[0].crest, row[1].crest};
-		AddMasonry(this->mesh, line, std::array<WorldPoint, 2>{this->Seated(row[0].crest), this->Seated(row[1].crest)}, facing);
+		for (const FormationSide &side : row) this->AddEndFace({side.crest, side.toe}, {this->Seated(side.crest), side.toe}, facing);
+		this->AddEndFace({row[0].crest, row[1].crest}, {this->Seated(row[0].crest), this->Seated(row[1].crest)}, facing);
 	}
 
 	TerrainMesh &mesh;
