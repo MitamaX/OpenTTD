@@ -785,9 +785,12 @@ static bool Walled(int tx, int ty, DiagDirection side, BankOnSide bank_on)
 	return StepFaceOf(tx, ty, side).has_value() && !bank_on(tx, ty, side).has_value();
 }
 
-static bool StepEndsAt(const StepFace &step, const WorldPoint &corner)
+static std::optional<double> StepTopAt(const StepFace &step, const WorldPoint &corner)
 {
-	return std::ranges::any_of(STEP_ENDS, [&](const std::array<size_t, 2> &end) { return SameSpot(step.ring[end[0]], corner); });
+	for (const std::array<size_t, 2> &end : STEP_ENDS) {
+		if (SameSpot(step.ring[end[0]], corner)) return step.ring[end[0]].level;
+	}
+	return std::nullopt;
 }
 
 template <class Meets>
@@ -803,22 +806,34 @@ static bool AnyStepAtCorner(const WorldPoint &corner, const Meets &meets)
 	return false;
 }
 
-static bool WallRisesAt(int tx, int ty, DiagDirection own_side, const WorldPoint &corner)
+template <class Admits>
+static bool WallRisesAt(int tx, int ty, DiagDirection own_side, const WorldPoint &corner, const Admits &admits)
 {
 	return AnyStepAtCorner(corner, [&](int around_x, int around_y, DiagDirection side, const StepFace &step) {
 		bool own = around_x == tx && around_y == ty && side == own_side;
-		return !own && StepEndsAt(step, corner) && Walled(around_x, around_y, side, BankOnPlain);
+		std::optional<double> top = StepTopAt(step, corner);
+		return !own && top.has_value() && admits(*top) && Walled(around_x, around_y, side, BankOnPlain);
 	});
 }
 
-static bool ShutOutByRiver(int tx, int ty, DiagDirection side, const StepFace &step)
+static bool IsPortalTile(int tx, int ty)
+{
+	return OnMap(tx, ty) && IsTunnelTile(TileXY(tx, ty));
+}
+
+template <class Touches>
+static bool TouchesCorner(const WorldPoint &corner, const Touches &touches)
+{
+	return std::ranges::any_of(TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y)), [&](const CornerTile &around) { return touches(around.tx, around.ty); });
+}
+
+static bool ShutOutByCutting(int tx, int ty, DiagDirection side, const StepFace &step)
 {
 	for (const std::array<size_t, 2> &end : STEP_ENDS) {
 		const WorldPoint &corner = step.ring[end[0]];
 		if (!AtCorner(corner)) continue;
-		auto touches_river = [](const CornerTile &around) { return IsRiverWater(around.tx, around.ty); };
-		bool on_river = std::ranges::any_of(TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y)), touches_river);
-		if (on_river && WallRisesAt(tx, ty, side, corner)) return true;
+		if (TouchesCorner(corner, IsRiverWater) && WallRisesAt(tx, ty, side, corner, [](double) { return true; })) return true;
+		if (TouchesCorner(corner, IsPortalTile) && WallRisesAt(tx, ty, side, corner, [&](double top) { return top <= corner.level - SAME_POINT; })) return true;
 	}
 	return false;
 }
@@ -826,7 +841,7 @@ static bool ShutOutByRiver(int tx, int ty, DiagDirection side, const StepFace &s
 static std::optional<BankedStep> BankOn(int tx, int ty, DiagDirection side)
 {
 	std::optional<BankedStep> site = BankOnPlain(tx, ty, side);
-	return site.has_value() && !ShutOutByRiver(tx, ty, side, site->stepped.step) ? site : std::nullopt;
+	return site.has_value() && !ShutOutByCutting(tx, ty, side, site->stepped.step) ? site : std::nullopt;
 }
 
 class BankColumns {
