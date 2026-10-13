@@ -372,15 +372,19 @@ bool RiverChannel(ivec2 tile, Corners c)
 	return water.r > 0.0 && water.a > 0.0 && water.b <= 0.0 && (level || water.r >= 1.0);
 }
 
+bool FlatRiverAcross(Corners own, ivec2 beside)
+{
+	Corners across = SurfaceOf(beside);
+	return across == own && RiverChannel(beside, across);
+}
+
 bool RiverBank(ivec2 tile)
 {
 	if (TileWater(tile).r > 0.0) return false;
 	Corners own = SurfaceOf(tile);
 	for (int j = -1; j <= 1; j++) {
 		for (int i = -1; i <= 1; i++) {
-			ivec2 beside = tile + ivec2(i, j);
-			Corners across = SurfaceOf(beside);
-			if (across == own && RiverChannel(beside, across)) return true;
+			if (FlatRiverAcross(own, tile + ivec2(i, j))) return true;
 		}
 	}
 	return false;
@@ -412,9 +416,27 @@ float DistanceToTreeCrown(vec2 p, ivec2 tile)
 	return max(distance(p, vec2(tile) + TILE_CENTRE) - TILE_CORNER_REACH, 0.0);
 }
 
+bool FlatRiverAlong(Corners own, ivec2 flank, ivec2 axis)
+{
+	return FlatRiverAcross(own, flank) && FlatRiverAcross(own, flank - axis) && FlatRiverAcross(own, flank + axis);
+}
+
+bool BridgeHeadBesideRiver(ivec2 tile)
+{
+	uvec4 network = texelFetch(u_network, Clamped(tile), 0);
+	if (!BridgeBit(network) || any(notEqual(network.rgb, uvec3(0u))) || Wooded(tile)) return false;
+	bool along_x = Spanned(tile - ivec2(1, 0)) || Spanned(tile + ivec2(1, 0));
+	bool along_y = Spanned(tile - ivec2(0, 1)) || Spanned(tile + ivec2(0, 1));
+	if (along_x == along_y) return false;
+	ivec2 axis = along_x ? ivec2(1, 0) : ivec2(0, 1);
+	ivec2 side = axis.yx;
+	Corners own = SurfaceOf(tile);
+	return FlatRiverAlong(own, tile + side, axis) || FlatRiverAlong(own, tile - side, axis);
+}
+
 float DistanceToHold(vec2 p, ivec2 tile)
 {
-	if (TileWater(tile).r > 0.0) return NOTHING_HELD;
+	if (TileWater(tile).r > 0.0 || BridgeHeadBesideRiver(tile)) return NOTHING_HELD;
 	if (BuiltOver(tile)) return DistanceToTile(p, tile);
 	return Wooded(tile) ? DistanceToTreeCrown(p, tile) : NOTHING_HELD;
 }

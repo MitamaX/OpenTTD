@@ -58,6 +58,11 @@ static std::array<double, 4> SplineWeights(double f)
 	return {w0, w1, 1.0 - w0 - w1 - w3, w3};
 }
 
+static TileIndex ClampedTile(int tx, int ty)
+{
+	return TileXY(std::clamp<int>(tx, 0, Map::MaxX()), std::clamp<int>(ty, 0, Map::MaxY()));
+}
+
 /* A tile's water and the levels it spans: a level tile's water lies at its lowest corner, a stream's runs from its lowest corner to its highest. */
 struct SheetSpan {
 	WaterTexel water;
@@ -68,7 +73,7 @@ struct SheetSpan {
 
 static SheetSpan SheetSpanOf(int tx, int ty)
 {
-	TileIndex tile = TileXY(std::clamp<int>(tx, 0, Map::MaxX()), std::clamp<int>(ty, 0, Map::MaxY()));
+	TileIndex tile = ClampedTile(tx, ty);
 	WaterTexel water = _world_tiles.WaterAt(tile);
 	SurfaceTexel surface = _world_tiles.SurfaceAt(tile);
 	double low = surface.Lowest();
@@ -129,11 +134,49 @@ static double DistanceToTreeCrown(double x, double y, int tx, int ty)
 	return std::max(std::hypot(x - tx - HALF_TILE, y - ty - HALF_TILE) - TILE_CORNER_REACH, 0.0);
 }
 
+static bool IsRiverChannelTexel(const WaterTexel &water, const SurfaceTexel &surface)
+{
+	return water.level > 0 && water.river > 0 && water.canal == 0 && (surface.Lowest() == surface.Highest() || water.level == FULL_WATER);
+}
+
+static bool FlatRiverAcross(const SurfaceTexel &own, int tx, int ty)
+{
+	TileIndex beside = ClampedTile(tx, ty);
+	SurfaceTexel across = _world_tiles.SurfaceAt(beside);
+	return across == own && IsRiverChannelTexel(_world_tiles.WaterAt(beside), across);
+}
+
+static bool IsSpanned(int tx, int ty)
+{
+	return (_world_tiles.NetworkAt(ClampedTile(tx, ty)).style & NETWORK_BRIDGE_BIT) != 0;
+}
+
+static bool FlatRiverAlong(const SurfaceTexel &own, int flank_x, int flank_y, int axis_x, int axis_y)
+{
+	return FlatRiverAcross(own, flank_x, flank_y) && FlatRiverAcross(own, flank_x - axis_x, flank_y - axis_y)
+		&& FlatRiverAcross(own, flank_x + axis_x, flank_y + axis_y);
+}
+
+static bool BridgeHeadBesideRiver(int tx, int ty)
+{
+	NetworkTexel network = _world_tiles.NetworkAt(ClampedTile(tx, ty));
+	bool without_way = (network.track | network.road | network.tram) == 0;
+	if ((network.style & NETWORK_BRIDGE_BIT) == 0 || !without_way || IsWooded(tx, ty)) return false;
+	bool along_x = IsSpanned(tx - 1, ty) || IsSpanned(tx + 1, ty);
+	bool along_y = IsSpanned(tx, ty - 1) || IsSpanned(tx, ty + 1);
+	if (along_x == along_y) return false;
+	int axis_x = along_x ? 1 : 0;
+	int axis_y = along_x ? 0 : 1;
+	SurfaceTexel own = _world_tiles.SurfaceAt(ClampedTile(tx, ty));
+	return FlatRiverAlong(own, tx + axis_y, ty + axis_x, axis_x, axis_y) || FlatRiverAlong(own, tx - axis_y, ty - axis_x, axis_x, axis_y);
+}
+
 static double DistanceToHold(double x, double y, int tx, int ty)
 {
-	int cx = std::clamp<int>(tx, 0, Map::MaxX());
-	int cy = std::clamp<int>(ty, 0, Map::MaxY());
-	if (_world_tiles.WaterAt(TileXY(cx, cy)).level != 0) return NOTHING_HELD;
+	TileIndex tile = ClampedTile(tx, ty);
+	int cx = TileX(tile);
+	int cy = TileY(tile);
+	if (_world_tiles.WaterAt(tile).level != 0 || BridgeHeadBesideRiver(cx, cy)) return NOTHING_HELD;
 	if (IsBuiltOver(cx, cy)) return DistanceToTile(x, y, tx, ty);
 	return IsWooded(cx, cy) ? DistanceToTreeCrown(x, y, tx, ty) : NOTHING_HELD;
 }
