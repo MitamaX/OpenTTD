@@ -11,8 +11,8 @@
 #include "tunnel_models.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
+#include <iterator>
 #include <numbers>
 #include <vector>
 
@@ -60,10 +60,39 @@ static constexpr uint32_t REVEAL_STONE = 0x6F6A60;
 static constexpr uint32_t CORNICE_STONE = 0xA59F92;
 static constexpr uint32_t MOUTH = 0x141618;
 
+struct FaceTop {
+	double left;
+	double right;
+};
+
 /* Points on the portal as distances right of the way's centre line, heights above the tunnel floor and how far they stand out of the hill's face. */
 class PortalFrame {
 public:
-	PortalFrame(const MapVector &edge, const MapVector &inward) : edge(edge), inward(inward), right(RightOf(inward)) {}
+	PortalFrame(const MapVector &edge, const MapVector &inward, int nx, int ny, double floor) : edge(edge), inward(inward), right(RightOf(inward)), top(TopOverHill(nx, ny, floor)) {}
+
+	double TopAt(double across) const
+	{
+		return this->top.left + this->TopSlope() * (across + FACE_HALF);
+	}
+
+	double TallestTop() const { return std::max(this->top.left, this->top.right); }
+
+	double TopSlope() const { return (this->top.right - this->top.left) / (2.0 * FACE_HALF); }
+
+	std::vector<MapVector> UnderTop(const std::vector<MapVector> &outline) const
+	{
+		auto depth = [&](const MapVector &at) { return this->TopAt(at.x) - at.y; };
+		std::vector<MapVector> under;
+		for (size_t point = 0; point < outline.size(); point++) {
+			const MapVector &from = outline[point];
+			const MapVector &to = outline[(point + 1) % outline.size()];
+			double from_depth = depth(from);
+			double to_depth = depth(to);
+			if (from_depth >= 0.0) under.push_back(from);
+			if ((from_depth >= 0.0) != (to_depth >= 0.0)) under.push_back(from + (to - from) * (from_depth / (from_depth - to_depth)));
+		}
+		return under;
+	}
 
 	MapVector Across(double across) const { return this->edge + this->right * across; }
 
@@ -83,17 +112,29 @@ public:
 
 	Vec3 Out() const { return {-this->inward.x, -this->inward.y, 0.0}; }
 
-	void Quad(ModelMesh &mesh, std::array<Vec3, 4> corners, const Vec3 &facing) const
+	void Polygon(ModelMesh &mesh, const std::vector<Vec3> &corners, const Vec3 &facing) const
 	{
-		std::array<uint32_t, 4> points;
-		std::ranges::transform(corners, points.begin(), [&](const Vec3 &corner) { return mesh.Point(corner, facing); });
-		mesh.Quad(points[0], points[1], points[2], points[3]);
+		std::vector<uint32_t> points;
+		std::ranges::transform(corners, std::back_inserter(points), [&](const Vec3 &corner) { return mesh.Point(corner, facing); });
+		for (size_t point = 2; point < points.size(); point++) mesh.Triangle(points[0], points[point - 1], points[point]);
 	}
 
 private:
+	FaceTop TopOverHill(int nx, int ny, double floor) const
+	{
+		if (!OnMap(nx, ny)) return {LEAST_FACE_HEIGHT, LEAST_FACE_HEIGHT};
+		TileGround hill(nx, ny);
+		auto standing_at = [&](double across) {
+			MapVector at = this->Across(across);
+			return std::max((hill.Level(at.x, at.y) - floor) * LevelRise(), LEAST_FACE_HEIGHT);
+		};
+		return {standing_at(-FACE_HALF), standing_at(FACE_HALF)};
+	}
+
 	MapVector edge;
 	MapVector inward;
 	MapVector right;
+	FaceTop top;
 };
 
 static MapVector OnArch(double half, double rise, double angle)
@@ -133,8 +174,9 @@ class PortalMasonry {
 public:
 	PortalMasonry(const PortalFrame &frame, double mouth, uint32_t seed) : frame(frame), mouth(mouth), dice(seed) {}
 
-	void LayCourses(double height)
+	void LayCourses()
 	{
+		double height = this->frame.TallestTop();
 		int courses = static_cast<int>(std::ceil(height / COURSE_HEIGHT));
 		for (int course = 0; course < courses; course++) {
 			double low = course * COURSE_HEIGHT;
@@ -190,12 +232,14 @@ private:
 		this->Lay({MapVector{bottom.left, low}, MapVector{bottom.right, low}, MapVector{top.right, high}, MapVector{top.left, high}}, DRESSED_PROUD, stone);
 	}
 
-	void Lay(const std::array<MapVector, 4> &corners, double proud, uint32_t stone)
+	void Lay(const std::vector<MapVector> &outline, double proud, uint32_t stone)
 	{
-		std::array<Vec3, 4> placed;
-		std::ranges::transform(corners, placed.begin(), [&](const MapVector &at) { return this->frame.At(at.x, at.y, proud); });
+		std::vector<MapVector> corners = this->frame.UnderTop(outline);
+		if (corners.size() < 3) return;
+		std::vector<Vec3> placed;
+		std::ranges::transform(corners, std::back_inserter(placed), [&](const MapVector &at) { return this->frame.At(at.x, at.y, proud); });
 		ModelMesh block;
-		this->frame.Quad(block, placed, this->frame.Out());
+		this->frame.Polygon(block, placed, this->frame.Out());
 		this->stones.Append(block.Paint(ScaledRgb(stone, this->dice.Between(1.0 - STONE_VARIETY, 1.0 + STONE_VARIETY))));
 	}
 
@@ -204,16 +248,6 @@ private:
 	SeedDice dice;
 	ModelMesh stones;
 };
-
-/* The hill's level over the lower of the face's two sides, so the face never stands out above it; past the map's edge no hill stands. */
-static double HillOver(const PortalFrame &frame, int nx, int ny, double floor)
-{
-	if (!OnMap(nx, ny)) return floor;
-	TileGround hill(nx, ny);
-	MapVector left = frame.Across(-FACE_HALF);
-	MapVector right = frame.Across(FACE_HALF);
-	return std::min(hill.Level(left.x, left.y), hill.Level(right.x, right.y));
-}
 
 static MapVector MiddleOf(TileIndex tile)
 {
@@ -225,26 +259,26 @@ MapVector TunnelMouth(TileIndex entrance)
 	return MiddleOf(entrance) + Outward(GetTunnelBridgeDirection(entrance)) * HALF_TILE;
 }
 
-static void LayFaceStrip(const PortalFrame &frame, ModelMesh &mortar, const MapVector &from, const MapVector &to, double height)
+static void LayFaceStrip(const PortalFrame &frame, ModelMesh &mortar, const MapVector &from, const MapVector &to)
 {
-	frame.Quad(mortar, {frame.At(from.x, from.y, FACE_PROUD), frame.At(to.x, to.y, FACE_PROUD), frame.At(to.x, height, FACE_PROUD), frame.At(from.x, height, FACE_PROUD)}, frame.Out());
+	frame.Polygon(mortar, {frame.At(from.x, from.y, FACE_PROUD), frame.At(to.x, to.y, FACE_PROUD), frame.At(to.x, frame.TopAt(to.x), FACE_PROUD), frame.At(from.x, frame.TopAt(from.x), FACE_PROUD)}, frame.Out());
 }
 
-static ModelMesh MortarFace(const PortalFrame &frame, const std::vector<MapVector> &outline, double mouth, double height)
+static ModelMesh MortarFace(const PortalFrame &frame, const std::vector<MapVector> &outline, double mouth)
 {
 	ModelMesh mortar;
-	LayFaceStrip(frame, mortar, {-FACE_HALF, 0.0}, {-mouth, 0.0}, height);
-	LayFaceStrip(frame, mortar, {mouth, 0.0}, {FACE_HALF, 0.0}, height);
-	for (size_t point = 1; point + 2 < outline.size(); point++) LayFaceStrip(frame, mortar, outline[point], outline[point + 1], height);
+	LayFaceStrip(frame, mortar, {-FACE_HALF, 0.0}, {-mouth, 0.0});
+	LayFaceStrip(frame, mortar, {mouth, 0.0}, {FACE_HALF, 0.0});
+	for (size_t point = 1; point + 2 < outline.size(); point++) LayFaceStrip(frame, mortar, outline[point], outline[point + 1]);
 	return mortar;
 }
 
-static ModelMesh WingReturns(const PortalFrame &frame, double height)
+static ModelMesh WingReturns(const PortalFrame &frame)
 {
 	ModelMesh returns;
 	for (double side : {-1.0, 1.0}) {
 		double across = side * FACE_HALF;
-		frame.Quad(returns, {frame.At(across, 0.0, 0.0), frame.At(across, 0.0, FACE_PROUD), frame.At(across, height, FACE_PROUD), frame.At(across, height, 0.0)}, frame.Facing(side, 0.0));
+		frame.Polygon(returns, {frame.At(across, 0.0, 0.0), frame.At(across, 0.0, FACE_PROUD), frame.At(across, frame.TopAt(across), FACE_PROUD), frame.At(across, frame.TopAt(across), 0.0)}, frame.Facing(side, 0.0));
 	}
 	return returns;
 }
@@ -256,7 +290,7 @@ static ModelMesh MouthReveal(const PortalFrame &frame, const std::vector<MapVect
 		const MapVector &from = outline[point];
 		const MapVector &to = outline[point + 1];
 		Vec3 inside = frame.Facing(-(from.x + to.x) * 0.5, SPRING_HEIGHT - (from.y + to.y) * 0.5);
-		frame.Quad(reveal, {frame.At(from.x, from.y, FACE_PROUD), frame.At(from.x, from.y, MOUTH_PROUD), frame.At(to.x, to.y, MOUTH_PROUD), frame.At(to.x, to.y, FACE_PROUD)}, inside);
+		frame.Polygon(reveal, {frame.At(from.x, from.y, FACE_PROUD), frame.At(from.x, from.y, MOUTH_PROUD), frame.At(to.x, to.y, MOUTH_PROUD), frame.At(to.x, to.y, FACE_PROUD)}, inside);
 	}
 	return reveal;
 }
@@ -273,13 +307,21 @@ static ModelMesh MouthOpening(const PortalFrame &frame, const std::vector<MapVec
 	return opening;
 }
 
-static ModelMesh PortalCornice(const MapVector &edge, const MapVector &inward, double height)
+static ModelMesh PortalCornice(const PortalFrame &frame)
 {
-	MapVector middle = edge - inward * (CORNICE_PROUD * 0.5);
-	return Block(middle, RightOf(inward), {-FACE_HALF - CORNICE_OVERHANG, -CORNICE_PROUD * 0.5, height - CORNICE_HEIGHT}, {FACE_HALF + CORNICE_OVERHANG, CORNICE_PROUD * 0.5, height});
+	double reach = FACE_HALF + CORNICE_OVERHANG;
+	auto corner = [&](double across, double drop, double proud) { return frame.At(across, frame.TopAt(across) - drop, proud); };
+	ModelMesh cornice;
+	frame.Polygon(cornice, {corner(-reach, CORNICE_HEIGHT, CORNICE_PROUD), corner(reach, CORNICE_HEIGHT, CORNICE_PROUD), corner(reach, 0.0, CORNICE_PROUD), corner(-reach, 0.0, CORNICE_PROUD)}, frame.Out());
+	frame.Polygon(cornice, {corner(-reach, 0.0, CORNICE_PROUD), corner(reach, 0.0, CORNICE_PROUD), corner(reach, 0.0, 0.0), corner(-reach, 0.0, 0.0)}, frame.Facing(-frame.TopSlope(), 1.0));
+	for (double side : {-1.0, 1.0}) {
+		double end = side * reach;
+		frame.Polygon(cornice, {corner(end, CORNICE_HEIGHT, 0.0), corner(end, CORNICE_HEIGHT, CORNICE_PROUD), corner(end, 0.0, CORNICE_PROUD), corner(end, 0.0, 0.0)}, frame.Facing(side, 0.0));
+	}
+	return cornice;
 }
 
-/* The face stands proud of the cut's wall as high as the hill over it and never lower than its mouth needs, its arch's reveal darkening into the mouth. */
+/* The face stands proud of the cut's wall as high as the hill over each side and never lower than its mouth needs, its arch's reveal darkening into the mouth. */
 void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 {
 	int tx = TileX(entrance);
@@ -287,22 +329,20 @@ void LayTunnelPortal(ModelMesh &mesh, TileIndex entrance)
 	MapVector inward = Outward(GetTunnelBridgeDirection(entrance));
 	MapVector centre = MiddleOf(entrance);
 	MapVector edge = TunnelMouth(entrance);
-	PortalFrame frame(edge, inward);
 	double floor = TileGround(tx, ty).Level(centre.x, centre.y);
-	double hill = HillOver(frame, tx + static_cast<int>(inward.x), ty + static_cast<int>(inward.y), floor);
-	double height = std::max((hill - floor) * LevelRise(), LEAST_FACE_HEIGHT);
+	PortalFrame frame(edge, inward, tx + static_cast<int>(inward.x), ty + static_cast<int>(inward.y), floor);
 	double mouth = GetTunnelBridgeTransportType(entrance) == TRANSPORT_RAIL ? RAIL_MOUTH_HALF : ROAD_MOUTH_HALF;
 	std::vector<MapVector> outline = MouthOutline(mouth);
 
 	PortalMasonry masonry(frame, mouth, SubSeed(entrance.base(), MASONRY_SALT));
-	masonry.LayCourses(height);
+	masonry.LayCourses();
 	masonry.LayRing();
 
-	ModelMesh portal = MortarFace(frame, outline, mouth, height).Paint(MORTAR);
-	portal.Append(WingReturns(frame, height).Paint(PORTAL_STONE));
+	ModelMesh portal = MortarFace(frame, outline, mouth).Paint(MORTAR);
+	portal.Append(WingReturns(frame).Paint(PORTAL_STONE));
 	portal.Append(masonry.Stones());
 	portal.Append(MouthReveal(frame, outline).Paint(REVEAL_STONE).Occlude([&](const Vec3 &at) { return frame.Proud(at) / FACE_PROUD; }));
 	portal.Append(MouthOpening(frame, outline).Paint(MOUTH).Occlude([](const Vec3 &) { return 0.0; }));
-	portal.Append(PortalCornice(edge, inward, height).Paint(CORNICE_STONE));
+	portal.Append(PortalCornice(frame).Paint(CORNICE_STONE));
 	mesh.Append(Drape(portal, LevelFooting(floor)));
 }
