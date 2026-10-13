@@ -63,7 +63,6 @@ static constexpr int CHECK_ROWS = 2;
 static constexpr double CHECK_INSET = 0.03;
 static constexpr double CHECK_LATERAL = GAUGE_HALF - CHECK_INSET;
 
-static constexpr double WIRE_HEIGHT = 0.36;
 static constexpr double MAST_OFFSET = 0.31;
 static constexpr double MAST_HALF = 0.016;
 static constexpr double MAST_CLEARANCE = BALLAST_HALF + MAST_HALF;
@@ -303,10 +302,11 @@ public:
 	}
 
 	template <typename Height>
-	ModelMesh Strung(double steps_per_tile, Height height) const
+	ModelMesh Strung(double steps_per_tile, Height height, const MastBan &bare = {}) const
 	{
 		ModelMesh wire;
 		for (size_t span = 0; span + 1 < this->shares.size(); span++) {
+			if (this->Bare(span, bare)) continue;
 			int steps = std::max(1, static_cast<int>(std::lround(Length(this->points[span + 1] - this->points[span]) * steps_per_tile)));
 			for (int step = 0; step < steps; step++) {
 				double from = std::lerp(this->shares[span], this->shares[span + 1], static_cast<double>(step) / steps);
@@ -317,12 +317,22 @@ public:
 		return wire;
 	}
 
+	bool BareAt(double share, const MastBan &bare) const
+	{
+		return this->Bare(this->SpanOf(share).first, bare);
+	}
+
 	ModelMesh Taut(double height) const
 	{
 		return this->Strung(0.0, [height](double) { return height; });
 	}
 
 private:
+	bool Bare(size_t span, const MastBan &bare) const
+	{
+		return bare && (bare(this->points[span]) || bare(this->points[span + 1]));
+	}
+
 	std::pair<size_t, double> SpanOf(double share) const
 	{
 		size_t span = std::clamp<size_t>(std::upper_bound(this->shares.begin(), this->shares.end(), share) - this->shares.begin(), 1, this->shares.size() - 1) - 1;
@@ -334,16 +344,19 @@ private:
 };
 
 /* The messenger wire sags between its real neighbouring supports, holding the contact wire level on droppers. */
-static ModelMesh Messenger(const WireSpans &spans, const WireRun &wires)
+static ModelMesh Messenger(const WireSpans &spans, const WireRun &wires, const MastBan &bare)
 {
 	auto sagging = [&](double share) {
 		auto [low, high] = spans.Around(share);
 		double along = (share - low) / (high - low);
 		return ARM_LOW - 4.0 * along * (1.0 - along) * MESSENGER_SAG * wires.Slack(low, high);
 	};
-	ModelMesh messenger = spans.Strung(MESSENGER_STEPS_PER_TILE, sagging);
+	ModelMesh messenger = spans.Strung(MESSENGER_STEPS_PER_TILE, sagging, bare);
 	for (double span_share : DROPPER_SHARES) {
-		for (double share : wires.SpanPoints(span_share)) messenger.Append(Strut(spans.At(share, WIRE_HEIGHT), spans.At(share, sagging(share)), DROPPER_HALF));
+		for (double share : wires.SpanPoints(span_share)) {
+			if (spans.BareAt(share, bare)) continue;
+			messenger.Append(Strut(spans.At(share, WIRE_HEIGHT), spans.At(share, sagging(share)), DROPPER_HALF));
+		}
 	}
 	return messenger.Paint(WIRE);
 }
@@ -390,7 +403,7 @@ static std::optional<double> MastSide(const Bend &line, double outer, double sha
 	return std::nullopt;
 }
 
-void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned)
+void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned, const MastBan &bare)
 {
 	const TrackSite &site = track.Site();
 	if (!site.wired || site.bits == TRACK_BIT_NONE || site.detail == WayDetail::Simple) return;
@@ -403,7 +416,7 @@ void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing
 		std::vector<double> stations = wires.Stations();
 		WireSpans spans(line, stations);
 		ModelMesh parts = spans.Taut(WIRE_HEIGHT).Paint(WIRE);
-		if (!track.Branch(rank)) parts.Append(Messenger(spans, wires));
+		if (!track.Branch(rank)) parts.Append(Messenger(spans, wires, bare));
 		if (piece.Stretch().has_value() || rank == MAIN_LINE) {
 			for (double share : stations) {
 				std::optional<double> side = MastSide(line, wires.OuterAt(share), share, site.grounded, banned, standing);

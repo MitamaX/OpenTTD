@@ -18,12 +18,13 @@
 
 inline constexpr double RAIL_HALF = 0.011;
 inline constexpr double ARM_LOW = 0.41;
+inline constexpr double WIRE_HEIGHT = 0.36;
 
 double RideHeight(RailLook look);
 void LayTrack(ModelMesh &mesh, const TileTrack &track, const Footing &footing);
 using MastBan = std::function<bool(const MapVector &foot)>;
 
-/* No mast stands with its foot where the ban holds, as by a tunnel's mouth, into which the wires run on into the dark. */
-void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned);
+/* No mast stands with its foot where the ban holds, and no messenger wire hangs where the bare ban holds, as by a tunnel's mouth, into which the contact wire runs on alone into the dark. */
+void LayCatenary(ModelMesh &mesh, const TileTrack &track, const Footing &footing, const MastBan &banned, const MastBan &bare);
 
 #endif /* MINI_WORLD_TRACK_MODELS_H */

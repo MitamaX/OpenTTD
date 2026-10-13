@@ -30,10 +30,11 @@ static constexpr double FACE_HALF = 0.42;
 static constexpr double RAIL_MOUTH_HALF = 0.22;
 static constexpr double ROAD_MOUTH_HALF = 0.31;
 /* The mouth stands as high as what runs through it reaches, a train's wires among them, however high the ground's levels are drawn. */
-static constexpr double SPRING_HEIGHT = 0.24;
-static constexpr double CROWN_HEIGHT = 0.43;
+static constexpr double SPRING_HEIGHT = 0.23;
+static constexpr double CROWN_HEIGHT = 0.385;
+static constexpr double WIRE_CLEARANCE = 0.02;
 static constexpr double ARCH_RISE = CROWN_HEIGHT - SPRING_HEIGHT;
-static_assert(CROWN_HEIGHT > ARM_LOW);
+static_assert(CROWN_HEIGHT > WIRE_HEIGHT + WIRE_CLEARANCE);
 static constexpr double FACE_PROUD = 0.08;
 static constexpr double MOUTH_PROUD = 0.006;
 static constexpr double CORNICE_HEIGHT = 0.03;
