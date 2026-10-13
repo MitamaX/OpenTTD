@@ -822,13 +822,20 @@ static bool IsPortalTile(int tx, int ty)
 	return OnMap(tx, ty) && IsTunnelTile(TileXY(tx, ty));
 }
 
+static double RiseAtEnd(const StepFace &step, const std::array<size_t, 2> &end)
+{
+	return step.ring[end[0]].level - step.ring[end[1]].level;
+}
+
 static bool ShutOutByCutting(int tx, int ty, DiagDirection side, const StepFace &step)
 {
+	double lowest_rise = std::min(RiseAtEnd(step, STEP_ENDS[0]), RiseAtEnd(step, STEP_ENDS[1]));
 	for (const std::array<size_t, 2> &end : STEP_ENDS) {
 		const WorldPoint &corner = step.ring[end[0]];
 		if (!AtCorner(corner)) continue;
 		std::array<CornerTile, 4> around = TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y));
-		bool on_river = std::ranges::any_of(around, [](const CornerTile &tile) { return IsRiverWater(tile.tx, tile.ty); });
+		bool at_foot_end = RiseAtEnd(step, end) <= lowest_rise;
+		bool on_river = at_foot_end && std::ranges::any_of(around, [](const CornerTile &tile) { return IsRiverWater(tile.tx, tile.ty); });
 		bool on_portal = std::ranges::any_of(around, [](const CornerTile &tile) { return IsPortalTile(tile.tx, tile.ty); });
 		if (!on_river && !on_portal) continue;
 		if (WallRisesAt(tx, ty, side, corner, [&](double top) { return on_river || top <= corner.level - SAME_POINT; })) return true;
