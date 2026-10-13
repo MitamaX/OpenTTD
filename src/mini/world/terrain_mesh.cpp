@@ -848,10 +848,43 @@ static bool ShutOutByCutting(int tx, int ty, DiagDirection side, const StepFace 
 	return false;
 }
 
+static bool TaperingOnLevelFoot(const StepFace &step)
+{
+	if (std::abs(step.ring[STEP_ENDS[0][1]].level - step.ring[STEP_ENDS[1][1]].level) > SAME_POINT) return false;
+	double low_rise = std::min(RiseAtEnd(step, STEP_ENDS[0]), RiseAtEnd(step, STEP_ENDS[1]));
+	double high_rise = std::max(RiseAtEnd(step, STEP_ENDS[0]), RiseAtEnd(step, STEP_ENDS[1]));
+	return low_rise < SAME_POINT && high_rise > SAME_POINT;
+}
+
+static bool MeetAtHighEnd(const StepFace &first, const StepFace &second)
+{
+	for (const std::array<size_t, 2> &first_end : STEP_ENDS) {
+		for (const std::array<size_t, 2> &second_end : STEP_ENDS) {
+			bool high = RiseAtEnd(first, first_end) > SAME_POINT && RiseAtEnd(second, second_end) > SAME_POINT;
+			if (high && SameSpot(first.ring[first_end[0]], second.ring[second_end[0]]) && AtCorner(first.ring[first_end[0]])) return true;
+		}
+	}
+	return false;
+}
+
+static bool FoldsIntoPit(const StepBank &own)
+{
+	if (WaterFormOf(own.low_x, own.low_y) != WaterForm::Dry || !TaperingOnLevelFoot(own.step)) return false;
+	for (DiagDirection toward = DIAGDIR_BEGIN; toward < DIAGDIR_END; toward++) {
+		TileIndexDiffC across = TileIndexDiffCByDiagDir(toward);
+		int high_x = own.low_x + across.x;
+		int high_y = own.low_y + across.y;
+		if (high_x == own.high_x && high_y == own.high_y) continue;
+		std::optional<StepBank> other = StepBankOn(high_x, high_y, ReverseDiagDir(toward));
+		if (other.has_value() && TaperingOnLevelFoot(other->step) && MeetAtHighEnd(own.step, other->step)) return true;
+	}
+	return false;
+}
+
 static std::optional<BankedStep> BankOn(int tx, int ty, DiagDirection side)
 {
 	std::optional<BankedStep> site = BankOnPlain(tx, ty, side);
-	return site.has_value() && !ShutOutByCutting(tx, ty, side, site->stepped.step) ? site : std::nullopt;
+	return site.has_value() && !ShutOutByCutting(tx, ty, side, site->stepped.step) && !FoldsIntoPit(site->stepped) ? site : std::nullopt;
 }
 
 class BankColumns {
