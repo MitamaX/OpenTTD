@@ -62,6 +62,8 @@ static constexpr double COPING_DEPTH = WING_THICKNESS + COPING_OVERHANG;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr double EARTH_BANK_FOOT_DIP = 0.06;
+static constexpr double SHALLOW_BANK_FOOT_DIP = 0.16;
+static constexpr double SHALLOW_BANK_RISE = 1.0;
 static constexpr double SHALLOWEST_FACE = 2.0 * BANK_FOOT_DIP;
 static constexpr double SHALLOWEST_CAP = 5.0 * BANK_FOOT_DIP;
 static constexpr double SAME_POINT = 1e-6;
@@ -597,7 +599,7 @@ static double EarthReach(const WorldPoint &top, const WorldPoint &foot, double r
 /* One end of a bank: from its top it grades out over the lower ground, a reach out, onto the ground there;
  * the ground is read a point and how far out it lies. */
 template <class GroundUnder>
-static BankEdge BankEnd(const Landform &land, const GroundUnder &ground_under, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double reach, const BankProfile &profile, const MapVector &top_climb = {})
+static BankEdge BankEnd(const Landform &land, const GroundUnder &ground_under, const WorldPoint &top, const WorldPoint &foot, const MapVector &outward, double reach, const BankProfile &profile, const MapVector &top_climb = {}, double foot_dip = EARTH_BANK_FOOT_DIP)
 {
 	BankEdge edge;
 	for (int row = 0; row <= EARTH_BANK_ROWS; row++) {
@@ -606,7 +608,7 @@ static BankEdge BankEnd(const Landform &land, const GroundUnder &ground_under, c
 		double x = foot.x + outward.x * out;
 		double y = foot.y + outward.y * out;
 		double under = ground_under(x, y, out);
-		double sunk = std::min(under - EARTH_BANK_FOOT_DIP * share, top.level);
+		double sunk = std::min(under - foot_dip * share, top.level);
 		double fall = profile.fall(share);
 		MapVector climb = land.Climb(x, y) * fall + top_climb * (1.0 - fall) - outward * ((top.level - sunk) * profile.slope(share) / std::max(reach, CLIMB_PROBE));
 		edge.points[row] = {x, y, top.level + (sunk - top.level) * fall};
@@ -892,7 +894,8 @@ private:
 		double run = std::lerp(this->runs[0], this->runs[1], share);
 		auto ground_under = [this](double x, double y, double out) { return out <= 1.0 ? MeshLevelIn(this->land, this->low, this->low_x, this->low_y, x, y) : MeshLevelAt(this->land, x, y); };
 		MapVector top_climb = this->land.Climb(top.x - this->step.outward.x * BANK_TOP_INSET, top.y - this->step.outward.y * BANK_TOP_INSET);
-		return BankEnd(this->land, ground_under, top, foot, this->step.outward, EarthReach(top, foot, EARTH_BANK_RUN_PER_RISE, run), EASED_PROFILE, top_climb);
+		double foot_dip = std::lerp(SHALLOW_BANK_FOOT_DIP, EARTH_BANK_FOOT_DIP, std::clamp((top.level - foot.level) / SHALLOW_BANK_RISE, 0.0, 1.0));
+		return BankEnd(this->land, ground_under, top, foot, this->step.outward, EarthReach(top, foot, EARTH_BANK_RUN_PER_RISE, run), EASED_PROFILE, top_climb, foot_dip);
 	}
 
 	const Landform &land;
