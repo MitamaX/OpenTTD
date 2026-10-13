@@ -22,6 +22,7 @@
 #include "../../tile_map.h"
 #include "../../tunnelbridge_map.h"
 #include "../map/tile_shapes.h"
+#include "../map/way_course.h"
 #include "../map/world_tiles.h"
 #include "seabed.h"
 #include "terrain_mesh.h"
@@ -157,11 +158,7 @@ Stretch RampRun(TileIndex head, DiagDirection onto)
 
 Footing RampFooting(TileIndex head, DiagDirection onto, int deck)
 {
-	MapVector way = Outward(onto);
-	MapVector outer = EdgeMiddle(head, way * -1.0);
-	double foot = TileGround(head).Level(outer.x, outer.y);
-	double top = deck;
-	return [way, outer, foot, top](double x, double y) { return std::lerp(foot, top, std::clamp(Dot(MapVector{x, y} - outer, way), 0.0, 1.0)); };
+	return [ramp = RampOfHead(head, onto, deck)](double x, double y) { return ramp.Level(x, y); };
 }
 
 Footing RampFooting(const BridgeSite &bridge, TileIndex head)

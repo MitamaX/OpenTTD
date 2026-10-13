@@ -23,9 +23,11 @@
 
 #include "../../core/bitmath_func.hpp"
 #include "../../map_func.h"
+#include "../../bridge_map.h"
 #include "../../road_map.h"
 #include "../../road_type.h"
 #include "../../track_func.h"
+#include "../../tunnelbridge_map.h"
 #include "../gpu/frame_profile.h"
 #include "network_style.h"
 #include "tile_shapes.h"
@@ -117,13 +119,42 @@ static TileWays WaysOn(int tx, int ty)
 	return ways;
 }
 
-/* A joint eases when the two pieces meeting there are the only ones and their tiles both ease the same kind of way. */
+struct DeckEntry {
+	double level;
+	MapVector onto;
+};
+
+static MapVector HeadOuterSide(TileIndex head, DiagDirection onto)
+{
+	return MapVector{TileX(head) + HALF_TILE, TileY(head) + HALF_TILE} - Outward(onto) * HALF_TILE;
+}
+
+static Joint HeadOuterJoint(TileIndex head, DiagDirection onto)
+{
+	return Joint::At(HeadOuterSide(head, onto));
+}
+
+static std::optional<DeckEntry> DeckEntryAt(const Joint &joint, const TileCoord &tile, WayKind kind)
+{
+	if (!OnMap(tile.first, tile.second)) return std::nullopt;
+	TileIndex head = TileXY(tile.first, tile.second);
+	if (!IsTileType(head, MP_TUNNELBRIDGE) || !IsBridge(head)) return std::nullopt;
+	if (GetTunnelBridgeTransportType(head) != (kind == WayKind::Rail ? TRANSPORT_RAIL : TRANSPORT_ROAD)) return std::nullopt;
+	DiagDirection onto = GetTunnelBridgeDirection(head);
+	if (HeadOuterJoint(head, onto) != joint) return std::nullopt;
+	return DeckEntry{static_cast<double>(GetBridgeHeight(head)), Outward(onto)};
+}
+
+/* A joint eases when the two pieces meeting there are the only ones and their tiles both ease the same kind of way,
+ * or when the only piece meeting there runs up to the outer side of a bridge head's ramp. */
 static bool Eases(const Joint &joint)
 {
 	auto [low, high] = joint.Tiles();
 	TileWays a = WaysOn(low.first, low.second);
 	TileWays b = WaysOn(high.first, high.second);
-	return a.Eases() && a.kind == b.kind && a.Touching(joint).has_value() && b.Touching(joint).has_value();
+	if (a.Eases() && b.Eases()) return a.kind == b.kind && a.Touching(joint).has_value() && b.Touching(joint).has_value();
+	if (a.Eases()) return a.Touching(joint).has_value() && DeckEntryAt(joint, high, a.kind).has_value();
+	return b.Eases() && b.Touching(joint).has_value() && DeckEntryAt(joint, low, b.kind).has_value();
 }
 
 static double GroundAt(const TileCoord &tile, const Joint &joint)
@@ -184,16 +215,22 @@ public:
 	void Ease(Store store);
 
 private:
-	/* A joint of the run: where it lies along the run, the ground under it, and whether it holds its place and level. */
+	/* A joint of the run: where it lies along the run, the ground under it, and whether it holds its place and level;
+	 * one that holds its place but not its level stands at a bridge head's outer side, the deck node being the held one at the ramp's top. */
 	struct Node {
 		Joint joint;
 		double place;
 		double ground;
 		bool held;
 		MapVector onward{};
+		bool pinned = false;
+		bool deck = false;
+
+		bool Fixed() const { return this->held || this->pinned; }
 	};
 
 	std::optional<double> Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &nodes) const;
+	bool Dock(const Joint &at, const TileCoord &tile, double place, double direction, std::vector<Node> &walked) const;
 	std::vector<double> EasedLevels() const;
 	RunLine EasedLine() const;
 	std::vector<double> SlideLimits() const;
@@ -229,19 +266,41 @@ std::optional<double> Run::Walk(Joint at, TileCoord tile, double direction, std:
 		place += piece->Span() * direction;
 		if (next == start) return std::abs(place);
 		if (!Eases(next)) {
-			walked.push_back({next, place, GroundAt(tile, next), true, OnwardAcross(next, tile, piece->From(at))});
+			walked.push_back({next, place, GroundAt(tile, next), true, OnwardAcross(next, tile, piece->From(at)) * direction});
 			return std::nullopt;
 		}
 		auto [low, high] = next.Tiles();
-		walked.push_back({next, place, std::max(GroundAt(low, next), GroundAt(high, next)), false, piece->From(at)});
+		walked.push_back({next, place, std::max(GroundAt(low, next), GroundAt(high, next)), false, piece->From(at) * direction});
 		tile = next.Beyond(tile);
 		at = next;
 	}
+	if (this->Dock(at, tile, place, direction, walked)) return std::nullopt;
 	if (!walked.empty()) walked.back().held = true;
 	return std::nullopt;
 }
 
-Run::Run(const Joint &start) : kind(WaysOn(start.Tiles()[0].first, start.Tiles()[0].second).kind)
+bool Run::Dock(const Joint &at, const TileCoord &tile, double place, double direction, std::vector<Node> &walked) const
+{
+	std::optional<DeckEntry> entry = DeckEntryAt(at, tile, this->kind);
+	if (!entry.has_value()) return false;
+	Node deck{Joint::At(at.Point() + entry->onto), place + direction, entry->level, true, entry->onto * direction};
+	deck.deck = true;
+	if (!walked.empty()) {
+		walked.back().pinned = true;
+		walked.back().onward = deck.onward;
+	}
+	walked.push_back(deck);
+	return true;
+}
+
+static WayKind KindAt(const Joint &joint)
+{
+	auto [low, high] = joint.Tiles();
+	TileWays ways = WaysOn(low.first, low.second);
+	return ways.Eases() ? ways.kind : WaysOn(high.first, high.second).kind;
+}
+
+Run::Run(const Joint &start) : kind(KindAt(start))
 {
 	auto [low, high] = start.Tiles();
 	std::vector<Node> highs;
@@ -250,7 +309,13 @@ Run::Run(const Joint &start) : kind(WaysOn(start.Tiles()[0].first, start.Tiles()
 	if (!this->loop.has_value()) this->Walk(start, low, -1.0, lows);
 
 	this->nodes.assign(lows.rbegin(), lows.rend());
-	this->nodes.push_back({start, 0.0, std::max(GroundAt(low, start), GroundAt(high, start)), false});
+	Node first{start, 0.0, std::max(GroundAt(low, start), GroundAt(high, start)), false};
+	for (const std::vector<Node> *side : {&highs, &lows}) {
+		if (side->empty() || !side->front().deck) continue;
+		first.pinned = true;
+		first.onward = side->front().onward;
+	}
+	this->nodes.push_back(first);
 	this->nodes.insert(this->nodes.end(), highs.begin(), highs.end());
 }
 
@@ -307,7 +372,7 @@ double Run::Facing(size_t index) const
 MapVector Run::SquareAcross(size_t index) const
 {
 	const Node &node = this->nodes[index];
-	if (node.held) return index == 0 ? node.onward * -1.0 : node.onward;
+	if (node.Fixed()) return node.onward;
 	return node.joint.Upward() * this->Facing(index);
 }
 
@@ -323,7 +388,7 @@ std::vector<double> Run::SlideLimits() const
 	std::vector<double> limits(this->nodes.size(), 0.0);
 	for (size_t index = 0; index < this->nodes.size(); index++) {
 		const Node &node = this->nodes[index];
-		if (node.held) continue;
+		if (node.Fixed()) continue;
 		MapVector course = Unit(points[this->After(index)] - points[this->Before(index)]);
 		limits[index] = std::min(DRIFT_LIMIT / std::abs(Dot(course, node.joint.Upward())), HALF_TILE - CORNER_MARGIN);
 	}
@@ -337,7 +402,7 @@ void Run::Slide(std::vector<MapVector> &places, const std::vector<double> &limit
 	for (int pass = 0; pass < WAY_EASE_REACH; pass++) {
 		for (size_t index = 0; index < this->nodes.size(); index++) {
 			const Node &node = this->nodes[index];
-			if (node.held) continue;
+			if (node.Fixed()) continue;
 			const MapVector &before = places[this->Before(index)];
 			MapVector line = before + (places[this->After(index)] - before) * this->Share(index);
 			double toward = Dot(line - node.joint.Point(), node.joint.Side());
@@ -354,7 +419,7 @@ std::vector<MapVector> Run::ChordHeadings(const std::vector<MapVector> &places) 
 	std::vector<MapVector> headings(this->nodes.size());
 	for (size_t index = 0; index < this->nodes.size(); index++) {
 		MapVector square = this->SquareAcross(index);
-		headings[index] = this->nodes[index].held ? square : Crossing(Unit(places[this->After(index)] - places[this->Before(index)]), square);
+		headings[index] = this->nodes[index].Fixed() ? square : Crossing(Unit(places[this->After(index)] - places[this->Before(index)]), square);
 	}
 	return headings;
 }
@@ -603,11 +668,8 @@ double WayCourse::Length() const
 double WayCourse::Level(double share) const
 {
 	double t = std::clamp(share, 0.0, 1.0);
-	double t2 = t * t;
-	double t3 = t2 * t;
 	double length = this->Length();
-	double eased = (2.0 * t3 - 3.0 * t2 + 1.0) * this->start_level + (t3 - 2.0 * t2 + t) * this->start_slope * length
-		+ (3.0 * t2 - 2.0 * t3) * this->end_level + (t3 - t2) * this->end_slope * length;
+	double eased = Hermite(this->start_level, this->start_slope * length, this->end_level, this->end_slope * length, t);
 	MapVector centre = this->Centre(t);
 	return std::max(eased, TileGround(this->tx, this->ty).Level(centre.x, centre.y));
 }
@@ -790,6 +852,32 @@ WorldPoint RoadPoint(double x, double y)
 	if (course.has_value()) return {x, y, course->Level(course->ShareAt({x, y}))};
 	std::optional<MapVector> rails = CrossingRails(tx, ty);
 	return {x, y, GroundLevel(x, y) + (rails.has_value() ? CrossingRise(tx, ty, x, y, *rails) : 0.0)};
+}
+
+double HeadRamp::Level(double x, double y) const
+{
+	double along = std::clamp(Dot(MapVector{x, y} - this->outer, this->onto), 0.0, 1.0);
+	return this->slope.has_value() ? Hermite(this->foot, *this->slope, this->top, 0.0, along) : std::lerp(this->foot, this->top, along);
+}
+
+static HeadRamp RampWithFoot(const MapVector &outer, DiagDirection onto, int deck, double foot, std::optional<double> slope)
+{
+	return {outer, Outward(onto), foot, slope, static_cast<double>(deck)};
+}
+
+HeadRamp RampOfHead(TileIndex head, DiagDirection onto, int deck)
+{
+	MapVector outer = HeadOuterSide(head, onto);
+	Joint joint = HeadOuterJoint(head, onto);
+	std::optional<JointEase> ease = _ease_book.At(joint);
+	if (!ease.has_value()) return RampWithFoot(outer, onto, deck, TileGround(TileX(head), TileY(head)).Level(outer.x, outer.y), std::nullopt);
+	double sign = joint.Tiles()[1] == TileCoord{static_cast<int>(TileX(head)), static_cast<int>(TileY(head))} ? 1.0 : -1.0;
+	return RampWithFoot(outer, onto, deck, ease->level, ease->slope * sign);
+}
+
+HeadRamp RampOfHead(TileIndex head)
+{
+	return RampOfHead(head, GetTunnelBridgeDirection(head), GetBridgeHeight(head));
 }
 
 static double SlideAt(const MapVector &middle)

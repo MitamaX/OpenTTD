@@ -12,6 +12,13 @@
 
 #include "../core/camera.h"
 
+inline double Hermite(double from, double from_slope, double to, double to_slope, double along)
+{
+	double t2 = along * along;
+	double t3 = t2 * along;
+	return (2.0 * t3 - 3.0 * t2 + 1.0) * from + (t3 - 2.0 * t2 + along) * from_slope + (3.0 * t2 - 2.0 * t3) * to + (t3 - t2) * to_slope;
+}
+
 /* A way's middle line, run from its first end at share 0 to its last at share 1. */
 class WayLine {
 public:

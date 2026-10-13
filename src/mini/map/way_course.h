@@ -14,6 +14,8 @@
 #include <optional>
 #include <utility>
 
+#include "../../direction_type.h"
+#include "../../tile_type.h"
 #include "../../track_type.h"
 #include "../core/camera.h"
 #include "way_line.h"
@@ -134,6 +136,19 @@ WorldPoint TrackPoint(double x, double y);
 /* Where a train or a road vehicle at a point of the map is drawn: a train on the line of the piece it is on, either at its way's eased level or on the ground. */
 WorldPoint TrainPoint(double x, double y);
 WorldPoint RoadPoint(double x, double y);
+
+struct HeadRamp {
+	MapVector outer;
+	MapVector onto;
+	double foot;
+	std::optional<double> slope;
+	double top;
+
+	double Level(double x, double y) const;
+};
+
+HeadRamp RampOfHead(TileIndex head, DiagDirection onto, int deck);
+HeadRamp RampOfHead(TileIndex head);
 
 std::optional<MapVector> CrossingRails(int tx, int ty);
 double CrossingRise(int tx, int ty, double x, double y, const MapVector &rails);

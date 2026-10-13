@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <optional>
 #include <vector>
 
 #include "../../bridge_map.h"
@@ -20,6 +21,7 @@
 #include "../../pbs.h"
 #include "../../tile_map.h"
 #include "../../timer/timer_game_tick.h"
+#include "../../tunnelbridge_map.h"
 #include "../../train.h"
 #include "../../vehicle_base.h"
 #include "tile_shapes.h"
@@ -48,10 +50,17 @@ static bool RidesDrawnGround(const Vehicle *v)
 }
 
 /* A unit is shown a little short of where the game has it, so it may still stand on the ramp of a bridge's head the game has it past. */
-static bool OnBridgeHead(const WorldPoint &point)
+static std::optional<TileIndex> BridgeHeadAt(const WorldPoint &point)
 {
 	auto [tx, ty] = TileOf(Flat(point));
-	return OnMap(tx, ty) && IsBridgeTile(TileXY(tx, ty));
+	if (!OnMap(tx, ty)) return std::nullopt;
+	TileIndex tile = TileXY(tx, ty);
+	return IsBridgeTile(tile) ? std::optional<TileIndex>{tile} : std::nullopt;
+}
+
+static WorldPoint OnRamp(TileIndex head, const WorldPoint &point)
+{
+	return {point.x, point.y, RampOfHead(head).Level(point.x, point.y)};
 }
 
 static MapVector FacingOf(Direction direction)
@@ -214,7 +223,9 @@ bool VehicleMotion::FollowsTrack(const Vehicle *v)
 
 WorldPoint VehicleMotion::Grounded(const Vehicle *v, const WorldPoint &point)
 {
-	if (!RidesDrawnGround(v) || OnBridgeHead(point)) return point;
+	if (!v->IsGroundVehicle()) return point;
+	if (std::optional<TileIndex> head = BridgeHeadAt(point); head.has_value()) return OnRamp(*head, point);
+	if (IsTileType(v->tile, MP_TUNNELBRIDGE)) return point;
 	return v->type == VEH_TRAIN ? TrainPoint(point.x, point.y) : RoadPoint(point.x, point.y);
 }
 
