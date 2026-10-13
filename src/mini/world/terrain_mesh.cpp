@@ -1820,16 +1820,42 @@ private:
 		return walls;
 	}
 
+	static bool StandsNaturally(std::span<const double> walls, std::span<const double> abutment, size_t row)
+	{
+		return walls[row] > 0.0 && abutment[row] == 0.0;
+	}
+
 	static void DropShortWalls(std::vector<double> &walls, std::span<const double> abutment)
 	{
-		auto stands = [&](size_t row) { return walls[row] > 0.0 && abutment[row] == 0.0; };
+		auto stands = [&](size_t row) { return StandsNaturally(walls, abutment, row); };
 		ForEachRun(walls.size(), stands, [&](size_t first, size_t last) {
 			if (last - first < LEAST_WALL_ROWS) std::fill(walls.begin() + first, walls.begin() + last, 0.0);
 		});
 	}
 
-	static StripRow EarthRowOf(const FormationSide &side, double wall)
+	static WorldPoint WallTop(const FormationSide &side, double wall)
 	{
+		return {side.toe.x, side.toe.y, std::min(side.crest.level, side.toe.level + wall)};
+	}
+
+	static std::vector<bool> StandsAtFoot(std::span<const double> walls, std::span<const double> abutment)
+	{
+		std::vector<bool> at_foot(walls.size(), false);
+		auto stands = [&](size_t row) { return StandsNaturally(walls, abutment, row); };
+		ForEachRun(walls.size(), stands, [&](size_t first, size_t last) {
+			if (first == 0 || last == walls.size() || abutment[first - 1] != 0.0 || abutment[last] != 0.0) return;
+			std::fill(at_foot.begin() + first, at_foot.begin() + last, true);
+		});
+		return at_foot;
+	}
+
+	static StripRow EarthRowOf(const FormationSide &side, double wall, bool at_foot)
+	{
+		if (at_foot) {
+			WorldPoint top = WallTop(side, wall);
+			Vec3 crest_normal = Normalised(Lerp(SlopeNormal(side.crest, top), UP, CREST_ROUNDING));
+			return {{{side.crest, crest_normal, FILL_MARK}, {top, side.toe_normal, FILL_MARK}}};
+		}
 		WorldPoint shoulder = {side.crest.x, side.crest.y, side.crest.level - wall};
 		Vec3 shoulder_normal = Normalised(Lerp(SlopeNormal(shoulder, side.toe), UP, CREST_ROUNDING));
 		return {{{shoulder, shoulder_normal, FILL_MARK}, {side.toe, side.toe_normal, FILL_MARK}}};
@@ -1910,18 +1936,29 @@ private:
 		return Unit(Flat(table[row][side].crest) - Flat(table[row][1 - side].crest));
 	}
 
-	void CopeAbutments(std::span<const FormationRow> table, std::span<const FormationSide> sides, size_t side, std::span<const double> abutment) const
+	template <typename Holds, typename TopOf>
+	void CopeRuns(std::span<const FormationRow> table, size_t side, Holds holds, TopOf top_of) const
 	{
-		ForEachRun(sides.size(), [&](size_t row) { return abutment[row] > 0.0; }, [&](size_t first, size_t last) {
+		ForEachRun(table.size(), holds, [&](size_t first, size_t last) {
 			if (last - first < 2) return;
 			std::vector<WorldPoint> line;
 			std::vector<MapVector> facings;
 			for (size_t at = first; at < last; at++) {
-				line.push_back(sides[at].crest);
+				line.push_back(top_of(at));
 				facings.push_back(SideFacing(table, at, side));
 			}
 			AddCopingAlong(this->mesh, line, [&](size_t nth) { return facings[nth]; }, COPING_DEPTH);
 		});
+	}
+
+	void LayWallFaces(std::span<const FormationRow> table, std::span<const FormationSide> sides, std::span<const StripRow> earth, const std::vector<bool> &at_foot, size_t side) const
+	{
+		for (size_t row = 0; row + 1 < table.size(); row++) {
+			bool by_foot = at_foot[row] || at_foot[row + 1];
+			auto top_of = [&](size_t at) { return by_foot ? earth[at][1].at : table[at][side].crest; };
+			auto foot_of = [&](size_t at) { return by_foot ? sides[at].toe : earth[at][0].at; };
+			this->AddWallFace({top_of(row), top_of(row + 1)}, {foot_of(row), foot_of(row + 1)}, SideFacing(table, row, side));
+		}
 	}
 
 	void LaySide(std::span<const FormationRow> table, size_t side) const
@@ -1932,8 +1969,9 @@ private:
 		std::vector<double> abutment = AbutmentShares(sides, walls);
 		this->WallAbutment(sides, walls, abutment);
 		DropShortWalls(walls, abutment);
+		std::vector<bool> at_foot = StandsAtFoot(walls, abutment);
 		std::vector<StripRow> earth;
-		for (size_t row = 0; row < table.size(); row++) earth.push_back(EarthRowOf(sides[row], walls[row]));
+		for (size_t row = 0; row < table.size(); row++) earth.push_back(EarthRowOf(sides[row], walls[row], at_foot[row]));
 		for (bool at_front : {true, false}) CarryAbutmentSlope(earth, abutment, at_front);
 		const std::optional<BankEdge> &head = table.front()[side].section;
 		const std::optional<BankEdge> &tail = table.back()[side].section;
@@ -1942,12 +1980,9 @@ private:
 		AddStrip(this->mesh, std::span<const StripRow>(earth).subspan(first, end - first));
 		if (head.has_value()) AddBankStrip(this->mesh, *head, Spanned(earth[first]), FILL_MARK);
 		if (tail.has_value()) AddBankStrip(this->mesh, Spanned(earth[end - 1]), *tail, FILL_MARK);
-		for (size_t row = 0; row + 1 < table.size(); row++) {
-			std::array<WorldPoint, 2> line = {table[row][side].crest, table[row + 1][side].crest};
-			std::array<WorldPoint, 2> feet = {earth[row][0].at, earth[row + 1][0].at};
-			this->AddWallFace(line, feet, SideFacing(table, row, side));
-		}
-		this->CopeAbutments(table, sides, side, abutment);
+		this->LayWallFaces(table, sides, earth, at_foot, side);
+		this->CopeRuns(table, side, [&](size_t row) { return abutment[row] > 0.0; }, [&](size_t row) { return sides[row].crest; });
+		this->CopeRuns(table, side, [&](size_t row) { return at_foot[row]; }, [&](size_t row) { return earth[row][1].at; });
 	}
 
 	void LayMiddle(std::span<const FormationRow> table) const
