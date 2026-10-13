@@ -58,7 +58,10 @@ static constexpr double RAMP_BANK_RUN_PER_RISE = 1.5;
 static constexpr double COPING_RISE = 0.025;
 static constexpr double COPING_OVERHANG = 0.015;
 static constexpr double WING_THICKNESS = 0.12;
-static constexpr double COPING_DEPTH = WING_THICKNESS + COPING_OVERHANG;
+static constexpr double DECK_WING_THICKNESS = 0.04;
+static constexpr double CopingDepthFor(double thickness) { return thickness + COPING_OVERHANG; }
+static constexpr double COPING_DEPTH = CopingDepthFor(WING_THICKNESS);
+static_assert(DECK_HALF - CopingDepthFor(DECK_WING_THICKNESS) >= std::max(ROAD_HALF, BALLAST_HALF));
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr double EARTH_BANK_FOOT_DIP = 0.06;
@@ -1046,10 +1049,10 @@ static void CloseCopingEnd(TerrainMesh &mesh, const WorldPoint &at, const MapVec
 	AddStoneQuad(mesh, {end.front_foot, end.front_top, end.back_top, end.back_foot}, Upright(end_facing));
 }
 
-static void CloseWallEnd(TerrainMesh &mesh, const Landform &land, const WorldPoint &front, const WorldPoint &back, const MapVector &facing, const MapVector &end_facing)
+static void CloseWallEnd(TerrainMesh &mesh, const Landform &land, const WorldPoint &front, const WorldPoint &back, const MapVector &facing, const MapVector &end_facing, double thickness)
 {
 	AddStoneQuad(mesh, {front, back, Grounded(land, back), Grounded(land, front)}, Upright(end_facing));
-	CloseCopingEnd(mesh, front, facing, COPING_DEPTH, end_facing);
+	CloseCopingEnd(mesh, front, facing, CopingDepthFor(thickness), end_facing);
 }
 
 template <class FacingAt>
@@ -1076,17 +1079,17 @@ static void AddCoping(TerrainMesh &mesh, std::span<const WorldPoint> front, cons
 	AddCoping(mesh, front, [&](size_t) { return facing; }, depth);
 }
 
-/* A wing wall is a slab of stone as thick as its coping, its face and back running down to the ground and its ends closed, under a coping along its top and round its end. */
-static void AddWingWall(TerrainMesh &mesh, const Landform &land, std::span<const WorldPoint> front, const MapVector &facing, const MapVector &onward, bool closed_both)
+/* A wing wall is a slab of stone as thick as given, its face and back running down to the ground and its ends closed, under a coping along its top and round its end. */
+static void AddWingWall(TerrainMesh &mesh, const Landform &land, std::span<const WorldPoint> front, const MapVector &facing, const MapVector &onward, bool closed_both, double thickness)
 {
-	std::vector<WorldPoint> back = ShiftedLine(front, facing * -WING_THICKNESS);
+	std::vector<WorldPoint> back = ShiftedLine(front, facing * -thickness);
 	AddMasonry(mesh, front, GroundedLine(land, front), facing);
 	std::ranges::reverse(back);
 	AddMasonry(mesh, back, GroundedLine(land, back), facing * -1.0);
 	std::ranges::reverse(back);
-	CloseWallEnd(mesh, land, front.back(), back.back(), facing, onward);
-	if (closed_both) CloseWallEnd(mesh, land, front.front(), back.front(), facing, onward * -1.0);
-	AddCoping(mesh, front, facing, COPING_DEPTH);
+	CloseWallEnd(mesh, land, front.back(), back.back(), facing, onward, thickness);
+	if (closed_both) CloseWallEnd(mesh, land, front.front(), back.front(), facing, onward * -1.0, thickness);
+	AddCoping(mesh, front, facing, CopingDepthFor(thickness));
 }
 
 static std::optional<std::array<double, 2>> CopedShares(double from_rise, double to_rise)
@@ -1396,13 +1399,13 @@ private:
 		if (plan.kind == RampShape::Flank::Wall) {
 			std::vector<WorldPoint> line;
 			for (int row = RAMP_BANK_ROWS; row >= 0; row--) line.push_back(this->shape.Crest(RampShape::ShareOfRow(row), side));
-			AddWingWall(this->mesh, this->shape.Land(), line, right, this->shape.Facing() * -1.0, true);
+			AddWingWall(this->mesh, this->shape.Land(), line, right, this->shape.Facing() * -1.0, true, DECK_WING_THICKNESS);
 			return;
 		}
 		std::vector<BankEdge> edges;
 		for (int row = 0; row <= RAMP_BANK_ROWS; row++) edges.push_back(this->shape.EdgeAt(row, side, plan.run));
 		AddBankColumns(this->mesh, edges, FILL_MARK);
-		if (plan.kind == RampShape::Flank::Bank) AddWingWall(this->mesh, this->shape.Land(), edges.back().points, this->shape.Facing(), right, false);
+		if (plan.kind == RampShape::Flank::Bank) AddWingWall(this->mesh, this->shape.Land(), edges.back().points, this->shape.Facing(), right, false, WING_THICKNESS);
 	}
 
 	TerrainMesh &mesh;
