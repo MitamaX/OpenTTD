@@ -63,6 +63,7 @@ static constexpr double COPING_DEPTH = WING_THICKNESS + COPING_OVERHANG;
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr double EARTH_BANK_FOOT_DIP = 0.06;
 static constexpr double SHALLOWEST_FACE = 2.0 * BANK_FOOT_DIP;
+static constexpr double SHALLOWEST_CAP = 5.0 * BANK_FOOT_DIP;
 static constexpr double SAME_POINT = 1e-6;
 static constexpr double PARALLEL_LEAST = 1.0 - SAME_POINT;
 static constexpr double WALL_OVERLAP_LEAST = 0.1;
@@ -821,19 +822,16 @@ static bool IsPortalTile(int tx, int ty)
 	return OnMap(tx, ty) && IsTunnelTile(TileXY(tx, ty));
 }
 
-template <class Touches>
-static bool TouchesCorner(const WorldPoint &corner, const Touches &touches)
-{
-	return std::ranges::any_of(TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y)), [&](const CornerTile &around) { return touches(around.tx, around.ty); });
-}
-
 static bool ShutOutByCutting(int tx, int ty, DiagDirection side, const StepFace &step)
 {
 	for (const std::array<size_t, 2> &end : STEP_ENDS) {
 		const WorldPoint &corner = step.ring[end[0]];
 		if (!AtCorner(corner)) continue;
-		if (TouchesCorner(corner, IsRiverWater) && WallRisesAt(tx, ty, side, corner, [](double) { return true; })) return true;
-		if (TouchesCorner(corner, IsPortalTile) && WallRisesAt(tx, ty, side, corner, [&](double top) { return top <= corner.level - SAME_POINT; })) return true;
+		std::array<CornerTile, 4> around = TilesAtCorner(static_cast<int>(corner.x), static_cast<int>(corner.y));
+		bool on_river = std::ranges::any_of(around, [](const CornerTile &tile) { return IsRiverWater(tile.tx, tile.ty); });
+		bool on_portal = std::ranges::any_of(around, [](const CornerTile &tile) { return IsPortalTile(tile.tx, tile.ty); });
+		if (!on_river && !on_portal) continue;
+		if (WallRisesAt(tx, ty, side, corner, [&](double top) { return on_river || top <= corner.level - SAME_POINT; })) return true;
 	}
 	return false;
 }
@@ -1044,21 +1042,28 @@ static void CloseWallEnd(TerrainMesh &mesh, const Landform &land, const WorldPoi
 	CloseCopingEnd(mesh, front, facing, COPING_DEPTH, end_facing);
 }
 
-static void AddCoping(TerrainMesh &mesh, std::span<const WorldPoint> front, const MapVector &facing, double depth)
+template <class FacingAt>
+static void AddCoping(TerrainMesh &mesh, std::span<const WorldPoint> front, const FacingAt &facing_at, double depth)
 {
-	Vec3 outward = Upright(facing);
-	Vec3 inward = outward * -1.0;
 	for (size_t i = 0; i + 1 < front.size(); i++) {
+		MapVector facing = Unit(facing_at(i) + facing_at(i + 1));
+		Vec3 outward = Upright(facing);
+		Vec3 inward = outward * -1.0;
 		Vec3 along = {front[i + 1].x - front[i].x, front[i + 1].y - front[i].y, (front[i + 1].level - front[i].level) * LevelRise()};
 		Vec3 cap = Normalised(Cross(inward, along));
 		if (Length(cap) == 0.0) cap = UP;
 		if (cap.z < 0.0) cap = cap * -1.0;
-		CopingEnd from = CopingAt(front[i], facing, depth);
-		CopingEnd to = CopingAt(front[i + 1], facing, depth);
+		CopingEnd from = CopingAt(front[i], facing_at(i), depth);
+		CopingEnd to = CopingAt(front[i + 1], facing_at(i + 1), depth);
 		AddStoneQuad(mesh, {from.front_top, to.front_top, to.front_foot, from.front_foot}, outward);
 		AddStoneQuad(mesh, {from.back_top, to.back_top, to.front_top, from.front_top}, cap);
 		AddStoneQuad(mesh, {from.back_foot, to.back_foot, to.back_top, from.back_top}, inward);
 	}
+}
+
+static void AddCoping(TerrainMesh &mesh, std::span<const WorldPoint> front, const MapVector &facing, double depth)
+{
+	AddCoping(mesh, front, [&](size_t) { return facing; }, depth);
 }
 
 /* A wing wall is a slab of stone as thick as its coping, its face and back running down to the ground and its ends closed, under a coping along its top and round its end. */
@@ -1094,6 +1099,15 @@ static void AddCopingWhereTall(TerrainMesh &mesh, std::span<const WorldPoint> li
 		if (i == 0 || (*shares)[0] > 0.0) CloseCopingEnd(mesh, top[0], facing, depth, onward * -1.0);
 		if (i + 2 == line.size() || (*shares)[1] < 1.0) CloseCopingEnd(mesh, top[1], facing, depth, onward);
 	}
+}
+
+template <class FacingAt>
+static void AddCopingAlong(TerrainMesh &mesh, std::span<const WorldPoint> line, const FacingAt &facing_at, double depth)
+{
+	AddCoping(mesh, line, facing_at, depth);
+	size_t last = line.size() - 1;
+	CloseCopingEnd(mesh, line[0], facing_at(0), depth, Unit(Flat(line[0]) - Flat(line[1])));
+	CloseCopingEnd(mesh, line[last], facing_at(last), depth, Unit(Flat(line[last]) - Flat(line[last - 1])));
 }
 
 static void AddWall(TerrainMesh &mesh, const StepFace &step)
@@ -1165,6 +1179,7 @@ struct FormationSide {
 	WorldPoint toe;
 	Vec3 toe_normal;
 	std::optional<BankEdge> section = std::nullopt;
+	bool walled = false;
 };
 
 using FormationRow = std::array<FormationSide, 2>;
@@ -1259,7 +1274,7 @@ public:
 		if (plan.kind == Flank::Wall) {
 			WorldPoint crest = this->Crest(0.0, side);
 			WorldPoint toe = Grounded(this->land, crest);
-			return {crest, this->CrestVertex(0.0, side).normal, toe, ClimbNormal(this->land.Climb(toe.x, toe.y))};
+			return {crest, this->CrestVertex(0.0, side).normal, toe, ClimbNormal(this->land.Climb(toe.x, toe.y)), std::nullopt, true};
 		}
 		BankEdge edge = this->EdgeAt(0, side, plan.run);
 		return {edge.points.front(), edge.normals.front(), edge.points.back(), edge.normals.back(), edge};
@@ -1743,30 +1758,61 @@ private:
 		}
 	}
 
-	static double WallFallOf(const FormationSide &side)
+	static double EarthWidth(const FormationSide &side)
 	{
-		return FallBeyondEarth(side.crest.level - side.toe.level, Length(Flat(side.toe) - Flat(side.crest)));
+		return Length(Flat(side.toe) - Flat(side.crest));
 	}
 
-	static std::vector<double> SustainedWalls(std::span<const FormationRow> table, size_t side)
+	static double WallFallOf(const FormationSide &side)
 	{
-		std::vector<double> walls;
-		for (const FormationRow &row : table) {
-			double fall = WallFallOf(row[side]);
-			walls.push_back(fall >= LEAST_WALL_FALL ? fall : 0.0);
-		}
+		return FallBeyondEarth(side.crest.level - side.toe.level, EarthWidth(side));
+	}
+
+	static size_t AbutmentRow(size_t nth, size_t count, bool at_front)
+	{
+		return at_front ? nth : count - 1 - nth;
+	}
+
+	template <typename Holds, typename Visit>
+	static void ForEachRun(size_t count, Holds holds, Visit visit)
+	{
 		size_t first = 0;
-		while (first < walls.size()) {
-			if (walls[first] == 0.0) {
+		while (first < count) {
+			if (!holds(first)) {
 				first++;
 				continue;
 			}
 			size_t last = first;
-			while (last < walls.size() && walls[last] > 0.0) last++;
-			if (last - first < LEAST_WALL_ROWS) std::fill(walls.begin() + first, walls.begin() + last, 0.0);
+			while (last < count && holds(last)) last++;
+			visit(first, last);
 			first = last;
 		}
+	}
+
+	template <typename Holds>
+	static size_t LeadingRun(size_t count, bool at_front, Holds holds)
+	{
+		size_t length = 0;
+		while (length < count && holds(AbutmentRow(length, count, at_front))) length++;
+		return length;
+	}
+
+	static std::vector<double> WallFalls(std::span<const FormationSide> sides)
+	{
+		std::vector<double> walls;
+		for (const FormationSide &side : sides) {
+			double fall = WallFallOf(side);
+			walls.push_back(fall >= LEAST_WALL_FALL ? fall : 0.0);
+		}
 		return walls;
+	}
+
+	static void DropShortWalls(std::vector<double> &walls, std::span<const double> abutment)
+	{
+		auto stands = [&](size_t row) { return walls[row] > 0.0 && abutment[row] == 0.0; };
+		ForEachRun(walls.size(), stands, [&](size_t first, size_t last) {
+			if (last - first < LEAST_WALL_ROWS) std::fill(walls.begin() + first, walls.begin() + last, 0.0);
+		});
 	}
 
 	static StripRow EarthRowOf(const FormationSide &side, double wall)
@@ -1776,11 +1822,106 @@ private:
 		return {{{shoulder, shoulder_normal, FILL_MARK}, {side.toe, side.toe_normal, FILL_MARK}}};
 	}
 
+	WorldPoint TowardCrest(const FormationSide &side, double share) const
+	{
+		WorldPoint moved = Between(side.toe, {side.crest.x, side.crest.y, side.toe.level}, share);
+		moved.level += this->land.LevelAt(moved.x, moved.y) - this->land.LevelAt(side.toe.x, side.toe.y);
+		return moved;
+	}
+
+	static std::vector<double> ReachFromJoint(std::span<const FormationSide> sides, bool at_front)
+	{
+		std::vector<double> reach = {0.0};
+		for (size_t nth = 1; nth < sides.size(); nth++) {
+			const WorldPoint &from = sides[AbutmentRow(nth - 1, sides.size(), at_front)].crest;
+			const WorldPoint &to = sides[AbutmentRow(nth, sides.size(), at_front)].crest;
+			reach.push_back(reach.back() + Length(Flat(to) - Flat(from)));
+		}
+		return reach;
+	}
+
+	static double CrowdedWidth(std::span<const FormationSide> sides, std::span<const double> reach, bool at_front)
+	{
+		double crowded = 0.0;
+		for (size_t nth = 0; nth < sides.size(); nth++) {
+			double width = EarthWidth(sides[AbutmentRow(nth, sides.size(), at_front)]);
+			if (width > reach[nth]) crowded = std::max(crowded, width);
+		}
+		return crowded;
+	}
+
+	static void TaperFromJoint(std::span<const FormationSide> sides, std::span<const double> walls, bool at_front, std::vector<double> &shares)
+	{
+		size_t joint_row = AbutmentRow(0, sides.size(), at_front);
+		if (!sides[joint_row].walled || walls[joint_row] == 0.0) return;
+		size_t standing = LeadingRun(sides.size(), at_front, [&](size_t row) { return walls[row] > 0.0; });
+		if (standing >= LEAST_WALL_ROWS) return;
+		std::vector<double> reach = ReachFromJoint(sides, at_front);
+		double beyond = standing < sides.size() ? reach[standing] : reach.back();
+		double taper = std::min(std::max(CrowdedWidth(sides, reach, at_front), beyond), reach.back());
+		for (size_t nth = 0; nth < sides.size() && reach[nth] < taper; nth++) {
+			size_t row = AbutmentRow(nth, sides.size(), at_front);
+			shares[row] = std::max(shares[row], BankFall(1.0 - reach[nth] / taper));
+		}
+	}
+
+	static std::vector<double> AbutmentShares(std::span<const FormationSide> sides, std::span<const double> walls)
+	{
+		std::vector<double> shares(sides.size(), 0.0);
+		for (bool at_front : {true, false}) TaperFromJoint(sides, walls, at_front, shares);
+		return shares;
+	}
+
+	void WallAbutment(std::span<FormationSide> sides, std::vector<double> &walls, std::span<const double> abutment) const
+	{
+		for (size_t row = 0; row < sides.size(); row++) {
+			if (abutment[row] == 0.0) continue;
+			sides[row].toe = this->TowardCrest(sides[row], abutment[row]);
+			walls[row] = std::max(walls[row], (sides[row].crest.level - sides[row].toe.level) * abutment[row]);
+		}
+	}
+
+	static void CarryAbutmentSlope(std::span<StripRow> earth, std::span<const double> abutment, bool at_front)
+	{
+		size_t length = LeadingRun(earth.size(), at_front, [&](size_t row) { return abutment[row] > 0.0; });
+		if (length == 0 || length == earth.size()) return;
+		const StripRow &sloping = earth[AbutmentRow(length, earth.size(), at_front)];
+		for (size_t nth = 0; nth < length; nth++) {
+			StripRow &carried = earth[AbutmentRow(nth, earth.size(), at_front)];
+			for (size_t point = 0; point < carried.size(); point++) carried[point].normal = sloping[point].normal;
+		}
+	}
+
+	static MapVector SideFacing(std::span<const FormationRow> table, size_t row, size_t side)
+	{
+		return Unit(Flat(table[row][side].crest) - Flat(table[row][1 - side].crest));
+	}
+
+	void CopeAbutments(std::span<const FormationRow> table, std::span<const FormationSide> sides, size_t side, std::span<const double> abutment) const
+	{
+		ForEachRun(sides.size(), [&](size_t row) { return abutment[row] > 0.0; }, [&](size_t first, size_t last) {
+			if (last - first < 2) return;
+			std::vector<WorldPoint> line;
+			std::vector<MapVector> facings;
+			for (size_t at = first; at < last; at++) {
+				line.push_back(sides[at].crest);
+				facings.push_back(SideFacing(table, at, side));
+			}
+			AddCopingAlong(this->mesh, line, [&](size_t nth) { return facings[nth]; }, COPING_DEPTH);
+		});
+	}
+
 	void LaySide(std::span<const FormationRow> table, size_t side) const
 	{
-		std::vector<double> walls = SustainedWalls(table, side);
+		std::vector<FormationSide> sides;
+		for (const FormationRow &row : table) sides.push_back(row[side]);
+		std::vector<double> walls = WallFalls(sides);
+		std::vector<double> abutment = AbutmentShares(sides, walls);
+		this->WallAbutment(sides, walls, abutment);
+		DropShortWalls(walls, abutment);
 		std::vector<StripRow> earth;
-		for (size_t row = 0; row < table.size(); row++) earth.push_back(EarthRowOf(table[row][side], walls[row]));
+		for (size_t row = 0; row < table.size(); row++) earth.push_back(EarthRowOf(sides[row], walls[row]));
+		for (bool at_front : {true, false}) CarryAbutmentSlope(earth, abutment, at_front);
 		const std::optional<BankEdge> &head = table.front()[side].section;
 		const std::optional<BankEdge> &tail = table.back()[side].section;
 		size_t first = head.has_value() ? 1 : 0;
@@ -1791,8 +1932,9 @@ private:
 		for (size_t row = 0; row + 1 < table.size(); row++) {
 			std::array<WorldPoint, 2> line = {table[row][side].crest, table[row + 1][side].crest};
 			std::array<WorldPoint, 2> feet = {earth[row][0].at, earth[row + 1][0].at};
-			this->AddWallFace(line, feet, Unit(Flat(table[row][side].crest) - Flat(table[row][1 - side].crest)));
+			this->AddWallFace(line, feet, SideFacing(table, row, side));
 		}
+		this->CopeAbutments(table, sides, side, abutment);
 	}
 
 	void LayMiddle(std::span<const FormationRow> table) const
@@ -1855,16 +1997,16 @@ private:
 		return FormationRow{shape.OuterSide(-1.0), shape.OuterSide(1.0)};
 	}
 
-	void AddWallFace(const std::array<WorldPoint, 2> &line, const std::array<WorldPoint, 2> &feet, const MapVector &facing) const
+	void AddWallFace(const std::array<WorldPoint, 2> &line, const std::array<WorldPoint, 2> &feet, const MapVector &facing, double shallowest = SHALLOWEST_FACE) const
 	{
 		double depth = std::max(line[0].level - feet[0].level, line[1].level - feet[1].level);
-		if (depth >= SHALLOWEST_FACE) AddMasonry(this->mesh, line, feet, facing);
+		if (depth >= shallowest) AddMasonry(this->mesh, line, feet, facing);
 	}
 
 	void Close(const FormationRow &row, const MapVector &facing) const
 	{
-		for (const FormationSide &side : row) this->AddWallFace({side.crest, side.toe}, {this->Seated(side.crest), side.toe}, facing);
-		this->AddWallFace({row[0].crest, row[1].crest}, {this->Seated(row[0].crest), this->Seated(row[1].crest)}, facing);
+		for (const FormationSide &side : row) this->AddWallFace({side.crest, side.toe}, {this->Seated(side.crest), side.toe}, facing, SHALLOWEST_CAP);
+		this->AddWallFace({row[0].crest, row[1].crest}, {this->Seated(row[0].crest), this->Seated(row[1].crest)}, facing, SHALLOWEST_CAP);
 	}
 
 	TerrainMesh &mesh;
