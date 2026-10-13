@@ -345,6 +345,98 @@ bool OpenSeaAbout(ivec2 cell)
 	return water.r >= 1.0 && water.g >= 1.0;
 }
 
+bool BridgeBit(uvec4 network)
+{
+	return (network.a & NETWORK_BRIDGE_BIT) != 0u;
+}
+
+bool Spanned(ivec2 tile)
+{
+	return BridgeBit(texelFetch(u_network, Clamped(tile), 0));
+}
+
+bool HoldsWater(ivec2 tile)
+{
+	return TileWater(tile).r > HALF_TILE;
+}
+
+bool RunsRiver(ivec2 tile)
+{
+	return TileWater(tile).a > HALF_TILE;
+}
+
+bool RiverChannel(ivec2 tile, Corners c)
+{
+	vec4 water = TileWater(tile);
+	bool level = LowestCorner(c) == HighestCorner(c);
+	return water.r > 0.0 && water.a > 0.0 && water.b <= 0.0 && (level || water.r >= 1.0);
+}
+
+bool RiverBank(ivec2 tile)
+{
+	if (TileWater(tile).r > 0.0) return false;
+	Corners own = SurfaceOf(tile);
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			ivec2 beside = tile + ivec2(i, j);
+			Corners across = SurfaceOf(beside);
+			if (across == own && RiverChannel(beside, across)) return true;
+		}
+	}
+	return false;
+}
+
+bool BuiltOver(ivec2 tile)
+{
+	uvec4 network = texelFetch(u_network, Clamped(tile), 0);
+	return (CodesAt(tile).g & BUILT_BIT) != 0u || BridgeBit(network) || any(notEqual(network.rgb, uvec3(0u)));
+}
+
+bool Wooded(ivec2 tile)
+{
+	return (CodesAt(tile).b & FLORA_COUNT_MASK) != 0u;
+}
+
+float DistanceToBox(vec2 p, vec2 low, vec2 high)
+{
+	return distance(p, clamp(p, low, high));
+}
+
+float DistanceToTile(vec2 p, ivec2 tile)
+{
+	return DistanceToBox(p, vec2(tile), vec2(tile + 1));
+}
+
+float DistanceToTreeCrown(vec2 p, ivec2 tile)
+{
+	return max(distance(p, vec2(tile) + TILE_CENTRE) - TILE_CORNER_REACH, 0.0);
+}
+
+float DistanceToHold(vec2 p, ivec2 tile)
+{
+	if (TileWater(tile).r > 0.0) return NOTHING_HELD;
+	if (BuiltOver(tile)) return DistanceToTile(p, tile);
+	return Wooded(tile) ? DistanceToTreeCrown(p, tile) : NOTHING_HELD;
+}
+
+float Watered(vec4 field)
+{
+	return max(dot(field.gba, vec3(1.0)), LEAST_DIVISOR);
+}
+
+float DryRimmed(vec2 warped, float field, float river_share)
+{
+	if (field <= DRY_RIM_FLOOR || river_share <= 0.0) return field;
+	ivec2 corner = ivec2(floor(warped + TILE_CENTRE));
+	float capped = field;
+	for (int j = -1; j <= 0; j++) {
+		for (int i = -1; i <= 0; i++) {
+			capped = min(capped, DRY_RIM_FLOOR + DRY_RIM_RISE * DistanceToHold(warped, corner + ivec2(i, j)));
+		}
+	}
+	return mix(field, capped, river_share);
+}
+
 /* The water field over only the tiles whose water joins this sheet. */
 vec4 SheetField(vec2 p, vec2 warped, float level)
 {
@@ -366,13 +458,15 @@ vec4 SheetField(vec2 p, vec2 warped, float level)
 			brim += weight * tile_brim;
 		}
 	}
-	field.r -= BRIM_PULL * brim * pooled / max(dot(field.gba, vec3(1.0)), LEAST_DIVISOR);
+	float watered = Watered(field);
+	field.r -= BRIM_PULL * brim * pooled / watered;
+	field.r = DryRimmed(warped, field.r, field.a / watered);
 	return CanalWalled(field, p);
 }
 
 float DistancePastEdge(vec2 p)
 {
-	return distance(p, clamp(p, vec2(0.0), MapSize()));
+	return DistanceToBox(p, vec2(0.0), MapSize());
 }
 
 /* Past the map's edge lies open sea. */
@@ -605,35 +699,11 @@ vec2 DepthBehind(vec2 uv, vec3 sight, float surface)
 	return vec2(behind - surface, v_position.z - bed.z);
 }
 
-bool HoldsWater(ivec2 tile)
-{
-	return TileWater(tile).r > HALF_TILE;
-}
-
-vec4 SurfaceKey(ivec2 tile)
-{
-	Corners c = SurfaceOf(tile);
-	return vec4(c.north, c.west, c.east, c.south);
-}
-
-bool RiverBank(ivec2 tile)
-{
-	if (HoldsWater(tile)) return false;
-	vec4 own = SurfaceKey(tile);
-	for (int j = -1; j <= 1; j++) {
-		for (int i = -1; i <= 1; i++) {
-			ivec2 beside = tile + ivec2(i, j);
-			if (TileWater(beside).a > HALF_TILE && SurfaceKey(beside) == own) return true;
-		}
-	}
-	return false;
-}
-
 /* The level a tile's water stands at a point: down the plane of a river running down a slope or of a bank sloping beside it, and level with its lowest corner elsewhere. */
 float WaterLevelOn(ivec2 tile, vec2 f, bool bank)
 {
 	Corners c = SurfaceOf(tile);
-	bool inclined = (TileWater(tile).a > HALF_TILE || bank) && c.north != c.south;
+	bool inclined = (RunsRiver(tile) || bank) && c.north != c.south;
 	if (!inclined) return LowestCorner(c);
 	return mix(mix(c.north, c.west, f.x), mix(c.east, c.south, f.x), f.y);
 }
@@ -661,11 +731,6 @@ Drop Descent(vec2 p, ivec2 home, bool bank)
 	float level = WaterLevelNear(p, home, bank);
 	float bend = (dot(around, vec4(1.0)) - 4.0 * level) * LevelRise() / reach;
 	return Drop(slope > 0.0 ? fall / slope : vec2(0.0), slope, smoothstep(RAPIDS_TILT, 2.0 * RAPIDS_TILT, slope), bend, level);
-}
-
-bool Spanned(ivec2 tile)
-{
-	return (texelFetch(u_network, Clamped(tile), 0).a & NETWORK_BRIDGE_BIT) != 0u;
 }
 
 /* How much of the sky a bridge deck overhead keeps from a point: the deck runs along the line of tiles it spans, down their middles. */
@@ -740,7 +805,7 @@ Water WaterAt(vec2 p)
 	water.field = FieldAt(p, warped, v_world.z);
 	water.body = BodyOf(water.field);
 	ivec2 home = ivec2(floor(warped));
-	bool bank = RiverBank(home);
+	bool bank = water.field.a > 0.0 && RiverBank(home);
 	water.drop = Descent(warped, home, bank);
 	water.flow = FlowAt(p);
 	water.glassy = smoothstep(0.0, LIP_BEND, -water.drop.bend);

@@ -18,6 +18,7 @@
 #include "../core/lattice_noise.h"
 #include "../map/tile_shapes.h"
 #include "../map/world_tiles.h"
+#include "seabed.h"
 
 #include "../../safeguards.h"
 
@@ -95,6 +96,7 @@ struct SheetShares {
 	double level;
 	double pooled;
 	double water;
+	double river;
 	double brim;
 
 	void Add(const SheetShares &other, double weight)
@@ -102,6 +104,7 @@ struct SheetShares {
 		this->level += other.level * weight;
 		this->pooled += other.pooled * weight;
 		this->water += other.water * weight;
+		this->river += other.river * weight;
 		this->brim += other.brim * weight;
 	}
 };
@@ -113,13 +116,48 @@ static SheetShares SheetTexel(int tx, int ty, double level)
 	double joining = JoiningOf(span, level) / TEXEL_SCALE;
 	double brim = water.level == 0 ? BrimShare(level, span.low, span.top) : 0.0;
 	double pooled = span.high > span.low ? 0.0 : water.river * joining;
-	return {water.level * joining, pooled, (water.sea + water.canal + water.river) * joining, brim};
+	return {water.level * joining, pooled, (water.sea + water.canal + water.river) * joining, water.river * joining, brim};
+}
+
+static double DistanceToTile(double x, double y, int tx, int ty)
+{
+	return std::hypot(x - std::clamp<double>(x, tx, tx + 1), y - std::clamp<double>(y, ty, ty + 1));
+}
+
+static double DistanceToTreeCrown(double x, double y, int tx, int ty)
+{
+	return std::max(std::hypot(x - tx - HALF_TILE, y - ty - HALF_TILE) - TILE_CORNER_REACH, 0.0);
+}
+
+static double DistanceToHold(double x, double y, int tx, int ty)
+{
+	int cx = std::clamp<int>(tx, 0, Map::MaxX());
+	int cy = std::clamp<int>(ty, 0, Map::MaxY());
+	if (_world_tiles.WaterAt(TileXY(cx, cy)).level != 0) return NOTHING_HELD;
+	if (IsBuiltOver(cx, cy)) return DistanceToTile(x, y, tx, ty);
+	return IsWooded(cx, cy) ? DistanceToTreeCrown(x, y, tx, ty) : NOTHING_HELD;
+}
+
+static double DryRimmed(double warped_x, double warped_y, double field, double river_share)
+{
+	if (field <= DRY_RIM_FLOOR || river_share <= 0.0) return field;
+	int corner_x = static_cast<int>(std::floor(warped_x + HALF_TILE));
+	int corner_y = static_cast<int>(std::floor(warped_y + HALF_TILE));
+	double capped = field;
+	for (int ty = corner_y - 1; ty <= corner_y; ty++) {
+		for (int tx = corner_x - 1; tx <= corner_x; tx++) {
+			capped = std::min(capped, DRY_RIM_FLOOR + DRY_RIM_RISE * DistanceToHold(warped_x, warped_y, tx, ty));
+		}
+	}
+	return std::lerp(field, capped, river_share);
 }
 
 double SheetWater(double x, double y, double level)
 {
-	double tx = x + ShoreWarp(x, y, SHORE_WARP_SEEDS[0]) - HALF_TILE;
-	double ty = y + ShoreWarp(x, y, SHORE_WARP_SEEDS[1]) - HALF_TILE;
+	double warped_x = x + ShoreWarp(x, y, SHORE_WARP_SEEDS[0]);
+	double warped_y = y + ShoreWarp(x, y, SHORE_WARP_SEEDS[1]);
+	double tx = warped_x - HALF_TILE;
+	double ty = warped_y - HALF_TILE;
 	double cell_x = std::floor(tx);
 	double cell_y = std::floor(ty);
 	std::array<double, 4> wx = SplineWeights(tx - cell_x);
@@ -128,5 +166,7 @@ double SheetWater(double x, double y, double level)
 	for (int j = 0; j < 4; j++) {
 		for (int i = 0; i < 4; i++) field.Add(SheetTexel(static_cast<int>(cell_x) + i - 1, static_cast<int>(cell_y) + j - 1, level), wx[i] * wy[j]);
 	}
-	return field.level - BRIM_PULL * field.brim * field.pooled / std::max(field.water, LEAST_WATER);
+	double watered = std::max(field.water, LEAST_WATER);
+	double pulled = field.level - BRIM_PULL * field.brim * field.pooled / watered;
+	return DryRimmed(warped_x, warped_y, pulled, field.river / watered);
 }

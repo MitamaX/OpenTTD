@@ -167,13 +167,27 @@ static std::optional<TileIndex> RiverAlong(int tx, int ty)
 	return std::nullopt;
 }
 
-std::optional<TileIndex> RiverOfBank(int tx, int ty)
+bool IsBuiltOver(int tx, int ty)
 {
-	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Dry) return std::nullopt;
 	TileIndex tile = TileXY(tx, ty);
 	GroundTexel ground = _world_tiles.GroundAt(tile);
 	NetworkTexel network = _world_tiles.NetworkAt(tile);
-	if (ground.flora != 0 || (network.style & NETWORK_BRIDGE_BIT) != 0 || GroundworkOf(ground, network) != Groundwork::Open) return std::nullopt;
+	return (network.style & NETWORK_BRIDGE_BIT) != 0 || GroundworkOf(ground, network) != Groundwork::Open;
+}
+
+bool IsWooded(int tx, int ty)
+{
+	return TreeCount(_world_tiles.GroundAt(TileXY(tx, ty)).flora) != 0;
+}
+
+static bool IsBareGround(int tx, int ty)
+{
+	return !IsBuiltOver(tx, ty) && !IsWooded(tx, ty);
+}
+
+std::optional<TileIndex> RiverOfBank(int tx, int ty)
+{
+	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Dry || !IsBareGround(tx, ty)) return std::nullopt;
 	return RiverAlong(tx, ty);
 }
 

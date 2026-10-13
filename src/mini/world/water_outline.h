@@ -11,6 +11,9 @@
 #define MINI_WORLD_WATER_OUTLINE_H
 
 #include <array>
+#include <numbers>
+
+#include "../map/tile_shapes.h"
 
 /* Where the smoothed water field crosses this, the water's outline runs. */
 inline constexpr double WATERLINE = 0.58;
@@ -25,6 +28,11 @@ inline constexpr double SHEET_HOLD = 0.5;
 inline constexpr double SHEET_REACH = 1.0;
 inline constexpr double BRIM_PULL = 0.35;
 inline constexpr double BRIM_FADE = 0.45;
+inline constexpr double DRY_RIM_RISE = 0.6;
+inline constexpr double NOTHING_HELD = 2.0;
+inline constexpr double DRY_RIM_FLOOR = 0.5;
+inline constexpr double TILE_CORNER_REACH = std::numbers::sqrt2 * HALF_TILE;
+static_assert(DRY_RIM_FLOOR + DRY_RIM_RISE * HALF_TILE >= WATERLINE + CHANNEL_FALL);
 
 /* How far a point lies inside the water of a sheet, as the water shaders draw it: the water of every tile as wholly as it joins the sheet smoothed by a cubic B-spline,
  * drawn back from dry ground falling away below a level river's sheet and read about the point frayed the way natural shores fray. */

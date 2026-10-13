@@ -44,6 +44,8 @@ bool IsRiverMouth(int tx, int ty);
 /* The river a dry tile with nothing on it lies beside, its ground lying just as the tile's own, level or down the same slope, so the river's curved outline may reach onto it. */
 std::optional<TileIndex> RiverOfBank(int tx, int ty);
 bool IsRiverBank(int tx, int ty);
+bool IsBuiltOver(int tx, int ty);
+bool IsWooded(int tx, int ty);
 /* A river or one of its bare banks, whose ground follows the river's outline. */
 bool IsRiverside(int tx, int ty);
 

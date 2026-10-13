@@ -185,6 +185,10 @@ static std::string ShaderHeader()
 	DefineFloat(header, "SHEET_REACH", SHEET_REACH);
 	DefineFloat(header, "BRIM_PULL", BRIM_PULL);
 	DefineFloat(header, "BRIM_FADE", BRIM_FADE);
+	DefineFloat(header, "DRY_RIM_FLOOR", DRY_RIM_FLOOR);
+	DefineFloat(header, "DRY_RIM_RISE", DRY_RIM_RISE);
+	DefineFloat(header, "NOTHING_HELD", NOTHING_HELD);
+	DefineFloat(header, "TILE_CORNER_REACH", TILE_CORNER_REACH);
 	DefineInt(header, "TREE_DETAILS", static_cast<int>(TREE_DETAILS));
 	DefineFloats(header, "TREE_DETAIL_FLOORS", TREE_DETAIL_FLOORS);
 	DefineFloats(header, "TREE_AGE_SCALES", TREE_AGE_SCALES);
