@@ -57,6 +57,13 @@ static constexpr int APPROACH_REFINES = 24;
 /* A run is traced no further than this many joints either way from where it is first asked for. */
 static constexpr int LONGEST_WALK = 1024;
 static constexpr double RAISED_LIFT = 0.02;
+/* A run climbing no more than this along a tile counts as level. */
+static constexpr double LEVEL_CLIMB = 1.0e-6;
+/* The steepest a road crosses into a level tile, which its curve there levels off from within the tile. */
+static constexpr double LEVEL_REACH_CLIMB = 0.21;
+/* A straight piece runs a whole tile; a bend's span differs from the course length it is climbed over. */
+static constexpr double STRAIGHT_SPAN = 1.0;
+static constexpr double SPAN_SLACK = 1.0e-6;
 static constexpr int RAISED_SAMPLES = 8;
 static constexpr double CROSSING_SLACK = 0.01;
 static constexpr int ROAD_ARMS = 4;
@@ -204,6 +211,15 @@ static double JointSlope(double before, double after)
 	return 2.0 * before * after / (before + after);
 }
 
+/* A road cresting onto a level tile, or off one, crosses the joint halfway between the two grades, so its crest curve reaches over the joint
+ * into the level tile above the ground there instead of bending all at once at the top of the climbing one. */
+static double RoadJointSlope(double before, double after)
+{
+	bool crest = (before > LEVEL_CLIMB && std::abs(after) <= LEVEL_CLIMB) || (std::abs(before) <= LEVEL_CLIMB && after < -LEVEL_CLIMB);
+	if (crest) return std::clamp((before + after) * 0.5, -LEVEL_REACH_CLIMB, LEVEL_REACH_CLIMB);
+	return JointSlope(before, after);
+}
+
 /* A heading leaning no nearer to a tile side than a bend can keep within the tiles, keeping the side it leans toward. */
 static MapVector Crossing(const MapVector &heading, const MapVector &upward)
 {
@@ -275,6 +291,7 @@ private:
 	bool Jogs(size_t held, bool forward) const;
 	std::optional<Jog> HeldJog(size_t index, int reach) const;
 	bool HeadJog(size_t index) const;
+	bool Bent(size_t index) const;
 	std::optional<Approach> HeldApproach(size_t index, const std::vector<MapVector> &places, int reach, bool approaching) const;
 	RunLine SlidLine(const std::vector<double> &limits) const;
 	std::vector<size_t> Folded(const RunLine &line) const;
@@ -414,6 +431,13 @@ std::vector<double> Run::EasedLevels(const std::vector<double> &spans) const
 		next = levels;
 	}
 	return levels;
+}
+
+/* Whether a joint or one beside it bends the run onto a bridge deck. */
+bool Run::Bent(size_t index) const
+{
+	auto docks = [this](size_t at) { return this->nodes[at].deck || this->nodes[at].pinned; };
+	return docks(index) || docks(this->Before(index)) || docks(this->After(index));
 }
 
 double Run::Facing(size_t index) const
@@ -665,7 +689,9 @@ void Run::Ease(Store store)
 		}
 		size_t before = this->Before(index);
 		double sign = this->Facing(index);
-		double slope = JointSlope(climb(before), climb(index)) * sign;
+		auto straight = [&](size_t segment) { return std::abs(spans[segment] - STRAIGHT_SPAN) <= SPAN_SLACK; };
+		bool rounds = this->kind == WayKind::Road && straight(before) && straight(index) && !this->Bent(index);
+		double slope = (rounds ? RoadJointSlope : JointSlope)(climb(before), climb(index)) * sign;
 		std::optional<double> distance;
 		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
 		store(node.joint, JointEase{line.places[index], levels[index], slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
