@@ -69,6 +69,7 @@ static constexpr double SHALLOW_BANK_FOOT_DIP = 0.16;
 static constexpr double SHALLOW_BANK_RISE = 1.0;
 static constexpr double SHALLOWEST_FACE = 2.0 * BANK_FOOT_DIP;
 static constexpr double SHALLOWEST_CAP = 5.0 * BANK_FOOT_DIP;
+static constexpr double LEAST_STEP = 1e-3;
 static constexpr double SAME_POINT = 1e-6;
 static constexpr double PARALLEL_LEAST = 1.0 - SAME_POINT;
 static constexpr double WALL_OVERLAP_LEAST = 0.1;
@@ -1247,7 +1248,6 @@ using FormationRow = std::array<FormationSide, 2>;
 class RampShape {
 public:
 	enum class Flank : uint8_t {
-		Parallel,
 		Merged,
 		Shelf,
 		Bank,
@@ -1288,7 +1288,7 @@ public:
 		TileStep beside = this->SideStep(side);
 		int sx = this->tx + beside.x;
 		int sy = this->ty + beside.y;
-		if (this->BesideParallelRamp(sx, sy)) return this->LevelDeckBeside(sx, sy) ? FlankPlan{Flank::Merged, 0.0} : FlankPlan{Flank::Parallel, HALF_TILE - DECK_HALF};
+		if (this->BesideParallelRamp(sx, sy)) return {Flank::Merged, 0.0};
 		if (Walled(this->tx, this->ty, this->SideToward(side), BankOn)) return {Flank::Shelf, 0.0, StepFaceOf(this->tx, this->ty, this->SideToward(side))};
 		if (StopsEarth(sx, sy) || StopsEarth(sx + static_cast<int>(this->facing.x), sy + static_cast<int>(this->facing.y))) return {Flank::Wall, 0.0};
 		std::optional<EarthBank> bank = EarthBankOf(this->tx, this->ty, sx, sy);
@@ -1314,14 +1314,27 @@ public:
 		return {at.x, at.y, crest.level};
 	}
 
-	/* Where the earth between two heads side by side meets the other's at their shared border: halfway between their crests, down to the lower one at the outer end. */
+	/* Where the earth between two heads side by side reaches their shared border, level with its own crest. */
 	WorldPoint MergedEdge(double share, double side) const
 	{
 		MapVector at = this->run.At(share, side * HALF_TILE);
+		return {at.x, at.y, this->footing(at.x, at.y) + WAY_FOOT / LevelRise()};
+	}
+
+	/* The other head's earth at the shared border, which a higher head's stands above. */
+	WorldPoint MergedFoot(double share, double side) const
+	{
+		MapVector at = this->run.At(share, side * HALF_TILE);
 		Footing beside = this->BesideFooting(side);
-		double own = this->footing(at.x, at.y), other = beside(at.x, at.y);
-		double level = share == 0.0 ? std::min(own, other) : std::midpoint(own, other);
-		return {at.x, at.y, level + WAY_FOOT / LevelRise()};
+		return {at.x, at.y, std::min(this->footing(at.x, at.y), beside(at.x, at.y)) + WAY_FOOT / LevelRise()};
+	}
+
+	/* Where the earth between two heads meets the ways leading up to them, settled onto the ground where it barely stands above it. */
+	WorldPoint MergedToe(double side) const
+	{
+		WorldPoint foot = this->MergedFoot(0.0, side);
+		WorldPoint ground = Grounded(this->land, foot);
+		return foot.level - ground.level < SHALLOWEST_CAP ? ground : foot;
 	}
 
 	WorldPoint BandEdge(Flank kind, double share, double side) const
@@ -1345,7 +1358,8 @@ public:
 		FlankPlan plan = this->PlanOf(side);
 		if (plan.kind == Flank::Shelf || plan.kind == Flank::Merged) {
 			Vec3 normal = this->CrestVertex(0.0, side).normal;
-			return {this->Crest(0.0, side), normal, this->BandEdge(plan.kind, 0.0, side), normal, std::nullopt, false, plan.kind == Flank::Shelf};
+			WorldPoint toe = plan.kind == Flank::Merged ? this->MergedToe(side) : this->ShelfEdge(0.0, side);
+			return {this->Crest(0.0, side), normal, toe, normal, std::nullopt, false, plan.kind == Flank::Shelf};
 		}
 		if (plan.kind == Flank::Wall) {
 			WorldPoint crest = this->Crest(0.0, side);
@@ -1384,12 +1398,6 @@ private:
 		if (!OnMap(sx, sy)) return false;
 		RampTexel beside = _world_tiles.RampAt(TileXY(sx, sy));
 		return beside.Present() && beside.onto == this->ramp.onto;
-	}
-
-	/* Two heads side by side under decks at one height fill the ground between them. */
-	bool LevelDeckBeside(int sx, int sy) const
-	{
-		return _world_tiles.RampAt(TileXY(sx, sy)).deck == this->ramp.deck;
 	}
 
 	Footing BesideFooting(double side) const
@@ -1471,6 +1479,24 @@ private:
 		AddCopingWhereTall(this->mesh, line, feet, right, COPING_DEPTH);
 	}
 
+	/* Where the other head stands lower, this one's earth is held at the border by stone down to the other's, closed at the outer end. */
+	void LayMerged(double side) const
+	{
+		std::vector<StripRow> rows = this->LayBand(RampShape::Flank::Merged, side);
+		std::vector<WorldPoint> feet;
+		for (int row = 0; row <= RAMP_BANK_ROWS; row++) feet.push_back(this->shape.MergedFoot(RampShape::ShareOfRow(row), side));
+		auto stands = [&](int row) { return rows[row][1].at.level - feet[row].level > LEAST_STEP; };
+		Vec3 right = Upright(this->shape.SideOutward(side));
+		for (int row = RAMP_BANK_ROWS; row > 0; row--) {
+			const WorldPoint &near = rows[row][1].at, &far = rows[row - 1][1].at;
+			if (stands(row) && stands(row - 1)) AddStoneQuad(this->mesh, {near, far, feet[row - 1], feet[row]}, right);
+			else if (stands(row)) AddStoneTriangle(this->mesh, {near, far, feet[row]}, right);
+			else if (stands(row - 1)) AddStoneTriangle(this->mesh, {near, far, feet[row - 1]}, right);
+		}
+		WorldPoint toe = this->shape.MergedToe(side);
+		if (rows[0][1].at.level - toe.level > LEAST_STEP) AddStoneTriangle(this->mesh, {rows[0][1].at, rows[0][0].at, toe}, Upright(this->shape.Facing() * -1.0));
+	}
+
 	void LayFlank(double side) const
 	{
 		RampShape::FlankPlan plan = this->shape.PlanOf(side);
@@ -1480,7 +1506,7 @@ private:
 			return;
 		}
 		if (plan.kind == RampShape::Flank::Merged) {
-			this->LayBand(plan.kind, side);
+			this->LayMerged(side);
 			return;
 		}
 		if (plan.kind == RampShape::Flank::Wall) {
