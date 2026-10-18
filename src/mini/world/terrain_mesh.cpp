@@ -688,11 +688,23 @@ static Vec3 Upright(const MapVector &facing)
 	return {facing.x, facing.y, 0.0};
 }
 
-static void AddStoneQuad(TerrainMesh &mesh, const std::array<WorldPoint, 4> &corners, const Vec3 &normal)
+static uint32_t AddStoneCorners(TerrainMesh &mesh, std::span<const WorldPoint> corners, const Vec3 &normal)
 {
 	uint32_t first = mesh.Add(corners[0], normal, MASONRY_MARK);
 	for (size_t corner = 1; corner < corners.size(); corner++) mesh.Add(corners[corner], normal, MASONRY_MARK);
+	return first;
+}
+
+static void AddStoneQuad(TerrainMesh &mesh, const std::array<WorldPoint, 4> &corners, const Vec3 &normal)
+{
+	uint32_t first = AddStoneCorners(mesh, corners, normal);
 	mesh.Quad(first, first + 1, first + 2, first + 3);
+}
+
+static void AddStoneTriangle(TerrainMesh &mesh, const std::array<WorldPoint, 3> &corners, const Vec3 &normal)
+{
+	uint32_t first = AddStoneCorners(mesh, corners, normal);
+	mesh.Triangle(first, first + 1, first + 2);
 }
 
 /* A stone face from a line of points down to the feet under them, facing out one way. */
@@ -1227,6 +1239,7 @@ struct FormationSide {
 	Vec3 toe_normal;
 	std::optional<BankEdge> section = std::nullopt;
 	bool walled = false;
+	bool shelved = false;
 };
 
 using FormationRow = std::array<FormationSide, 2>;
@@ -1332,7 +1345,7 @@ public:
 		FlankPlan plan = this->PlanOf(side);
 		if (plan.kind == Flank::Shelf || plan.kind == Flank::Merged) {
 			Vec3 normal = this->CrestVertex(0.0, side).normal;
-			return {this->Crest(0.0, side), normal, this->BandEdge(plan.kind, 0.0, side), normal};
+			return {this->Crest(0.0, side), normal, this->BandEdge(plan.kind, 0.0, side), normal, std::nullopt, false, plan.kind == Flank::Shelf};
 		}
 		if (plan.kind == Flank::Wall) {
 			WorldPoint crest = this->Crest(0.0, side);
@@ -2066,6 +2079,18 @@ private:
 		}
 	}
 
+	/* A head's stone shelf, met by earth whose next row already stands on the ground, goes on down to that row's toe. */
+	void CarryShelfWall(std::span<const FormationRow> table, std::span<const FormationSide> sides, size_t side, bool at_front) const
+	{
+		size_t joint = AbutmentRow(0, sides.size(), at_front);
+		const WorldPoint &top = sides[joint].toe;
+		WorldPoint foot = {top.x, top.y, this->OwnGroundUnder(top)};
+		if (!sides[joint].shelved || top.level - foot.level < SHALLOWEST_FACE) return;
+		const WorldPoint &next = sides[AbutmentRow(1, sides.size(), at_front)].toe;
+		std::array<WorldPoint, 2> line = at_front ? std::array{top, next} : std::array{next, top};
+		AddStoneTriangle(this->mesh, {line[0], line[1], foot}, Upright(SideFacing(table, joint, side)));
+	}
+
 	void LaySide(std::span<const FormationRow> table, size_t side) const
 	{
 		std::vector<FormationSide> sides;
@@ -2086,6 +2111,7 @@ private:
 		if (head.has_value()) AddBankStrip(this->mesh, *head, Spanned(earth[first]), FILL_MARK);
 		if (tail.has_value()) AddBankStrip(this->mesh, Spanned(earth[end - 1]), *tail, FILL_MARK);
 		this->LayWallFaces(table, sides, earth, at_foot, side);
+		for (bool at_front : {true, false}) this->CarryShelfWall(table, sides, side, at_front);
 		this->CopeRuns(table, side, [&](size_t row) { return abutment[row] > 0.0; }, [&](size_t row) { return sides[row].crest; });
 		this->CopeRuns(table, side, [&](size_t row) { return at_foot[row]; }, [&](size_t row) { return earth[row][1].at; });
 	}
@@ -2098,11 +2124,16 @@ private:
 		AddStrip(this->mesh, rows);
 	}
 
-	WorldPoint Seated(const WorldPoint &at) const
+	double OwnGroundUnder(const WorldPoint &at) const
 	{
 		double x = std::clamp(at.x, this->id.tx + OWN_TILE_INSET, this->id.tx + 1.0 - OWN_TILE_INSET);
 		double y = std::clamp(at.y, this->id.ty + OWN_TILE_INSET, this->id.ty + 1.0 - OWN_TILE_INSET);
-		return {at.x, at.y, std::min(at.level, this->land.LevelAt(x, y) - BANK_FOOT_DIP)};
+		return this->land.LevelAt(x, y);
+	}
+
+	WorldPoint Seated(const WorldPoint &at) const
+	{
+		return {at.x, at.y, std::min(at.level, this->OwnGroundUnder(at) - BANK_FOOT_DIP)};
 	}
 
 	struct Joint {
