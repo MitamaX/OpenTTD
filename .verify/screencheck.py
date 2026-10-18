@@ -25,8 +25,13 @@ SKY_HOLE_RING = 3
 SKY_HOLE_MIN_TERRAIN_SHARE = 0.6
 WATER_MIN_BLUE_OVER_RED = 15
 
-BLACK_LUMA = 26.0
+BLACK_LUMA = 32.0
 BLACK_MIN_AREA = 16
+BLACK_MAX_GREEN_TINT = 4
+BLACK_RING = 2
+BLACK_AREA_CAP = 400
+BLACK_CONTRAST_SCALE = 100.0
+BLACK_ELONGATION_CAP = 8.0
 
 STEP_OFFSET = 2
 STEP_THRESHOLD = 14.0
@@ -50,6 +55,10 @@ RIDGE_SIDE_OFFSET = 3
 RIDGE_THRESHOLD = 6.0
 THIN_LINE_MIN_LENGTH = 140
 THIN_LINE_MIN_COVER = 0.75
+
+GRASS_MIN_GREEN_OVER_RED = 6
+GRASS_MIN_GREEN_OVER_BLUE = 12
+GRASS_SIDE_OFFSET = 5
 
 BOX_MERGE_MARGIN = 4
 LINE_DUPLICATE_SLACK = 6
@@ -166,15 +175,18 @@ def dilated(mask, steps):
     return grown
 
 
-def terrain_share_around(pixels, mask, x0, y0):
+def ring_pixels(pixels, mask, x0, y0, width_px):
     height, width = pixels.shape[:2]
-    m = SKY_HOLE_RING
-    left, top = max(0, x0 - m), max(0, y0 - m)
-    right, bottom = min(width, x0 + mask.shape[1] + m), min(height, y0 + mask.shape[0] + m)
+    left, top = max(0, x0 - width_px), max(0, y0 - width_px)
+    right, bottom = min(width, x0 + mask.shape[1] + width_px), min(height, y0 + mask.shape[0] + width_px)
     local = np.zeros((bottom - top, right - left), dtype=bool)
     local[y0 - top:y0 - top + mask.shape[0], x0 - left:x0 - left + mask.shape[1]] = mask
-    ring = dilated(local, m) & ~local
-    patch = pixels[top:bottom, left:right][ring]
+    ring = dilated(local, width_px) & ~local
+    return pixels[top:bottom, left:right][ring]
+
+
+def terrain_share_around(pixels, mask, x0, y0):
+    patch = ring_pixels(pixels, mask, x0, y0, SKY_HOLE_RING)
     if len(patch) == 0:
         return 0.0
     bluish = patch[:, 2] - patch[:, 0] >= WATER_MIN_BLUE_OVER_RED
@@ -219,11 +231,20 @@ def find_sky_holes(pixels, luma):
     return holes
 
 
-def find_black(luma):
+def find_black(pixels, luma):
+    r, g, b = pixels[..., 0], pixels[..., 1], pixels[..., 2]
+    foliage_shadow = (g - r > BLACK_MAX_GREEN_TINT) & (g - b > BLACK_MAX_GREEN_TINT)
     found = []
-    for area, x0, x1, y0, y1, runs in label_components(luma < BLACK_LUMA):
-        if area >= BLACK_MIN_AREA:
-            found.append(("black", x0, x1, y0, y1, float(area), f"area={area}"))
+    for area, x0, x1, y0, y1, runs in label_components((luma < BLACK_LUMA) & ~foliage_shadow):
+        if area < BLACK_MIN_AREA:
+            continue
+        mask = component_mask((area, x0, x1, y0, y1, runs), luma.shape)[y0:y1 + 1, x0:x1 + 1]
+        colour = pixels[y0:y1 + 1, x0:x1 + 1][mask].mean(axis=0)
+        ring = ring_pixels(luma, mask, x0, y0, BLACK_RING)
+        contrast = float(ring.mean() - luma[y0:y1 + 1, x0:x1 + 1][mask].mean()) if len(ring) else 0.0
+        elongation = max(x1 - x0 + 1, y1 - y0 + 1) ** 2 / area
+        score = min(area, BLACK_AREA_CAP) * max(contrast, 0) / BLACK_CONTRAST_SCALE * min(elongation, BLACK_ELONGATION_CAP)
+        found.append(("black", x0, x1, y0, y1, score, f"area={area} rgb={colour[0]:.0f},{colour[1]:.0f},{colour[2]:.0f} ring_contrast={contrast:.0f} elongation={elongation:.1f}"))
     return found
 
 
@@ -266,7 +287,7 @@ def gradients(luma):
     return gx, gy
 
 
-def hough_lines(luma, gx, gy):
+def hough_lines(luma, grass, gx, gy):
     magnitude = np.hypot(gx, gy)
     edge_mask = magnitude > HOUGH_EDGE_THRESHOLD
     ys, xs = np.nonzero(edge_mask)
@@ -277,11 +298,11 @@ def hough_lines(luma, gx, gy):
     accumulator, angles, diagonal = accumulate_hough(xs, ys, luma.shape, edge_cos, edge_sin)
     found = []
     for index, rho_index in hough_peaks(accumulator, LINE_MIN_LENGTH // 2):
-        found += step_segments(luma, edge_mask, angles[index], rho_index - diagonal, index * 180.0 / HOUGH_ANGLE_STEPS)
+        found += step_segments(luma, grass, edge_mask, angles[index], rho_index - diagonal, index * 180.0 / HOUGH_ANGLE_STEPS)
     return found
 
 
-def step_segments(luma, edge_mask, angle, rho, angle_deg):
+def step_segments(luma, grass, edge_mask, angle, rho, angle_deg):
     xi, yi, normal = line_points(luma.shape, angle, rho)
     if len(xi) == 0:
         return []
@@ -308,9 +329,22 @@ def step_segments(luma, edge_mask, angle, rho, angle_deg):
             continue
         x0, x1 = int(min(xi[a], xi[b])), int(max(xi[a], xi[b]))
         y0, y1 = int(min(yi[a], yi[b])), int(max(yi[a], yi[b]))
-        detail = f"len={length} step={mean_step:.0f} sign={sign_share:.2f} angle={angle_deg:.0f}"
+        grass_sides = grass_share(grass, xi[a:b + 1], yi[a:b + 1], normal)
+        detail = f"len={length} step={mean_step:.0f} sign={sign_share:.2f} angle={angle_deg:.0f} grass={grass_sides:.2f}"
         boxes.append((kind, x0, x1, y0, y1, length * mean_step * sign_share / 100, detail))
     return boxes
+
+
+def grass_like(pixels):
+    r, g, b = pixels[..., 0], pixels[..., 1], pixels[..., 2]
+    return (g - r >= GRASS_MIN_GREEN_OVER_RED) & (g - b >= GRASS_MIN_GREEN_OVER_BLUE)
+
+
+def grass_share(grass, xi, yi, normal):
+    height, width = grass.shape
+    o = GRASS_SIDE_OFFSET
+    sides = [grass[np.clip(np.round(yi + sign * normal[1] * o).astype(int), 0, height - 1), np.clip(np.round(xi + sign * normal[0] * o).astype(int), 0, width - 1)] for sign in (1, -1)]
+    return float((sides[0] & sides[1]).mean())
 
 
 def dark_ridge(luma):
@@ -348,7 +382,7 @@ def hough_peaks(accumulator, minimum):
         yield index, rho_index
 
 
-def thin_lines(luma):
+def thin_lines(luma, grass):
     ridge = dark_ridge(luma)
     mask = ridge > RIDGE_THRESHOLD
     ys, xs = np.nonzero(mask)
@@ -357,7 +391,7 @@ def thin_lines(luma):
     accumulator, angles, diagonal = accumulate_hough(xs, ys, luma.shape)
     found = []
     for index, rho_index in hough_peaks(accumulator, THIN_LINE_MIN_LENGTH // 2):
-        found += ridge_segments(ridge, mask, angles[index], rho_index - diagonal, index * 180.0 / HOUGH_ANGLE_STEPS)
+        found += ridge_segments(ridge, grass, mask, angles[index], rho_index - diagonal, index * 180.0 / HOUGH_ANGLE_STEPS)
     return found
 
 
@@ -394,7 +428,7 @@ def runs_with_gaps(hits):
     return segments
 
 
-def ridge_segments(ridge, mask, angle, rho, angle_deg):
+def ridge_segments(ridge, grass, mask, angle, rho, angle_deg):
     xi, yi, normal = line_points(ridge.shape, angle, rho)
     if len(xi) == 0:
         return []
@@ -413,7 +447,8 @@ def ridge_segments(ridge, mask, angle, rho, angle_deg):
             continue
         x0, x1 = int(min(xi[a], xi[b])), int(max(xi[a], xi[b]))
         y0, y1 = int(min(yi[a], yi[b])), int(max(yi[a], yi[b]))
-        detail = f"len={length} depth={depth:.0f} cover={cover:.2f} angle={angle_deg:.0f}"
+        grass_sides = grass_share(grass, xi[a:b + 1], yi[a:b + 1], normal)
+        detail = f"len={length} depth={depth:.0f} cover={cover:.2f} angle={angle_deg:.0f} grass={grass_sides:.2f}"
         boxes.append(("thin_dark_line", x0, x1, y0, y1, length * depth * cover / 100, detail))
     return boxes
 
@@ -452,10 +487,11 @@ def scan_shot(path):
     pixels = np.asarray(Image.open(path).convert("RGB")).astype(np.float32)
     luma = pixels @ LUMA_WEIGHTS
     gx, gy = gradients(luma)
-    boxes = find_sky_holes(pixels, luma) + find_black(luma)
+    boxes = find_sky_holes(pixels, luma) + find_black(pixels, luma)
     boxes += merge_boxes(axis_runs(gx, 0) + axis_runs(gy, 1))
-    boxes += drop_duplicate_lines(hough_lines(luma, gx, gy))
-    boxes += drop_duplicate_lines(thin_lines(luma))
+    grass = grass_like(pixels)
+    boxes += drop_duplicate_lines(hough_lines(luma, grass, gx, gy))
+    boxes += drop_duplicate_lines(thin_lines(luma, grass))
     return boxes
 
 
