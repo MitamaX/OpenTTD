@@ -482,7 +482,8 @@ vec4 SheetField(vec2 p, vec2 warped, float level)
 		}
 	}
 	float watered = Watered(field);
-	field.r -= BRIM_PULL * brim * pooled / watered;
+	float running = (field.a - pooled) / watered;
+	field.r -= BRIM_PULL * brim * pooled / watered * (1.0 - running);
 	field.r = DryRimmed(warped, field.r, field.a / watered);
 	return CanalWalled(field, p);
 }
