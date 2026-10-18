@@ -86,6 +86,12 @@ static constexpr int FORMATION_TOE_REFINES = 4;
 static constexpr int NEIGHBOUR_WAY_REACH = 1;
 static constexpr double WAY_MIDLINE_MARGIN = 0.02;
 static constexpr double SEAT_STEP_LEAST = 0.2;
+static constexpr double ALONGSIDE_LEAST_DOT = 0.98;
+static constexpr double ALONGSIDE_SKEW = 0.2;
+static constexpr double ALONGSIDE_SLIP = 0.01;
+static constexpr double WIDEST_FILLED_GAP = 0.5;
+static constexpr double SAME_CREST_LEVELS = 0.05;
+static constexpr double ROW_SPACING = 1.0 / FORMATION_ROWS_PER_TILE;
 static constexpr double WAY_CESS = DECK_HALF - BALLAST_HALF;
 static constexpr double SEA_FLOOR = -DEEPEST_SINK;
 static constexpr double CREST_ROUNDING = 0.5;
@@ -1615,6 +1621,14 @@ struct WayReach {
 	double level;
 };
 
+/* The nearest crest edge of a raised track beside a point, the middle of that track, and its course. */
+struct TrackBeside {
+	WorldPoint edge;
+	MapVector middle;
+	WayId id;
+	WayCourse course;
+};
+
 class NeighbouringWays {
 public:
 	NeighbouringWays(const Landform &land, const WayId &own) : land(land)
@@ -1638,11 +1652,33 @@ public:
 		return nearest;
 	}
 
+	/* The nearest raised track running alongside straight out from a point, square to the heading out. */
+	std::optional<TrackBeside> RaisedTrackAlongside(const MapVector &at, const MapVector &outward, double crest_half) const
+	{
+		std::optional<TrackBeside> nearest;
+		for (const DrawnWay &way : this->ways) {
+			if (!way.id.track.has_value()) continue;
+			double share = way.line.ShareOf(at);
+			MapVector middle = way.line.Centre(share);
+			MapVector toward = middle - at;
+			MapVector along = Unit(way.line.Along(share));
+			bool square = Dot(Unit(toward), outward) >= ALONGSIDE_LEAST_DOT && std::abs(Dot(along, outward)) <= ALONGSIDE_SKEW && std::abs(Dot(toward, along)) <= ALONGSIDE_SLIP;
+			if (!square || Length(toward) <= crest_half) continue;
+			MapVector edge = middle - Unit(toward) * crest_half;
+			if (nearest.has_value() && Length(Flat(nearest->edge) - at) <= Length(edge - at)) continue;
+			std::optional<WayCourse> course = WayCourse::OfTrack(way.id.tx, way.id.ty, *way.id.track);
+			if (!course.has_value() || !course->Raised()) continue;
+			nearest = TrackBeside{{edge.x, edge.y, CrestLevel(*course, course->ShareAt(edge))}, middle, way.id, *course};
+		}
+		return nearest;
+	}
+
 private:
 	struct DrawnWay {
 		Bend line;
 		std::optional<WayCourse> course;
 		double half;
+		WayId id = {};
 	};
 
 	void Collect(int tx, int ty, const WayId &own)
@@ -1651,7 +1687,7 @@ private:
 		for (Track track : SetTrackBitIterator(static_cast<TrackBits>(_world_tiles.NetworkAt(TileXY(tx, ty)).track))) {
 			if (own_tile && own.track == track) continue;
 			const DrawnTrack &drawn = DrawnTrack::Of(tx, ty, track);
-			this->ways.push_back({drawn.line, drawn.course, BALLAST_HALF});
+			this->ways.push_back({drawn.line, drawn.course, BALLAST_HALF, {tx, ty, track}});
 		}
 		if (own_tile && !own.track.has_value()) return;
 		if (std::optional<WayCourse> course = WayCourse::OfRoad(tx, ty); course.has_value()) this->ways.push_back({course->Line(), course, ROAD_HALF});
@@ -1772,7 +1808,11 @@ private:
 
 	Toe ToeOf(const WorldPoint &crest, const WorldPoint &foot) const
 	{
-		auto at = [&](double share) { return Between(crest, foot, share); };
+		MapVector outward = Unit(Flat(foot) - Flat(crest));
+		std::optional<TrackBeside> lower = this->LowerTrackAlongside(crest, outward);
+		MapVector beyond = lower.has_value() ? Flat(crest) + outward * Length(lower->middle - Flat(crest)) : Flat(foot);
+		WorldPoint end = {beyond.x, beyond.y, foot.level};
+		auto at = [&](double share) { return Between(crest, end, share); };
 		std::optional<Stop> earliest;
 		auto consider = [&](Seat seat, const auto &holds) {
 			std::optional<Crossing> crossing = FirstHolding(holds);
@@ -1781,7 +1821,8 @@ private:
 		consider(Seat::Wall, [&](double share) { return this->Blocked(Flat(at(share))); });
 		consider(Seat::Portal, [&](double share) { return this->PortalBeyondEdge(at(share), crest); });
 		consider(Seat::Way, [&](double share) { return this->Crossed(at(share), crest); });
-		consider(Seat::Ground, [&](double share) { return this->Buried(at(share)); });
+		if (!lower.has_value()) consider(Seat::Ground, [&](double share) { return this->Buried(at(share)); });
+		if (lower.has_value() && earliest.has_value() && earliest->seat == Seat::Way) return this->ToeOnLowerTrack(crest, outward, at(earliest->crossing.after), *lower);
 		if (earliest.has_value()) return this->ToeAt(earliest->seat, crest, at(earliest->crossing.after));
 		WorldPoint seated = Grounded(this->land, foot);
 		return {seated, ClimbNormal(this->land.Climb(seated.x, seated.y))};
@@ -1814,6 +1855,42 @@ private:
 		int ty = TileOf(at.y, this->id.ty);
 		if (!OnMap(tx, ty) || TileGround(tx, ty).Level(at.x, at.y) >= crest.level) return false;
 		return (ty != this->id.ty && OnTileEdge(at.x) && IsPortalTile(AcrossEdge(at.x, tx), ty)) || (tx != this->id.tx && OnTileEdge(at.y) && IsPortalTile(tx, AcrossEdge(at.y, ty)));
+	}
+
+	/* A raised track close alongside that this side's earth fills the gap to, rather than folding down onto the ground between them: one standing no higher, where no wall parts the two. */
+	std::optional<TrackBeside> LowerTrackAlongside(const WorldPoint &crest, const MapVector &outward) const
+	{
+		if (!this->id.track.has_value()) return std::nullopt;
+		std::optional<TrackBeside> beside = this->ways.RaisedTrackAlongside(Flat(crest), outward, this->half);
+		if (!beside.has_value() || Length(Flat(beside->edge) - Flat(crest)) > WIDEST_FILLED_GAP) return std::nullopt;
+		bool fills = crest.level > beside->edge.level + SAME_CREST_LEVELS || (crest.level >= beside->edge.level - SAME_CREST_LEVELS && Precedes(this->id, beside->id));
+		return fills && !this->WalledNear(*beside, outward) ? beside : std::nullopt;
+	}
+
+	/* Whether a wall stands between this tile and a track beside it, or does a row on either way along. */
+	bool WalledNear(const TrackBeside &beside, const MapVector &outward) const
+	{
+		WayId across = {this->id.tx + static_cast<int>(std::lround(outward.x)), this->id.ty + static_cast<int>(std::lround(outward.y)), std::nullopt};
+		for (double offset : {-ROW_SPACING, -ALONGSIDE_SLIP, ALONGSIDE_SLIP, ROW_SPACING}) {
+			MapVector at = Flat(beside.edge) + RightOf(outward) * offset;
+			if (this->Blocked(at) || this->StandsAbove(beside.id, at) || (OnMap(across.tx, across.ty) && this->StandsAbove(across, at))) return true;
+		}
+		return false;
+	}
+
+	bool StandsAbove(const WayId &other, const MapVector &at) const
+	{
+		return StandsBlocked(other.tx, other.ty) || TileGround(other.tx, other.ty).Level(at.x, at.y) < this->own.Level(at.x, at.y);
+	}
+
+	/* Earth over the gap to a lower track reaches at least that track's crest, and meets it at its level. */
+	Toe ToeOnLowerTrack(const WorldPoint &crest, const MapVector &outward, const WorldPoint &crossed, const TrackBeside &lower) const
+	{
+		double run = std::max(Length(Flat(crossed) - Flat(crest)), Dot(Flat(lower.edge) - Flat(crest), outward));
+		MapVector out = Flat(crest) + outward * run;
+		double face = CrestLevel(lower.course, lower.course.ShareAt(out));
+		WorldPoint toe = {out.x, out.y, std::min(crest.level, std::max(this->land.LevelAt(out.x, out.y), face))};
+		return {toe, SlopeNormal(crest, toe)};
 	}
 
 	bool Crossed(const WorldPoint &at, const WorldPoint &crest) const
