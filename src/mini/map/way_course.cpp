@@ -978,6 +978,26 @@ double HeadRamp::Level(double x, double y) const
 	return this->slope.has_value() ? Hermite(this->foot, *this->slope, this->top, 0.0, along) : std::lerp(this->foot, this->top, along);
 }
 
+/* Two rail bridge heads meeting end to end under decks at different heights ramp as one easing from either deck to the other:
+ * halfway up at their shared outer side, climbing there at this share of the decks' difference per tile. */
+static constexpr double JOINED_RAMP_SLOPE = 0.75;
+
+/* The deck of the rail bridge head across a head's outer side that ramps down to the same side at another height. */
+static std::optional<int> FacingDeck(TileIndex head, DiagDirection onto, int deck)
+{
+	if (GetTunnelBridgeTransportType(head) != TRANSPORT_RAIL) return std::nullopt;
+	MapVector beyond = HeadOuterSide(head, onto) - Outward(onto) * HALF_TILE;
+	int tx = static_cast<int>(std::floor(beyond.x));
+	int ty = static_cast<int>(std::floor(beyond.y));
+	if (!OnMap(tx, ty)) return std::nullopt;
+	TileIndex other = TileXY(tx, ty);
+	if (!IsTileType(other, MP_TUNNELBRIDGE) || !IsBridge(other) || GetTunnelBridgeTransportType(other) != TRANSPORT_RAIL) return std::nullopt;
+	if (HeadOuterJoint(other, GetTunnelBridgeDirection(other)) != HeadOuterJoint(head, onto)) return std::nullopt;
+	int facing = GetBridgeHeight(other);
+	if (facing == deck) return std::nullopt;
+	return facing;
+}
+
 static HeadRamp RampWithFoot(const MapVector &outer, DiagDirection onto, int deck, double foot, std::optional<double> slope)
 {
 	return {outer, Outward(onto), foot, slope, static_cast<double>(deck)};
@@ -988,7 +1008,11 @@ HeadRamp RampOfHead(TileIndex head, DiagDirection onto, int deck)
 	MapVector outer = HeadOuterSide(head, onto);
 	Joint joint = HeadOuterJoint(head, onto);
 	std::optional<JointEase> ease = _ease_book.At(joint);
-	if (!ease.has_value()) return RampWithFoot(outer, onto, deck, TileGround(TileX(head), TileY(head)).Level(outer.x, outer.y), std::nullopt);
+	if (!ease.has_value()) {
+		std::optional<int> facing = FacingDeck(head, onto, deck);
+		if (facing.has_value()) return RampWithFoot(outer, onto, deck, (deck + *facing) * 0.5, (deck - *facing) * JOINED_RAMP_SLOPE);
+		return RampWithFoot(outer, onto, deck, TileGround(TileX(head), TileY(head)).Level(outer.x, outer.y), std::nullopt);
+	}
 	double sign = joint.Tiles()[1] == TileCoord{static_cast<int>(TileX(head)), static_cast<int>(TileY(head))} ? 1.0 : -1.0;
 	return RampWithFoot(outer, onto, deck, ease->level, ease->slope * sign);
 }
