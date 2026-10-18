@@ -22,8 +22,6 @@
 
 static constexpr double SHORE_STRAIGHTENING_REACH = 0.5;
 static constexpr double CHANNEL_STRAIGHTENING_REACH = 0.2;
-/* A river's bed starts falling away this far outside the water's outline, in the water field's own measure. */
-static constexpr double CHANNEL_LIP = 0.03;
 static constexpr double RAPIDS_DEPTH = 0.3;
 static constexpr int BANK_PROBES_PER_SIDE = 4;
 
@@ -102,7 +100,7 @@ bool ChannelRelief::Curves(int nx, int ny) const
 double ChannelRelief::Curved(double x, double y) const
 {
 	double level = this->sheet.Level(x, y);
-	double inside = SmoothStep(WATERLINE - CHANNEL_LIP, WATERLINE + CHANNEL_FALL, SheetWater(x, y, level));
+	double inside = FallenInside(x, y, level);
 	double ground = this->ground.Level(x, y);
 	return std::lerp(ground, std::min(ground, level - this->Depth(x, y, level)), inside);
 }

@@ -33,6 +33,7 @@
 #include "tile_grid.h"
 #include "tile_relief.h"
 #include "track_models.h"
+#include "water_outline.h"
 #include "water_sheet.h"
 #include "way_shapes.h"
 
@@ -200,6 +201,14 @@ Vec3 CornerNormals::At(const Landform &land, int cx, int cy, uint8_t level)
 	return corner.level == level ? corner.normal : SmoothNormal(cx, cy, level);
 }
 
+static TileCorner CornerAt(int dx, int dy)
+{
+	for (TileCorner corner : {NORTH, WEST, EAST, SOUTH}) {
+		if (CORNER_OFFSETS[corner][0] == dx && CORNER_OFFSETS[corner][1] == dy) return corner;
+	}
+	NOT_REACHED();
+}
+
 /* One side of a tile going round from its first corner: where its middle lies on the half tile lattice and which tile lies across it. */
 struct BasinSide {
 	TileCorner from;
@@ -217,33 +226,109 @@ static constexpr std::array<BasinSide, CORNER_COUNT> BASIN_SIDES = {{
 	{EAST, NORTH, 0, 1, -1, 0},
 }};
 
-/* A tile of open water dips toward its middle, and toward the middles of its sides where open water runs on, so even a narrow stream has a channel under it; a river laying its bed along its own outline meets it on a straight side. */
-static void AddBasin(TerrainMesh &mesh, const Seabed &bed, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty)
+/* The bed of a tile of open water on the half tile lattice: it dips toward the tile's middle, and toward the middles of its sides where open water runs on. */
+using BasinLattice = std::array<std::array<double, 3>, 3>;
+
+static BasinLattice BasinOf(const TerrainMesh &mesh, const Seabed &bed, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty)
 {
-	auto at = [&](int half_x, int half_y, double level) {
-		return mesh.Add({half_x * HALF_TILE, half_y * HALF_TILE, level}, bed.Normal(half_x, half_y, 1), SunkMark(SurfaceLevelOf(tx, ty) - level));
-	};
-	uint32_t centre = at(2 * tx + 1, 2 * ty + 1, bed.Level(2 * tx + 1, 2 * ty + 1));
+	BasinLattice lattice;
+	for (TileCorner corner : {NORTH, WEST, EAST, SOUTH}) lattice[2 * CORNER_OFFSETS[corner][1]][2 * CORNER_OFFSETS[corner][0]] = mesh.vertices[corners[corner]].level;
+	lattice[1][1] = bed.Level(2 * tx + 1, 2 * ty + 1);
 	for (const BasinSide &side : BASIN_SIDES) {
-		int half_x = 2 * tx + side.half_x;
-		int half_y = 2 * ty + side.half_y;
-		double ends = (mesh.vertices[corners[side.from]].level + mesh.vertices[corners[side.to]].level) * 0.5;
 		int nx = tx + side.across_x;
 		int ny = ty + side.across_y;
 		bool sunk = SharesBasin(tx, ty, nx, ny) && !IsRiverside(nx, ny) && !LiesAlongShore(bed, nx, ny);
-		double level = sunk ? bed.Level(half_x, half_y) : ends;
-		uint32_t middle = at(half_x, half_y, level);
+		double ends = (mesh.vertices[corners[side.from]].level + mesh.vertices[corners[side.to]].level) * 0.5;
+		lattice[side.half_y][side.half_x] = sunk ? bed.Level(2 * tx + side.half_x, 2 * ty + side.half_y) : ends;
+	}
+	return lattice;
+}
+
+static uint32_t AddBasinPoint(TerrainMesh &mesh, const Seabed &bed, int tx, int ty, int half_x, int half_y, double level)
+{
+	return mesh.Add({half_x * HALF_TILE, half_y * HALF_TILE, level}, bed.Normal(half_x, half_y, 1), SunkMark(SurfaceLevelOf(tx, ty) - level));
+}
+
+/* A tile of open water dips toward its middle, and toward the middles of its sides where open water runs on, so even a narrow stream has a channel under it; a river laying its bed along its own outline meets it on a straight side. */
+static void AddBasin(TerrainMesh &mesh, const Seabed &bed, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty)
+{
+	BasinLattice lattice = BasinOf(mesh, bed, corners, tx, ty);
+	uint32_t centre = AddBasinPoint(mesh, bed, tx, ty, 2 * tx + 1, 2 * ty + 1, lattice[1][1]);
+	for (const BasinSide &side : BASIN_SIDES) {
+		uint32_t middle = AddBasinPoint(mesh, bed, tx, ty, 2 * tx + side.half_x, 2 * ty + side.half_y, lattice[side.half_y][side.half_x]);
 		mesh.Triangle(corners[side.from], middle, centre);
 		mesh.Triangle(middle, corners[side.to], centre);
 	}
 }
 
-static TileCorner CornerAt(int dx, int dy)
+/* Whether a tile of sea meets dry ground at a side or a corner, which holds its bed up at the water's own level there. */
+static bool SeaMeetsDryGround(int tx, int ty)
 {
-	for (TileCorner corner : {NORTH, WEST, EAST, SOUTH}) {
-		if (CORNER_OFFSETS[corner][0] == dx && CORNER_OFFSETS[corner][1] == dy) return corner;
+	if (_world_tiles.WaterAt(TileXY(tx, ty)).sea == 0) return false;
+	for (int ny = ty - 1; ny <= ty + 1; ny++) {
+		for (int nx = tx - 1; nx <= tx + 1; nx++) {
+			if (WaterFormOf(nx, ny) == WaterForm::Dry) return true;
+		}
 	}
-	NOT_REACHED();
+	return false;
+}
+
+/* Where a point of a tile lies among the four quarters the half tile lattice cuts it into. */
+struct HalfCell {
+	int i;
+	int j;
+	double u;
+	double v;
+};
+
+static HalfCell HalfCellOf(double fx, double fy)
+{
+	double hx = 2.0 * fx;
+	double hy = 2.0 * fy;
+	int i = std::min(static_cast<int>(hx), 1);
+	int j = std::min(static_cast<int>(hy), 1);
+	return {i, j, hx - i, hy - j};
+}
+
+static double BasinLevelAt(const BasinLattice &lattice, double fx, double fy)
+{
+	HalfCell cell = HalfCellOf(fx, fy);
+	double north = std::lerp(lattice[cell.j][cell.i], lattice[cell.j][cell.i + 1], cell.u);
+	double south = std::lerp(lattice[cell.j + 1][cell.i], lattice[cell.j + 1][cell.i + 1], cell.u);
+	return std::lerp(north, south, cell.v);
+}
+
+/* The bed's normal at a point along a side of a tile, between the two points of the half tile lattice either side of it. */
+static Vec3 BasinSideNormal(const Seabed &bed, int tx, int ty, double fx, double fy)
+{
+	HalfCell cell = HalfCellOf(fx, fy);
+	bool along_x = fy == 0.0 || fy == 1.0;
+	int hx = 2 * tx + (along_x ? cell.i : static_cast<int>(2.0 * fx));
+	int hy = 2 * ty + (along_x ? static_cast<int>(2.0 * fy) : cell.j);
+	Vec3 from = bed.Normal(hx, hy, 1);
+	Vec3 to = along_x ? bed.Normal(hx + 1, hy, 1) : bed.Normal(hx, hy + 1, 1);
+	return Normalised(Lerp(from, to, along_x ? cell.u : cell.v));
+}
+
+/* A tile of sea against dry ground: where the water's outline draws back from that ground, its bed shoals up to the water's level instead of lying open below it.
+ * Its sides keep the basin's own line, so the tiles beside it meet it edge to edge. */
+static void AddShoalingBasin(TerrainMesh &mesh, const Seabed &bed, const std::array<uint32_t, CORNER_COUNT> &corners, int tx, int ty)
+{
+	BasinLattice lattice = BasinOf(mesh, bed, corners, tx, ty);
+	double water = SurfaceLevelOf(tx, ty);
+	auto level = [&](double x, double y) {
+		double basin = BasinLevelAt(lattice, std::clamp(x - tx, 0.0, 1.0), std::clamp(y - ty, 0.0, 1.0));
+		bool on_side = x <= tx || x >= tx + 1 || y <= ty || y >= ty + 1;
+		if (on_side || basin >= water) return basin;
+		return water - (water - basin) * FallenInside(x, y, water);
+	};
+	LayTileGrid(mesh, tx, ty, CHANNEL_DIVISIONS, [&](int i, int j, double x, double y) {
+		if (i % CHANNEL_DIVISIONS == 0 && j % CHANNEL_DIVISIONS == 0) return corners[CornerAt(i / CHANNEL_DIVISIONS, j / CHANNEL_DIVISIONS)];
+		double at = level(x, y);
+		bool on_side = i == 0 || i == CHANNEL_DIVISIONS || j == 0 || j == CHANNEL_DIVISIONS;
+		Vec3 normal = on_side ? BasinSideNormal(bed, tx, ty, x - tx, y - ty) : ClimbNormal(ClimbOf(level, x, y));
+		return mesh.Add({x, y, at}, normal, SunkMark(water - at));
+	});
 }
 
 static Vec3 VertexNormal(const TerrainMesh &mesh, uint32_t index)
@@ -452,7 +537,11 @@ void TerrainBuild::AddTile(int tx, int ty)
 		return;
 	}
 	if (WaterFormOf(tx, ty) == WaterForm::Open) {
-		AddBasin(mesh, bed, corners, tx, ty);
+		if (SeaMeetsDryGround(tx, ty)) {
+			AddShoalingBasin(mesh, bed, corners, tx, ty);
+		} else {
+			AddBasin(mesh, bed, corners, tx, ty);
+		}
 		return;
 	}
 	for (const Facet &facet : tile.Facets()) mesh.Triangle(corners[facet[0]], corners[facet[1]], corners[facet[2]]);

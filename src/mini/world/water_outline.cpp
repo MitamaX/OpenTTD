@@ -216,3 +216,8 @@ double SheetWater(double x, double y, double level)
 	double pulled = field.level - BRIM_PULL * field.brim * field.pooled / watered * (1.0 - running);
 	return DryRimmed(warped_x, warped_y, pulled, field.river / watered);
 }
+
+double FallenInside(double x, double y, double level)
+{
+	return SmoothStep(WATERLINE - CHANNEL_LIP, WATERLINE + CHANNEL_FALL, SheetWater(x, y, level));
+}

@@ -19,6 +19,8 @@
 inline constexpr double WATERLINE = 0.58;
 /* A river's bed reaches the water's full depth this far inside the outline, in the water field's own measure. */
 inline constexpr double CHANNEL_FALL = 0.15;
+/* A river's bed starts falling away this far outside the water's outline, in the water field's own measure. */
+inline constexpr double CHANNEL_LIP = 0.03;
 /* How far natural shores fray off their tiles, in tiles. */
 inline constexpr double SHORE_WARP = 0.22;
 inline constexpr double SHORE_WARP_FREQUENCY = 1.7;
@@ -41,5 +43,7 @@ static_assert(DRY_RIM_FLOOR + DRY_RIM_RISE * HALF_TILE >= WATERLINE + CHANNEL_FA
  * drawn back from dry ground falling away below a level river's sheet and read about the point frayed the way natural shores fray. */
 double SheetWater(double x, double y, double level);
 double Joining(int tx, int ty, double level);
+/* How far a bed under a sheet at this level has fallen away toward the water's depth: not at all outside the water's outline, wholly a little way inside it. */
+double FallenInside(double x, double y, double level);
 
 #endif /* MINI_WORLD_WATER_OUTLINE_H */
