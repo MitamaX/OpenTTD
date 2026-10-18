@@ -49,6 +49,8 @@ static constexpr double FOLD_CLEARANCE = 0.1;
 static constexpr double FOLD_CURVATURE = 1.0 / (BALLAST_HALF + FOLD_CLEARANCE);
 static constexpr double FOLD_RELIEF = 0.5;
 static constexpr int FOLD_ROUNDS = 6;
+/* The sag curve out of a level tunnel's portal reaches this far either side of the portal's outer side. */
+static constexpr double MOUTH_SAG_REACH = 0.5;
 /* Where a run jogs a tile aside right at a joint holding its heading, it bends into that heading over this many joints, the nearest of them sliding to meet it. */
 static constexpr int JOG_REACH = 2;
 static constexpr int APPROACH_REFINES = 24;
@@ -135,6 +137,20 @@ static MapVector HeadOuterSide(TileIndex head, DiagDirection onto)
 static Joint HeadOuterJoint(TileIndex head, DiagDirection onto)
 {
 	return Joint::At(HeadOuterSide(head, onto));
+}
+
+/* How far a sag curve bending from level onto a climb over twice its reach stands above the level, as far short of its middle. */
+static double SagRise(double climb, double short_of)
+{
+	return climb * short_of * short_of / (4.0 * MOUTH_SAG_REACH);
+}
+
+static bool IsRailMouth(const TileCoord &tile, const Joint &joint)
+{
+	if (!OnMap(tile.first, tile.second)) return false;
+	TileIndex portal = TileXY(tile.first, tile.second);
+	if (!IsTileType(portal, MP_TUNNELBRIDGE) || !IsTunnel(portal) || GetTunnelBridgeTransportType(portal) != TRANSPORT_RAIL) return false;
+	return HeadOuterJoint(portal, GetTunnelBridgeDirection(portal)) == joint;
 }
 
 static std::optional<DeckEntry> DeckEntryAt(const Joint &joint, const TileCoord &tile, WayKind kind)
@@ -703,7 +719,24 @@ WayCourse::WayCourse(int tx, int ty, const Piece &piece, bool road) :
 	double chord = (last.level - first.level) / this->Length();
 	this->start_slope = first.slope.value_or(chord);
 	this->end_slope = last.slope.value_or(chord);
+	if (first.mouth && chord > 0.0) this->start_slope = this->OutOfMouth(this->start_level, chord);
+	if (last.mouth && chord < 0.0) this->end_slope = -this->OutOfMouth(this->end_level, -chord);
 	this->climb_span = first.head_jog || last.head_jog ? this->line.EndSpeed() : this->Length();
+}
+
+/* Out of a level tunnel's portal a rail climbing away meets the sag curve reaching out of the portal, standing above the portal's floor at the outer side and climbing half its grade there.
+ * Returns the climb away from the portal at that end. */
+double WayCourse::OutOfMouth(double &level, double climb)
+{
+	this->mouth_climb = climb;
+	level += SagRise(climb, MOUTH_SAG_REACH);
+	return climb * MOUTH_SAG_REACH;
+}
+
+double MouthSag::Rise(const MapVector &point) const
+{
+	double short_of = MOUTH_SAG_REACH - Dot(point - this->mouth, this->inward);
+	return short_of > 0.0 ? SagRise(this->climb, short_of) : 0.0;
 }
 
 /* Whether the course runs across the joint at one of its ends toward the joint's higher tile. */
@@ -718,10 +751,13 @@ WayCourse::CourseEnd WayCourse::EndAt(const MapVector &point, bool leaving) cons
 {
 	Joint joint = Joint::At(point);
 	std::optional<JointEase> ease = _ease_book.At(joint);
-	if (!ease.has_value()) return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, this->HeldHeading(point, leaving), false};
+	if (!ease.has_value()) {
+		bool mouth = !this->road && IsRailMouth(joint.Beyond({this->tx, this->ty}), joint);
+		return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, this->HeldHeading(point, leaving), false, mouth};
+	}
 
 	double sign = this->Onward(joint, leaving) ? 1.0 : -1.0;
-	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign, ease->head_jog};
+	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign, ease->head_jog, false};
 }
 
 std::optional<WayCourse::RunMark> WayCourse::MarkAt(const MapVector &point, bool leaving) const
@@ -850,6 +886,24 @@ static MapVector Leaning(const MapVector &own, const PieceEnd &end, bool first)
 	return end.branch ? beyond : Unit(own + beyond);
 }
 
+/* A rail tunnel portal's piece bends up out of the portal onto the grade of the eased course beyond its outer side. */
+static std::optional<MouthSag> MouthOf(int tx, int ty, const Piece &piece)
+{
+	TileIndex portal = TileXY(tx, ty);
+	if (!IsTileType(portal, MP_TUNNELBRIDGE) || !IsTunnel(portal)) return std::nullopt;
+	DiagDirection inward = GetTunnelBridgeDirection(portal);
+	Joint mouth = HeadOuterJoint(portal, inward);
+	if (!piece.Meets(mouth)) return std::nullopt;
+	TileCoord beyond = mouth.Beyond({tx, ty});
+	for (Track track : SetTrackBitIterator(TrackBitsOf(beyond.first, beyond.second))) {
+		if (!PieceOf(beyond.first, beyond.second, track).Meets(mouth)) continue;
+		std::optional<WayCourse> course = WayCourse::OfTrack(beyond.first, beyond.second, track);
+		if (!course.has_value() || course->MouthClimb() <= 0.0) return std::nullopt;
+		return MouthSag{mouth.Point(), Outward(inward), course->MouthClimb()};
+	}
+	return std::nullopt;
+}
+
 DrawnTrack DrawnTrack::Build(int tx, int ty, Track track)
 {
 	Piece piece = PieceOf(tx, ty, track);
@@ -860,7 +914,7 @@ DrawnTrack DrawnTrack::Build(int tx, int ty, Track track)
 	PieceEnd last = PieceEndAt(tx, ty, to, own);
 	std::optional<WayCourse> course = WayCourse::OfTrack(tx, ty, track);
 	if (course.has_value()) return {tx, ty, from, to, course->Line(), course, first.open, last.open};
-	return {tx, ty, from, to, Bend(from, to, Leaning(own, first, true), Leaning(own, last, false)), std::nullopt, first.open, last.open};
+	return {tx, ty, from, to, Bend(from, to, Leaning(own, first, true), Leaning(own, last, false)), std::nullopt, first.open, last.open, MouthOf(tx, ty, piece)};
 }
 
 /* Drawn pieces are worked out once and kept until the ground's shape or the ways change within reach of the eases they read,
@@ -911,7 +965,7 @@ double DrawnTrack::ShareOf(const MapVector &point) const
 WorldPoint DrawnTrack::At(double share, double lateral) const
 {
 	MapVector at = this->line.At(share, lateral);
-	double level = this->course.has_value() ? this->course->Level(share) : TileGround(this->tx, this->ty).Level(at.x, at.y);
+	double level = this->course.has_value() ? this->course->Level(share) : TileGround(this->tx, this->ty).Level(at.x, at.y) + this->Rise(at);
 	return {at.x, at.y, level};
 }
 

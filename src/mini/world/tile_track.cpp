@@ -85,9 +85,10 @@ std::optional<RunStretch> TrackPiece::Stretch() const
 	return this->drawn.course->Stretch();
 }
 
-/* An eased piece is laid at its course's level; any other on what it stands on. */
+/* An eased piece is laid at its course's level; any other on what it stands on, lifted where it bends up out of a tunnel's portal. */
 Footing TrackPiece::FootingOn(const Footing &ground) const
 {
+	if (this->drawn.mouth.has_value()) return [ground, mouth = *this->drawn.mouth](double x, double y) { return ground(x, y) + mouth.Rise({x, y}); };
 	if (!this->drawn.course.has_value()) return ground;
 	return [course = *this->drawn.course](double x, double y) { return course.Level(course.ShareAt({x, y})); };
 }
