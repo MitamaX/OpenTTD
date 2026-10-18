@@ -69,6 +69,12 @@ static constexpr uint32_t KERBSIDE_SALT = 0x6A7C11E5U;
 static constexpr double BARRIER_ALONG = 0.4;
 static constexpr double BARRIER_LATERAL = ROAD_HALF + 0.06;
 static constexpr double PANEL_HALF = ROAD_HALF - EDGE_INSET;
+static constexpr double GUARD_LATERAL = ROAD_HALF - 0.012;
+static constexpr int GUARD_POSTS = 6;
+static constexpr double GUARD_POST_HALF = 0.005;
+static constexpr double GUARD_BEAM_HALF = 0.004;
+static constexpr double GUARD_BEAM_LOW = ASPHALT_TOP + 0.03;
+static constexpr double GUARD_TOP = ASPHALT_TOP + 0.055;
 static constexpr double FLANGEWAY_WIDTH = 0.02;
 static constexpr double GROOVE_HALF = GAUGE_HALF - RAIL_HALF;
 static constexpr double FLANGEWAY_HALF = GROOVE_HALF - FLANGEWAY_WIDTH;
@@ -94,6 +100,7 @@ static constexpr uint32_t TRAM_BED = 0x9C998F;
 static constexpr uint32_t CROSSING_PANEL = 0x8F8D86;
 static constexpr uint32_t FLANGEWAY = 0x2E2C29;
 static constexpr uint32_t TRAM_RAIL = 0xBFC3C7;
+static constexpr uint32_t GUARD_STEEL = 0xB2B6B9;
 static constexpr double STEEL_GLOSS = 0.85;
 static constexpr double PAVEMENT_VARIETY = 0.06;
 static constexpr uint32_t PAVEMENT_SALT = 0x9A7E3E17U;
@@ -309,6 +316,7 @@ private:
 		this->StreetLight();
 		this->KerbsideParking();
 		this->Barriers();
+		this->GuardRails();
 	}
 
 	bool Crossed() const { return this->site.crossing && Plain(this->site.road); }
@@ -410,6 +418,23 @@ private:
 		for (double end : {-1.0, 1.0}) {
 			MapVector facing = along * end;
 			this->Lay(CrossingBarrier(facing * BARRIER_ALONG + RightOf(facing) * -BARRIER_LATERAL, facing, 0.0));
+		}
+	}
+
+	/* A steel beam on posts runs the asphalt's edge, in pieces short enough to follow the road's climb. */
+	void GuardRails()
+	{
+		if (this->site.kerbed || this->site.crossing || !Plain(this->site.road)) return;
+		MapVector along = Along(this->site.road);
+		double piece = 2.0 * EDGE / GUARD_POSTS;
+		for (int arm = 0; arm < ARMS; arm++) {
+			if (!Has(this->site.guarded, arm)) continue;
+			MapVector edge = ARM_WAYS[arm] * GUARD_LATERAL;
+			for (int post = 0; post < GUARD_POSTS; post++) {
+				MapVector middle = edge + along * (piece * (post + 0.5) - EDGE);
+				this->Lay(Block(middle, along, {-piece * 0.5, -GUARD_BEAM_HALF, GUARD_BEAM_LOW}, {piece * 0.5, GUARD_BEAM_HALF, GUARD_TOP}), GUARD_STEEL, STEEL_GLOSS);
+				this->Lay(Block(middle, along, {-GUARD_POST_HALF, -GUARD_POST_HALF, WAY_FOOT}, {GUARD_POST_HALF, GUARD_POST_HALF, GUARD_BEAM_LOW}), GUARD_STEEL, STEEL_GLOSS);
+			}
 		}
 	}
 

@@ -84,6 +84,26 @@ static Footing RoadFooting(int tx, int ty)
 	return [ground = GroundFooting(tx, ty), tx, ty, rails = *rails](double x, double y) { return ground(x, y) + CrossingRise(tx, ty, x, y, rails); };
 }
 
+/* A plain country road is guarded on a side where a track runs beside it with its ground at least this many levels below the road's edge. */
+static constexpr double GUARDED_DROP = 0.5;
+
+static RoadBits GuardedSides(int tx, int ty, RoadBits road, const Footing &footing)
+{
+	if (road != ROAD_X && road != ROAD_Y) return ROAD_NONE;
+	RoadBits guarded = ROAD_NONE;
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		RoadBits arm = DiagDirToRoadBits(side);
+		if ((road & arm) != ROAD_NONE) continue;
+		MapVector out = Outward(side);
+		int nx = tx + static_cast<int>(out.x);
+		int ny = ty + static_cast<int>(out.y);
+		if (!OnMap(nx, ny) || _world_tiles.NetworkAt(TileXY(nx, ny)).track == TRACK_BIT_NONE) continue;
+		MapVector edge = MapVector{tx + HALF_TILE, ty + HALF_TILE} + out * HALF_TILE;
+		if (footing(edge.x, edge.y) - TileGround(nx, ny).Level(edge.x, edge.y) >= GUARDED_DROP) guarded |= arm;
+	}
+	return guarded;
+}
+
 /* Where a point of the game's track is drawn, on the eased line of its course. */
 static WorldPoint Drawn(const WorldPoint &point)
 {
@@ -173,6 +193,7 @@ private:
 		RoadSite site = this->RoadOf(tile, tx, ty, crossing);
 		site.kerbside = !crossing;
 		site.stray = StrayArms(tx, ty, site.road);
+		if (!site.kerbed && !crossing) site.guarded = GuardedSides(tx, ty, site.road, footing);
 		LayRoad(this->meshes.Layer(MiniLayer::Road), site, footing);
 		if (crossing) this->LayTrackOn(this->TrackOf(tile, tx, ty), GroundFooting(tx, ty));
 	}
