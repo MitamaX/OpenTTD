@@ -22,6 +22,7 @@
 #include "../../map_func.h"
 #include "../../track_func.h"
 #include "../../tunnel_map.h"
+#include "../../tunnelbridge_map.h"
 #include "../map/network_style.h"
 #include "../map/tile_shapes.h"
 #include "../map/way_course.h"
@@ -61,7 +62,11 @@ static constexpr double WING_THICKNESS = 0.12;
 static constexpr double DECK_WING_THICKNESS = 0.04;
 static constexpr double CopingDepthFor(double thickness) { return thickness + COPING_OVERHANG; }
 static constexpr double COPING_DEPTH = CopingDepthFor(WING_THICKNESS);
-static_assert(DECK_HALF - CopingDepthFor(DECK_WING_THICKNESS) >= std::max(ROAD_HALF, BALLAST_HALF));
+/* How far out from a deck's centre line the coping beside it begins, just clear of the road and the ballast. */
+static constexpr double DECK_COPING_START = DECK_HALF - CopingDepthFor(DECK_WING_THICKNESS);
+static_assert(DECK_COPING_START >= std::max(ROAD_HALF, BALLAST_HALF));
+/* Beside a road, whose shoulder stands upright, a shelf's coping reaches in to where a wing wall's coping begins, so no groove opens between them. */
+static constexpr double ROAD_SHELF_COPING_DEPTH = HALF_TILE - DECK_COPING_START;
 /* A bank's foot dips this far into the ground, in levels, so the two part on a clean line instead of flickering where the bank runs out over it. */
 static constexpr double BANK_FOOT_DIP = 0.03;
 static constexpr double EARTH_BANK_FOOT_DIP = 0.06;
@@ -1315,6 +1320,7 @@ public:
 	}
 
 	const Landform &Land() const { return this->land; }
+	bool CarriesRoad() const { return GetTunnelBridgeTransportType(TileXY(this->tx, this->ty)) == TRANSPORT_ROAD; }
 	const MapVector &Facing() const { return this->facing; }
 	MapVector SideOutward(double side) const { return this->run.Right() * side; }
 
@@ -1555,7 +1561,7 @@ private:
 		}
 		MapVector right = this->shape.SideOutward(side);
 		AddMasonry(this->mesh, line, feet, right);
-		AddCopingWhereTall(this->mesh, line, feet, right, COPING_DEPTH);
+		AddCopingWhereTall(this->mesh, line, feet, right, this->shape.CarriesRoad() ? ROAD_SHELF_COPING_DEPTH : COPING_DEPTH);
 	}
 
 	/* Where the other head stands lower, this one's earth is held at the border by stone down to the other's, closed at the outer end. */
