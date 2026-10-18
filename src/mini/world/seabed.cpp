@@ -196,21 +196,9 @@ bool IsRiverBank(int tx, int ty)
 	return RiverOfBank(tx, ty).has_value();
 }
 
-std::optional<TileIndex> FallBesideCoast(int tx, int ty)
-{
-	if (!OnMap(tx, ty) || WaterFormOf(tx, ty) != WaterForm::Shore) return std::nullopt;
-	SurfaceTexel surface = _world_tiles.SurfaceAt(TileXY(tx, ty));
-	std::optional<TileIndex> fall;
-	AnySideTile(tx, ty, [&](int nx, int ny) {
-		if (IsRapids(nx, ny) && _world_tiles.SurfaceAt(TileXY(nx, ny)) == surface) fall = TileXY(nx, ny);
-		return fall.has_value();
-	});
-	return fall;
-}
-
 bool IsRiverside(int tx, int ty)
 {
-	return IsChannel(tx, ty) || IsRapids(tx, ty) || IsRiverMouth(tx, ty) || IsRiverBank(tx, ty) || FallBesideCoast(tx, ty).has_value();
+	return IsChannel(tx, ty) || IsRapids(tx, ty) || IsRiverMouth(tx, ty) || IsRiverBank(tx, ty);
 }
 
 double BedLevel(int tx, int ty, double x, double y)
