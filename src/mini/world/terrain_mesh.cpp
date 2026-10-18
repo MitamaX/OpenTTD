@@ -91,6 +91,7 @@ static constexpr double CREST_ROUNDING = 0.5;
 static constexpr double END_PROBE = 0.05;
 static constexpr double MIDWAY = 0.5;
 static constexpr double OWN_TILE_INSET = 1e-3;
+static constexpr double EDGE_SNAP = 1e-3;
 static constexpr double JOINT_REACH = 0.1;
 static constexpr int BANK_SOURCE_REACH = 2;
 static_assert(BANK_SOURCE_REACH >= FAR_EARTH_BANK_RUN);
@@ -1553,6 +1554,16 @@ static int TileOf(double coordinate, int own)
 	return coordinate == tile && own < tile ? tile - 1 : tile;
 }
 
+static bool OnTileEdge(double coordinate)
+{
+	return std::abs(coordinate - std::round(coordinate)) < EDGE_SNAP;
+}
+
+static int AcrossEdge(double coordinate, int near)
+{
+	return near == static_cast<int>(std::round(coordinate)) ? near - 1 : near + 1;
+}
+
 struct WayId {
 	int tx;
 	int ty;
@@ -1698,6 +1709,7 @@ private:
 
 	enum class Seat {
 		Wall,
+		Portal,
 		Way,
 		Ground,
 	};
@@ -1728,6 +1740,7 @@ private:
 			if (crossing.has_value() && (!earliest.has_value() || crossing->after < earliest->crossing.after)) earliest = Stop{seat, *crossing};
 		};
 		consider(Seat::Wall, [&](double share) { return this->Blocked(Flat(at(share))); });
+		consider(Seat::Portal, [&](double share) { return this->PortalBeyondEdge(at(share), crest); });
 		consider(Seat::Way, [&](double share) { return this->Crossed(at(share), crest); });
 		consider(Seat::Ground, [&](double share) { return this->Buried(at(share)); });
 		if (earliest.has_value()) return this->ToeAt(earliest->seat, crest, at(earliest->crossing.after));
@@ -1739,6 +1752,7 @@ private:
 	{
 		switch (seat) {
 			case Seat::Wall: return this->ToeAtWall(where);
+			case Seat::Portal: return this->ToeAtPortal(where);
 			case Seat::Way: return this->ToeAtWay(crest, where);
 			case Seat::Ground: return this->ToeOnGround(crest, where);
 		}
@@ -1752,6 +1766,15 @@ private:
 		if ((tx == this->id.tx && ty == this->id.ty) || !OnMap(tx, ty)) return false;
 		if (StandsBlocked(tx, ty)) return true;
 		return GroundworkAt(tx, ty) == Groundwork::Way && TileGround(tx, ty).Level(at.x, at.y) < this->own.Level(at.x, at.y);
+	}
+
+	/* A row lying along the edge of its own tile also borders, beside that tile, a tunnel portal across the edge, whose cutting the earth may not spill into. */
+	bool PortalBeyondEdge(const WorldPoint &at, const WorldPoint &crest) const
+	{
+		int tx = TileOf(at.x, this->id.tx);
+		int ty = TileOf(at.y, this->id.ty);
+		if (!OnMap(tx, ty) || TileGround(tx, ty).Level(at.x, at.y) >= crest.level) return false;
+		return (ty != this->id.ty && OnTileEdge(at.x) && IsPortalTile(AcrossEdge(at.x, tx), ty)) || (tx != this->id.tx && OnTileEdge(at.y) && IsPortalTile(tx, AcrossEdge(at.y, ty)));
 	}
 
 	bool Crossed(const WorldPoint &at, const WorldPoint &crest) const
@@ -1777,6 +1800,15 @@ private:
 		auto [x, y] = this->WithinOwn(at.x, at.y);
 		WorldPoint seated = {x, y, this->own.Level(x, y) - BANK_FOOT_DIP};
 		return {seated, ClimbNormal(ClimbOf([this](double px, double py) { return this->own.Level(px, py); }, x, y))};
+	}
+
+	/* Earth stopped beside a portal meets the open ground at the corner of its own tile. */
+	Toe ToeAtPortal(const WorldPoint &at) const
+	{
+		TileGround beside(TileOf(at.x, this->id.tx), TileOf(at.y, this->id.ty));
+		auto [x, y] = this->WithinOwn(at.x, at.y);
+		WorldPoint seated = {x, y, beside.Level(x, y) - BANK_FOOT_DIP};
+		return {seated, UP};
 	}
 
 	Toe ToeAtWay(const WorldPoint &crest, const WorldPoint &at) const
