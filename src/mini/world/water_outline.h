@@ -26,6 +26,9 @@ inline constexpr std::array<double, 2> SHORE_WARP_SEEDS = {7.1, 93.4};
 /* How far in levels a sheet may stand from a tile's water and still join it wholly, and from how far it no longer joins it at all. */
 inline constexpr double SHEET_HOLD = 0.5;
 inline constexpr double SHEET_REACH = 1.0;
+/* A river's water joins sheets a level further off, so a river stepping down its rapids keeps one outline across each step. */
+inline constexpr double RIVER_SHEET_HOLD = 1.0;
+inline constexpr double RIVER_SHEET_REACH = 1.5;
 inline constexpr double BRIM_PULL = 0.35;
 inline constexpr double BRIM_FADE = 0.45;
 inline constexpr double DRY_RIM_RISE = 0.6;

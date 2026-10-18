@@ -331,7 +331,8 @@ vec4 SheetWater(ivec2 tile, float level, out float pooled, out float brim)
 	float top = HighestCorner(c);
 	float high = water.r >= 1.0 ? top : low;
 	float apart = max(max(low - level, level - high), 0.0);
-	vec4 joined = water * (1.0 - smoothstep(SHEET_HOLD, SHEET_REACH, apart));
+	bool river = water.a > 0.0;
+	vec4 joined = water * (1.0 - smoothstep(river ? RIVER_SHEET_HOLD : SHEET_HOLD, river ? RIVER_SHEET_REACH : SHEET_REACH, apart));
 	pooled = high > low ? 0.0 : joined.a;
 	brim = water.r > 0.0 ? 0.0 : BrimShare(level, low, top);
 	return joined;

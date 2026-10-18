@@ -84,7 +84,8 @@ static SheetSpan SheetSpanOf(int tx, int ty)
 static double JoiningOf(const SheetSpan &span, double level)
 {
 	double apart = std::max({span.low - level, level - span.high, 0.0});
-	return 1.0 - SmoothStep(SHEET_HOLD, SHEET_REACH, apart);
+	bool river = span.water.river > 0;
+	return 1.0 - SmoothStep(river ? RIVER_SHEET_HOLD : SHEET_HOLD, river ? RIVER_SHEET_REACH : SHEET_REACH, apart);
 }
 
 double Joining(int tx, int ty, double level)

@@ -183,6 +183,8 @@ static std::string ShaderHeader()
 	DefineFloats(header, "SHORE_WARP_SEEDS", SHORE_WARP_SEEDS);
 	DefineFloat(header, "SHEET_HOLD", SHEET_HOLD);
 	DefineFloat(header, "SHEET_REACH", SHEET_REACH);
+	DefineFloat(header, "RIVER_SHEET_HOLD", RIVER_SHEET_HOLD);
+	DefineFloat(header, "RIVER_SHEET_REACH", RIVER_SHEET_REACH);
 	DefineFloat(header, "BRIM_PULL", BRIM_PULL);
 	DefineFloat(header, "BRIM_FADE", BRIM_FADE);
 	DefineFloat(header, "DRY_RIM_FLOOR", DRY_RIM_FLOOR);
