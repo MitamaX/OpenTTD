@@ -28,6 +28,8 @@ struct RoadSite {
 	WayDetail detail;
 	bool kerbside = false;
 	RoadBits stray = ROAD_NONE;
+	/* The sides of a plain road where the ground falls away to a track beside it, held off by a guard rail along the asphalt's edge. */
+	RoadBits guarded = ROAD_NONE;
 };
 
 void LayRoad(ModelMesh &mesh, const RoadSite &site, const Footing &footing);
