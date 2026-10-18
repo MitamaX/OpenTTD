@@ -391,26 +391,6 @@ bool RiverBank(ivec2 tile)
 	return false;
 }
 
-bool Rapids(ivec2 tile, Corners c)
-{
-	vec4 water = TileWater(tile);
-	return water.r >= 1.0 && water.a > 0.0 && water.b <= 0.0 && LowestCorner(c) != HighestCorner(c);
-}
-
-/* A coast beside a fall that slopes just as the fall does, which the fall's water runs on down along. */
-bool FallBesideCoast(ivec2 tile)
-{
-	vec4 water = TileWater(tile);
-	Corners own = SurfaceOf(tile);
-	if (water.r <= 0.0 || water.r >= 1.0 || LowestCorner(own) == HighestCorner(own)) return false;
-	for (int side = 0; side < 4; side++) {
-		ivec2 offset = side < 2 ? ivec2(side * 2 - 1, 0) : ivec2(0, side * 2 - 5);
-		Corners beside = SurfaceOf(tile + offset);
-		if (beside == own && Rapids(tile + offset, beside)) return true;
-	}
-	return false;
-}
-
 bool BuiltOver(ivec2 tile)
 {
 	uvec4 network = texelFetch(u_network, Clamped(tile), 0);
@@ -849,7 +829,7 @@ Water WaterAt(vec2 p)
 	water.field = FieldAt(p, warped, v_world.z);
 	water.body = BodyOf(water.field);
 	ivec2 home = ivec2(floor(warped));
-	bool bank = water.field.a > 0.0 && (RiverBank(home) || FallBesideCoast(home));
+	bool bank = water.field.a > 0.0 && RiverBank(home);
 	water.drop = Descent(warped, home, bank);
 	water.flow = FlowAt(p);
 	water.glassy = smoothstep(0.0, LIP_BEND, -water.drop.bend);
