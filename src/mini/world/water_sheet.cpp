@@ -28,7 +28,8 @@ static std::optional<TileIndex> RapidsFollowed(int tx, int ty)
 {
 	if (IsRapids(tx, ty)) return TileXY(tx, ty);
 	std::optional<TileIndex> river = RiverOfBank(tx, ty);
-	return river.has_value() && IsRapids(TileX(*river), TileY(*river)) ? river : std::nullopt;
+	if (river.has_value() && IsRapids(TileX(*river), TileY(*river))) return river;
+	return FallBesideCoast(tx, ty);
 }
 
 static double TopLevelOf(int tx, int ty)
@@ -45,10 +46,11 @@ static double FallShare(double u, double foot, double lip)
 	return 3.0 * square - 2.0 * cube + (cube - 2.0 * square + u) * foot + (cube - square) * lip;
 }
 
-WaterSheet::WaterSheet(int tx, int ty) : tx(tx), ty(ty), surface(_world_tiles.SurfaceAt(TileXY(tx, ty))), low(SurfaceLevelOf(tx, ty)), lies_level(LiesLevel(tx, ty))
+WaterSheet::WaterSheet(int tx, int ty) : tx(tx), ty(ty), surface(_world_tiles.SurfaceAt(TileXY(tx, ty))), low(SurfaceLevelOf(tx, ty))
 {
 	std::optional<TileIndex> rapids = RapidsFollowed(tx, ty);
 	if (rapids.has_value()) this->fall = FallEndsOf(TileX(*rapids), TileY(*rapids));
+	this->lies_level = !this->fall.has_value() && LiesLevel(tx, ty);
 }
 
 WaterSheet::FallEnds WaterSheet::FallEndsOf(int tx, int ty)
