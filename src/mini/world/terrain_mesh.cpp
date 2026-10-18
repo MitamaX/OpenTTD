@@ -1234,6 +1234,7 @@ class RampShape {
 public:
 	enum class Flank : uint8_t {
 		Parallel,
+		Merged,
 		Shelf,
 		Bank,
 		Wall,
@@ -1273,7 +1274,7 @@ public:
 		TileStep beside = this->SideStep(side);
 		int sx = this->tx + beside.x;
 		int sy = this->ty + beside.y;
-		if (this->BesideParallelRamp(sx, sy)) return {Flank::Parallel, HALF_TILE - DECK_HALF};
+		if (this->BesideParallelRamp(sx, sy)) return this->LevelDeckBeside(sx, sy) ? FlankPlan{Flank::Merged, 0.0} : FlankPlan{Flank::Parallel, HALF_TILE - DECK_HALF};
 		if (Walled(this->tx, this->ty, this->SideToward(side), BankOn)) return {Flank::Shelf, 0.0, StepFaceOf(this->tx, this->ty, this->SideToward(side))};
 		if (StopsEarth(sx, sy) || StopsEarth(sx + static_cast<int>(this->facing.x), sy + static_cast<int>(this->facing.y))) return {Flank::Wall, 0.0};
 		std::optional<EarthBank> bank = EarthBankOf(this->tx, this->ty, sx, sy);
@@ -1299,6 +1300,21 @@ public:
 		return {at.x, at.y, crest.level};
 	}
 
+	/* Where the earth between two heads side by side meets the other's at their shared border: halfway between their crests, down to the lower one at the outer end. */
+	WorldPoint MergedEdge(double share, double side) const
+	{
+		MapVector at = this->run.At(share, side * HALF_TILE);
+		Footing beside = this->BesideFooting(side);
+		double own = this->footing(at.x, at.y), other = beside(at.x, at.y);
+		double level = share == 0.0 ? std::min(own, other) : std::midpoint(own, other);
+		return {at.x, at.y, level + WAY_FOOT / LevelRise()};
+	}
+
+	WorldPoint BandEdge(Flank kind, double share, double side) const
+	{
+		return kind == Flank::Merged ? this->MergedEdge(share, side) : this->ShelfEdge(share, side);
+	}
+
 	WorldPoint ShelfFoot(const StepFace &step, double share, double side) const
 	{
 		WorldPoint edge = this->ShelfEdge(share, side);
@@ -1313,9 +1329,9 @@ public:
 	FormationSide OuterSide(double side) const
 	{
 		FlankPlan plan = this->PlanOf(side);
-		if (plan.kind == Flank::Shelf) {
+		if (plan.kind == Flank::Shelf || plan.kind == Flank::Merged) {
 			Vec3 normal = this->CrestVertex(0.0, side).normal;
-			return {this->Crest(0.0, side), normal, this->ShelfEdge(0.0, side), normal};
+			return {this->Crest(0.0, side), normal, this->BandEdge(plan.kind, 0.0, side), normal};
 		}
 		if (plan.kind == Flank::Wall) {
 			WorldPoint crest = this->Crest(0.0, side);
@@ -1354,6 +1370,19 @@ private:
 		if (!OnMap(sx, sy)) return false;
 		RampTexel beside = _world_tiles.RampAt(TileXY(sx, sy));
 		return beside.Present() && beside.onto == this->ramp.onto;
+	}
+
+	/* Two heads side by side under decks at one height fill the ground between them. */
+	bool LevelDeckBeside(int sx, int sy) const
+	{
+		return _world_tiles.RampAt(TileXY(sx, sy)).deck == this->ramp.deck;
+	}
+
+	Footing BesideFooting(double side) const
+	{
+		TileStep step = this->SideStep(side);
+		TileIndex beside = TileXY(this->tx + step.x, this->ty + step.y);
+		return RampFooting(beside, this->onto, _world_tiles.RampAt(beside).deck);
 	}
 
 	double ReachBefore(const WorldPoint &top, const MapVector &outward, double reach) const
@@ -1399,23 +1428,30 @@ private:
 		AddStrip(this->mesh, rows);
 	}
 
-	void LayShelf(const RampShape::FlankPlan &plan, double side) const
+	/* Earth from the crest out to the tile's side, closed by stone under the deck's end. */
+	std::vector<StripRow> LayBand(RampShape::Flank kind, double side) const
 	{
 		std::vector<StripRow> rows;
-		std::vector<WorldPoint> line;
-		std::vector<WorldPoint> feet;
 		for (int row = 0; row <= RAMP_BANK_ROWS; row++) {
 			double share = RampShape::ShareOfRow(row);
 			StripVertex crest = this->shape.CrestVertex(share, side);
-			rows.push_back({crest, StripVertex{this->shape.ShelfEdge(share, side), crest.normal, FILL_MARK}});
-			line.push_back(rows.back()[1].at);
-			feet.push_back(this->shape.ShelfFoot(*plan.step, share, side));
+			rows.push_back({crest, StripVertex{this->shape.BandEdge(kind, share, side), crest.normal, FILL_MARK}});
 		}
 		AddStrip(this->mesh, rows);
-		std::ranges::reverse(line);
-		std::ranges::reverse(feet);
 		std::array<WorldPoint, 2> end = {rows.back()[0].at, rows.back()[1].at};
 		AddMasonry(this->mesh, end, GroundedLine(this->shape.Land(), end), this->shape.Facing());
+		return rows;
+	}
+
+	void LayShelf(const RampShape::FlankPlan &plan, double side) const
+	{
+		std::vector<StripRow> rows = this->LayBand(plan.kind, side);
+		std::vector<WorldPoint> line;
+		std::vector<WorldPoint> feet;
+		for (int row = RAMP_BANK_ROWS; row >= 0; row--) {
+			line.push_back(rows[row][1].at);
+			feet.push_back(this->shape.ShelfFoot(*plan.step, RampShape::ShareOfRow(row), side));
+		}
 		MapVector right = this->shape.SideOutward(side);
 		AddMasonry(this->mesh, line, feet, right);
 		AddCopingWhereTall(this->mesh, line, feet, right, COPING_DEPTH);
@@ -1427,6 +1463,10 @@ private:
 		MapVector right = this->shape.SideOutward(side);
 		if (plan.kind == RampShape::Flank::Shelf) {
 			this->LayShelf(plan, side);
+			return;
+		}
+		if (plan.kind == RampShape::Flank::Merged) {
+			this->LayBand(plan.kind, side);
 			return;
 		}
 		if (plan.kind == RampShape::Flank::Wall) {
