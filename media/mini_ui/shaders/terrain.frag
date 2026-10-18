@@ -303,8 +303,8 @@ const vec3 CROPS[CROP_COUNT] = vec3[CROP_COUNT](
 );
 const float FURROWS_PER_TILE = 7.0;
 const float FURROW_DEPTH = 0.55;
-const float LEVEL_FIELD_SLOPE = 0.25;
-const float HILLSIDE_FIELD_SLOPE = 0.6;
+const float LEVEL_FIELD_SLOPE = 1.5;
+const float HILLSIDE_FIELD_SLOPE = 2.5;
 const float TRAMLINES_PER_TILE = 1.0;
 const float TRAMLINE_GAUGE = 0.045;
 const float TRAMLINE_HALF_WIDTH = 0.012;
@@ -966,7 +966,7 @@ Patch Rocks(Site site)
 }
 
 /* A field's crop grows in rows across it, ripening and thinning unevenly, with bare soil between the rows and a pair of wheel tracks every so often;
- * rows stay sharp seen end on and fade only as they crowd closer than the pixels. On a hillside it grows rough without rows, so no lattice is drawn over the slope. */
+ * rows stay sharp seen end on and fade only as they crowd closer than the pixels. On a steep hillside it grows rough without rows, so no lattice is drawn over the slope. */
 Patch Fields(Ground ground, Grain grain, vec2 p)
 {
 	vec3 crop = CROPS[int(ground.variant % uint(CROP_COUNT))] * Varied(Octave(p + 1.9, 0.6), CROP_FLOW) * Varied(Octave(p + 7.4, 2.1), 0.1) * Varied(grain.local, 0.1);
