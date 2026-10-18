@@ -76,6 +76,9 @@ static constexpr double CROSSING_SLACK = 0.01;
 static constexpr int ROAD_ARMS = 4;
 /* A drawn piece reads the eases at the sides of its tile and of the tiles beside it, which ease with the tiles beyond those. */
 static constexpr int DRAWN_READ_REACH = 2;
+static constexpr double GROUND_PROBE = 0.05;
+/* A rail leaving a junction's branches on a grade at least this far off theirs, in levels per tile, curves from their grade onto its own. */
+static constexpr double BRANCH_GRADE_STEP = 0.1;
 
 /* Where each of the game's road bits leads out of its tile, in bit order. */
 static constexpr std::array<MapVector, ROAD_ARMS> ROAD_ENDS = {{{0.5, 0.0}, {1.0, 0.5}, {0.5, 1.0}, {0.0, 0.5}}};
@@ -196,6 +199,24 @@ static double GroundAt(const TileCoord &tile, const Joint &joint)
 	return TileGround(tile.first, tile.second).Level(point.x, point.y);
 }
 
+static int PiecesMeeting(int tx, int ty, const Joint &joint)
+{
+	int meeting = 0;
+	for (Track track : SetTrackBitIterator(TrackBitsOf(tx, ty))) meeting += PieceOf(tx, ty, track).Meets(joint) ? 1 : 0;
+	return meeting;
+}
+
+/* How steeply the ground under a junction's branches climbs onward from a joint a rail runs across into them, where more than one piece meets it. */
+static std::optional<double> BranchClimb(const Joint &joint, const TileCoord &tile, const MapVector &onward)
+{
+	TileCoord beyond = joint.Beyond(tile);
+	if (PiecesMeeting(beyond.first, beyond.second, joint) < 2) return std::nullopt;
+	TileGround ground(beyond.first, beyond.second);
+	MapVector point = joint.Point();
+	MapVector probe = point + Unit(onward) * GROUND_PROBE;
+	return (ground.Level(probe.x, probe.y) - ground.Level(point.x, point.y)) / GROUND_PROBE;
+}
+
 /* A joint's eased place, level and climb, and the run's heading through it, the climb and the heading both toward the joint's higher tile;
  * how far along the run from the run's first end it lies, unless a loop closes there, and whether that grows toward its higher tile;
  * and which side of the run its curve leans away to there, along the growing distance. */
@@ -209,6 +230,8 @@ struct JointEase {
 	double outer;
 	/* Bending into a jog held at a bridge head, the eased line strays so far from the game's piece that its climb is told along the line itself. */
 	bool head_jog;
+	/* Its climb rounds the segment between it and a junction's branches off their grade. */
+	bool off_branch = false;
 };
 
 /* Whether a joint lies between a level stretch and a steep slope, where meeting both level would bend the slope into a short S. */
@@ -277,6 +300,8 @@ private:
 		bool deck = false;
 		/* A held joint where the way runs on into a piece that does not ease, such as a tunnel portal's, a junction's or a station's. */
 		bool runs_on = false;
+		/* The climb of the ground under the junction's branches a held joint runs on into, along the run. */
+		std::optional<double> branch_climb;
 
 		bool Fixed() const { return this->held || this->pinned; }
 	};
@@ -292,6 +317,7 @@ private:
 		bool ahead;
 	};
 
+	std::optional<double> OffBranch(size_t branch, double climb) const;
 	std::optional<double> Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &nodes) const;
 	bool Dock(const Joint &at, const TileCoord &tile, double place, double direction, std::vector<Node> &walked) const;
 	std::vector<double> ClimbSpans(const RunLine &line) const;
@@ -336,8 +362,13 @@ std::optional<double> Run::Walk(Joint at, TileCoord tile, double direction, std:
 		place += piece->Span() * direction;
 		if (next == start) return std::abs(place);
 		if (!Eases(next)) {
-			walked.push_back({next, place, GroundAt(tile, next), true, OnwardAcross(next, tile, piece->From(at)) * direction});
+			MapVector onward = OnwardAcross(next, tile, piece->From(at));
+			walked.push_back({next, place, GroundAt(tile, next), true, onward * direction});
 			walked.back().runs_on = StraightestAt(next.Beyond(tile), next, piece->From(at)).has_value();
+			if (this->kind == WayKind::Rail) {
+				std::optional<double> branch = BranchClimb(next, tile, onward);
+				if (branch.has_value()) walked.back().branch_climb = *branch * direction;
+			}
 			return std::nullopt;
 		}
 		auto [low, high] = next.Tiles();
@@ -444,6 +475,14 @@ std::vector<double> Run::EasedLevels(const std::vector<double> &spans) const
 		next = levels;
 	}
 	return levels;
+}
+
+/* A segment leaving a junction's branches onto another grade curves at a steady rate from their grade, so it meets the joint at its far end as far past its mean climb as their grade falls short of it. */
+std::optional<double> Run::OffBranch(size_t branch, double climb) const
+{
+	const std::optional<double> &grade = this->nodes[branch].branch_climb;
+	if (!grade.has_value() || std::abs(climb - *grade) < BRANCH_GRADE_STEP) return std::nullopt;
+	return 2.0 * climb - *grade;
 }
 
 /* Whether a joint or one beside it bends the run onto a bridge deck. */
@@ -713,9 +752,16 @@ void Run::Ease(Store store)
 			level = std::clamp(level + (climb(index) - climb(before)) * rounding, node.ground, node.ground + LIFT_LIMIT);
 			slope = (climb(before) * ahead + climb(index) * behind) / (behind + ahead);
 		}
+		std::optional<double> off_branch;
+		if (this->kind == WayKind::Rail && std::min(spans[before], spans[index]) >= FULL_PIECE) {
+			std::optional<double> behind = this->OffBranch(before, climb(before));
+			std::optional<double> ahead = this->OffBranch(this->After(index), climb(index));
+			if (behind.has_value() != ahead.has_value()) off_branch = behind.has_value() ? behind : ahead;
+		}
+		if (off_branch.has_value()) slope = *off_branch;
 		std::optional<double> distance;
 		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
-		store(node.joint, JointEase{line.places[index], level, slope * sign, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
+		store(node.joint, JointEase{line.places[index], level, slope * sign, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index), off_branch.has_value()});
 	}
 }
 
@@ -766,6 +812,8 @@ WayCourse::WayCourse(int tx, int ty, const Piece &piece, bool road) :
 	double chord = (last.level - first.level) / this->Length();
 	this->start_slope = first.slope.value_or(chord);
 	this->end_slope = last.slope.value_or(chord);
+	if (first.branch.has_value() && last.off_branch) this->start_slope = *first.branch;
+	if (last.branch.has_value() && first.off_branch) this->end_slope = *last.branch;
 	if (first.mouth && chord > 0.0) this->start_slope = this->OutOfMouth(this->start_level, chord);
 	if (last.mouth && chord < 0.0) this->end_slope = -this->OutOfMouth(this->end_level, -chord);
 	this->climb_span = first.head_jog || last.head_jog ? this->line.EndSpeed() : this->Length();
@@ -800,11 +848,17 @@ WayCourse::CourseEnd WayCourse::EndAt(const MapVector &point, bool leaving) cons
 	std::optional<JointEase> ease = _ease_book.At(joint);
 	if (!ease.has_value()) {
 		bool mouth = !this->road && IsRailMouth(joint.Beyond({this->tx, this->ty}), joint);
-		return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, this->HeldHeading(point, leaving), false, mouth};
+		MapVector heading = this->HeldHeading(point, leaving);
+		std::optional<double> branch;
+		if (!this->road) {
+			std::optional<double> onward = BranchClimb(joint, {this->tx, this->ty}, leaving ? heading * -1.0 : heading);
+			if (onward.has_value()) branch = leaving ? -*onward : *onward;
+		}
+		return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, heading, false, mouth, branch, false};
 	}
 
 	double sign = this->Onward(joint, leaving) ? 1.0 : -1.0;
-	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign, ease->head_jog, false};
+	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign, ease->head_jog, false, std::nullopt, ease->off_branch};
 }
 
 std::optional<WayCourse::RunMark> WayCourse::MarkAt(const MapVector &point, bool leaving) const
@@ -895,13 +949,6 @@ struct PieceEnd {
 	bool open;
 	bool branch;
 };
-
-static int PiecesMeeting(int tx, int ty, const Joint &joint)
-{
-	int meeting = 0;
-	for (Track track : SetTrackBitIterator(TrackBitsOf(tx, ty))) meeting += PieceOf(tx, ty, track).Meets(joint) ? 1 : 0;
-	return meeting;
-}
 
 static PieceEnd PieceEndAt(int tx, int ty, const MapVector &joint, const MapVector &outward)
 {
