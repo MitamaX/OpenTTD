@@ -84,6 +84,10 @@ private:
 		MapVector heading;
 		bool head_jog;
 		bool mouth;
+		/* The climb along the course of the ground under a junction's branches the end runs on into. */
+		std::optional<double> branch;
+		/* The eased joint at this end rounds the course off the junction's grade at its other end. */
+		bool off_branch;
 	};
 
 	WayCourse(int tx, int ty, const Piece &piece, bool road);
