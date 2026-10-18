@@ -1149,8 +1149,8 @@ Patch Trodden(Patch ground, Site site)
 
 Patch Eroded(Ground ground, Site site)
 {
-	Patch patch = Albedo(ground, site);
-	return IsNatural(ground.material) ? Trodden(Exposed(patch, site), site) : patch;
+	Patch albedo = Albedo(ground, site);
+	return IsNatural(ground.material) ? Trodden(Exposed(albedo, site), site) : albedo;
 }
 
 vec3 SettledAt(ivec2 tile)
@@ -1293,9 +1293,9 @@ Patch Surface(vec2 p, Seams seams, Grain grain, Footing footing, out Site site)
 			site.blades = Blades(site);
 			bladed = true;
 		}
-		Patch patch = Eroded(distinct[k], site);
-		blend.tone += patch.tone * weights[k];
-		blend.rugged += patch.rugged * weights[k];
+		Patch eroded = Eroded(distinct[k], site);
+		blend.tone += eroded.tone * weights[k];
+		blend.rugged += eroded.rugged * weights[k];
 	}
 	return blend;
 }
@@ -1311,11 +1311,11 @@ struct FieldEdges {
 	float shadow;
 };
 
-void FieldEdge(ivec2 tile, Ground home, ivec2 side, vec2 f, vec2 cast, float soft, inout FieldEdges edges)
+void FieldEdge(ivec2 tile, Ground home, ivec2 side, vec2 f, vec2 shadow_offset, float soft, inout FieldEdges edges)
 {
 	if (SameField(tile + side, home)) return;
 	float gap = HALF_TILE - dot(vec2(side), f - HALF_TILE);
-	float reach = max(dot(cast, -vec2(side)), 0.0);
+	float reach = max(dot(shadow_offset, -vec2(side)), 0.0);
 	edges.nearest = min(edges.nearest, gap);
 	edges.shadow = max(edges.shadow, Stroke(gap - HEDGE_WIDTH, reach, soft));
 }
@@ -1328,12 +1328,12 @@ vec4 Hedgerow(vec2 p, Grain grain, Climate climate)
 	if (home.material != MAT_FIELDS) return vec4(0.0);
 	vec2 f = fract(p);
 	float soft = max(1.0 / tile_pixels, HEDGE_FEATHER);
-	vec2 cast = -SunSlant() * HEDGE_HEIGHT;
+	vec2 shadow_offset = -SunSlant() * HEDGE_HEIGHT;
 	FieldEdges edges = FieldEdges(1.0, 0.0);
-	FieldEdge(tile, home, ivec2(-1, 0), f, cast, soft, edges);
-	FieldEdge(tile, home, ivec2(1, 0), f, cast, soft, edges);
-	FieldEdge(tile, home, ivec2(0, -1), f, cast, soft, edges);
-	FieldEdge(tile, home, ivec2(0, 1), f, cast, soft, edges);
+	FieldEdge(tile, home, ivec2(-1, 0), f, shadow_offset, soft, edges);
+	FieldEdge(tile, home, ivec2(1, 0), f, shadow_offset, soft, edges);
+	FieldEdge(tile, home, ivec2(0, -1), f, shadow_offset, soft, edges);
+	FieldEdge(tile, home, ivec2(0, 1), f, shadow_offset, soft, edges);
 	float width = HEDGE_WIDTH * (0.6 + 0.8 * grain.fine);
 	float gaps = smoothstep(0.25, 0.4, Noise(p * HEDGE_GAPS_PER_TILE + 4.4));
 	float hedge = Stroke(edges.nearest, width, soft) * gaps;
