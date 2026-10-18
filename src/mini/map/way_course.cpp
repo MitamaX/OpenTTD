@@ -39,6 +39,13 @@
 /* A way is never eased further above its ground than this, in height levels, nor ever below it. */
 static constexpr double LIFT_LIMIT = 0.5;
 static constexpr double EASE_PULL = 0.6;
+/* A rail joint between a level stretch and a slope at least this steep, in levels per tile, rounds onto the slope on a vertical curve instead of meeting both level. */
+static constexpr double STEP_CLIMB = 0.5;
+static constexpr double STEP_LEVEL_CLIMB = 0.05;
+/* Only between pieces at least this long, as a curve squeezed into a short corner piece would bend sharper than the step it rounds. */
+static constexpr double FULL_PIECE = 0.75;
+/* The vertical curve passes a third of the way from the joint toward the chord between its neighbours, as a cubic spline through the joints would. */
+static constexpr double CURVE_SPREAD = 3.0;
 /* A rail joint slides along its tile side no further off the game's line than this, nor nearer a tile corner than the margin, so the eased line keeps to the tiles the track crosses. */
 static constexpr double DRIFT_LIMIT = 0.35;
 static constexpr double CORNER_MARGIN = 0.05;
@@ -203,6 +210,12 @@ struct JointEase {
 	/* Bending into a jog held at a bridge head, the eased line strays so far from the game's piece that its climb is told along the line itself. */
 	bool head_jog;
 };
+
+/* Whether a joint lies between a level stretch and a steep slope, where meeting both level would bend the slope into a short S. */
+static bool StepsOntoSlope(double before, double after)
+{
+	return std::min(std::abs(before), std::abs(after)) < STEP_LEVEL_CLIMB && std::abs(after - before) >= STEP_CLIMB;
+}
 
 /* Neither steeper than the gentler of the two runs either side, nor anything but level where they do not climb the same way. */
 static double JointSlope(double before, double after)
@@ -691,10 +704,18 @@ void Run::Ease(Store store)
 		double sign = this->Facing(index);
 		auto straight = [&](size_t segment) { return std::abs(spans[segment] - STRAIGHT_SPAN) <= SPAN_SLACK; };
 		bool rounds = this->kind == WayKind::Road && straight(before) && straight(index) && !this->Bent(index);
-		double slope = (rounds ? RoadJointSlope : JointSlope)(climb(before), climb(index)) * sign;
+		double level = levels[index];
+		double slope = (rounds ? RoadJointSlope : JointSlope)(climb(before), climb(index));
+		if (this->kind == WayKind::Rail && std::min(spans[before], spans[index]) >= FULL_PIECE && StepsOntoSlope(climb(before), climb(index))) {
+			double behind = spans[before];
+			double ahead = spans[index];
+			double rounding = behind * ahead / (CURVE_SPREAD * (behind + ahead));
+			level = std::clamp(level + (climb(index) - climb(before)) * rounding, node.ground, node.ground + LIFT_LIMIT);
+			slope = (climb(before) * ahead + climb(index) * behind) / (behind + ahead);
+		}
 		std::optional<double> distance;
 		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
-		store(node.joint, JointEase{line.places[index], levels[index], slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
+		store(node.joint, JointEase{line.places[index], level, slope * sign, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
 	}
 }
 
