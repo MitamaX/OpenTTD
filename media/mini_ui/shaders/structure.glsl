@@ -298,8 +298,8 @@ Clad Panelled(vec2 p, Clad clad, vec2 panels, float joint)
 Clad Precast(vec2 p, vec3 tint)
 {
 	vec2 panel = p * CONCRETE_PANELS;
-	vec3 cast = tint * UnitVaried(panel, CONCRETE_PANEL_VARIETY, Sharpness(panel));
-	return Panelled(p, Mottled(p, cast, CONCRETE_GRAIN, CONCRETE_GRAIN_VARIETY, CONCRETE_ROUGHNESS), CONCRETE_PANELS, CONCRETE_JOINT);
+	vec3 concrete = tint * UnitVaried(panel, CONCRETE_PANEL_VARIETY, Sharpness(panel));
+	return Panelled(p, Mottled(p, concrete, CONCRETE_GRAIN, CONCRETE_GRAIN_VARIETY, CONCRETE_ROUGHNESS), CONCRETE_PANELS, CONCRETE_JOINT);
 }
 
 Clad Ribbed(vec2 p, vec3 tint, float frequency, float depth, float roughness)
