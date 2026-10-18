@@ -211,6 +211,8 @@ double SheetWater(double x, double y, double level)
 		for (int i = 0; i < 4; i++) field.Add(SheetTexel(static_cast<int>(cell_x) + i - 1, static_cast<int>(cell_y) + j - 1, level), wx[i] * wy[j]);
 	}
 	double watered = std::max(field.water, LEAST_WATER);
-	double pulled = field.level - BRIM_PULL * field.brim * field.pooled / watered;
+	/* Water running down rapids keeps to its bed between banks that fall with it, so only pooled water draws back from the brim. */
+	double running = (field.river - field.pooled) / watered;
+	double pulled = field.level - BRIM_PULL * field.brim * field.pooled / watered * (1.0 - running);
 	return DryRimmed(warped_x, warped_y, pulled, field.river / watered);
 }
