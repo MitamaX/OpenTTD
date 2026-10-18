@@ -1170,15 +1170,45 @@ static void AddCopingAlong(TerrainMesh &mesh, std::span<const WorldPoint> line, 
 	CloseCopingEnd(mesh, line[last], facing_at(last), depth, Unit(Flat(line[last]) - Flat(line[last - 1])));
 }
 
-static void AddWall(TerrainMesh &mesh, const StepFace &step)
+/* What of a step's top a bridge head's own stone already stands on: the stretch its abutment face covers, in shares along the step, and whether a coping still shows along the rest. */
+struct RampStoneOnStep {
+	std::optional<std::array<double, 2>> covered = std::nullopt;
+	bool coped = true;
+};
+
+static RampStoneOnStep RampStoneOn(const Landform &land, int tx, int ty, DiagDirection side, const StepFace &step);
+
+static StepFace StepPiece(const StepFace &step, double from, double to)
+{
+	const auto &[first, last] = STEP_ENDS;
+	auto top = [&](double share) { return Between(step.ring[first[0]], step.ring[last[0]], share); };
+	auto foot = [&](double share) { return Between(step.ring[first[1]], step.ring[last[1]], share); };
+	return {step.outward, {{top(from), foot(from), foot(to), top(to)}}};
+}
+
+static void AddWall(TerrainMesh &mesh, const StepFace &step, bool coped = true)
 {
 	Vec3 outward = {step.outward.x, step.outward.y, 0.0};
+	/* A wall with stone standing on its top carries that stone's face on down, so its own coping is not painted on either. */
+	double mark = coped ? WALL_MARK : MASONRY_MARK;
 	std::array<uint32_t, 4> ring;
-	std::ranges::transform(step.ring, ring.begin(), [&](const WorldPoint &corner) { return mesh.Add(corner, outward, WALL_MARK); });
+	std::ranges::transform(step.ring, ring.begin(), [&](const WorldPoint &corner) { return mesh.Add(corner, outward, mark); });
 	mesh.Quad(ring[0], ring[1], ring[2], ring[3]);
 	std::array<WorldPoint, 2> line = {step.ring[STEP_ENDS[0][0]], step.ring[STEP_ENDS[1][0]]};
 	std::array<WorldPoint, 2> feet = {step.ring[STEP_ENDS[0][1]], step.ring[STEP_ENDS[1][1]]};
-	AddCopingWhereTall(mesh, line, feet, step.outward, COPING_OVERHANG);
+	if (coped) AddCopingWhereTall(mesh, line, feet, step.outward, COPING_OVERHANG);
+}
+
+static void AddUncoveredWall(TerrainMesh &mesh, const Landform &land, int tx, int ty, DiagDirection side, const StepFace &step)
+{
+	RampStoneOnStep stone = RampStoneOn(land, tx, ty, side, step);
+	if (!stone.covered.has_value()) {
+		AddWall(mesh, step, stone.coped);
+		return;
+	}
+	auto [from, to] = *stone.covered;
+	if (from > SAME_POINT) AddWall(mesh, StepPiece(step, 0.0, from), stone.coped);
+	if (to < 1.0 - SAME_POINT) AddWall(mesh, StepPiece(step, to, 1.0), stone.coped);
 }
 
 static void AddWalls(TerrainMesh &mesh, const Landform &land, int tx, int ty)
@@ -1190,7 +1220,7 @@ static void AddWalls(TerrainMesh &mesh, const Landform &land, int tx, int ty)
 		if (!step.has_value()) continue;
 		std::optional<PlacedBank> placed = BankAt(land, tx, ty, side);
 		if (!placed.has_value()) {
-			AddWall(mesh, *step);
+			AddUncoveredWall(mesh, land, tx, ty, side, *step);
 			continue;
 		}
 		banks.push_back(*placed);
@@ -1351,6 +1381,15 @@ public:
 		double along = std::clamp(Dot(Flat(edge) - Flat(first), top) / Dot(top, top), 0.0, 1.0);
 		edge.level = std::min(edge.level, std::lerp(first.level, last.level, along));
 		return edge;
+	}
+
+	/* How far out to one side stone stands across the deck's end: the abutment, the band closed under it, or the wing wall over the bank. */
+	WorldPoint AbutmentEnd(double side) const
+	{
+		FlankPlan plan = this->PlanOf(side);
+		if (plan.kind == Flank::Shelf || plan.kind == Flank::Merged) return this->BandEdge(plan.kind, 1.0, side);
+		if (plan.kind == Flank::Bank) return this->EdgeAt(RAMP_BANK_ROWS, side, plan.run).points.back();
+		return this->Crest(1.0, side);
 	}
 
 	FormationSide OuterSide(double side) const
@@ -1524,6 +1563,26 @@ private:
 	TerrainMesh &mesh;
 	RampShape shape;
 };
+
+/* A head's abutment face reaches down over the step under its deck's end, and a shelf flank stands on the whole of the step beside it. */
+static RampStoneOnStep RampStoneOn(const Landform &land, int tx, int ty, DiagDirection side, const StepFace &step)
+{
+	RampTexel ramp = _world_tiles.RampAt(TileXY(tx, ty));
+	if (!ramp.Present()) return {};
+	RampShape shape(land, tx, ty, ramp);
+	if (side == static_cast<DiagDirection>(ramp.onto)) {
+		MapVector first = Flat(step.ring[STEP_ENDS[0][0]]);
+		MapVector along = Flat(step.ring[STEP_ENDS[1][0]]) - first;
+		auto share = [&](double flank) { return std::clamp(Dot(Flat(shape.AbutmentEnd(flank)) - first, along) / Dot(along, along), 0.0, 1.0); };
+		std::array<double, 2> covered = {share(-1.0), share(1.0)};
+		std::ranges::sort(covered);
+		return {covered};
+	}
+	for (double flank : {-1.0, 1.0}) {
+		if (Dot(shape.SideOutward(flank), step.outward) > MIDWAY && shape.PlanOf(flank).kind == RampShape::Flank::Shelf) return {std::nullopt, false};
+	}
+	return {};
+}
 
 static bool CoversTile(int tx, int ty, int x, int y)
 {
