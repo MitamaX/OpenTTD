@@ -177,6 +177,8 @@ struct JointEase {
 	std::optional<double> distance;
 	bool rising;
 	double outer;
+	/* Bending into a jog held at a bridge head, the eased line strays so far from the game's piece that its climb is told along the line itself. */
+	bool head_jog;
 };
 
 /* Neither steeper than the gentler of the two runs either side, nor anything but level where they do not climb the same way. */
@@ -247,7 +249,8 @@ private:
 
 	std::optional<double> Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &nodes) const;
 	bool Dock(const Joint &at, const TileCoord &tile, double place, double direction, std::vector<Node> &walked) const;
-	std::vector<double> EasedLevels() const;
+	std::vector<double> ClimbSpans(const RunLine &line) const;
+	std::vector<double> EasedLevels(const std::vector<double> &spans) const;
 	RunLine EasedLine() const;
 	std::vector<double> SlideLimits() const;
 	void Slide(std::vector<MapVector> &places, const std::vector<double> &limits) const;
@@ -255,6 +258,7 @@ private:
 	MapVector Leaning(size_t index, const std::vector<MapVector> &places, bool approaching) const;
 	bool Jogs(size_t held, bool forward) const;
 	std::optional<Jog> HeldJog(size_t index, int reach) const;
+	bool HeadJog(size_t index) const;
 	std::optional<Approach> HeldApproach(size_t index, const std::vector<MapVector> &places, int reach, bool approaching) const;
 	RunLine SlidLine(const std::vector<double> &limits) const;
 	std::vector<size_t> Folded(const RunLine &line) const;
@@ -365,7 +369,18 @@ double Run::Share(size_t index) const
 	return before / (before + this->Gap(index, this->After(index)));
 }
 
-std::vector<double> Run::EasedLevels() const
+/* How far the run climbs over each segment: along the game's pieces, or along the eased line where it bends into a jog held at a bridge head and strays far from them. */
+std::vector<double> Run::ClimbSpans(const RunLine &line) const
+{
+	std::vector<double> spans(this->nodes.size(), 0.0);
+	for (size_t segment = 0; segment < this->Segments(); segment++) {
+		size_t next = this->After(segment);
+		spans[segment] = this->HeadJog(segment) || this->HeadJog(next) ? line.Between(segment, next).Span() : this->Gap(segment, next);
+	}
+	return spans;
+}
+
+std::vector<double> Run::EasedLevels(const std::vector<double> &spans) const
 {
 	std::vector<double> levels(this->nodes.size());
 	std::ranges::transform(this->nodes, levels.begin(), &Node::ground);
@@ -374,7 +389,8 @@ std::vector<double> Run::EasedLevels() const
 		for (size_t index = 0; index < this->nodes.size(); index++) {
 			const Node &node = this->nodes[index];
 			if (node.held) continue;
-			double line = std::lerp(levels[this->Before(index)], levels[this->After(index)], this->Share(index));
+			double before = spans[this->Before(index)];
+			double line = std::lerp(levels[this->Before(index)], levels[this->After(index)], before / (before + spans[index]));
 			double pulled = levels[index] + (line - levels[index]) * EASE_PULL;
 			next[index] = std::clamp(pulled, node.ground, node.ground + LIFT_LIMIT);
 		}
@@ -480,10 +496,16 @@ std::optional<Run::Jog> Run::HeldJog(size_t index, int reach) const
 				if (step > 0) clear = clear && !this->nodes[at].Fixed();
 				at = forward ? this->After(at) : this->Before(at);
 			}
-			if (clear && this->nodes[at].runs_on && this->Jogs(at, !forward)) return Jog{at, forward};
+			if (clear && (this->nodes[at].runs_on || this->nodes[at].pinned) && this->Jogs(at, !forward)) return Jog{at, forward};
 		}
 	}
 	return std::nullopt;
+}
+
+bool Run::HeadJog(size_t index) const
+{
+	std::optional<Jog> jog = this->HeldJog(index, JOG_REACH);
+	return jog.has_value() && this->nodes[jog->held].pinned;
 }
 
 /* Near a jog held at one end, the run bends from its heading at the joint's other neighbour straight into the held heading,
@@ -612,12 +634,13 @@ std::vector<double> Run::Outers(const RunLine &line) const
 template <typename Store>
 void Run::Ease(Store store)
 {
-	std::vector<double> levels = this->EasedLevels();
 	RunLine line = this->EasedLine();
+	std::vector<double> spans = this->ClimbSpans(line);
+	std::vector<double> levels = this->EasedLevels(spans);
 	std::vector<double> outers = this->Outers(line);
 	bool from_front = this->nodes.front().joint.Key() <= this->nodes.back().joint.Key();
 	double origin = from_front ? this->nodes.front().place : this->nodes.back().place;
-	auto climb = [&](size_t a, size_t b) { return (levels[b] - levels[a]) / this->Gap(a, b); };
+	auto climb = [&](size_t from) { return (levels[this->After(from)] - levels[from]) / spans[from]; };
 	for (size_t index = 0; index < this->nodes.size(); index++) {
 		const Node &node = this->nodes[index];
 		if (node.held) {
@@ -625,12 +648,11 @@ void Run::Ease(Store store)
 			continue;
 		}
 		size_t before = this->Before(index);
-		size_t after = this->After(index);
 		double sign = this->Facing(index);
-		double slope = JointSlope(climb(before, index), climb(index, after)) * sign;
+		double slope = JointSlope(climb(before), climb(index)) * sign;
 		std::optional<double> distance;
 		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
-		store(node.joint, JointEase{line.places[index], levels[index], slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0)});
+		store(node.joint, JointEase{line.places[index], levels[index], slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
 	}
 }
 
@@ -681,6 +703,7 @@ WayCourse::WayCourse(int tx, int ty, const Piece &piece, bool road) :
 	double chord = (last.level - first.level) / this->Length();
 	this->start_slope = first.slope.value_or(chord);
 	this->end_slope = last.slope.value_or(chord);
+	this->climb_span = first.head_jog || last.head_jog ? this->line.EndSpeed() : this->Length();
 }
 
 /* Whether the course runs across the joint at one of its ends toward the joint's higher tile. */
@@ -695,10 +718,10 @@ WayCourse::CourseEnd WayCourse::EndAt(const MapVector &point, bool leaving) cons
 {
 	Joint joint = Joint::At(point);
 	std::optional<JointEase> ease = _ease_book.At(joint);
-	if (!ease.has_value()) return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, this->HeldHeading(point, leaving)};
+	if (!ease.has_value()) return {point, GroundAt({this->tx, this->ty}, joint), std::nullopt, this->HeldHeading(point, leaving), false};
 
 	double sign = this->Onward(joint, leaving) ? 1.0 : -1.0;
-	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign};
+	return {ease->at, ease->level, ease->slope * sign, ease->heading * sign, ease->head_jog};
 }
 
 std::optional<WayCourse::RunMark> WayCourse::MarkAt(const MapVector &point, bool leaving) const
@@ -764,8 +787,7 @@ double WayCourse::Length() const
 double WayCourse::Level(double share) const
 {
 	double t = std::clamp(share, 0.0, 1.0);
-	double length = this->Length();
-	double eased = Hermite(this->start_level, this->start_slope * length, this->end_level, this->end_slope * length, t);
+	double eased = Hermite(this->start_level, this->start_slope * this->climb_span, this->end_level, this->end_slope * this->climb_span, t);
 	MapVector centre = this->Centre(t);
 	return std::max(eased, TileGround(this->tx, this->ty).Level(centre.x, centre.y));
 }
