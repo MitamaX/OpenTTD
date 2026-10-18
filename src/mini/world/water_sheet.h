@@ -12,6 +12,7 @@
 
 #include <optional>
 
+#include "../../map_type.h"
 #include "../map/world_tiles.h"
 
 inline constexpr int CHANNEL_DIVISIONS = 6;
@@ -30,6 +31,7 @@ private:
 	};
 
 	static FallEnds FallEndsOf(int tx, int ty);
+	double SpreadFromFall(double x, double y) const;
 
 	int tx;
 	int ty;
@@ -37,6 +39,7 @@ private:
 	double low;
 	bool lies_level;
 	std::optional<FallEnds> fall;
+	std::optional<TileIndexDiffC> fall_side;
 };
 
 #endif /* MINI_WORLD_WATER_SHEET_H */
