@@ -66,6 +66,8 @@ public:
 	/* How far the eased level stands above the tile's ground under the middle line. */
 	double Lift(double share) const;
 	bool Raised() const;
+	/* How steeply the course climbs away from a rail tunnel's portal at one of its ends, on the grade the curve out of the portal bends into. */
+	double MouthClimb() const { return this->mouth_climb; }
 
 private:
 	/* Where an end lies along its run, and whether the distance grows or shrinks along the course. */
@@ -81,6 +83,7 @@ private:
 		std::optional<double> slope;
 		MapVector heading;
 		bool head_jog;
+		bool mouth;
 	};
 
 	WayCourse(int tx, int ty, const Piece &piece, bool road);
@@ -88,6 +91,7 @@ private:
 	std::optional<RunMark> MarkAt(const MapVector &point, bool leaving) const;
 	bool Onward(const Joint &joint, bool leaving) const;
 	MapVector HeldHeading(const MapVector &point, bool leaving) const;
+	double OutOfMouth(double &level, double climb);
 
 	int tx;
 	int ty;
@@ -101,6 +105,16 @@ private:
 	double end_slope = 0.0;
 	/* How far over the map the climb at either end is told. */
 	double climb_span = 0.0;
+	double mouth_climb = 0.0;
+};
+
+/* A rail climbing out of a level tunnel bends from the tunnel's level onto its grade over a sag curve straddling the portal's outer side. */
+struct MouthSag {
+	MapVector mouth;
+	MapVector inward;
+	double climb;
+
+	double Rise(const MapVector &point) const;
 };
 
 /* A rail piece as it is drawn: along its course where it eases, or else along the game's piece leaning toward the track beyond; and whether either end stands open. */
@@ -113,8 +127,11 @@ struct DrawnTrack {
 	std::optional<WayCourse> course;
 	bool open_first;
 	bool open_last;
+	std::optional<MouthSag> mouth;
 
 	static const DrawnTrack &Of(int tx, int ty, Track track);
+	/* How far the piece is lifted above the ground under it where it bends out of a tunnel's portal. */
+	double Rise(const MapVector &point) const { return this->mouth.has_value() ? this->mouth->Rise(point) : 0.0; }
 	/* Where a point on the game's own piece is drawn: as far along the line and as far to its side, at the course's level or on the ground. */
 	WorldPoint Placed(const MapVector &point) const;
 	/* Where a point on the game's own piece is drawn on the line itself, as far along it. */
