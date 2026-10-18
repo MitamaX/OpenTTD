@@ -102,6 +102,9 @@ static constexpr double WAY_CESS = DECK_HALF - BALLAST_HALF;
 static constexpr double SEA_FLOOR = -DEEPEST_SINK;
 static constexpr double CREST_ROUNDING = 0.5;
 static constexpr double SEAT_FACING_LEAST = 0.5;
+static constexpr double STEP_WALL_PROBE = 0.02;
+static constexpr double AXIS_SLIP = 0.1;
+static constexpr int HANGING_RUN_REACH = 32;
 static constexpr double END_PROBE = 0.05;
 static constexpr double MIDWAY = 0.5;
 static constexpr double OWN_TILE_INSET = 1e-3;
@@ -1294,6 +1297,7 @@ struct FormationSide {
 	std::optional<BankEdge> section = std::nullopt;
 	bool walled = false;
 	bool shelved = false;
+	bool held_at_step = false;
 };
 
 using FormationRow = std::array<FormationSide, 2>;
@@ -1911,16 +1915,93 @@ static bool Precedes(const WayId &first, const WayId &second)
 	return std::make_tuple(first.tx, first.ty, TrackKey(first)) < std::make_tuple(second.tx, second.ty, TrackKey(second));
 }
 
+using WalledSides = std::array<bool, 2>;
+
+static WalledSides Swapped(const WalledSides &sides)
+{
+	return {sides[1], sides[0]};
+}
+
+struct JoinedWay {
+	RaisedWay way;
+	double at;
+	bool swapped;
+};
+
+static MapVector EndFacing(const WayCourse &course, double end)
+{
+	return end == 0.0 ? course.Before() * -1.0 : course.After();
+}
+
+/* The raised ways of the same width running on from an end of a way, each with the end it meets there and whether its sides meet the other way round. */
+static std::vector<JoinedWay> JoinedAt(const WayCourse &course, double half, double end)
+{
+	CrestPair crests = CrestsOf(course, half, end);
+	MapVector middle = Flat(Between(crests[0], crests[1], MIDWAY)) + EndFacing(course, end) * END_PROBE;
+	std::vector<JoinedWay> joined;
+	for (const RaisedWay &way : RaisedWaysOf(static_cast<int>(std::floor(middle.x)), static_cast<int>(std::floor(middle.y)))) {
+		if (way.half != half) continue;
+		for (double at : {0.0, 1.0}) {
+			CrestPair theirs = CrestsOf(way.course, way.half, at);
+			if (!Joins(crests, theirs)) continue;
+			joined.push_back({way, at, !(Adjoins(crests[0], theirs[0]) && Adjoins(crests[1], theirs[1]))});
+		}
+	}
+	return joined;
+}
+
+static DiagDirection DiagDirTowards(const MapVector &facing)
+{
+	DiagDirection nearest = DIAGDIR_BEGIN;
+	for (DiagDirection side = DIAGDIR_BEGIN; side < DIAGDIR_END; side++) {
+		if (Dot(Outward(side), facing) > Dot(Outward(nearest), facing)) nearest = side;
+	}
+	return nearest;
+}
+
+/* Whether a line runs straight along the tile edges, so either side of it faces one edge of its tile all along. */
+static bool RunsAlongAxis(const Bend &line)
+{
+	auto across = [&](double share, bool x) { MapVector along = Unit(line.Along(share)); return std::abs(x ? along.x : along.y); };
+	for (bool x : {true, false}) {
+		if (across(0.0, x) < AXIS_SLIP && across(MIDWAY, x) < AXIS_SLIP && across(1.0, x) < AXIS_SLIP) return true;
+	}
+	return false;
+}
+
+static int FormationRowsOf(const WayCourse &course)
+{
+	return std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE)));
+}
+
 class FormationProfile {
 public:
-	FormationProfile(const Landform &land, const WayCourse &course, const WayId &id, double half) :
+	FormationProfile(const Landform &land, const WayCourse &course, const WayId &id, double half, bool walls_steps = true) :
 		land(land), course(course), line(course.Line()), id(id), own(id.tx, id.ty), half(half), ways(land, id)
 	{
+		if (walls_steps) this->walled_sides = {this->WalledAtStep(-1.0), this->WalledAtStep(1.0)};
 	}
 
 	FormationRow RowAt(double share) const
 	{
-		return {this->SideAt(share, -1.0), this->SideAt(share, 1.0)};
+		return this->RowAt(share, this->walled_sides);
+	}
+
+	FormationRow RowAt(double share, const WalledSides &walled) const
+	{
+		return {this->SideAt(share, -1.0, walled[0]), this->SideAt(share, 1.0, walled[1])};
+	}
+
+	const WalledSides &Walled() const
+	{
+		return this->walled_sides;
+	}
+
+	/* Sides that may be stopped at a step where a way they meet is: all but a side hanging over it while bending off the tile edges. */
+	WalledSides Wallable() const
+	{
+		if (RunsAlongAxis(this->line)) return {true, true};
+		return {!this->HoldsOfSide(-1.0).overhangs, !this->HoldsOfSide(1.0).overhangs};
 	}
 
 private:
@@ -1941,18 +2022,105 @@ private:
 		Crossing crossing;
 	};
 
-	FormationSide SideAt(double share, double sign) const
+	FormationSide SideAt(double share, double sign, bool walled) const
 	{
 		WorldPoint crest = CrestAt(this->course, this->half, share, sign);
 		if (this->Sunken(share) && !this->AgainstWall(crest, share, sign)) return this->DroppedSide(crest);
+		WorldPoint foot = this->FootAt(crest, share, sign);
+		std::optional<WorldPoint> overhang = walled ? this->ExitFromOwn(crest, foot) : std::nullopt;
+		Toe toe = overhang.has_value() ? this->ToeAtWall(*overhang) : this->ToeOf(crest, foot);
+		Vec3 side = SlopeNormal(crest, toe.at);
+		FormationSide laid = {crest, Normalised(Lerp(side, UP, CREST_ROUNDING)), toe.at, SeatNormal(toe.normal, side)};
+		laid.held_at_step = overhang.has_value();
+		return laid;
+	}
+
+	WorldPoint FootAt(const WorldPoint &crest, double share, double sign) const
+	{
 		MapVector inside = this->WithinOwn(crest.x, crest.y);
 		double depth = std::max(crest.level - this->own.Level(inside.x, inside.y) + BANK_FOOT_DIP, 0.0);
 		double spread = this->half + depth * LevelRise() * FORMATION_RUN;
 		MapVector out = this->line.At(share, Unfolded(this->line, share, sign * spread));
-		WorldPoint foot = {out.x, out.y, crest.level - depth};
-		Toe toe = this->ToeOf(crest, foot);
-		Vec3 side = SlopeNormal(crest, toe.at);
-		return {crest, Normalised(Lerp(side, UP, CREST_ROUNDING)), toe.at, SeatNormal(toe.normal, side)};
+		return {out.x, out.y, crest.level - depth};
+	}
+
+	bool InOwnTile(const MapVector &at) const
+	{
+		MapVector within = this->WithinOwn(at.x, at.y);
+		return within.x == at.x && within.y == at.y;
+	}
+
+	/* Whether a point lies on its own tile across the edge a side faces, wherever it lies along that edge. */
+	bool WithinOwnAcross(const MapVector &at, const MapVector &outward) const
+	{
+		bool across_x = std::abs(outward.x) >= std::abs(outward.y);
+		double coordinate = across_x ? at.x : at.y;
+		double low = across_x ? this->id.tx : this->id.ty;
+		return coordinate >= low && coordinate <= low + 1.0;
+	}
+
+	/* Where earth running out from a crest leaves its own tile, unless something stops it before. */
+	std::optional<WorldPoint> ExitFromOwn(const WorldPoint &crest, const WorldPoint &foot) const
+	{
+		MapVector outward = Flat(foot) - Flat(crest);
+		if (this->WithinOwnAcross(Flat(foot), outward) || !this->WithinOwnAcross(Flat(crest), outward)) return std::nullopt;
+		std::optional<Crossing> leaving = FirstHolding([&](double share) { return !this->WithinOwnAcross(Flat(Between(crest, foot, share)), outward); });
+		if (!leaving.has_value()) return std::nullopt;
+		std::optional<Stop> stop = this->FirstStop(crest, foot, true);
+		if (stop.has_value() && stop->crossing.after <= leaving->before) return std::nullopt;
+		return Between(crest, foot, leaving->before);
+	}
+
+	bool HangsOverStep(const WorldPoint &crest, const WorldPoint &foot) const
+	{
+		return foot.level - Grounded(this->land, foot).level > SEAT_STEP_LEAST && !this->InOwnTile(Flat(foot)) && !this->FirstStop(crest, foot, true).has_value();
+	}
+
+	struct StepHolds {
+		bool overhangs = false;
+		bool stays = false;
+	};
+
+	/* Whether the earth of a side's rows hangs over a step down out of its own tile, and whether it settles on its own tile. */
+	StepHolds HoldsOfSide(double sign) const
+	{
+		StepHolds holds;
+		int rows = FormationRowsOf(this->course);
+		for (int row = 0; row <= rows; row++) {
+			double share = static_cast<double>(row) / rows;
+			WorldPoint crest = CrestAt(this->course, this->half, share, sign);
+			if (this->Sunken(share) && !this->AgainstWall(crest, share, sign)) continue;
+			WorldPoint foot = this->FootAt(crest, share, sign);
+			if (this->HangsOverStep(crest, foot)) holds.overhangs = true;
+			else if (this->InOwnTile(Flat(this->ToeOf(crest, foot).at))) holds.stays = true;
+		}
+		return holds;
+	}
+
+	/* A run of ways whose side hangs over a step, where on some rows the earth settles short of it instead, is stopped at the step all along, on whose wall it stands; a run bending off the tile edges is left hanging. */
+	bool WalledAtStep(double sign) const
+	{
+		StepHolds own = this->HoldsOfSide(sign);
+		if (!own.overhangs || !RunsAlongAxis(this->line)) return false;
+		bool stays = own.stays;
+		for (double end : {0.0, 1.0}) {
+			RaisedWay at = {this->course, this->id, this->half, false};
+			double onward = end;
+			double side = sign;
+			for (int reach = 0; reach < HANGING_RUN_REACH; reach++) {
+				std::vector<JoinedWay> joined = JoinedAt(at.course, this->half, onward);
+				if (joined.empty()) break;
+				const JoinedWay &next = joined.front();
+				side = next.swapped ? -side : side;
+				StepHolds holds = FormationProfile(this->land, next.way.course, next.way.id, this->half, false).HoldsOfSide(side);
+				if (!holds.overhangs) break;
+				if (!RunsAlongAxis(next.way.course.Line())) break;
+				stays = stays || holds.stays;
+				onward = 1.0 - next.at;
+				at = next.way;
+			}
+		}
+		return stays;
 	}
 
 	/* A crest no higher than the ground under the way's middle has no embankment below it. */
@@ -2165,13 +2333,14 @@ private:
 	TileGround own;
 	double half;
 	NeighbouringWays ways;
+	WalledSides walled_sides = {false, false};
 };
 
 class Formation {
 public:
 	Formation(TerrainMesh &mesh, const Landform &land, const WayCourse &course, const WayId &id, double half) :
 		mesh(mesh), land(land), course(course), id(id), half(half), profile(land, course, id, half),
-		rows(std::max(2, static_cast<int>(std::ceil(course.Length() * FORMATION_ROWS_PER_TILE))))
+		rows(FormationRowsOf(course))
 	{
 	}
 
@@ -2399,6 +2568,37 @@ private:
 		}
 	}
 
+	/* Earth held at a step down out of its own tile stands on a wall down that step to the lower ground. */
+	void LayStepWall(std::span<const FormationRow> table, std::span<const FormationSide> sides, size_t side) const
+	{
+		auto foot_of = [&](size_t row) {
+			const WorldPoint &top = sides[row].toe;
+			MapVector beyond = Flat(top) + SideFacing(table, row, side) * STEP_WALL_PROBE;
+			return WorldPoint{top.x, top.y, std::min(top.level, this->land.LevelAt(beyond.x, beyond.y) - BANK_FOOT_DIP)};
+		};
+		for (size_t row = 0; row + 1 < sides.size(); row++) {
+			const FormationSide &first = sides[row];
+			const FormationSide &second = sides[row + 1];
+			MapVector facing = SideFacing(table, row, side);
+			if (first.held_at_step != second.held_at_step) {
+				this->CloseStepWallEnd(first.held_at_step ? first : second, first.held_at_step ? second : first, facing);
+				continue;
+			}
+			/* A step the ground already walls or banks needs no wall of its own. */
+			if (!first.held_at_step || StepFaceOf(this->id.tx, this->id.ty, DiagDirTowards(facing)).has_value()) continue;
+			this->AddWallFace({first.toe, second.toe}, {foot_of(row), foot_of(row + 1)}, facing);
+		}
+	}
+
+	/* Where earth held at a step meets earth running on down past it, a stone end closes the step under the two toes. */
+	void CloseStepWallEnd(const FormationSide &held, const FormationSide &running, const MapVector &facing) const
+	{
+		if (held.toe.level - running.toe.level < SHALLOWEST_FACE) return;
+		MapVector across = RightOf(Unit(Flat(running.toe) - Flat(held.toe)));
+		WorldPoint foot = {held.toe.x, held.toe.y, running.toe.level};
+		AddStoneTriangle(this->mesh, {held.toe, running.toe, foot}, Upright(Dot(across, facing) >= 0.0 ? across : across * -1.0));
+	}
+
 	/* A head's stone shelf, met by earth whose next row already stands on the ground, goes on down to that row's toe. */
 	void CarryShelfWall(std::span<const FormationRow> table, std::span<const FormationSide> sides, size_t side, bool at_front) const
 	{
@@ -2431,6 +2631,7 @@ private:
 		if (head.has_value()) AddBankStrip(this->mesh, *head, Spanned(earth[first]), FILL_MARK);
 		if (tail.has_value()) AddBankStrip(this->mesh, Spanned(earth[end - 1]), *tail, FILL_MARK);
 		this->LayWallFaces(table, sides, earth, at_foot, side);
+		this->LayStepWall(table, sides, side);
 		for (bool at_front : {true, false}) this->CarryShelfWall(table, sides, side, at_front);
 		this->CopeRuns(table, side, [&](size_t row) { return abutment[row] > 0.0; }, [&](size_t row) { return sides[row].crest; });
 		this->CopeRuns(table, side, [&](size_t row) { return at_foot[row]; }, [&](size_t row) { return earth[row][1].at; });
@@ -2474,17 +2675,30 @@ private:
 		MapVector middle = Flat(Between(crests[0], crests[1], MIDWAY)) + facing * END_PROBE;
 		Joint joint = {own, false};
 		WayId owner = this->id;
-		for (const RaisedWay &way : RaisedWaysOf(static_cast<int>(std::floor(middle.x)), static_cast<int>(std::floor(middle.y)))) {
-			if (way.half != this->half) continue;
-			for (double at : {0.0, 1.0}) {
-				if (!Joins(crests, CrestsOf(way.course, way.half, at))) continue;
-				joint.continued = true;
-				if (!Precedes(way.id, owner)) continue;
-				owner = way.id;
-				joint.row = Aligned(FormationProfile(this->land, way.course, way.id, way.half).RowAt(at), own);
+		WalledSides walled = this->profile.Walled();
+		WalledSides wallable = this->profile.Wallable();
+		std::vector<JoinedWay> joined = JoinedAt(this->course, this->half, end);
+		const JoinedWay *preceding = nullptr;
+		for (const JoinedWay &next : joined) {
+			joint.continued = true;
+			FormationProfile profile(this->land, next.way.course, next.way.id, next.way.half);
+			WalledSides theirs = next.swapped ? Swapped(profile.Walled()) : profile.Walled();
+			WalledSides theirs_wallable = next.swapped ? Swapped(profile.Wallable()) : profile.Wallable();
+			for (size_t side = 0; side < walled.size(); side++) {
+				walled[side] = walled[side] || theirs[side];
+				wallable[side] = wallable[side] && theirs_wallable[side];
 			}
+			if (!Precedes(next.way.id, owner)) continue;
+			owner = next.way.id;
+			preceding = &next;
 		}
-		if (joint.continued) return joint;
+		for (size_t side = 0; side < walled.size(); side++) walled[side] = walled[side] && wallable[side];
+		if (joint.continued) {
+			/* Both ways meeting here lay this row alike, stopped at a step where either side stops there. */
+			if (preceding != nullptr) joint.row = Aligned(FormationProfile(this->land, preceding->way.course, preceding->way.id, preceding->way.half).RowAt(preceding->at, preceding->swapped ? Swapped(walled) : walled), own);
+			else joint.row = this->profile.RowAt(end, walled);
+			return joint;
+		}
 		std::optional<FormationRow> head = this->RampHeadRow(middle, facing);
 		if (head.has_value()) joint = {Aligned(*head, own), true};
 		return joint;
