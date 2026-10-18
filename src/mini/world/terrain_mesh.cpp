@@ -96,6 +96,7 @@ static constexpr int FILL_EASING_ROWS = 4;
 static constexpr double WAY_CESS = DECK_HALF - BALLAST_HALF;
 static constexpr double SEA_FLOOR = -DEEPEST_SINK;
 static constexpr double CREST_ROUNDING = 0.5;
+static constexpr double SEAT_FACING_LEAST = 0.5;
 static constexpr double END_PROBE = 0.05;
 static constexpr double MIDWAY = 0.5;
 static constexpr double OWN_TILE_INSET = 1e-3;
@@ -1790,6 +1791,12 @@ static Vec3 SlopeNormal(const WorldPoint &crest, const WorldPoint &toe)
 	return Normalised({across.x / run * fall, across.y / run * fall, run});
 }
 
+/* Ground at a toe turned well away from its side, as on a step beside the toe, would shade the side as if it faced another way. */
+static Vec3 SeatNormal(const Vec3 &ground, const Vec3 &side)
+{
+	return Dot(ground, side) < SEAT_FACING_LEAST ? UP : ground;
+}
+
 using CrestPair = std::array<WorldPoint, 2>;
 
 static WorldPoint CrestAt(const WayCourse &course, double half, double share, double sign)
@@ -1857,13 +1864,37 @@ private:
 	FormationSide SideAt(double share, double sign) const
 	{
 		WorldPoint crest = CrestAt(this->course, this->half, share, sign);
+		if (this->Sunken(share) && !this->AgainstWall(crest, share, sign)) return this->DroppedSide(crest);
 		MapVector inside = this->WithinOwn(crest.x, crest.y);
 		double depth = std::max(crest.level - this->own.Level(inside.x, inside.y) + BANK_FOOT_DIP, 0.0);
 		double spread = this->half + depth * LevelRise() * FORMATION_RUN;
 		MapVector out = this->line.At(share, Unfolded(this->line, share, sign * spread));
 		WorldPoint foot = {out.x, out.y, crest.level - depth};
 		Toe toe = this->ToeOf(crest, foot);
-		return {crest, Normalised(Lerp(SlopeNormal(crest, toe.at), UP, CREST_ROUNDING)), toe.at, toe.normal};
+		Vec3 side = SlopeNormal(crest, toe.at);
+		return {crest, Normalised(Lerp(side, UP, CREST_ROUNDING)), toe.at, SeatNormal(toe.normal, side)};
+	}
+
+	/* A crest no higher than the ground under the way's middle has no embankment below it. */
+	bool Sunken(double share) const
+	{
+		return this->course.Lift(share) <= -WAY_FOOT / LevelRise();
+	}
+
+	FormationSide DroppedSide(const WorldPoint &crest) const
+	{
+		WorldPoint toe = {crest.x, crest.y, std::min(Grounded(this->land, crest).level, crest.level - BANK_FOOT_DIP)};
+		return {crest, UP, toe, UP};
+	}
+
+	/* Whether a crest lying on a tile edge it faces across has a wall right beyond that edge. */
+	bool AgainstWall(const WorldPoint &crest, double share, double sign) const
+	{
+		MapVector beside = this->line.At(share, Unfolded(this->line, share, sign * (this->half + WAY_MIDLINE_MARGIN)));
+		MapVector outward = beside - Flat(crest);
+		bool faces_x_edge = OnTileEdge(crest.x) && std::abs(outward.x) >= std::abs(outward.y);
+		bool faces_y_edge = OnTileEdge(crest.y) && std::abs(outward.y) >= std::abs(outward.x);
+		return (faces_x_edge || faces_y_edge) && this->Blocked(beside);
 	}
 
 	Toe ToeOf(const WorldPoint &crest, const WorldPoint &foot) const
