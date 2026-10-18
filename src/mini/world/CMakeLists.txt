@@ -41,6 +41,8 @@ add_files(
     lazy_lattice.h
     massing_field.cpp
     massing_field.h
+    mesh_check.cpp
+    mesh_check.h
     network_field.cpp
     network_field.h
     network_mesh.cpp

@@ -93,6 +93,7 @@
 #include "mini/ui/shader_painter.h"
 #include "mini/ui/ui_text.h"
 #include "mini/ui/view_host.h"
+#include "mini/world/mesh_check.h"
 #include "mini/world/world_painter.h"
 #include "mini/windows/company_panel.h"
 #include "mini/windows/depot_panel.h"
@@ -854,6 +855,8 @@ static void CountGameClock()
 
 void MiniUiFrame()
 {
+	RunAskedMeshCheck();
+
 	/* Entering a game activates the mini UI unless the config opts out. */
 	static GameMode last_mode = GM_MENU;
 	if (_game_mode != last_mode) {
