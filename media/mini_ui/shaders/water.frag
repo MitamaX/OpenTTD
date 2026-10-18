@@ -1000,5 +1000,7 @@ void main()
 	vec3 ground = texture(u_scene_colour, uv).rgb;
 	float filled = max(water.body.canal, max(water.drop.steep, water.churned * APRON_CLOUDING));
 	float shown = max(smoothstep(0.0, mix(CONTACT_DEPTH, INLAND_CONTACT_DEPTH, water.body.calm), max(straight.y, least_depth)), filled) * Outline(water.field, water.body);
+	/* Where no water shows, the sheet leaves the ground's own depth behind, so its edge over a dry bank casts no occlusion. */
+	if (shown <= 0.0) discard;
 	frag_colour = vec4(mix(ground, colour, shown), AmbientShare(ambient, sun));
 }
