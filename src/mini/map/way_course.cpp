@@ -39,6 +39,9 @@
 /* A way is never eased further above its ground than this, in height levels, nor ever below it. */
 static constexpr double LIFT_LIMIT = 0.5;
 static constexpr double EASE_PULL = 0.6;
+/* A rail's grade line rounds each joint as a cubic spline through the joints would: the curve passes a third of the way from the joint toward the chord between its neighbours. */
+static constexpr double CURVE_SPREAD = 3.0;
+static constexpr int ROUNDING_ROUNDS = 8;
 /* A rail joint slides along its tile side no further off the game's line than this, nor nearer a tile corner than the margin, so the eased line keeps to the tiles the track crosses. */
 static constexpr double DRIFT_LIMIT = 0.35;
 static constexpr double CORNER_MARGIN = 0.05;
@@ -241,6 +244,12 @@ private:
 		MapVector heading;
 	};
 
+	/* A joint's level and climb along the run. */
+	struct Grade {
+		double level;
+		double slope;
+	};
+
 	/* A held joint out of a jog, and whether it lies after the joint it was sought from. */
 	struct Jog {
 		size_t held;
@@ -251,6 +260,9 @@ private:
 	bool Dock(const Joint &at, const TileCoord &tile, double place, double direction, std::vector<Node> &walked) const;
 	std::vector<double> ClimbSpans(const RunLine &line) const;
 	std::vector<double> EasedLevels(const std::vector<double> &spans) const;
+	double Climb(const std::vector<double> &levels, const std::vector<double> &spans, size_t from) const;
+	std::vector<Grade> Joined(const std::vector<double> &levels, const std::vector<double> &spans) const;
+	std::vector<Grade> Rounded(std::vector<double> levels, const std::vector<double> &spans) const;
 	RunLine EasedLine() const;
 	std::vector<double> SlideLimits() const;
 	void Slide(std::vector<MapVector> &places, const std::vector<double> &limits) const;
@@ -398,6 +410,60 @@ std::vector<double> Run::EasedLevels(const std::vector<double> &spans) const
 		next = levels;
 	}
 	return levels;
+}
+
+double Run::Climb(const std::vector<double> &levels, const std::vector<double> &spans, size_t from) const
+{
+	return (levels[this->After(from)] - levels[from]) / spans[from];
+}
+
+std::vector<Run::Grade> Run::Joined(const std::vector<double> &levels, const std::vector<double> &spans) const
+{
+	std::vector<Grade> grades(this->nodes.size());
+	for (size_t index = 0; index < this->nodes.size(); index++) {
+		double slope = this->nodes[index].held ? 0.0 : JointSlope(this->Climb(levels, spans, this->Before(index)), this->Climb(levels, spans, index));
+		grades[index] = {levels[index], slope};
+	}
+	return grades;
+}
+
+/* A rail's grade line runs through each joint on a vertical curve, as a cubic spline through the joints would, instead of turning there;
+ * where that curve would dip into the ground over a crest the joint is lifted so the curve clears it. */
+std::vector<Run::Grade> Run::Rounded(std::vector<double> levels, const std::vector<double> &spans) const
+{
+	auto rounding = [&](size_t index) {
+		double before = spans[this->Before(index)];
+		double after = spans[index];
+		return before * after / (CURVE_SPREAD * (before + after));
+	};
+	auto turn = [&](size_t index) { return this->Climb(levels, spans, index) - this->Climb(levels, spans, this->Before(index)); };
+	auto rounded = [&](size_t index) { return levels[index] + turn(index) * rounding(index); };
+	/* Lifting a joint lifts its curve by this share of the lift. */
+	constexpr double CURVE_FOLLOW = 1.0 - 1.0 / CURVE_SPREAD;
+	std::vector<double> next = levels;
+	for (int round = 0; round < ROUNDING_ROUNDS; round++) {
+		for (size_t index = 0; index < this->nodes.size(); index++) {
+			const Node &node = this->nodes[index];
+			if (node.held) continue;
+			double curve = rounded(index);
+			double clamped = std::clamp(curve, node.ground, node.ground + LIFT_LIMIT);
+			next[index] = levels[index] + (clamped - curve) / CURVE_FOLLOW;
+		}
+		levels = next;
+	}
+
+	std::vector<Grade> grades(this->nodes.size());
+	for (size_t index = 0; index < this->nodes.size(); index++) {
+		if (this->nodes[index].held) {
+			grades[index] = {levels[index], 0.0};
+			continue;
+		}
+		double before = spans[this->Before(index)];
+		double after = spans[index];
+		double slope = (this->Climb(levels, spans, this->Before(index)) * after + this->Climb(levels, spans, index) * before) / (before + after);
+		grades[index] = {rounded(index), slope};
+	}
+	return grades;
 }
 
 double Run::Facing(size_t index) const
@@ -637,22 +703,21 @@ void Run::Ease(Store store)
 	RunLine line = this->EasedLine();
 	std::vector<double> spans = this->ClimbSpans(line);
 	std::vector<double> levels = this->EasedLevels(spans);
+	std::vector<Grade> grades = this->kind == WayKind::Rail ? this->Rounded(levels, spans) : this->Joined(levels, spans);
 	std::vector<double> outers = this->Outers(line);
 	bool from_front = this->nodes.front().joint.Key() <= this->nodes.back().joint.Key();
 	double origin = from_front ? this->nodes.front().place : this->nodes.back().place;
-	auto climb = [&](size_t from) { return (levels[this->After(from)] - levels[from]) / spans[from]; };
 	for (size_t index = 0; index < this->nodes.size(); index++) {
 		const Node &node = this->nodes[index];
 		if (node.held) {
 			store(node.joint, std::nullopt);
 			continue;
 		}
-		size_t before = this->Before(index);
 		double sign = this->Facing(index);
-		double slope = JointSlope(climb(before), climb(index)) * sign;
+		double slope = grades[index].slope * sign;
 		std::optional<double> distance;
 		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
-		store(node.joint, JointEase{line.places[index], levels[index], slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
+		store(node.joint, JointEase{line.places[index], grades[index].level, slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
 	}
 }
 
