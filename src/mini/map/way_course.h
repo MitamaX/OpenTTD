@@ -80,6 +80,7 @@ private:
 		double level;
 		std::optional<double> slope;
 		MapVector heading;
+		bool head_jog;
 	};
 
 	WayCourse(int tx, int ty, const Piece &piece, bool road);
@@ -98,6 +99,8 @@ private:
 	double end_level = 0.0;
 	double start_slope = 0.0;
 	double end_slope = 0.0;
+	/* How far over the map the climb at either end is told. */
+	double climb_span = 0.0;
 };
 
 /* A rail piece as it is drawn: along its course where it eases, or else along the game's piece leaning toward the track beyond; and whether either end stands open. */

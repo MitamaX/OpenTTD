@@ -45,6 +45,8 @@ public:
 	double MeanCurvature() const;
 	double MeanSharpness() const;
 	double PeakSharpness() const;
+	/* How far over the map the line runs for a share of its way at either end. */
+	double EndSpeed() const { return ::Length(this->leaving); }
 	MapVector At(double share, double lateral) const override;
 	MapVector Along(double share) const override;
 	double Span() const override;
