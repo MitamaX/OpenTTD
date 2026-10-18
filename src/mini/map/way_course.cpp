@@ -55,6 +55,9 @@ static constexpr int APPROACH_REFINES = 24;
 /* A run is traced no further than this many joints either way from where it is first asked for. */
 static constexpr int LONGEST_WALK = 1024;
 static constexpr double RAISED_LIFT = 0.02;
+/* No steeper at a joint than this many times the gentler grade either side, so a curve rounding into a grade never overshoots its levels. */
+static constexpr double MONOTONE_CLIMB_LIMIT = 3.0;
+static constexpr double GRADE_MATCH = 1.0e-6;
 static constexpr int RAISED_SAMPLES = 8;
 static constexpr double CROSSING_SLACK = 0.01;
 static constexpr int ROAD_ARMS = 4;
@@ -166,6 +169,22 @@ static double GroundAt(const TileCoord &tile, const Joint &joint)
 	return TileGround(tile.first, tile.second).Level(point.x, point.y);
 }
 
+/* A road held at a joint climbs out across it as the ground does, away from the tile it comes from, where the ground runs on across the joint without a fold
+ * and no road eases beyond, which would have to climb alike. */
+static std::optional<double> HeldGrade(const Joint &joint, const TileCoord &inner)
+{
+	TileCoord beyond = joint.Beyond(inner);
+	if (WaysOn(beyond.first, beyond.second).kind == WayKind::Road) return std::nullopt;
+	TileGround far(beyond.first, beyond.second);
+	TileGround own(inner.first, inner.second);
+	MapVector at = joint.Point();
+	MapVector out = joint.Across(inner.first, inner.second) * HALF_TILE;
+	double onward = far.Level(at.x + out.x, at.y + out.y) - far.Level(at.x, at.y);
+	double inward = own.Level(at.x, at.y) - own.Level(at.x - out.x, at.y - out.y);
+	if (std::abs(onward - inward) > GRADE_MATCH) return std::nullopt;
+	return onward / HALF_TILE;
+}
+
 /* A joint's eased place, level and climb, and the run's heading through it, the climb and the heading both toward the joint's higher tile;
  * how far along the run from the run's first end it lies, unless a loop closes there, and whether that grows toward its higher tile;
  * and which side of the run its curve leans away to there, along the growing distance. */
@@ -251,6 +270,8 @@ private:
 	bool Dock(const Joint &at, const TileCoord &tile, double place, double direction, std::vector<Node> &walked) const;
 	std::vector<double> ClimbSpans(const RunLine &line) const;
 	std::vector<double> EasedLevels(const std::vector<double> &spans) const;
+	std::vector<double> Climbs(const std::vector<double> &levels, const std::vector<double> &spans) const;
+	std::optional<double> HeldClimb(size_t index) const;
 	RunLine EasedLine() const;
 	std::vector<double> SlideLimits() const;
 	void Slide(std::vector<MapVector> &places, const std::vector<double> &limits) const;
@@ -398,6 +419,54 @@ std::vector<double> Run::EasedLevels(const std::vector<double> &spans) const
 		next = levels;
 	}
 	return levels;
+}
+
+/* A road held at an end climbs on as the ground beyond does, along the run. */
+std::optional<double> Run::HeldClimb(size_t index) const
+{
+	const Node &node = this->nodes[index];
+	bool front = index == 0;
+	const Joint &inner_joint = this->nodes[front ? 1 : index - 1].joint;
+	auto [low, high] = node.joint.Tiles();
+	TileCoord inner = inner_joint.Joins(low) ? low : high;
+	std::optional<double> grade = HeldGrade(node.joint, inner);
+	if (!grade.has_value()) return std::nullopt;
+	return front ? -*grade : *grade;
+}
+
+/* Each joint's climb along the run, toward its later joints. A road raised over a joint has its climb there steepened where the joint beside levels off,
+ * so the tiles either side round into and out of the grade as even curves instead of folding where the grade begins and ends. */
+std::vector<double> Run::Climbs(const std::vector<double> &levels, const std::vector<double> &spans) const
+{
+	size_t count = this->nodes.size();
+	auto chord = [&](size_t from) { return (levels[this->After(from)] - levels[from]) / spans[from]; };
+	std::vector<double> climbs(count, 0.0);
+	for (size_t index = 0; index < count; index++) {
+		const Node &node = this->nodes[index];
+		if (!node.held) {
+			climbs[index] = JointSlope(chord(this->Before(index)), chord(index));
+		} else if (this->kind == WayKind::Road && !node.deck && count > 1) {
+			climbs[index] = this->HeldClimb(index).value_or(chord(index == 0 ? index : this->Before(index)));
+		}
+	}
+	if (this->kind != WayKind::Road) return climbs;
+
+	auto bent = [&](size_t index) { return this->nodes[index].deck || this->nodes[index].pinned; };
+	std::vector<double> rounded = climbs;
+	for (size_t index = 0; index < count; index++) {
+		size_t before = this->Before(index);
+		size_t after = this->After(index);
+		const Node &node = this->nodes[index];
+		if (node.held || levels[index] - node.ground < RAISED_LIFT || bent(index) || bent(before) || bent(after)) continue;
+		double a = chord(before);
+		double b = chord(index);
+		if (a * b <= 0.0) continue;
+		double even = a + b - (climbs[before] + climbs[after]) * 0.5;
+		double steepest = MONOTONE_CLIMB_LIMIT * std::min(std::abs(a), std::abs(b));
+		double direction = a > 0.0 ? 1.0 : -1.0;
+		rounded[index] = direction * std::clamp(even * direction, 0.0, steepest);
+	}
+	return rounded;
 }
 
 double Run::Facing(size_t index) const
@@ -640,16 +709,15 @@ void Run::Ease(Store store)
 	std::vector<double> outers = this->Outers(line);
 	bool from_front = this->nodes.front().joint.Key() <= this->nodes.back().joint.Key();
 	double origin = from_front ? this->nodes.front().place : this->nodes.back().place;
-	auto climb = [&](size_t from) { return (levels[this->After(from)] - levels[from]) / spans[from]; };
+	std::vector<double> climbs = this->Climbs(levels, spans);
 	for (size_t index = 0; index < this->nodes.size(); index++) {
 		const Node &node = this->nodes[index];
 		if (node.held) {
 			store(node.joint, std::nullopt);
 			continue;
 		}
-		size_t before = this->Before(index);
 		double sign = this->Facing(index);
-		double slope = JointSlope(climb(before), climb(index)) * sign;
+		double slope = climbs[index] * sign;
 		std::optional<double> distance;
 		if (!this->loop.has_value() || index > 0) distance = std::abs(node.place - origin);
 		store(node.joint, JointEase{line.places[index], levels[index], slope, line.headings[index] * sign, distance, (sign > 0.0) == from_front, outers[index] * (from_front ? 1.0 : -1.0), this->HeadJog(index)});
@@ -701,8 +769,14 @@ WayCourse::WayCourse(int tx, int ty, const Piece &piece, bool road) :
 	this->start_level = first.level;
 	this->end_level = last.level;
 	double chord = (last.level - first.level) / this->Length();
-	this->start_slope = first.slope.value_or(chord);
-	this->end_slope = last.slope.value_or(chord);
+	/* A road held at one end only rounds there into the run eased at its other end. */
+	bool rounds = road && first.slope.has_value() != last.slope.has_value();
+	auto held = [&](const MapVector &point, double along) {
+		std::optional<double> grade = rounds ? HeldGrade(Joint::At(point), {tx, ty}) : std::nullopt;
+		return grade.has_value() ? *grade * along : chord;
+	};
+	this->start_slope = first.slope.has_value() ? *first.slope : held(this->from, -1.0);
+	this->end_slope = last.slope.has_value() ? *last.slope : held(this->to, 1.0);
 	this->climb_span = first.head_jog || last.head_jog ? this->line.EndSpeed() : this->Length();
 }
 
