@@ -1,0 +1,21 @@
+arctic wait 90
+arctic 01_wide 128 128 6 45 40
+arctic 02_town 84 63 90 60 25
+arctic 03_river 63 86 70 45 28
+arctic 04_coast 71 108 70 60 28
+arctic 05_forest 188 12 80 45 28
+arctic 06_rail 134 63 90 45 28
+tropic wait 90
+tropic 01_wide 128 128 6 45 40
+tropic 02_town 186 27 90 60 25
+tropic 03_river 183 134 70 45 28
+tropic 04_coast 198 55 70 60 28
+tropic 05_forest 196 188 80 45 28
+tropic 06_rail 131 27 90 45 28
+toyland wait 90
+toyland 01_wide 128 128 6 45 40
+toyland 02_town 41 235 90 60 25
+toyland 03_river 199 135 70 45 28
+toyland 04_coast 41 230 70 60 28
+toyland 05_forest 84 20 80 45 28
+toyland 06_rail 93 235 90 45 28

@@ -1,0 +1,367 @@
+{
+ "flat": {
+  "terrain.frag": [
+   [
+    "void main()\n{\n\tvec2 p = v_world.xy;",
+    "void main()\n{\n\tfrag_colour = vec4(0.3, 0.4, 0.2, 0.5);\n\treturn;\n\tvec2 p = v_world.xy;"
+   ]
+  ]
+ },
+ "nolit": {
+  "terrain.frag": [
+   [
+    "\tfrag_colour = Lit(shade);\n}",
+    "\tfrag_colour = vec4(Linear(shade.albedo), 0.5);\n}"
+   ]
+  ]
+ },
+ "nocascade": {
+  "terrain.frag": [
+   [
+    "float sunlit = mix(SunVisibility(position, shade.normal), 1.0, scattered);",
+    "float sunlit = mix(CloudLight(position), 1.0, scattered);"
+   ]
+  ]
+ },
+ "nocloud": {
+  "terrain.frag": [
+   [
+    "float sunlit = mix(SunVisibility(position, shade.normal), 1.0, scattered);",
+    "float sunlit = mix(CascadedLight(position, shade.normal), 1.0, scattered);"
+   ]
+  ]
+ },
+ "nosun": {
+  "terrain.frag": [
+   [
+    "float sunlit = mix(SunVisibility(position, shade.normal), 1.0, scattered);",
+    "float sunlit = 1.0;"
+   ]
+  ]
+ },
+ "noground": {
+  "terrain.frag": [
+   [
+    "\t\tshade = GroundShade(p, pixel, water, relief, detail, levels_per_pixel, normal);",
+    "\t\tshade = Shade(vec3(0.3, 0.4, 0.2), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);"
+   ]
+  ]
+ },
+ "nodetail": {
+  "terrain.frag": [
+   [
+    "\tDetail detail = DetailAt(RenderPoint(v_world), normal);",
+    "\tDetail detail = Detail(0.5, 0.5, 0.5, 0.0, vec3(0.0), vec3(0.0), vec3(0.0, 0.0, 1.0), RenderPoint(v_world));"
+   ]
+  ]
+ },
+ "noalbedo": {
+  "terrain.frag": [
+   [
+    "\t\tPatch patch = Eroded(distinct[k], site);",
+    "\t\tPatch patch = Patch(vec3(0.3, 0.4, 0.2), GRASS_RUGGED);"
+   ]
+  ]
+ },
+ "nobare": {
+  "terrain.frag": [
+   [
+    "\tBare bare = bared ? BareAt(p, relief, grain, rocky) : NO_BARE;",
+    "\tBare bare = NO_BARE;"
+   ]
+  ]
+ },
+ "noclimate": {
+  "terrain.frag": [
+   [
+    "\tClimate climate = SiteClimate(p, ragged, relief, corners, warp);",
+    "\tClimate climate = Climate(0.0, 0.5, 0.0);"
+   ]
+  ]
+ },
+ "nograin": {
+  "terrain.frag": [
+   [
+    "\tGrain grain = GrainAt(p, detail);\n\tSeams seams",
+    "\tGrain grain = Grain(0.5, 0.5, 0.5, detail.fine, detail.micro, detail.stones, detail.hollow);\n\tSeams seams"
+   ]
+  ]
+ },
+ "noseams": {
+  "terrain.frag": [
+   [
+    "\tSeams seams = SeamsAt(p);\n\tCanopy",
+    "\tSeams seams = Seams(vec2(0.0), vec2(0.0), BLEND_WIDTH, 0.0);\n\tCanopy"
+   ]
+  ]
+ },
+ "noforest": {
+  "terrain.frag": [
+   [
+    "\tCanopy forest = Forest(p);",
+    "\tCanopy forest = Canopy(vec4(0.0), 0.0);"
+   ]
+  ]
+ },
+ "nobands": {
+  "terrain.frag": [
+   [
+    "\tNetwork network = BandsAt(p, pixel);",
+    "\tNetwork network = Network(vec4(0.0), vec2(0.0));"
+   ]
+  ]
+ },
+ "nohedge": {
+  "terrain.frag": [
+   [
+    "Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p))",
+    "Composite(surface.tone, Airfield(p))"
+   ]
+  ]
+ },
+ "noairfield": {
+  "terrain.frag": [
+   [
+    "Composite(Composite(surface.tone, Hedgerow(p + seams.warp, grain)), Airfield(p))",
+    "Composite(surface.tone, Hedgerow(p + seams.warp, grain))"
+   ]
+  ]
+ },
+ "nowater": {
+  "terrain.frag": [
+   [
+    "\tWater water = WaterAt(p);",
+    "\tWater water = Water(0.0, 0.0, 0.0, vec3(0.0), 0.0, 0.0);"
+   ]
+  ]
+ },
+ "nolines": {
+  "terrain.frag": [
+   [
+    "\tland *= 1.0 - (1.0 - grid) * u_contour * CONTOUR_DEPTH * Contour(v_world.z, levels_per_pixel) * (1.0 - water.cover);\n",
+    ""
+   ],
+   [
+    "\tcolour *= 1.0 - grid * u_grid * GRID_DEPTH * GridLine(p, pixel) * (1.0 - water.cover);\n",
+    ""
+   ]
+  ]
+ },
+ "nosheen": {
+  "lighting.glsl": [
+   [
+    "\treturn sun * Highlight(normal, view, SunDirection(), coat) + Sheen(normal, view, coat, ambient) * occlusion;",
+    "\treturn sun * Highlight(normal, view, SunDirection(), coat) + ambient * 0.04 * occlusion;"
+   ]
+  ]
+ },
+ "s_flat": {
+  "structure.frag": [
+   [
+    "\tDropUnseen(v_position, material, v_pattern);\n",
+    "\tDropUnseen(v_position, material, v_pattern);\n\tfrag_colour = vec4(v_colour.rgb, 0.5);\n\treturn;\n"
+   ]
+  ]
+ },
+ "s_nofacade": {
+  "structure.frag": [
+   [
+    "\tif (!facade) return clad;\n",
+    "\treturn clad;\n"
+   ]
+  ]
+ },
+ "s_noclad": {
+  "structure.frag": [
+   [
+    "\tClad clad = facade ? FacadeWall(material, v_pattern, v_colour.rgb) : CladOf(material, v_pattern, v_colour.rgb);\n\tclad.albedo = Walled(material, v_pattern, clad.albedo, 1.0 - abs(frame[2].z));\n\tif (!facade) return clad;\n",
+    "\tClad clad = Matte(v_colour.rgb, 0.8);\n\tif (!facade) return clad;\n"
+   ]
+  ]
+ },
+ "s_nowalled": {
+  "structure.frag": [
+   [
+    "\tclad.albedo = Walled(material, v_pattern, clad.albedo, 1.0 - abs(frame[2].z));\n",
+    ""
+   ]
+  ]
+ },
+ "s_noglass": {
+  "structure.frag": [
+   [
+    "\tif (clad.glass > 0.0) {",
+    "\tif (false) {"
+   ]
+  ]
+ },
+ "s_nosun": {
+  "structure.frag": [
+   [
+    "\tfloat sunlit = SunVisibility(v_position, normal) * clad.sunlit;",
+    "\tfloat sunlit = clad.sunlit;"
+   ]
+  ]
+ },
+ "s_nolit": {
+  "structure.frag": [
+   [
+    "\tfrag_colour = lit + vec4(albedo * clad.glow, 0.0);",
+    "\tfrag_colour = vec4(albedo + clad.glass * 0.01 + clad.facing * 0.01, 0.5);"
+   ]
+  ]
+ },
+ "nosnapshot": {
+  "src/mini/world/world_painter.cpp": [
+   [
+    "\tthis->target.Snapshot();\n",
+    ""
+   ]
+  ]
+ },
+ "f_pertree": {
+  "tree.vert": [
+   [
+    "\tfloat thicket = mix(TREE_THICKET_SCALES[0], TREE_THICKET_SCALES[1], Noise(i_place.xy * THICKET_FREQUENCY));",
+    "\tfloat thicket = TREE_THICKET_SCALES[1];"
+   ],
+   [
+    "\tv_hue = HueOf(seat);\n\tv_crown_sunlit = SunReaches(base + Grown(growth, vec3(0.0, 0.0, TREE_MODEL_TALLEST)));\n\tReadGround();",
+    "\tv_hue = 0.5;\n\tv_crown_sunlit = 1.0;\n\tv_openness = a_colour.a;\n\tv_snow = 0.0;"
+   ]
+  ]
+ },
+ "f_flat": {
+  "tree.frag": [
+   [
+    "\tif (!InWindow(v_window, ScreenNoise(gl_FragCoord.xy))) discard;\n",
+    "\tif (!InWindow(v_window, ScreenNoise(gl_FragCoord.xy))) discard;\n\tfrag_colour = vec4(v_colour, 0.5);\n\treturn;\n"
+   ]
+  ]
+ },
+ "t5off": {
+  "src/mini/world/forest_field.cpp": [
+   [
+    "BoxWithin(frustum, low, high), near_pixels",
+    "true, near_pixels"
+   ]
+  ]
+ },
+ "t1off": {
+  "src/mini/world/structure_pass.cpp": [
+   [
+    "\tthis->UseDepth();\n\tthis->DrawSolidParts();\n}",
+    "}"
+   ],
+   [
+    "\tLaidDepthScope laid;\n",
+    ""
+   ]
+  ]
+ },
+ "opt_floor": {
+  "terrain.frag": "drafts/terrain.frag"
+ },
+ "f_prepass": {
+  "src/mini/world/forest_pass.cpp": "drafts/forest_pass.cpp",
+  "src/mini/world/forest_pass.h": "drafts/forest_pass.h",
+  "tree.frag": "drafts/tree.frag",
+  "tree.vert": "drafts/tree.vert",
+  "src/mini/gpu/instanced_meshes.h": "drafts/instanced_meshes.h",
+  "media/mini_ui/CMakeLists.txt": [
+   [
+    "        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.frag\n",
+    "        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/leaves.glsl\n        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree.frag\n        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tree_depth.frag\n"
+   ]
+  ]
+ },
+ "opt_drowned": {
+  "terrain.frag": "drafts/terrain_drowned.frag"
+ },
+ "x_noedge": {
+  "terrain.frag": [
+   [
+    "\t\tshade = Shade(Greyed(EdgeFace(normal, face_pixels, EdgeTurf(detail, levels_per_pixel))), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);",
+    "\t\tshade = Shade(vec3(0.3), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);"
+   ]
+  ]
+ },
+ "x_nooffshore": {
+  "terrain.frag": [
+   [
+    "\t\tshade = Shade(Greyed(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), GrainAt(p, detail), 1.0)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);",
+    "\t\tshade = Shade(vec3(0.3), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);"
+   ]
+  ]
+ },
+ "x_nowall": {
+  "terrain.frag": [
+   [
+    "\t\tshade = Shade(Greyed(WallFace(normal)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);",
+    "\t\tshade = Shade(vec3(0.3), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);"
+   ]
+  ]
+ },
+ "x_land": {
+  "terrain.frag": "work/terrain_land.frag"
+ },
+ "x_grass": {
+  "terrain.frag": "work/terrain.frag"
+ },
+ "v_offshore": {
+  "terrain.frag": [
+   [
+    "\t\tshade = Shade(Greyed(Seabed(Water(1.0, 1.0, OffshoreDepth(p), vec3(1.0, 0.0, 0.0), 1.0, 0.0), grain, 1.0)), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);",
+    "\t\tshade = Shade(vec3(0.3), normal, TERRAIN_ROUGHNESS, 1.0, 0.0);"
+   ]
+  ]
+ },
+ "v_beach": {
+  "terrain.frag": [
+   [
+    "\t\tvec3 beach = water.sea > SANDED_SEA ? Shore(site).tone : vec3(0.0);",
+    "\t\tvec3 beach = vec3(0.3);"
+   ]
+  ]
+ },
+ "f_pervert": {
+  "tree.vert": [
+   [
+    "\tv_hue = HueOf(seat);\n\tv_crown_sunlit = SunReaches(base + Grown(growth, vec3(0.0, 0.0, TREE_MODEL_TALLEST)));\n\tReadGround();",
+    "\tv_hue = 0.5;\n\tv_crown_sunlit = 1.0;\n\tv_openness = a_colour.a;\n\tv_snow = 0.0;"
+   ]
+  ]
+ },
+ "f_crownsun": {
+  "tree.vert": [
+   [
+    "\tv_crown_sunlit = SunReaches(base + Grown(growth, vec3(0.0, 0.0, TREE_MODEL_TALLEST)));",
+    "\tv_crown_sunlit = 1.0;"
+   ]
+  ]
+ },
+ "t_unroll": {
+  "terrain.frag": [
+   [
+    "uniform float u_contour;\n",
+    "#pragma optionNV(unroll all)\nuniform float u_contour;\n"
+   ]
+  ]
+ },
+ "t_nounroll": {
+  "terrain.frag": [
+   [
+    "uniform float u_contour;\n",
+    "#pragma optionNV(unroll none)\nuniform float u_contour;\n"
+   ]
+  ]
+ },
+ "t_ifcvt": {
+  "terrain.frag": [
+   [
+    "uniform float u_contour;\n",
+    "#pragma optionNV(ifcvt none)\nuniform float u_contour;\n"
+   ]
+  ]
+ }
+}

@@ -1,0 +1,2 @@
+wait 7200
+hitch_downtown 117 53 90 60 22

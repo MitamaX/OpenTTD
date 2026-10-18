@@ -1,0 +1,20 @@
+temperate wait 90
+temperate k1_conifer 193 27 160 45 22
+temperate k2_conifer_back 193 27 160 225 18
+temperate k3_broadleaf 198 31 160 45 22
+temperate 11_close_forest 193 27 80 45 28
+temperate 13_close_mountain 61 90 100 135 25
+temperate 18_pv_bridgehead 161 74 160 120 25
+temperate 19_pv_rockface 61 90 160 135 20
+temperate wait 120
+temperate p11_forest 193 27 80 45 28
+arctic wait 90
+arctic k4_arctic 188 12 160 45 22
+arctic 05_forest 188 12 80 45 28
+arctic wait 120
+arctic p05_forest 188 12 80 45 28
+tropic wait 90
+tropic k5_tropic 196 188 160 45 22
+tropic 05_forest 196 188 80 45 28
+toyland wait 90
+toyland 05_forest 84 20 80 45 28

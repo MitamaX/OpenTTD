@@ -1,0 +1,21 @@
+wait 90
+09_close_riverbend 162 73 60 45 32
+18_pv_bridgehead 161 74 160 120 25
+sc37_hills_rail 160 66 130 45 28
+b09_riverbend_bank 161 70 160 45 32
+b19_waterRoad_y135 168 62 200 135 35
+b39_riverbendRoad_y045 170.5 59.5 220 45 35
+b40_riverbendRoad_y225 170.5 59.5 220 225 35
+w04_rwater_171_56 171.5 56.5 200 45 32
+u22_head_close 160.8 72.2 700 120 25
+b14_yellowLong_y315 152.5 62.5 120 315 30
+b15_yellowPier_y135 156.5 62.5 220 135 25
+b16_yellowRail_y225 158.5 62.5 240 225 35
+b03_rbridge_115_89 116 89.5 200 45 32
+b07_railbridge_162_72 163 72.5 200 45 32
+e01_rend_103_23 103.5 23.5 220 45 32
+10_close_coast 132 44 70 60 28
+08_close_rapids 135 192 80 45 28
+sc31_rapids2_side 158 196 130 90 22
+sc32_mouth_a 127.5 50.5 130 60 28
+03_mid_town 183 50 22 100 26

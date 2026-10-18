@@ -1,0 +1,6 @@
+wait 90
+toy_bank 44 232 200 60 28
+toy_bank_back 44 232 200 240 28
+toy_bank_low 44 233 110 60 15
+toy_town 41 235 90 60 25
+toy_coast 41 230 70 60 28

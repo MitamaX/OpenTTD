@@ -1,0 +1,11 @@
+wait 90
+g02_downtown 117 53 90 60 22
+g03_glass_low 117 53 160 30 20
+g04_glass_side 117 53 160 300 20
+g05_glass_high 117 53 160 300 60
+g06_office_low 121 53 160 60 20
+g07_pv_street 117 53 160 150 20
+g08_buses 137.0 196.2 160 150 22
+g01_pv_facade 117 53 160 60 20
+wait 8
+g01_still 117 53 160 60 20

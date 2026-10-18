@@ -1,0 +1,62 @@
+wait 90
+sc01_throat_a 201 88.5 150 160 28
+wait 40
+sc02_throat_b 201 88.5 150 160 28
+sc03_throat_c 201 88.5 150 160 28
+sc04_throat_d 201 88.5 150 160 28
+sc05_throat_e 201 88.5 150 160 28
+wait 90
+sc06_curve_a 137 199 120 45 28
+wait 40
+sc07_curve_b 137 199 120 45 28
+sc08_curve_c 137 199 120 45 28
+wait 90
+sc09_tunnelA_a 165 177.5 130 45 25
+wait 40
+sc10_tunnelA_b 165 177.5 130 45 25
+sc11_tunnelA_c 165 177.5 130 45 25
+sc12_tunnelA_d 165 177.5 130 45 25
+sc13_tunnelA_e 165 177.5 130 45 25
+sc14_tunnelA_f 165 177.5 130 45 25
+sc15_tunnelA_g 165 177.5 130 45 25
+sc16_tunnelA_h 165 177.5 130 45 25
+wait 90
+sc17_tunnelB_a 131.5 199.5 110 45 25
+wait 40
+sc18_tunnelB_b 131.5 199.5 110 45 25
+sc19_tunnelB_c 131.5 199.5 110 45 25
+sc20_tunnelB_d 131.5 199.5 110 45 25
+sc21_tunnelB_e 131.5 199.5 110 45 25
+sc22_tunnelB_f 131.5 199.5 110 45 25
+wait 90
+sc23_roadtunnel_a 135 190 140 45 28
+wait 40
+sc24_roadtunnel_b 135 190 140 45 28
+sc25_roadtunnel_c 135 190 140 135 28
+wait 90
+sc26_rapids1_front 137.9 192 130 45 28
+sc27_rapids1_back 137.9 192 130 225 28
+sc28_rapids1_side 137.9 192 130 135 22
+sc29_rapids2_front 158 196 130 45 28
+sc30_rapids2_back 158 196 130 225 28
+sc31_rapids2_side 158 196 130 90 22
+sc32_mouth_a 127.5 50.5 130 60 28
+sc33_mouth_b 127.5 50.5 130 240 25
+wait 90
+sc34_bridge_a 199 204.5 70 45 30
+wait 40
+sc35_bridge_a2 199 204.5 70 45 30
+wait 90
+sc36_bridge_b 206.5 195 60 135 30
+wait 90
+sc37_hills_rail 160 66 130 45 28
+wait 40
+sc38_hills_rail2 160 66 130 45 28
+sc39_hills_rail3 160 66 130 45 28
+sc40_hills_rail4 160 66 130 45 28
+wait 90
+sc41_throat_close 201 88.5 300 160 28
+wait 90
+sc42_throat_plan 200.5 88 160 160 55
+wait 90
+sc43_station_masts 204 87.5 160 120 30

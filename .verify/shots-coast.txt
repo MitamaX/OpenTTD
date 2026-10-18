@@ -1,0 +1,10 @@
+wait 90
+coast_house 130 51 220 60 28
+coast_house_back 130 51 220 240 28
+coast_close 132 44 70 60 28
+coast_mouth 127.5 50.5 130 60 28
+coast_bridgehead 127.5 50.5 130 240 25
+coast_natural 205 202.5 160 45 30
+coast_shallows 199 204.5 70 45 30
+coast_harbor 204 204 30 45 35
+coast_downtown 117 53 90 60 22

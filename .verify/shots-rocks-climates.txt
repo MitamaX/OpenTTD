@@ -1,0 +1,13 @@
+arctic wait 90
+arctic rock_steep 200 232 100 45 25
+arctic rock_field 108 108 100 45 28
+arctic rock_snow 188 12 90 45 28
+arctic 06_rail 134 63 90 45 28
+tropic wait 90
+tropic rock_field 182 234 100 45 28
+tropic rock_patch 136 31 160 45 22
+tropic 06_rail 131 27 90 45 28
+toyland wait 90
+toyland rock_field 210 200 100 45 28
+toyland rock_steep 36 8 100 135 25
+toyland y01_town_low_a 41 235 160 60 20

@@ -1,0 +1,2 @@
+wait 7200
+hitch_downtown 115 166 90 60 22

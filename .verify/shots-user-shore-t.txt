@@ -1,0 +1,27 @@
+wait 90
+01_wide 128 128 6 45 40
+02_horizon 90 60 12 160 20
+03_mid_town 183 50 22 100 26
+04_mid_harbor 204 204 30 45 35
+05_close_downtown 117 53 90 60 22
+06_close_suburb 74 40 120 120 25
+07_close_station 204 88 90 160 28
+08_close_rapids 135 192 80 45 28
+09_close_riverbend 162 73 60 45 32
+10_close_coast 132 44 70 60 28
+11_close_forest 193 27 80 45 28
+12_close_farm 26 79 80 45 30
+13_close_mountain 61 90 100 135 25
+14_close_tunnel 165.5 177.5 140 45 25
+15_close_bridges 158 195 70 45 28
+16_pv_street 117 53 160 150 20
+17_pv_facade 117 53 160 60 20
+18_pv_bridgehead 161 74 160 120 25
+19_pv_rockface 61 90 160 135 20
+sc37_hills_rail 160 66 130 45 28
+b09_riverbend_bank 161 70 160 45 32
+b40_riverbendRoad_y225 170.5 59.5 220 225 35
+u22_head_close 160.8 72.2 700 120 25
+b39_riverbendRoad_y045 170.5 59.5 220 45 35
+b19_waterRoad_y135 168 62 200 135 35
+w04_rwater_171_56 171.5 56.5 200 45 32

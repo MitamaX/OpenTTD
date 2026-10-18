@@ -1,0 +1,32 @@
+temperate wait 90
+temperate t01_glass_low_a 117 53 160 300 20
+temperate t02_glass_low_b 117 53 160 30 20
+temperate t03_glass_high 117 53 160 300 60
+temperate t04_glass_high_b 117 53 160 30 60
+temperate t05_office_low 121 53 160 60 20
+temperate t06_office_high 121 53 160 60 55
+temperate t07_office_back 121 53 160 240 20
+temperate t08_brick_apartment_low 121 49 160 220 20
+temperate t09_brick_apartment_high 121 49 160 220 55
+temperate t10_brick_apartment_side 121 49 160 130 20
+temperate t11_terrace_low 127 54 160 60 20
+temperate t12_terrace_high 127 54 160 60 55
+temperate t13_terrace_side 127 54 160 150 20
+temperate t14_street_low 117 57 160 150 20
+temperate t15_street_high 117 57 160 150 60
+temperate t16_plaza_low 113 53 160 60 20
+temperate t17_plaza_high 113 53 160 60 60
+arctic wait 90
+arctic a01_town_low_a 84 63 160 60 20
+arctic a02_town_low_b 84 63 160 200 20
+arctic a03_town_high 84 63 160 60 55
+arctic a04_town_side 84 61 160 130 20
+tropic wait 90
+tropic r01_town_low_a 186 27 160 60 20
+tropic r02_town_low_b 186 27 160 200 20
+tropic r03_town_high 186 27 160 60 55
+tropic r04_town_side 186 29 160 130 20
+toyland wait 90
+toyland y01_town_low_a 41 235 160 60 20
+toyland y02_town_low_b 41 235 160 200 20
+toyland y03_town_high 41 235 160 60 55

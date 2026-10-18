@@ -1,0 +1,24 @@
+wait 90
+s00_town_n 117 53 90 0 22
+s01_town_e 117 53 90 90 22
+s02_town_s 117 53 90 180 22
+s03_town_w 117 53 90 270 22
+s04_town_into 117 53 90 290 22
+s05_town_behind 117 53 90 110 22
+s06_hill_n 137.9 192 130 0 28
+s07_hill_e 137.9 192 130 90 28
+s08_hill_s 137.9 192 130 180 28
+s09_hill_w 137.9 192 130 270 28
+s10_rock_n 61 90 100 0 25
+s11_rock_behind 61 90 100 110 25
+glide 240 61 90 100 470 25
+s11b_rock_behind_turned 61 90 100 470 25
+s12_horizon_into 90 60 12 290 20
+s13_horizon_behind 90 60 12 110 20
+s14_harbor_into 204 204 30 290 28
+s15_top_n 117 53 90 0 89
+s16_top_e 117 53 90 90 89
+s17_turn_a 117 53 120 0 30
+s18_turn_b 117 53 120 0.5 30
+s19_turn_c 117 53 120 1 30
+s20_turn_d 117 53 120 1.5 30

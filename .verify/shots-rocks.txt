@@ -1,0 +1,14 @@
+wait 90
+rock_face 61 90 160 135 20
+rock_mountain 61 90 100 135 25
+rock_graze 61 90 160 250 20
+rock_close 65 99 160 135 22
+rock_field 142 162 90 45 30
+rock_steep 146 166 120 135 25
+rock_bare 135.8 185.2 160 45 28
+rock_rapids 137.9 192 130 135 22
+rock_mid 61 90 30 135 30
+rock_far 61 90 16 135 35
+rock_shade 61 104 100 315 25
+rock_ridge 61 98 100 225 25
+rock_side 61 90 160 20 20
