@@ -813,6 +813,16 @@ static bool Walled(int tx, int ty, DiagDirection side, BankOnSide bank_on)
 	return StepFaceOf(tx, ty, side).has_value() && !bank_on(tx, ty, side).has_value();
 }
 
+/* The level of a step's top, or of its foot, where a point lies along it, held to the step's ends. */
+static double StepLevelAlong(const StepFace &step, const WorldPoint &at, bool foot = false)
+{
+	const WorldPoint &first = step.ring[STEP_ENDS[0][foot]];
+	const WorldPoint &last = step.ring[STEP_ENDS[1][foot]];
+	MapVector line = Flat(last) - Flat(first);
+	double along = std::clamp(Dot(Flat(at) - Flat(first), line) / Dot(line, line), 0.0, 1.0);
+	return std::lerp(first.level, last.level, along);
+}
+
 static std::optional<double> StepTopAt(const StepFace &step, const WorldPoint &corner)
 {
 	for (const std::array<size_t, 2> &end : STEP_ENDS) {
@@ -1328,11 +1338,11 @@ public:
 		int sy = this->ty + beside.y;
 		if (this->BesideParallelRamp(sx, sy)) return {Flank::Merged, 0.0};
 		if (Walled(this->tx, this->ty, this->SideToward(side), BankOn)) return {Flank::Shelf, 0.0, StepFaceOf(this->tx, this->ty, this->SideToward(side))};
-		if (StopsEarth(sx, sy) || StopsEarth(sx + static_cast<int>(this->facing.x), sy + static_cast<int>(this->facing.y))) return {Flank::Wall, 0.0};
+		if (StopsEarth(sx, sy) || StopsEarth(sx + static_cast<int>(this->facing.x), sy + static_cast<int>(this->facing.y))) return this->WallPlan(sx, sy, side);
 		std::optional<EarthBank> bank = EarthBankOf(this->tx, this->ty, sx, sy);
-		if (!bank.has_value()) return {Flank::Wall, 0.0};
+		if (!bank.has_value()) return this->WallPlan(sx, sy, side);
 		double reach = std::min(RAMP_BANK_RUN, HALF_TILE - DECK_HALF + bank->run);
-		return bank->HoldsFall(this->HeadFall(side), reach) ? FlankPlan{Flank::Bank, reach} : FlankPlan{Flank::Wall, 0.0};
+		return bank->HoldsFall(this->HeadFall(side), reach) ? FlankPlan{Flank::Bank, reach} : this->WallPlan(sx, sy, side);
 	}
 
 	BankEdge EdgeAt(int row, double side, double run_limit) const
@@ -1383,11 +1393,7 @@ public:
 	WorldPoint ShelfFoot(const StepFace &step, double share, double side) const
 	{
 		WorldPoint edge = this->ShelfEdge(share, side);
-		const WorldPoint &first = step.ring[STEP_ENDS[0][0]];
-		const WorldPoint &last = step.ring[STEP_ENDS[1][0]];
-		MapVector top = Flat(last) - Flat(first);
-		double along = std::clamp(Dot(Flat(edge) - Flat(first), top) / Dot(top, top), 0.0, 1.0);
-		edge.level = std::min(edge.level, std::lerp(first.level, last.level, along));
+		edge.level = std::min(edge.level, StepLevelAlong(step, edge));
 		return edge;
 	}
 
@@ -1398,6 +1404,15 @@ public:
 		if (plan.kind == Flank::Shelf || plan.kind == Flank::Merged) return this->BandEdge(plan.kind, 1.0, side);
 		if (plan.kind == Flank::Bank) return this->EdgeAt(RAMP_BANK_ROWS, side, plan.run).points.back();
 		return this->Crest(1.0, side);
+	}
+
+	/* The foot of stone closing the head's earth at one end: the ground, or the top of the head's own wall down from that end. */
+	WorldPoint EndFoot(const WorldPoint &at, const MapVector &toward) const
+	{
+		WorldPoint foot = Grounded(this->land, at);
+		std::optional<StepFace> wall = StepFaceOf(this->tx, this->ty, this->SideFacing(toward));
+		if (wall.has_value()) foot.level = std::max(foot.level, StepLevelAlong(*wall, at));
+		return foot;
 	}
 
 	FormationSide OuterSide(double side) const
@@ -1418,16 +1433,33 @@ public:
 	}
 
 private:
+	/* A wing wall flank, carrying the wall the tile beside raises at their shared side, if it stands bare. */
+	FlankPlan WallPlan(int sx, int sy, double side) const
+	{
+		DiagDirection back = ReverseDiagDir(this->SideToward(side));
+		if (!OnMap(sx, sy) || !Walled(sx, sy, back, BankOn)) return {Flank::Wall, 0.0};
+		return {Flank::Wall, 0.0, StepFaceOf(sx, sy, back)};
+	}
+
+	static TileStep StepToward(const MapVector &toward)
+	{
+		return {static_cast<int>(std::lround(toward.x)), static_cast<int>(std::lround(toward.y))};
+	}
+
+	DiagDirection SideFacing(const MapVector &toward) const
+	{
+		TileStep beside = StepToward(toward);
+		return DiagdirBetweenTiles(TileXY(this->tx, this->ty), TileXY(this->tx + beside.x, this->ty + beside.y));
+	}
+
 	TileStep SideStep(double side) const
 	{
-		MapVector right = this->SideOutward(side);
-		return {static_cast<int>(std::lround(right.x)), static_cast<int>(std::lround(right.y))};
+		return StepToward(this->SideOutward(side));
 	}
 
 	DiagDirection SideToward(double side) const
 	{
-		TileStep beside = this->SideStep(side);
-		return DiagdirBetweenTiles(TileXY(this->tx, this->ty), TileXY(this->tx + beside.x, this->ty + beside.y));
+		return this->SideFacing(this->SideOutward(side));
 	}
 
 	double HeadFall(double side) const
@@ -1544,6 +1576,47 @@ private:
 		if (rows[0][1].at.level - toe.level > LEAST_STEP) AddStoneTriangle(this->mesh, {rows[0][1].at, rows[0][0].at, toe}, Upright(this->shape.Facing() * -1.0));
 	}
 
+	/* Earth filled between a wing wall and the bare wall of the tile beside, up to the lower of their tops, so no narrow trench stands open between them. */
+	void LayInfill(const StepFace &step, double side) const
+	{
+		const Landform &land = this->shape.Land();
+		std::vector<StripRow> rows;
+		std::vector<bool> stands;
+		for (int row = 0; row <= RAMP_BANK_ROWS; row++) {
+			double share = RampShape::ShareOfRow(row);
+			StripVertex crest = this->shape.CrestVertex(share, side);
+			WorldPoint edge = this->shape.ShelfEdge(share, side);
+			double top = StepLevelAlong(step, edge);
+			Vec3 normal = crest.at.level <= top ? crest.normal : UP;
+			double level = std::min(crest.at.level, top);
+			double crest_ground = land.LevelAt(crest.at.x, crest.at.y);
+			double edge_ground = StepLevelAlong(step, edge, true);
+			auto filled = [&](const WorldPoint &at, double ground) { return StripVertex{{at.x, at.y, std::max(level, ground)}, normal, FILL_MARK}; };
+			rows.push_back({filled(crest.at, crest_ground), filled(edge, edge_ground)});
+			stands.push_back(level - std::min(crest_ground, edge_ground) > LEAST_STEP);
+		}
+		for (size_t first = 0; first < rows.size();) {
+			if (!stands[first]) {
+				first++;
+				continue;
+			}
+			size_t from = first > 0 ? first - 1 : first;
+			size_t last = first;
+			while (last + 1 < rows.size() && stands[last]) last++;
+			AddStrip(this->mesh, std::span(rows).subspan(from, last - from + 1));
+			if (first == 0) this->CloseInfill(rows.front(), this->shape.Facing() * -1.0);
+			if (stands[last]) this->CloseInfill(rows.back(), this->shape.Facing());
+			first = last + 1;
+		}
+	}
+
+	void CloseInfill(const StripRow &row, const MapVector &facing) const
+	{
+		std::array<WorldPoint, 2> end = {row[0].at, row[1].at};
+		std::array<WorldPoint, 2> feet = {this->shape.EndFoot(end[0], facing), this->shape.EndFoot(end[1], facing)};
+		if (std::max(end[0].level - feet[0].level, end[1].level - feet[1].level) > LEAST_STEP) AddMasonry(this->mesh, end, feet, facing);
+	}
+
 	void LayFlank(double side) const
 	{
 		RampShape::FlankPlan plan = this->shape.PlanOf(side);
@@ -1560,6 +1633,7 @@ private:
 			std::vector<WorldPoint> line;
 			for (int row = RAMP_BANK_ROWS; row >= 0; row--) line.push_back(this->shape.Crest(RampShape::ShareOfRow(row), side));
 			AddWingWall(this->mesh, this->shape.Land(), line, right, this->shape.Facing() * -1.0, true, DECK_WING_THICKNESS);
+			if (plan.step.has_value()) this->LayInfill(*plan.step, side);
 			return;
 		}
 		std::vector<BankEdge> edges;
