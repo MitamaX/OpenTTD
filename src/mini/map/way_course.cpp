@@ -49,6 +49,9 @@ static constexpr double FOLD_CLEARANCE = 0.1;
 static constexpr double FOLD_CURVATURE = 1.0 / (BALLAST_HALF + FOLD_CLEARANCE);
 static constexpr double FOLD_RELIEF = 0.5;
 static constexpr int FOLD_ROUNDS = 6;
+/* Where a run jogs a tile aside right at a joint holding its heading, it bends into that heading over this many joints, the nearest of them sliding to meet it. */
+static constexpr int JOG_REACH = 2;
+static constexpr int APPROACH_REFINES = 24;
 /* A run is traced no further than this many joints either way from where it is first asked for. */
 static constexpr int LONGEST_WALK = 1024;
 static constexpr double RAISED_LIFT = 0.02;
@@ -225,8 +228,21 @@ private:
 		MapVector onward{};
 		bool pinned = false;
 		bool deck = false;
+		/* A held joint where the way runs on into a piece that does not ease, such as a tunnel portal's, a junction's or a station's. */
+		bool runs_on = false;
 
 		bool Fixed() const { return this->held || this->pinned; }
+	};
+
+	struct Approach {
+		MapVector at;
+		MapVector heading;
+	};
+
+	/* A held joint out of a jog, and whether it lies after the joint it was sought from. */
+	struct Jog {
+		size_t held;
+		bool ahead;
 	};
 
 	std::optional<double> Walk(Joint at, TileCoord tile, double direction, std::vector<Node> &nodes) const;
@@ -236,6 +252,10 @@ private:
 	std::vector<double> SlideLimits() const;
 	void Slide(std::vector<MapVector> &places, const std::vector<double> &limits) const;
 	std::vector<MapVector> ChordHeadings(const std::vector<MapVector> &places) const;
+	MapVector Leaning(size_t index, const std::vector<MapVector> &places, bool approaching) const;
+	bool Jogs(size_t held, bool forward) const;
+	std::optional<Jog> HeldJog(size_t index, int reach) const;
+	std::optional<Approach> HeldApproach(size_t index, const std::vector<MapVector> &places, int reach, bool approaching) const;
 	RunLine SlidLine(const std::vector<double> &limits) const;
 	std::vector<size_t> Folded(const RunLine &line) const;
 	std::vector<double> Outers(const RunLine &line) const;
@@ -267,6 +287,7 @@ std::optional<double> Run::Walk(Joint at, TileCoord tile, double direction, std:
 		if (next == start) return std::abs(place);
 		if (!Eases(next)) {
 			walked.push_back({next, place, GroundAt(tile, next), true, OnwardAcross(next, tile, piece->From(at)) * direction});
+			walked.back().runs_on = StraightestAt(next.Beyond(tile), next, piece->From(at)).has_value();
 			return std::nullopt;
 		}
 		auto [low, high] = next.Tiles();
@@ -404,7 +425,8 @@ void Run::Slide(std::vector<MapVector> &places, const std::vector<double> &limit
 			const Node &node = this->nodes[index];
 			if (node.Fixed()) continue;
 			const MapVector &before = places[this->Before(index)];
-			MapVector line = before + (places[this->After(index)] - before) * this->Share(index);
+			std::optional<Approach> approach = this->HeldApproach(index, places, 1, true);
+			MapVector line = approach.has_value() ? approach->at : before + (places[this->After(index)] - before) * this->Share(index);
 			double toward = Dot(line - node.joint.Point(), node.joint.Side());
 			next[index] = std::clamp(slides[index] + (toward - slides[index]) * SLIDE_PULL, -limits[index], limits[index]);
 		}
@@ -414,12 +436,86 @@ void Run::Slide(std::vector<MapVector> &places, const std::vector<double> &limit
 	}
 }
 
+/* Which way the run heads through a joint: on as a holding joint does, as the run bends into a jog it holds, or else along the chord between its neighbours. */
+MapVector Run::Leaning(size_t index, const std::vector<MapVector> &places, bool approaching) const
+{
+	if (this->nodes[index].Fixed()) return this->SquareAcross(index);
+	if (approaching) {
+		std::optional<Approach> approach = this->HeldApproach(index, places, JOG_REACH, false);
+		if (approach.has_value()) return approach->heading;
+	}
+	return Unit(places[this->After(index)] - places[this->Before(index)]);
+}
+
+/* Whether the game's pieces turn one way at a held joint and back the other way at the next joint along that turns, stepping the way a tile aside. */
+bool Run::Jogs(size_t held, bool forward) const
+{
+	MapVector heading = this->SquareAcross(held) * (forward ? 1.0 : -1.0);
+	size_t at = held;
+	double first = 0.0;
+	for (int joint = 0; joint <= JOG_REACH; joint++) {
+		size_t next = forward ? this->After(at) : this->Before(at);
+		MapVector along = this->nodes[next].joint.Point() - this->nodes[at].joint.Point();
+		double turn = heading.x * along.y - heading.y * along.x;
+		if (joint == 0) {
+			first = turn;
+		} else if (turn != 0.0) {
+			return first * turn < 0.0;
+		}
+		if (this->nodes[next].Fixed()) return false;
+		heading = along;
+		at = next;
+	}
+	return false;
+}
+
+/* The joint within reach along the run, past none that holds, where a held way beyond runs on out of a jog. */
+std::optional<Run::Jog> Run::HeldJog(size_t index, int reach) const
+{
+	for (int steps = 1; steps <= reach; steps++) {
+		for (bool forward : {false, true}) {
+			size_t at = index;
+			bool clear = true;
+			for (int step = 0; step < steps; step++) {
+				if (step > 0) clear = clear && !this->nodes[at].Fixed();
+				at = forward ? this->After(at) : this->Before(at);
+			}
+			if (clear && this->nodes[at].runs_on && this->Jogs(at, !forward)) return Jog{at, forward};
+		}
+	}
+	return std::nullopt;
+}
+
+/* Near a jog held at one end, the run bends from its heading at the joint's other neighbour straight into the held heading,
+ * so the joint lies where that bend crosses its tile side and heads as the bend does there. */
+std::optional<Run::Approach> Run::HeldApproach(size_t index, const std::vector<MapVector> &places, int reach, bool approaching) const
+{
+	if (this->nodes[index].Fixed()) return std::nullopt;
+	std::optional<Jog> jog = this->HeldJog(index, reach);
+	if (!jog.has_value()) return std::nullopt;
+	size_t before = jog->ahead ? this->Before(index) : jog->held;
+	size_t after = jog->ahead ? jog->held : this->After(index);
+
+	Bend bend(places[before], places[after], this->Leaning(before, places, approaching), this->Leaning(after, places, approaching));
+	const Joint &joint = this->nodes[index].joint;
+	auto past = [&](double share) { return Dot(bend.Centre(share) - joint.Point(), joint.Upward()) < 0.0; };
+	bool start = past(0.0);
+	if (start == past(1.0)) return std::nullopt;
+	double low = 0.0, high = 1.0;
+	for (int refine = 0; refine < APPROACH_REFINES; refine++) {
+		double middle = (low + high) * 0.5;
+		(past(middle) == start ? low : high) = middle;
+	}
+	double share = (low + high) * 0.5;
+	return Approach{bend.Centre(share), bend.Along(share)};
+}
+
 std::vector<MapVector> Run::ChordHeadings(const std::vector<MapVector> &places) const
 {
 	std::vector<MapVector> headings(this->nodes.size());
 	for (size_t index = 0; index < this->nodes.size(); index++) {
 		MapVector square = this->SquareAcross(index);
-		headings[index] = this->nodes[index].Fixed() ? square : Crossing(Unit(places[this->After(index)] - places[this->Before(index)]), square);
+		headings[index] = this->nodes[index].Fixed() ? square : Crossing(this->Leaning(index, places, true), square);
 	}
 	return headings;
 }
