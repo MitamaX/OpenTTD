@@ -22,16 +22,40 @@
 static constexpr double SPRAY_RADIUS_PER_LEVEL = 0.11;
 static constexpr int MOST_SPRAY_LEVELS = 3;
 static constexpr double SPRAY_DRIFT_PACE = 0.15;
+static constexpr double BANK_SHEET_SINK_LEVELS = 0.1;
+static constexpr double BANK_SHEET_HELD_REACH = 0.6;
 
 static uint32_t Add(WaterMesh &mesh, double x, double y, double level)
 {
 	return mesh.Add({static_cast<float>(x), static_cast<float>(y), static_cast<float>(level)});
 }
 
+static double DistanceToWater(double x, double y)
+{
+	int cx = static_cast<int>(std::floor(x));
+	int cy = static_cast<int>(std::floor(y));
+	double nearest = 1.0;
+	for (int ny = cy - 1; ny <= cy + 1; ny++) {
+		for (int nx = cx - 1; nx <= cx + 1; nx++) {
+			if (OnMap(nx, ny) && WaterFormOf(nx, ny) != WaterForm::Dry) nearest = std::min(nearest, std::sqrt(SquaredDistanceToTile(x, y, nx, ny)));
+		}
+	}
+	return nearest;
+}
+
+/* Away from the river a bank's sheet sinks under the bank's ground, so where no water shows it ends hidden instead of in a step that the occlusion darkens. */
+static double BankSheetSink(double x, double y)
+{
+	return BANK_SHEET_SINK_LEVELS * SmoothStep(BANK_SHEET_HELD_REACH, 1.0, DistanceToWater(x, y));
+}
+
 static void AddSheet(WaterMesh &mesh, int tx, int ty)
 {
 	WaterSheet sheet(tx, ty);
-	LayTileGrid(mesh, tx, ty, sheet.Divisions(), [&](int, int, double x, double y) { return Add(mesh, x, y, sheet.Level(x, y)); });
+	bool bank = IsRiverBank(tx, ty);
+	LayTileGrid(mesh, tx, ty, sheet.Divisions(), [&](int, int, double x, double y) {
+		return Add(mesh, x, y, sheet.Level(x, y) - (bank ? BankSheetSink(x, y) : 0.0));
+	});
 }
 
 /* A river's bare banks carry its sheet on over their ground, so the water's curved outline may reach onto them instead of stopping short along the river's tile edge. */
