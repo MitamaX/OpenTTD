@@ -927,7 +927,7 @@ static std::optional<BankedStep> BankOn(int tx, int ty, DiagDirection side)
 class BankColumns {
 public:
 	BankColumns(const Landform &land, const BankedStep &site) :
-		land(land), step(site.stepped.step), runs(site.runs), high_x(site.stepped.high_x), high_y(site.stepped.high_y), low_x(site.stepped.low_x), low_y(site.stepped.low_y), low(land, site.stepped.low_x, site.stepped.low_y)
+		land(land), step(site.stepped.step), runs(site.runs), high_x(site.stepped.high_x), high_y(site.stepped.high_y), low_x(site.stepped.low_x), low_y(site.stepped.low_y), low(land, site.stepped.low_x, site.stepped.low_y), high(land, site.stepped.high_x, site.stepped.high_y)
 	{
 	}
 
@@ -936,13 +936,18 @@ public:
 		return {this->EndAt(0), this->EndAt(1)};
 	}
 
+	/* An end left open over lower ground beside it, whose top rounds over its own tile alone instead of over the drop past its end. */
+	BankEdge OpenEndAt(size_t end) const
+	{
+		return this->Column(this->step.ring[STEP_ENDS[end][0]], this->step.ring[STEP_ENDS[end][1]], static_cast<double>(end), true);
+	}
+
 	std::vector<BankEdge> Across(const std::array<BankEdge, 2> &ends) const
 	{
 		double length = Length(Flat(this->step.ring[STEP_ENDS[1][0]]) - Flat(this->step.ring[STEP_ENDS[0][0]]));
 		int count = std::max(1, static_cast<int>(std::ceil(length * BANK_COLUMNS_PER_TILE)));
-		LaidGround high(this->land, this->high_x, this->high_y);
 		std::vector<BankEdge> columns = {ends[0]};
-		for (int column = 1; column < count; column++) columns.push_back(this->Interior(high, static_cast<double>(column) / count));
+		for (int column = 1; column < count; column++) columns.push_back(this->Interior(static_cast<double>(column) / count));
 		columns.push_back(ends[1]);
 		return columns;
 	}
@@ -953,20 +958,21 @@ private:
 		return this->Column(this->step.ring[STEP_ENDS[end][0]], this->step.ring[STEP_ENDS[end][1]], static_cast<double>(end));
 	}
 
-	BankEdge Interior(const LaidGround &high, double share) const
+	BankEdge Interior(double share) const
 	{
 		WorldPoint top = ::Between(this->step.ring[STEP_ENDS[0][0]], this->step.ring[STEP_ENDS[1][0]], share);
 		WorldPoint foot = ::Between(this->step.ring[STEP_ENDS[0][1]], this->step.ring[STEP_ENDS[1][1]], share);
-		top.level = high.Level(top.x, top.y);
+		top.level = this->high.Level(top.x, top.y);
 		foot.level = this->low.Level(foot.x, foot.y);
 		return this->Column(top, foot, share);
 	}
 
-	BankEdge Column(const WorldPoint &top, const WorldPoint &foot, double share) const
+	BankEdge Column(const WorldPoint &top, const WorldPoint &foot, double share, bool open_end = false) const
 	{
 		double run = std::lerp(this->runs[0], this->runs[1], share);
 		auto ground_under = [this](double x, double y, double out) { return out <= 1.0 ? MeshLevelIn(this->land, this->low, this->low_x, this->low_y, x, y) : MeshLevelAt(this->land, x, y); };
-		MapVector top_climb = this->land.Climb(top.x - this->step.outward.x * BANK_TOP_INSET, top.y - this->step.outward.y * BANK_TOP_INSET);
+		MapVector inside = Flat(top) - this->step.outward * BANK_TOP_INSET;
+		MapVector top_climb = open_end ? ClimbOf([this](double x, double y) { return this->high.Level(x, y); }, inside.x, inside.y) : this->land.Climb(inside.x, inside.y);
 		double foot_dip = std::lerp(SHALLOW_BANK_FOOT_DIP, EARTH_BANK_FOOT_DIP, std::clamp((top.level - foot.level) / SHALLOW_BANK_RISE, 0.0, 1.0));
 		return BankEnd(this->land, ground_under, top, foot, this->step.outward, EarthReach(top, foot, EARTH_BANK_RUN_PER_RISE, run), EASED_PROFILE, top_climb, foot_dip);
 	}
@@ -979,6 +985,7 @@ private:
 	int low_x;
 	int low_y;
 	LaidGround low;
+	LaidGround high;
 };
 
 static double MarkOf(const EarthBank &bank)
@@ -1073,6 +1080,12 @@ static bool RunsOn(const Landform &land, int tx, int ty, DiagDirection side, con
 	TileStep beyond = BeyondEnd(bank.site.stepped.step, end);
 	std::optional<PlacedBank> next = BankAt(land, tx + beyond.x, ty + beyond.y, side);
 	return next.has_value() && SameEnd(bank.edges[end], next->edges[1 - end]);
+}
+
+static void OpenEnd(const Landform &land, PlacedBank &bank, size_t end)
+{
+	bank.edges[end] = BankColumns(land, bank.site).OpenEndAt(end);
+	(end == 0 ? bank.columns.front() : bank.columns.back()) = bank.edges[end];
 }
 
 static bool Reaches(const BankEdge &edge)
@@ -1248,15 +1261,25 @@ static void AddWalls(TerrainMesh &mesh, const Landform &land, int tx, int ty)
 		}
 		banks.push_back(*placed);
 		sides.push_back(side);
-		AddBankColumns(mesh, placed->columns, MarkOf(placed->site.stepped.bank));
+	}
+	std::vector<std::array<bool, 2>> open(banks.size());
+	for (size_t own = 0; own < banks.size(); own++) {
+		for (size_t end = 0; end < banks[own].edges.size(); end++) {
+			open[own][end] = Reaches(banks[own].edges[end]) && !ClosedAtCorner(banks, own, end) && !RunsOn(land, tx, ty, sides[own], banks[own], end);
+		}
+	}
+	for (size_t own = 0; own < banks.size(); own++) {
+		for (size_t end = 0; end < banks[own].edges.size(); end++) {
+			if (open[own][end]) OpenEnd(land, banks[own], end);
+		}
+		AddBankColumns(mesh, banks[own].columns, MarkOf(banks[own].site.stepped.bank));
 	}
 	CloseBankCorners(mesh, banks);
 	for (size_t own = 0; own < banks.size(); own++) {
 		const StepFace &step = banks[own].site.stepped.step;
 		for (size_t end = 0; end < banks[own].edges.size(); end++) {
-			const BankEdge &edge = banks[own].edges[end];
-			if (!Reaches(edge) || ClosedAtCorner(banks, own, end) || RunsOn(land, tx, ty, sides[own], banks[own], end)) continue;
-			AddBankEnd(mesh, edge, Unit(Flat(step.ring[STEP_ENDS[end][0]]) - Flat(step.ring[STEP_ENDS[1 - end][0]])));
+			if (!open[own][end]) continue;
+			AddBankEnd(mesh, banks[own].edges[end], Unit(Flat(step.ring[STEP_ENDS[end][0]]) - Flat(step.ring[STEP_ENDS[1 - end][0]])));
 		}
 	}
 }
