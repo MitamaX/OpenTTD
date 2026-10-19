@@ -259,7 +259,18 @@ private:
 		return water;
 	}
 
-	/* Supports standing in water rise from a caisson at the waterline, as what stands below it would only waver through the surface. */
+	/* How far below the deck the bed lies at its lowest under a footprint about a place on the span. */
+	double LowestBedDepth(double span, double lateral, double half_along, double half_across) const
+	{
+		double lowest = this->BedDepth(span, lateral);
+		for (double along : {-half_along, half_along}) {
+			for (double across : {-half_across, half_across}) lowest = std::min(lowest, this->BedDepth(span + along, lateral + across));
+		}
+		return lowest;
+	}
+
+	/* Supports standing in water rise from a caisson at the waterline, as what stands below it would only waver through the surface; the caisson itself is
+	 * sunk in one piece to the bed, so no gap opens between it and the water. */
 	double FootDepth(SpanMesh &mesh, double span, double lateral, double half_along, double half_across) const
 	{
 		std::optional<double> water = this->WaterDepth(span, lateral);
@@ -268,7 +279,8 @@ private:
 		MapVector along = this->frame.At(span + 1.0, lateral) - at;
 		double spread_along = half_along + CAISSON_MARGIN;
 		double spread_across = half_across + CAISSON_MARGIN;
-		mesh.Append(Block(at, along, {-spread_along, -spread_across, *water - CAISSON_SINK}, {spread_along, spread_across, *water + CAISSON_RISE}).Paint(CONCRETE));
+		double bottom = std::min(*water - CAISSON_SINK, this->LowestBedDepth(span, lateral, spread_along, spread_across));
+		mesh.Append(Block(at, along, {-spread_along, -spread_across, bottom}, {spread_along, spread_across, *water + CAISSON_RISE}).Paint(CONCRETE));
 		return *water + CAISSON_RISE;
 	}
 
