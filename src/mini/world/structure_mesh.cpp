@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <ranges>
 
 #include "../core/seed.h"
 #include "../core/tones.h"
@@ -33,6 +34,9 @@ static constexpr uint32_t COPING_STONE = 0xFFD8D2C4U;
 static constexpr uint COPING_SHARE = 140;
 static constexpr double VENT_SEED_STEPS = 64.0;
 static constexpr double FASCIA_SHADE = 0.72;
+/* The bays of the shaders' lattice cladding, as a share of a unit of its pattern across and up. */
+static constexpr double LATTICE_BAY_ACROSS = 1.0 / 5.0;
+static constexpr double LATTICE_BAY_UP = 1.0 / 7.0;
 
 void StructureMesh::Polygon(std::span<const StructureVertex> corners)
 {
@@ -108,6 +112,30 @@ static double FootingOf(const BuildingForm &form)
 	return lowest * LevelRise() - FOOTING_DEPTH;
 }
 
+static int WholeBays(double length, double bay)
+{
+	return std::max(1, static_cast<int>(std::lround(length / bay)));
+}
+
+/* Where a face's edges cross a height, along its own way across. */
+static std::pair<double, double> SpanAt(const Face &face, double z)
+{
+	std::span<const FacePoint> points = face.polygon.Points();
+	double left = HIGHEST;
+	double right = LOWEST;
+	auto take = [&](double across) {
+		left = std::min(left, across);
+		right = std::max(right, across);
+	};
+	for (size_t corner = 0; corner < points.size(); corner++) {
+		const FacePoint &from = points[corner];
+		const FacePoint &to = points[(corner + 1) % points.size()];
+		if (from.z == z) take(face.uv.U(from));
+		if ((from.z - z) * (to.z - z) < 0.0) take(std::lerp(face.uv.U(from), face.uv.U(to), (z - from.z) / (to.z - from.z)));
+	}
+	return {left, right};
+}
+
 /* Lays the faces of one solid into the mesh, each clad by what it is: walls, windowed bands of a facade, roofs and decals. */
 class SolidMesher final : public FaceSink {
 public:
@@ -120,6 +148,10 @@ public:
 	{
 		if (face.cladding == Cladding::Facade) {
 			this->CoverFacade(face);
+			return;
+		}
+		if (this->FramesTower(face)) {
+			this->LayFrame(face);
 			return;
 		}
 		this->Lay(face.polygon, face, this->CoatOf(face.cladding));
@@ -166,18 +198,54 @@ private:
 		if (band.IsSurface()) this->Lay(band, face, coat);
 	}
 
+	/* A tapering lattice is a tower's braced frame, whose legs run up its edges. */
+	bool FramesTower(const Face &face) const
+	{
+		return face.cladding == Cladding::Wall && this->solid.wall_material == Material::Lattice && this->solid.taper > 0.0f && IsUpright(face.normal);
+	}
+
+	/* Whole bays fit between the legs at every height and between the ledgers at the frame's foot and top, so every member meets the next. Each row of bays is laid
+	 * as its own band, so the bays bend no more than a row narrows. */
+	void LayFrame(const Face &face)
+	{
+		auto heights = face.polygon.Points() | std::views::transform(&FacePoint::z);
+		auto [foot, top] = std::ranges::minmax(heights);
+		int rows = WholeBays(top - foot, LATTICE_BAY_UP);
+		double row = (top - foot) / rows;
+		auto [left, right] = SpanAt(face, foot);
+		double across = WholeBays(right - left, LATTICE_BAY_ACROSS) * LATTICE_BAY_ACROSS;
+		Coat coat = this->CoatOf(Cladding::Wall);
+		auto pattern = [&](const FacePoint &point) {
+			auto [from, to] = SpanAt(face, point.z);
+			return std::pair{across * (face.uv.U(point) - from) / (to - from), LATTICE_BAY_UP * (point.z - foot) / row};
+		};
+		for (int step = 0; step < rows; step++) {
+			FacePolygon band = face.polygon;
+			ClipToHeights(band, foot + step * row, foot + (step + 1) * row);
+			if (band.IsSurface()) this->Lay(band, face, coat, pattern);
+		}
+	}
+
 	void Lay(const FacePolygon &polygon, const Face &face, const Coat &coat)
+	{
+		bool upright = IsUpright(face.normal);
+		this->Lay(polygon, face, coat, [&](const FacePoint &point) {
+			return std::pair{face.uv.U(point), upright ? point.z - this->PatternFoot() : face.uv.V(point)};
+		});
+	}
+
+	template <typename Pattern>
+	void Lay(const FacePolygon &polygon, const Face &face, const Coat &coat, Pattern pattern)
 	{
 		std::span<const FacePoint> points = polygon.Points();
 		std::array<StructureVertex, MAX_POLYGON_CORNERS> corners;
-		bool upright = IsUpright(face.normal);
 		std::ranges::transform(points, corners.begin(), [&](const FacePoint &point) {
 			ModelVertex model{};
 			model.Place(this->Place(point, face, coat));
 			model.Face(RenderNormalOf(face.smooth && Dot(point.normal, point.normal) > 0.0 ? point.normal : face.normal));
 			model.Occlude(point.shade);
-			double v = upright ? point.z - this->PatternFoot() : face.uv.V(point);
-			return this->style.Vertex(model, face.uv.U(point), v, coat, this->solid.glass_tint);
+			auto [u, v] = pattern(point);
+			return this->style.Vertex(model, u, v, coat, this->solid.glass_tint);
 		});
 		this->mesh.Polygon(std::span(corners).first(points.size()));
 	}
